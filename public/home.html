@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPOS Home</title>
+    <link rel="stylesheet" href="/assistant/assistant.css" />
+    <link rel="stylesheet" href="/css/widgets/salestoday.css">
+    <link rel="stylesheet" href="/css/home.css">
+    <script src="/js/storage.js"></script>
+    <script src="/assistant/assistant.js"></script>
+    <script src="/js/menu.js"></script>
+    <script src="/js/widgets/visibility.js"></script>
+
+</head>
+
+<body>
+    <!-- Menu will be injected here -->
+    <div id="menu"></div>
+
+    <!-- Main content -->
+    <main class="content">
+        <h1>Welcome to the EPOS System</h1>
+        <div id="dashboardGrid">
+            <section id="salesTodayWidget" class="widget-card wide"></section>
+            <section id="salesByStoreWidget" class="widget-card half"></section>
+            <section id="topThreeWidget" class="widget-card half"></section>
+        </div>
+
+
+        <!-- scripts -->
+        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+        <script src="/js/widgets/salesByStore.js"></script>
+        <script src="/js/widgets/salestoday.js"></script>
+        <script src="/js/widgets/topThree.js"></script>
+
+    </main>
+
+
+</body>
+
+</html>

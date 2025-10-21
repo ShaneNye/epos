@@ -1,0 +1,444 @@
+/* --- Font --- */
+@font-face {
+  font-family: 'ProximaNova';
+  src: url('/fonts/proximanova_regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
+/* --- Layout --- */
+html, body {
+  height: 100%;
+  margin: 0;
+  font-family: "ProximaNova", "Segoe UI", sans-serif;
+  display: flex;
+  background: #f5f7fa;
+  color: #1a1f24;
+}
+
+#menu {
+  height: 100%;
+}
+
+.sidebar {
+  height: 100vh;
+  flex-shrink: 0;
+}
+
+/* --- Sidebar --- */
+.sidebar {
+  width: 70px;
+  background: linear-gradient(180deg, #006d8d, #0081ab);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  transition: width 0.3s ease;
+  box-shadow: 2px 0 8px rgba(0,0,0,0.15), inset -2px 0 6px rgba(0,0,0,0.15);
+  overflow: hidden;
+}
+.sidebar.expanded {
+  width: 260px;
+}
+
+/* --- Burger Button --- */
+.burger {
+  background: none;
+  border: none;
+  color: white;
+  font-size: 1.8rem;
+  margin: 1rem 0;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  transition: background 0.2s ease;
+}
+.burger:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+/* --- Menu --- */
+.menu {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.menu-item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1rem;
+  color: white;
+  text-decoration: none;
+  font-size: 0.95rem;
+  font-weight: 500;
+  border-left: 4px solid transparent;
+  transition: all 0.25s ease;
+  white-space: nowrap;
+}
+
+.menu-item svg {
+  width: 24px;
+  height: 24px;
+  stroke: white;
+  flex-shrink: 0;
+  transition: stroke 0.25s ease;
+}
+
+.menu-item:hover {
+  background: rgba(255, 215, 0, 0.15);
+  color: #FFD700;
+  border-left: 4px solid #FFD700;
+}
+.menu-item.active {
+  background: rgba(255, 215, 0, 0.25);
+  color: #FFD700;
+  border-left: 4px solid #FFD700;
+  box-shadow: inset 0 0 6px rgba(0,0,0,0.15);
+}
+.menu-item.active svg {
+  stroke: #FFD700;
+}
+
+.menu-label {
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+.sidebar.expanded .menu-label {
+  opacity: 1;
+}
+
+/* --- Tooltips --- */
+.menu-item .tooltip {
+  position: absolute;
+  left: 70px;
+  background: rgba(0,0,0,0.85);
+  color: #fff;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-50%);
+  top: 50%;
+  transition: opacity 0.2s ease;
+}
+.sidebar:not(.expanded) .menu-item:hover .tooltip {
+  opacity: 1;
+}
+
+/* --- User Section --- */
+.user-section {
+  border-top: 1px solid rgba(255,255,255,0.2);
+  color: white;
+  display: flex;
+  flex-direction: column;
+  padding: 1.2rem;
+  gap: 1rem;
+}
+.user-top {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+}
+.user-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.25);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: white;
+  flex-shrink: 0;
+}
+.user-info {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.user-name {
+  font-weight: 600;
+  font-size: 1rem;
+}
+
+#activeRoleSelect {
+  width: 100%;
+  border: none;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+  font-size: 0.85rem;
+  font-family: "ProximaNova", "Segoe UI", sans-serif;
+  padding: 0.45rem 0.6rem;
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  background-image: none !important;
+  box-sizing: border-box;
+  transition: background 0.25s ease, box-shadow 0.25s ease;
+}
+
+#activeRoleSelect:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+#activeRoleSelect:focus {
+  outline: none;
+  background: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 0 0 2px rgba(255,215,0,0.4);
+}
+
+/* Dropdown options (still themed) */
+#activeRoleSelect option {
+  color: #1a1f24;
+  background: #fff;
+  font-weight: 500;
+  padding: 0.45rem 0.75rem;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+#activeRoleSelect option:checked {
+  background: #0081ab linear-gradient(0deg, #0081ab 0%, #0095c2 100%);
+  color: #fff;
+}
+#activeRoleSelect option:hover {
+  background: #e7f7fb !important;
+  color: #004f64 !important;
+}
+
+/* --- User Actions --- */
+.user-actions {
+  display: flex;
+  gap: 0.6rem;
+  width: 100%;
+}
+.user-action {
+  flex: 1;
+  text-align: center;
+  background: rgba(255,255,255,0.1);
+  border-radius: 6px;
+  padding: 0.6rem;
+  cursor: pointer;
+  transition: background 0.2s;
+  font-size: 0.85rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.3rem;
+}
+.user-action:hover {
+  background: rgba(255,215,0,0.25);
+  color: #FFD700;
+}
+
+/* --- Collapsed Sidebar --- */
+.sidebar:not(.expanded) .user-info,
+.sidebar:not(.expanded) .user-actions {
+  display: none;
+}
+.sidebar:not(.expanded) .user-section {
+  padding: 0.75rem 0;
+  justify-content: center;
+  align-items: center;
+}
+.sidebar:not(.expanded) .user-top {
+  width: auto;
+  gap: 0;
+  justify-content: center;
+}
+.sidebar:not(.expanded) .user-avatar {
+  margin: 0;
+}
+
+/* --- Main Content --- */
+.content {
+  flex: 1;
+    width: 100%;   /* ✅ Add this */
+  padding: 2rem;
+}
+.content h1 {
+  margin-top: 0;
+  color: #0081ab;
+}
+/* --- Role Dropdown Option Styling (cross-browser safe) --- */
+#activeRoleSelect option {
+  color: #1a1f24;
+  background: #fff;
+  font-weight: 500;
+  padding: 0.45rem 0.75rem;
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+/* selected item color when reopened */
+#activeRoleSelect option:checked {
+  background: #0081ab linear-gradient(0deg, #0081ab 0%, #0095c2 100%);
+  color: #fff;
+}
+
+/* highlight hovered options (Chromium browsers) */
+#activeRoleSelect option:hover {
+  background: #e7f7fb !important;
+  color: #004f64 !important;
+}
+
+/* Improve dropdown popup (webkit browsers) */
+#activeRoleSelect::-webkit-scrollbar {
+  width: 8px;
+}
+#activeRoleSelect::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}
+#activeRoleSelect:focus option:checked {
+  background: #FFD700;
+  color: #000;
+}
+
+/* Adds a soft drop shadow to the dropdown menu (Chromium only) */
+select#activeRoleSelect::-internal-list-box {
+  border-radius: 6px;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+/* === Dashboard Grid: equal-height bottom row === */
+#dashboardGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto 1fr;       /* ✅ top row auto, bottom row uniform */
+  grid-template-areas:
+    "salesToday salesToday"
+    "salesByStore topThree";
+  gap: 8px;
+  width: 100%;
+  margin-top: 8px;
+  box-sizing: border-box;
+  align-items: stretch;               /* ensures both bottom widgets fill equally */
+}
+
+/* === Widget Base Style (clean & compact) === */
+#dashboardGrid section {
+  background: #fff;
+  border-radius: 6px;
+  border: 1px solid #e6eef3;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  transition: all 0.2s ease;
+}
+
+#dashboardGrid section:hover {
+  box-shadow: 0 2px 5px rgba(0, 129, 171, 0.12);
+  border-color: #d4e6ec;
+}
+
+/* === Widget placement === */
+#salesTodayWidget {
+  grid-area: salesToday;
+  min-height: 180px;
+  max-height: 210px;
+}
+
+#salesByStoreWidget {
+  grid-area: salesByStore;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  margin: 0px;
+  height: 100%;             /* ✅ fills bottom-row height */
+}
+
+#topThreeWidget {
+  grid-area: topThree;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;  /* ✅ centers content vertically */
+  align-items: center;
+  height: 100%;             /* ✅ fills bottom-row height */
+}
+
+/* === Chart refinement === */
+#salesByStoreWidget .chart-container {
+  position: relative;
+  width: 100%;
+  height: 110px;
+}
+
+/* === Table in Top 3 widget === */
+#topThreeWidget table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin-top: 0;
+}
+
+#topThreeWidget th,
+#topThreeWidget td {
+  padding: 2px 5px;
+  text-align: left;
+  border-bottom: 1px solid #edf3f6;
+}
+
+#topThreeWidget th {
+  background: #0081ab;
+  color: #fff;
+  font-weight: 600;
+}
+
+#topThreeWidget td:last-child {
+  text-align: right;
+  font-weight: 600;
+  color: #0081ab;
+}
+
+/* === Equal bottom widget visual lock === */
+#salesByStoreWidget,
+#topThreeWidget {
+  min-height: 180px;        /* ✅ forces consistent height */
+  max-height: 180px;
+  box-sizing: border-box;
+}
+
+/* === Empty state styling === */
+.no-data {
+  text-align: center;
+  color: #9aa4aa;
+  font-style: italic;
+  font-size: 0.88rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-grow: 1;
+  height: 100%;
+  opacity: 0.8;
+}
+
+/* === Responsive stacking === */
+@media (max-width: 900px) {
+  #dashboardGrid {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "salesToday"
+      "salesByStore"
+      "topThree";
+    grid-template-rows: auto;
+    gap: 10px;
+  }
+
+  #salesByStoreWidget,
+  #topThreeWidget {
+    min-height: 170px;
+    max-height: none;
+  }
+}

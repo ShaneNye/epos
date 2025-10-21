@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sussex Beds : Epos : Login Portal</title>
+    <link rel="stylesheet" href="./css/index.css" />
+    <script src="/js/particles.js"></script>
+    <script src="/js/storage.js"></script>
+    <script defer src="/js/main.js"></script>
+</head>
+
+<body>
+    <main class="auth-wrap">
+        <section class="brand-side">
+            <div class="brand-content">
+                <img class="brand-logo" src="./assets/moon-man-logo.png" alt="Sussex Beds logo" />
+                <h1 class="brand-title">Sussex Beds</h1>
+                <p class="brand-sub">Epos Login</p>
+            </div>
+        </section>
+
+        <section class="portal">
+            <header class="portal-head">
+                <h2>Welcome back</h2>
+                <p>Please sign in to continue</p>
+                <span class="accent-bar" aria-hidden="true"></span>
+            </header>
+
+            <form class="auth-form" onsubmit="return false;" novalidate>
+                <label class="field">
+                    <span class="label">Environment</span>
+                    <select name="env" required>
+                        <option value="sandbox">Sandbox</option>
+                        <option value="production">Production</option>
+                    </select>
+                </label>
+
+                <label class="field">
+                    <span class="label">Username</span>
+                    <input name="username" type="text" autocomplete="username" placeholder="Email" required />
+                </label>
+
+                <label class="field">
+                    <span class="label">Password</span>
+                    <input name="password" type="password" autocomplete="current-password" placeholder="••••••••"
+                        required />
+                </label>
+
+                <div class="row between">
+                    <label class="remember">
+                        <input type="checkbox" name="remember" />
+                        <span>Remember me</span>
+                    </label>
+                    <a class="link" href="/forgot">Forgot password?</a>
+                </div>
+
+                <button class="btn-primary" type="submit">Login</button>
+            </form>
+
+
+            <footer class="portal-foot">
+                <small>© Sussex Beds • Epos <br>
+                    Developed By Shane Nye</small>
+            </footer>
+        </section>
+    </main>
+
+
+
+</body>
+
+</html>

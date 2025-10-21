@@ -1,0 +1,49 @@
+# === Node ===
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+package-lock.json
+
+# === Environment ===
+.env
+.env.local
+.env.development.local
+.env.production.local
+
+# === Logs and temp ===
+logs/
+*.log
+tmp/
+temp/
+*.tmp
+
+# === Build and cache ===
+dist/
+build/
+.cache/
+coverage/
+
+# === Local system ===
+.DS_Store
+Thumbs.db
+
+# === IDE ===
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# === XAMPP local paths (if used) ===
+/xampp/
+/htdocs/
+/mysql/
+
+# === Uploads or exports ===
+uploads/
+exports/
+
+# === Misc ===
+/public/uploads/
+*.bak
+*.old

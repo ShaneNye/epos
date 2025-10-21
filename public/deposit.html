@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Add Customer Deposit</title>
+    <style>
+        :root {
+            --brand: #0081ab;
+            --brand-600: #006c8e;
+            --ink: #1a1f24;
+            --muted: #6a7480;
+            --line: #e6e9ee;
+            --panel: #ffffff;
+            --bg: #f8fafc;
+            --radius: 12px;
+            --shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+        }
+
+        body {
+            font-family: "Inter", "Segoe UI", sans-serif;
+            background-color: var(--bg);
+            color: var(--ink);
+            margin: 0;
+            padding: 2rem;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+
+        .deposit-card {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: var(--radius);
+            box-shadow: var(--shadow);
+            padding: 1.5rem 2rem;
+            width: 360px;
+        }
+
+        h2 {
+            font-size: 1.3rem;
+            color: var(--brand);
+            margin-bottom: 1rem;
+            font-weight: 600;
+            text-align: center;
+        }
+
+        label {
+            display: block;
+            font-size: 0.9rem;
+            color: var(--muted);
+            margin-bottom: 0.4rem;
+        }
+
+        select,
+        input[type="number"] {
+            width: 100%;
+            padding: 0.6rem 0.7rem;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            font-size: 0.95rem;
+            color: var(--ink);
+            background-color: #fff;
+            transition: border-color 0.15s ease;
+        }
+
+        select:focus,
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--brand);
+            box-shadow: 0 0 0 2px rgba(0, 129, 171, 0.15);
+        }
+
+        button {
+            width: 100%;
+            padding: 0.7rem;
+            background-color: var(--brand);
+            color: white;
+            border: none;
+            border-radius: 8px;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+
+        button:hover {
+            background-color: var(--brand-600);
+        }
+
+        .field {
+            margin-bottom: 1.2rem;
+        }
+
+        .footer-note {
+            text-align: center;
+            font-size: 0.8rem;
+            color: var(--muted);
+            margin-top: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="deposit-card">
+        <h2>Add Deposit</h2>
+
+        <div class="field">
+            <label for="depositMethod">Payment Method</label>
+            <select id="depositMethod">
+                <option value="">Loading methods...</option>
+            </select>
+        </div>
+
+        <div class="field">
+            <label for="depositAmount">Amount (£)</label>
+            <input type="number" id="depositAmount" min="0" step="0.01" placeholder="£0.00" />
+        </div>
+
+        <button id="saveDepositBtn">Save Deposit</button>
+
+        <p class="footer-note">This payment will be applied to the active Sales Order.</p>
+    </div>
+
+    <script>
+        async function loadPaymentMethods() {
+            try {
+                const res = await fetch("/api/netsuite/paymentmethods");
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                console.log("🔎 Payment methods response:", data);
+
+                const select = document.getElementById("depositMethod");
+                select.innerHTML = '<option value="">Select Method</option>';
+
+                let methods = [];
+                if (Array.isArray(data.results)) methods = data.results;
+                else if (Array.isArray(data)) methods = data;
+
+                methods.forEach(pm => {
+                    const id = pm["Internal ID"] || pm.id;
+                    const name = pm["Name"] || pm.name;
+                    if (!id || !name) return;
+
+                    const opt = document.createElement("option");
+                    opt.value = id;
+                    opt.textContent = name;
+                    select.appendChild(opt);
+                });
+            } catch (err) {
+                console.error("❌ Failed to load payment methods:", err);
+                document.getElementById("depositMethod").innerHTML =
+                    `<option value="">Error loading methods</option>`;
+            }
+        }
+
+        document.getElementById("saveDepositBtn").addEventListener("click", () => {
+            const select = document.getElementById("depositMethod");
+            const id = select.value;
+            const name = select.options[select.selectedIndex]?.textContent;
+            const amount = parseFloat(document.getElementById("depositAmount").value || 0);
+
+            if (!id || amount <= 0) {
+                alert("⚠️ Please select a payment method and enter a valid amount.");
+                return;
+            }
+
+            if (window.opener && typeof window.opener.onDepositSaved === "function") {
+                window.opener.onDepositSaved({ id, name, amount });
+            }
+            window.close();
+        });
+
+        loadPaymentMethods();
+    </script>
+</body>
+
+</html>

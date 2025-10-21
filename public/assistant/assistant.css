@@ -1,0 +1,236 @@
+/* public/assistant/assistant.css */
+
+.assistant {
+  position: fixed;
+  bottom: 80px;
+  right: 20px;
+  width: 300px;
+  height: 400px;
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+  display: none;
+  flex-direction: column;
+  overflow: hidden;
+  font-family: system-ui, sans-serif;
+  z-index: 1000;
+}
+
+/* Header */
+.assistant-header {
+  background-color: #0081ab;
+  color: white;
+  padding: 8px 12px;
+  font-weight: bold;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.assistant-header button {
+  background: transparent;
+  color: white;
+  border: none;
+  font-size: 1.2rem;
+  cursor: pointer;
+}
+
+/* Chat Body */
+.assistant-body {
+  flex: 1;
+  padding: 10px;
+  overflow-y: auto;
+  font-size: 0.9rem;
+}
+
+.assistant-message {
+  margin: 6px 0;
+  padding: 8px 10px;
+  border-radius: 10px;
+  line-height: 1.4;
+  max-width: 90%;
+}
+
+.assistant-message.bot {
+  background: #e0f7f7;
+  color: #0081ab;
+  align-self: flex-start;
+}
+
+.assistant-message.user {
+  background: #0081ab;
+  color: white;
+  align-self: flex-end;
+}
+
+/* Input form */
+#assistantForm {
+  display: flex;
+  border-top: 1px solid #ddd;
+}
+
+#assistantInput {
+  flex: 1;
+  border: none;
+  padding: 8px;
+  outline: none;
+}
+
+#assistantForm button {
+  background: #0081ab;
+  color: white;
+  border: none;
+  padding: 0 12px;
+  cursor: pointer;
+}
+
+/* Floating toggle button */
+.assistant-toggle {
+  position: fixed;
+  bottom: 20px;
+  right: 20px;
+  width: 55px;
+  height: 55px;
+  border-radius: 50%;
+  background: #0081ab;
+  color: white;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
+  transition: all 0.3s ease;
+  z-index: 999;
+}
+
+.assistant-toggle:hover {
+  background: #FFD700;;
+  transform: scale(1.05);
+}
+
+.assistant-toggle:active {
+  transform: scale(0.95);
+}
+
+/* Icon styling */
+#assistantIcon {
+  transition: all 0.3s ease;
+}
+
+/* Glowing alert when assistant has a message (future use) */
+.assistant-toggle.has-message {
+  background: #00c3c3;
+  box-shadow: 0 0 10px 3px rgba(0, 195, 195, 0.6);
+  animation: pulse 1.5s infinite;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    transform: scale(1);
+    box-shadow: 0 0 8px rgba(0, 195, 195, 0.4);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow: 0 0 15px rgba(0, 195, 195, 0.8);
+  }
+}
+.assistant-toggle svg {
+  width: 28px;
+  height: 28px;
+  transition: transform 0.3s ease, filter 0.3s ease;
+}
+
+.assistant-toggle:hover svg {
+  transform: scale(1.1);
+  color: #0081ab;
+  filter: drop-shadow(0 0 4px rgba(0, 200, 200, 0.5));
+}
+/* Sub-header showing current page */
+.assistant-location {
+  background: #f4fdfd;
+  color: #0081ab;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  border-bottom: 1px solid #e0e0e0;
+  font-style: italic;
+}
+#assistantHeader {
+  cursor: move;
+  user-select: none;
+}
+/* Resizable handles */
+.resize-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  background: transparent;
+  z-index: 10;
+}
+
+/* Position each handle */
+.resize-handle.bottom-right {
+  right: 0;
+  bottom: 0;
+  cursor: nwse-resize;
+}
+
+.resize-handle.bottom-left {
+  left: 0;
+  bottom: 0;
+  cursor: nesw-resize;
+}
+
+.resize-handle.top-right {
+  right: 0;
+  top: 0;
+  cursor: nesw-resize;
+}
+
+.resize-handle.top-left {
+  left: 0;
+  top: 0;
+  cursor: nwse-resize;
+}
+
+/* Optional: small visual cue when resizing */
+.assistant.resizing {
+  opacity: 0.95;
+  transition: none;
+}
+/* Buttons inside chat */
+.assistant-btn {
+  background: #0081ab;
+  color: white;
+  border: none;
+  padding: 6px 12px;
+  margin: 5px 3px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.85rem;
+  transition: 0.2s;
+}
+
+.assistant-btn:hover {
+  background: #00a1a1;
+}
+
+/* Dropdown styling */
+.assistant-select {
+  margin-top: 6px;
+  padding: 4px 6px;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  border: 1px solid #ccc;
+  background: #fff;
+}
+.assistant,
+.assistant-toggle {
+  z-index: 999999 !important;
+}
+.assistant-toggle.locked-input,
+.assistant-toggle[disabled] {
+  pointer-events: auto !important;
+  opacity: 1 !important;
+  cursor: pointer !important;
+}

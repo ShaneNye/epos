@@ -1,0 +1,5 @@
+const roles = [
+    {
+        name: "admin"
+    }
+]

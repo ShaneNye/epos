@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Forgot Password | Sussex Beds Epos</title>
+    <link rel="stylesheet" href="./css/index.css" />
+</head>
+
+<body>
+    <main class="auth-wrap">
+        <section class="brand-side">
+            <div class="brand-content">
+                <img class="brand-logo" src="./assets/moon-man-logo.png" alt="Sussex Beds logo" />
+                <h1 class="brand-title">Sussex Beds</h1>
+                <p class="brand-sub">Password Reset</p>
+            </div>
+        </section>
+
+        <section class="portal">
+            <header class="portal-head">
+                <h2>Forgot Password</h2>
+                <p>Enter your email and we’ll send you reset instructions.</p>
+                <span class="accent-bar" aria-hidden="true"></span>
+            </header>
+
+            <form id="forgotForm" class="auth-form" novalidate>
+                <label class="field">
+                    <span class="label">Email</span>
+                    <input name="email" type="email" placeholder="you@sussexbeds.co.uk" required />
+                </label>
+                <button class="btn-primary" type="submit">Send Reset Link</button>
+            </form>
+
+            <footer class="portal-foot">
+                <a href="/index.html" class="link">Back to login</a>
+            </footer>
+        </section>
+    </main>
+
+    <script>
+        document.getElementById("forgotForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const email = e.target.email.value.trim();
+            if (!email) return alert("Please enter your email address");
+
+            try {
+                const res = await fetch("/api/forgot-password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ email })
+                });
+                const data = await res.json();
+                alert(data.message || "Check your inbox for the reset link.");
+            } catch {
+                alert("Error sending reset email. Please try again.");
+            }
+        });
+    </script>
+</body>
+
+</html>

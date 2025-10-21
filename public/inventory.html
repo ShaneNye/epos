@@ -1,0 +1,611 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Inventory Detail</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Roboto, sans-serif;
+            padding: 20px;
+            background: #f9fafb;
+            color: #333;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.5rem;
+            color: #0081ab;
+        }
+
+        h2+div table {
+            width: auto;
+            margin-bottom: 15px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: #ffffff;
+        }
+
+        h2+div th {
+            background: #ffd700;
+            color: #000;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-right: 1px solid #d1d5db;
+        }
+
+        h2+div td {
+            padding: 6px 12px;
+            font-weight: 500;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 15px;
+            background: #ffffff;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        th {
+            background: #0081ab;
+            color: #fff;
+            text-align: left;
+            padding: 10px;
+            font-weight: 600;
+        }
+
+        td {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 8px;
+            vertical-align: middle;
+        }
+
+        select,
+        input[type=number] {
+            padding: 6px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        select:focus,
+        input[type=number]:focus {
+            outline: none;
+            border-color: #0081ab;
+            box-shadow: 0 0 0 2px rgba(0, 129, 171, 0.2);
+        }
+
+        input[type=number] {
+            width: 80px;
+            text-align: right;
+        }
+
+        .btns {
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: background 0.2s ease;
+        }
+
+        #addRow {
+            background: #ffd700;
+            color: #000;
+        }
+
+        #addRow:hover {
+            background: #e6c200;
+        }
+
+        #saveBtn {
+            background: #0081ab;
+            color: white;
+        }
+
+        #saveBtn:hover {
+            background: #006d8f;
+        }
+
+        #cancelBtn {
+            background: #f3f4f6;
+            color: #333;
+        }
+
+        #cancelBtn:hover {
+            background: #e5e7eb;
+        }
+
+        .notice-ok {
+            color: green;
+            font-weight: bold;
+        }
+
+        .notice-transfer {
+            color: #b91c1c;
+            font-size: 0.85rem;
+        }
+    </style>
+</head>
+
+<body>
+    <h2>Allocate Inventory</h2>
+    <table id="invTable">
+        <thead>
+            <tr>
+                <th>Location</th>
+                <th>Status</th>
+                <th>Inventory #</th>
+                <th>Available</th>
+                <th>Quantity</th>
+                <th>Notice</th>
+            </tr>
+        </thead>
+        <tbody></tbody>
+    </table>
+    <button type="button" id="addRow">➕ Add Row</button>
+    <div class="btns">
+        <button type="button" id="saveBtn">Save</button>
+        <button type="button" id="cancelBtn" onclick="window.close()">Cancel</button>
+    </div>
+    <script>
+
+
+        /* ============================================================
+           Inventory Detail Popup Script
+           ============================================================ */
+
+        async function getInventoryNumbers(itemId) {
+            try {
+                const res = await fetch(`/api/netsuite/invoice-numbers`);
+                const data = await res.json();
+                if (!data.ok || !data.results) return [];
+                return data.results.filter(r => String(r["Item Id"]) === String(itemId));
+            } catch (err) {
+                console.error("❌ Failed to fetch invoice numbers:", err);
+                return [];
+            }
+        }
+
+        async function getInventoryStatuses() {
+            try {
+                const res = await fetch(`/api/netsuite/inventory-status`);
+                const data = await res.json();
+                if (!data.ok || !data.results) return [];
+                return data.results.map(s => ({
+                    name: s["Name"],
+                    id: s["Internal ID"],
+                }));
+            } catch (err) {
+                console.error("❌ Failed to fetch inventory statuses:", err);
+                return [];
+            }
+        }
+
+        function getQueryParams() {
+            const params = {};
+            new URLSearchParams(window.location.search).forEach(
+                (v, k) => (params[k] = decodeURIComponent(v))
+            );
+            return params;
+        }
+
+        /* ------------------------------------------------------------
+           Setup and Initialization
+        ------------------------------------------------------------ */
+        const rawQuery = window.location.search;
+        console.log("📜 Raw query string:", rawQuery);
+
+        const params = {};
+        new URLSearchParams(rawQuery).forEach((v, k) => {
+            params[k] = decodeURIComponent(v);
+        });
+        console.log("📦 Parsed query params:", params);
+
+        const itemId = params.itemId || "";
+        const detail = params.detail || "";
+        let lineQty = parseInt(params.qty || "0", 10) || 0;
+        const lineIndex = params.line || "0";
+
+        // 🛠 Self-heal if qty is zero but opener has cached value
+        if (lineQty === 0 && window.opener) {
+            const cachedQty = window.opener.document.querySelector(
+                `.item-qty-cache[data-line="${lineIndex}"]`
+            )?.value;
+            if (cachedQty && !isNaN(cachedQty)) {
+                console.warn("⚠️ Query param qty=0, overriding with opener cache:", cachedQty);
+                lineQty = parseInt(cachedQty, 10);
+            }
+        }
+
+        console.log("🔎 Popup opened for itemId:", itemId, " line qty:", lineQty);
+        console.log("🔎 Detail string passed in:", detail);
+
+        const tbody = document.querySelector("#invTable tbody");
+        const addRowBtn = document.getElementById("addRow");
+        const saveBtn = document.getElementById("saveBtn");
+
+        const inventoryCache = window.opener?.inventoryCache || {};
+        let stock = inventoryCache[itemId] || [];
+        const selectedWarehouseId = window.opener?.selectedWarehouseId || "";
+        const selectedWarehouseName = window.opener?.selectedWarehouseName || "";
+        console.log("🏭 Selected warehouse:", selectedWarehouseId, selectedWarehouseName);
+
+
+        /* ============================================================
+           🔁 Merge live availability feed + load statuses
+        ============================================================ */
+        (async () => {
+            const [liveFeed, statuses] = await Promise.all([
+                getInventoryNumbers(itemId),
+                getInventoryStatuses(),
+            ]);
+
+            const inventoryStatusList = statuses || [];
+
+            if (Array.isArray(liveFeed) && liveFeed.length) {
+                console.log(`📦 Merging ${liveFeed.length} live records into stock cache`);
+                stock = stock.map((s) => {
+                    const sNum = (s.inventoryNumber || "").trim().toLowerCase();
+                    const match = liveFeed.find(
+                        (l) => (l["Number"] || "").trim().toLowerCase() === sNum
+                    );
+
+                    if (match) {
+                        const invId = match["inv number id"] || match["Internal ID"] || "";
+                        return {
+                            ...s,
+                            onHand: match["On Hand"] || s.onHand,
+                            qty: match["Available"] || s.qty,
+                            location: match["Location"] || s.location,
+                            locationId: match["Location ID"] || s.locationId || "",
+                            inventoryNumber: match["Number"] || s.inventoryNumber,
+                            inventoryNumberId: invId,
+                        };
+                    }
+                    return s;
+                });
+                console.log("🧩 Example merged stock:", stock.slice(0, 3));
+            }
+
+            initInventoryPopup(inventoryStatusList);
+        })();
+
+        /* ============================================================
+           🧩 Main Popup Logic (no Bin field)
+        ============================================================ */
+        function initInventoryPopup(inventoryStatusList = []) {
+            function getAllocatedTotal() {
+                return [...tbody.querySelectorAll(".qtyInput")].reduce((sum, inp) => {
+                    const v = parseInt(inp.value || "0", 10);
+                    return sum + (isNaN(v) ? 0 : v);
+                }, 0);
+            }
+
+            function remainingToAllocate() {
+                return Math.max(lineQty - getAllocatedTotal(), 0);
+            }
+
+            function remainingExcludingRow(row) {
+                const totalOther = [...tbody.querySelectorAll(".qtyInput")].reduce(
+                    (sum, inp) => {
+                        if (inp.closest("tr") === row) return sum;
+                        const v = parseInt(inp.value || "0", 10);
+                        return sum + (isNaN(v) ? 0 : v);
+                    },
+                    0
+                );
+                return Math.max(lineQty - totalOther, 0);
+            }
+
+            function updateAddRowState() {
+                const alloc = getAllocatedTotal();
+                const hasAnyStock = stock.some((s) => parseInt(s.qty, 10) > 0);
+                if (addRowBtn) addRowBtn.disabled = alloc >= lineQty || !hasAnyStock;
+            }
+
+            /* ---------------------------------------------------------
+               Row Builder
+            --------------------------------------------------------- */
+            function addRow(location = "", status = "", invNum = "", quantity = "") {
+                const tr = document.createElement("tr");
+
+                const locSel = document.createElement("select");
+                locSel.className = "locSel";
+
+                const statusSel = document.createElement("select");
+                statusSel.className = "statusSel";
+
+                const invNumSel = document.createElement("select");
+                invNumSel.className = "invNumSel";
+
+                const availCell = document.createElement("td");
+                availCell.className = "availCell";
+
+                const qtyInput = document.createElement("input");
+                qtyInput.type = "number";
+                qtyInput.min = 0;
+                qtyInput.value = quantity;
+                qtyInput.className = "qtyInput";
+
+                const noticeCell = document.createElement("td");
+                noticeCell.className = "noticeCell";
+
+                const firstLocSel = tbody.querySelector("tr:first-child .locSel");
+                let lockedLocation =
+                    firstLocSel && firstLocSel.value ? firstLocSel.value : "";
+
+                /* ------------------------------------------
+                   Populate Dropdowns
+                ------------------------------------------ */
+                function populate(select, records, placeholder, selectedVal) {
+                    select.innerHTML = `<option value="">${placeholder}</option>`;
+                    records.forEach((r) => {
+                        const opt = document.createElement("option");
+                        opt.value = r.name || r;
+                        opt.textContent = r.name || r;
+                        if (r.id) opt.dataset.internalid = r.id;
+                        if (selectedVal && (r.name === selectedVal || r === selectedVal))
+                            opt.selected = true;
+                        select.appendChild(opt);
+                    });
+                }
+
+                // 1️⃣ Locations
+                function populateLocations() {
+                    const uniqueLocs = [];
+                    const seen = new Set();
+                    stock.forEach((s) => {
+                        if (s.location && !seen.has(s.location)) {
+                            uniqueLocs.push({ name: s.location, id: s.locationId || "" });
+                            seen.add(s.location);
+                        }
+                    });
+                    populate(locSel, uniqueLocs, "Select location...", location || lockedLocation);
+                }
+
+                // 2️⃣ Statuses (filtered by Location)
+                function populateStatuses() {
+                    const locVal = locSel.value;
+                    const filtered = stock.filter((s) => s.location === locVal);
+                    const uniqueStatuses = [];
+                    const seen = new Set();
+
+                    filtered.forEach((s) => {
+                        if (s.status && !seen.has(s.status)) {
+                            uniqueStatuses.push({ name: s.status, id: s.statusId || "" });
+                            seen.add(s.status);
+                        }
+                    });
+
+                    populate(statusSel, uniqueStatuses, "Select status...", status);
+                    if (uniqueStatuses.length === 1) statusSel.value = uniqueStatuses[0].name;
+                }
+
+                // 3️⃣ Inventory Numbers (filtered by Location + Status)
+                function populateInventoryNumbers() {
+                    const locVal = locSel.value;
+                    const statusVal = statusSel.value;
+
+                    const filtered = stock.filter(
+                        (s) =>
+                            (!locVal || s.location === locVal) &&
+                            (!statusVal || s.status === statusVal)
+                    );
+
+                    const seen = new Set();
+                    const invList = [];
+                    filtered.forEach((s) => {
+                        const key = s.inventoryNumber?.trim().toLowerCase();
+                        if (key && !seen.has(key)) {
+                            seen.add(key);
+                            invList.push({
+                                name: s.inventoryNumber,
+                                id:
+                                    s.inventoryNumberId ||
+                                    s["inv number id"] ||
+                                    s["Internal ID"] ||
+                                    "",
+                                available: parseInt(s.qty || 0, 10) || 0,
+                                onHand: parseInt(s.onHand || 0, 10) || 0,
+                            });
+                        }
+                    });
+
+                    populate(invNumSel, invList, "Select inventory #...", invNum);
+                    if (invList.length === 1) {
+                        invNumSel.value = invList[0].name;
+                        updateAvailable();
+                    }
+                }
+
+                // 4️⃣ Available display (“3 out of 11”)
+                function updateAvailable() {
+                    const match = stock.find(
+                        (s) =>
+                            (!locSel.value || s.location === locSel.value) &&
+                            (!statusSel.value || s.status === statusSel.value) &&
+                            (!invNumSel.value || s.inventoryNumber === invNumSel.value)
+                    );
+
+                    const available = match ? parseInt(match.qty || 0, 10) : 0;
+                    const onHand = match ? parseInt(match.onHand || 0, 10) : 0;
+                    availCell.textContent = `${available} out of ${onHand}`;
+
+                    const remaining = remainingExcludingRow(tr);
+                    const maxForRow = Math.min(available, remaining);
+                    qtyInput.max = maxForRow;
+                    if (parseInt(qtyInput.value || "0", 10) > maxForRow)
+                        qtyInput.value = maxForRow;
+
+                    updateAddRowState();
+                }
+
+                // 5️⃣ Notice (transfer alert)
+                function updateNotice() {
+                    if (!locSel.value) {
+                        noticeCell.textContent = "";
+                        noticeCell.className = "noticeCell";
+                        return;
+                    }
+                    if (locSel.value === selectedWarehouseName) {
+                        noticeCell.textContent = "✅ OK";
+                        noticeCell.className = "noticeCell notice-ok";
+                    } else {
+                        noticeCell.textContent = `⚠️ Goods from ${locSel.value} will trigger a transfer to ${selectedWarehouseName}`;
+                        noticeCell.className = "noticeCell notice-transfer";
+                    }
+                }
+
+                /* ------------------------------------------
+                   Events
+                ------------------------------------------ */
+                locSel.addEventListener("change", () => {
+                    populateStatuses();
+                    populateInventoryNumbers();
+                    updateAvailable();
+                    updateNotice();
+                });
+
+                statusSel.addEventListener("change", () => {
+                    populateInventoryNumbers();
+                    updateAvailable();
+                });
+
+                invNumSel.addEventListener("change", updateAvailable);
+
+                qtyInput.addEventListener("input", () => {
+                    const max = parseInt(qtyInput.max || "0", 10) || 0;
+                    const val = parseInt(qtyInput.value || "0", 10) || 0;
+                    if (val > max) qtyInput.value = max;
+                    updateAddRowState();
+                });
+
+                /* ------------------------------------------
+                   Build table row
+                ------------------------------------------ */
+                const tdLoc = document.createElement("td");
+                tdLoc.appendChild(locSel);
+                const tdStatus = document.createElement("td");
+                tdStatus.appendChild(statusSel);
+                const tdInv = document.createElement("td");
+                tdInv.appendChild(invNumSel);
+                const tdQty = document.createElement("td");
+                tdQty.appendChild(qtyInput);
+                tr.append(tdLoc, tdStatus, tdInv, availCell, tdQty, noticeCell);
+                tbody.appendChild(tr);
+
+                /* ------------------------------------------
+                   Init and focus
+                ------------------------------------------ */
+                populateLocations();
+                if (lockedLocation && tbody.querySelectorAll("tr").length > 1) {
+                    locSel.value = lockedLocation;
+                    locSel.disabled = true;
+                }
+                populateStatuses();
+                populateInventoryNumbers();
+                updateAvailable();
+                updateNotice();
+                if (tbody.querySelectorAll("tr").length === 1) locSel.focus();
+            }
+
+            /* ---------------------------------------------------------
+               Preload existing detail (edit mode)
+            --------------------------------------------------------- */
+            if (detail) {
+                detail.split(";").forEach((part) => {
+                    const tokens = part.trim().split("|");
+                    if (tokens.length >= 2) {
+                        const q = parseInt(tokens[0], 10) || 0;
+                        const loc = tokens[1] || "";
+                        const status = tokens[3] || "";
+                        const invNum = tokens[5] || "";
+                        addRow(loc, status, invNum, q);
+                    }
+                });
+            } else {
+                addRow();
+            }
+
+            addRowBtn.addEventListener("click", () => {
+                if (remainingToAllocate() <= 0) {
+                    updateAddRowState();
+                    return;
+                }
+                addRow();
+                updateAddRowState();
+            });
+
+            /* ---------------------------------------------------------
+               Save Handler (includes IDs, validates not empty)
+            --------------------------------------------------------- */
+            saveBtn.addEventListener("click", () => {
+                const parts = [];
+                tbody.querySelectorAll("tr").forEach((tr) => {
+                    const q = tr.querySelector(".qtyInput").value.trim();
+
+                    const locSel = tr.querySelector(".locSel");
+                    const statusSel = tr.querySelector(".statusSel");
+                    const invSel = tr.querySelector(".invNumSel");
+
+                    const locName = locSel?.value || "";
+                    const locId = locSel?.selectedOptions[0]?.dataset.internalid || "";
+                    const statusName = statusSel?.value || "";
+                    const statusId = statusSel?.selectedOptions[0]?.dataset.internalid || "";
+                    const invName = invSel?.value || "";
+                    const invId = invSel?.selectedOptions[0]?.dataset.internalid || "";
+
+                    console.log("💾 Selected inventory:", invSel.value, "→ internal ID:", invId);
+
+                    if (q && locName) {
+                        parts.push(
+                            [q, locName, locId, statusName, statusId, invName, invId].join("|")
+                        );
+                    }
+                });
+
+                const detailString = parts.join("; ");
+                if (!detailString || detailString.trim() === "") {
+                    alert(
+                        "❌ No inventory line selected — please choose a location, status, and inventory number before saving."
+                    );
+                    console.warn("⚠️ Attempted to save empty inventory detail for", itemId);
+                    return;
+                }
+
+                console.log("✅ Saving inventory detail with IDs:", detailString, "for itemId:", itemId);
+                const { line } = getQueryParams();
+                const lineIndex = parseInt(line || "-1", 10);
+
+                if (window.opener && typeof window.opener.onInventorySaved === "function") {
+                    window.opener.onInventorySaved(itemId, detailString, lineIndex);
+                }
+                window.close();
+            });
+
+            updateAddRowState();
+        }
+
+    </script>
+
+
+
+
+
+
+
+
+</body>
+
+</html>

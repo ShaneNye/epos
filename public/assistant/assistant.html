@@ -1,0 +1,39 @@
+<!-- Virtual Sales Assistant HTML -->
+<div id="salesAssistant" class="assistant">
+    <!-- 🧭 Header (draggable area) -->
+    <div class="assistant-header" id="assistantHeader">
+        <span> Virtual Sales Assistant</span>
+        <button id="closeAssistant" title="Close">×</button>
+    </div>
+
+    <!-- 🧾 Page validation line -->
+    <div id="assistantLocation" class="assistant-location"></div>
+
+    <!-- 💬 Chat body -->
+    <div class="assistant-body" id="assistantBody">
+        <div class="assistant-message bot">
+            Hi there! 👋 I’m your virtual sales assistant. How can I help today?
+        </div>
+    </div>
+
+    <!-- ⌨️ Input area -->
+    <form id="assistantForm">
+        <input type="text" id="assistantInput" placeholder="Type your question..." autocomplete="off" />
+        <button type="submit">Send</button>
+    </form>
+
+    <!-- 🖱️ Resize handles (invisible but clickable) -->
+    <div class="resize-handle bottom-right"></div>
+    <div class="resize-handle bottom-left"></div>
+    <div class="resize-handle top-right"></div>
+    <div class="resize-handle top-left"></div>
+</div>
+
+<!-- 💬 Floating toggle button -->
+<button id="assistantToggle" class="assistant-toggle" aria-label="Open Sales Assistant">
+    <svg id="assistantIcon" viewBox="0 0 24 24" width="28" height="28" xmlns="http://www.w3.org/2000/svg">
+        <path
+            d="M12 2C6.48 2 2 5.98 2 10.5c0 2.04.87 3.92 2.35 5.42-.25 1.03-.93 2.87-1.94 4.12a.5.5 0 0 0 .54.8c2.04-.71 4.18-2.07 5.25-2.81A12.3 12.3 0 0 0 12 19c5.52 0 10-3.98 10-8.5S17.52 2 12 2z"
+            fill="currentColor" />
+    </svg>
+</button>

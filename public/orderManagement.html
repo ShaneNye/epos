@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPOS : Order Management</title>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/orderManagement.css">
+
+    <!-- Scripts -->
+    <script src="/js/storage.js"></script>
+    <script src="/js/menu.js"></script>
+    <script src="/js/orderManagement/orderManagement.js" defer></script>
+    <script src="/js/orderManagement/orders.js" defer></script>
+    <script src="/js/orderManagement/quote.js" defer></script>
+    <script src="/js/orderManagement/cases.js" defer></script>
+    <script src="/js/orderManagement/intercompany.js" defer></script>
+    <script src="/js/orderManagement/transferOrders.js" defer></script>
+    <script src="/assistant/assistant.js"></script>
+    <link rel="stylesheet" href="/assistant/assistant.css" />
+</head>
+
+<body>
+    <!-- Menu -->
+    <div id="menu"></div>
+
+    <!-- Main Content -->
+    <main class="content">
+        <h1 class="page-title">Order Management</h1>
+
+        <!-- Tabs -->
+        <div class="tabs" id="managementTabs">
+            <div class="tab active" data-tab="orders">Order Management</div>
+            <div class="tab" data-tab="quotes">Quote Management</div>
+            <div class="tab" data-tab="cases">Case Management</div>
+            <div class="tab" data-tab="transferOrders">Transfer Orders</div>
+
+            <div class="tab" data-tab="intercompany">Intercompany Management</div>
+        </div>
+
+        <!-- Tab Panels -->
+        <div class="tab-content">
+            <!-- ORDER MANAGEMENT PANEL -->
+            <section id="orders" class="tab-panel active">
+                <div class="panel-header">
+                    <h2>Order Management</h2>
+                </div>
+                <p>Manage existing orders, track fulfilment, and handle order updates here.</p>
+
+                <!-- === FILTER BAR === -->
+                <div class="toolbar">
+                    <label for="storeFilter">Store:</label>
+                    <select id="storeFilter">
+                        <option value="all">All Stores</option>
+                    </select>
+                </div>
+
+                <!-- === SUBTABS === -->
+                <div class="subtabs">
+                    <div class="subtab active" data-subtab="ready">Ready for Delivery</div>
+                    <div class="subtab" data-subtab="pending">Pending Orders</div>
+                </div>
+
+                <!-- === SUBTAB CONTENT: READY === -->
+                <div class="subtab-content" id="ready">
+                    <div class="table-container">
+                        <!-- Fixed Header -->
+                        <table class="data-table fixed-header">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Customer</th>
+                                    <th>Document #</th>
+                                    <th>Store</th>
+                                    <th>Order Type</th>
+                                    <th>Exported</th>
+                                    <th>Schedule</th>
+                                </tr>
+                            </thead>
+                        </table>
+
+                        <!-- Scrollable Body -->
+                        <div class="table-scroll">
+                            <table class="data-table" id="readyTable">
+                                <tbody>
+                                    <tr>
+                                        <td colspan="7">Loading orders...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- === SUBTAB CONTENT: PENDING === -->
+                <div class="subtab-content hidden" id="pending">
+                    <div class="table-container">
+                        <!-- Fixed Header -->
+                        <table class="data-table fixed-header">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Customer</th>
+                                    <th>Document #</th>
+                                    <th>Store</th>
+                                    <th>Order Type</th>
+                                    <th>Exported</th>
+                                    <th>Supplier PO's</th> <!-- ✅ new column -->
+                                </tr>
+                            </thead>
+                        </table>
+
+                        <!-- Scrollable Body -->
+                        <div class="table-scroll">
+                            <table class="data-table" id="pendingTable">
+                                <tbody>
+                                    <tr>
+                                        <td colspan="7">Loading orders...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+            </section>
+
+
+            <!-- QUOTE MANAGEMENT PANEL -->
+            <section id="quotes" class="tab-panel hidden">
+                <div class="panel-header">
+                    <h2>Quote Management</h2>
+                </div>
+                <p>View, create, and convert customer quotes into orders.</p>
+
+                <!-- === FILTER BAR === -->
+                <div class="toolbar">
+                    <label for="quoteStoreFilter">Store:</label>
+                    <select id="quoteStoreFilter">
+                        <option value="all">All Stores</option>
+                    </select>
+                </div>
+
+                <!-- === SUBTABS === -->
+                <div class="subtabs">
+                    <div class="subtab active" data-subtab="open">Open</div>
+                    <div class="subtab" data-subtab="expired">Expired</div>
+                </div>
+
+                <!-- === OPEN QUOTES === -->
+                <div class="subtab-content" id="open">
+                    <div class="table-container">
+                        <table class="data-table fixed-header">
+                            <thead>
+                                <tr>
+                                    <th>Due Date</th>
+                                    <th>Document #</th>
+                                    <th>Bed Specialist</th>
+                                    <th>Store</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                        </table>
+                        <div class="table-scroll">
+                            <table class="data-table" id="openQuotes">
+                                <tbody>
+                                    <tr>
+                                        <td colspan="5">Loading open quotes...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- === EXPIRED QUOTES === -->
+                <div class="subtab-content hidden" id="expired">
+                    <div class="table-container">
+                        <table class="data-table fixed-header">
+                            <thead>
+                                <tr>
+                                    <th>Due Date</th>
+                                    <th>Document #</th>
+                                    <th>Bed Specialist</th>
+                                    <th>Store</th>
+                                    <th>Status</th>
+                                </tr>
+                            </thead>
+                        </table>
+                        <div class="table-scroll">
+                            <table class="data-table" id="expiredQuotes">
+                                <tbody>
+                                    <tr>
+                                        <td colspan="5">Loading expired quotes...</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CASE MANAGEMENT PANEL -->
+            <section id="cases" class="tab-panel hidden">
+                <div class="panel-header">
+                    <h2>Case Management</h2>
+                </div>
+                <p>Track service cases, warranty claims, and customer support tickets.</p>
+
+                <!-- === FILTER BAR === -->
+                <div class="toolbar">
+                    <label for="caseStoreFilter">Store:</label>
+                    <select id="caseStoreFilter">
+                        <option value="all">All Stores</option>
+                    </select>
+                </div>
+
+                <div class="table-container">
+                    <!-- Fixed Header -->
+                    <table class="data-table fixed-header">
+                        <thead>
+                            <tr>
+                                <th>Date Created</th>
+                                <th>Case #</th>
+                                <th>Customer</th>
+                                <th>Issue Type</th>
+                                <th>Status</th>
+                                <th>Store</th>
+                            </tr>
+                        </thead>
+                    </table>
+
+                    <!-- Scrollable Body -->
+                    <div class="table-scroll">
+                        <table class="data-table" id="caseTable">
+                            <tbody>
+                                <tr>
+                                    <td colspan="6">Loading cases...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TRANSFER ORDER MANAGEMENT PANEL -->
+            <section id="transferOrders" class="tab-panel hidden">
+                <div class="panel-header">
+                    <h2>Transfer Order Management</h2>
+                </div>
+                <p>Track transfer orders across all stores and warehouses.</p>
+
+                <!-- === FILTER BAR === -->
+                <div class="toolbar">
+                    <label for="toStoreFilter">Store:</label>
+                    <select id="toStoreFilter">
+                        <option value="all">All Stores</option>
+                    </select>
+                </div>
+
+                <!-- === TRANSFER ORDERS TABLE === -->
+                <div class="table-container">
+                    <table class="data-table fixed-header">
+                        <thead>
+                            <tr>
+                                <th>Transfer #</th>
+                                <th>Coming From</th>
+                                <th>Going To</th>
+                                <th>Needed By</th>
+                                <th>Related Sale</th>
+                            </tr>
+                        </thead>
+                    </table>
+                    <div class="table-scroll">
+                        <table class="data-table" id="toTable">
+                            <tbody>
+                                <tr>
+                                    <td colspan="5">Loading transfer orders...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+
+
+
+            <!-- INTERCOMPANY MANAGEMENT PANEL -->
+            <section id="intercompany" class="tab-panel hidden">
+                <div class="panel-header">
+                    <h2>Intercompany Management</h2>
+                </div>
+                <p>Monitor pending intercompany purchase orders and access the full NetSuite queue.</p>
+
+                <!-- === FILTER BAR === -->
+                <div class="toolbar">
+                    <label for="intercoStoreFilter">Store:</label>
+                    <select id="intercoStoreFilter">
+                        <option value="all">All Stores</option>
+                    </select>
+                </div>
+
+                <!-- === TABLE OF PENDING INTERCOMPANY PURCHASE ORDERS === -->
+                <div class="table-container">
+                    <table class="data-table fixed-header">
+                        <thead>
+                            <tr>
+                                <th>Document #</th>
+                                <th>Store</th>
+                                <th>Fulfilment Centre</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                    </table>
+                    <div class="table-scroll">
+                        <table class="data-table" id="intercoTable">
+                            <tbody>
+                                <tr>
+                                    <td colspan="4">Loading intercompany purchase orders...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- === EXISTING LAUNCH CONSOLE === -->
+                <div class="panel-body" style="padding: 2rem; text-align: center;">
+                    <div class="intercompany-launcher" style="background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      padding: 2rem;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+      display: inline-block;
+      max-width: 700px;">
+                        <h3 style="margin-bottom: 0.5rem;">Open Intercompany Sales Queue</h3>
+                        <p style="color: var(--muted); margin-bottom: 1.5rem;">
+                            Access your NetSuite Intercompany Sales Orders console directly in a new window.<br>
+                            All changes you make there sync automatically with EPOS.
+                        </p>
+
+                        <button id="openIntercompanyBtn" class="btn-primary"
+                            style="padding: 0.75rem 1.5rem; font-size: 1rem; border-radius: 8px;">
+                            Launch Console
+                        </button>
+
+                        <p id="popupWarning" style="display:none; color:#c0392b; margin-top:1rem;">
+                            ⚠️ Please allow pop-ups for this site to open the Intercompany Console.
+                        </p>
+                    </div>
+                </div>
+            </section>
+
+
+            <script>
+                document.getElementById("openIntercompanyBtn")?.addEventListener("click", () => {
+                    const base = window.NS_ACCOUNT_DASH || "7972741-sb1";
+                    const url = `https://${base}.app.netsuite.com/app/accounting/transactions/interco/salesordqueue.nl?whence=&siaT=1760434084843&siaWhc=%2Fapp%2Faccounting%2Fbulkprocessing%2Fbulkprocessingsoqueue.nl&siaNv=ct2`;
+
+                    const w = 1300, h = 850;
+                    const left = (window.screen.width / 2) - (w / 2);
+                    const top = (window.screen.height / 2) - (h / 2);
+
+                    const popup = window.open(
+                        url,
+                        "IntercompanyConsole",
+                        `width=${w},height=${h},top=${top},left=${left},resizable=yes,scrollbars=yes`
+                    );
+
+                    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+                        document.getElementById("popupWarning").style.display = "block";
+                    } else {
+                        popup.focus();
+                    }
+                });
+            </script>
+
+
+
+            </section>
+
+        </div>
+    </main>
+</body>
+
+</html>

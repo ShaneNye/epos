@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPOS Home</title>
+    <script src="/js/main.js"></script>
+    <script src="/js/storage.js"></script>
+    <script src="/js/menu.js"></script>
+    <link rel="stylesheet" href="./css/home.css">
+</head>
+
+<body>
+
+    <!-- SVG sprite -->
+    <svg xmlns="http://www.w3.org/2000/svg" style="display:none">
+        <defs>
+            <style>
+                .epos-icon {
+                    fill: none;
+                    stroke: currentColor;
+                    stroke-width: 1.8;
+                    stroke-linecap: round;
+                    stroke-linejoin: round;
+                }
+            </style>
+
+            <!-- Home -->
+            <symbol id="icon-home" viewBox="0 0 24 24">
+                <path class="epos-icon" d="M3 10.5L12 3l9 7.5V21a1 1 0 0 1-1 1h-5v-6H10v6H5a1 1 0 0 1-1-1z" />
+            </symbol>
+
+            <!-- New Sales Order (clean page + lines) -->
+            <symbol id="icon-new-order" viewBox="0 0 24 24">
+                <rect class="epos-icon" x="5" y="3" width="14" height="18" rx="2" />
+                <line class="epos-icon" x1="8" y1="9" x2="16" y2="9" />
+                <line class="epos-icon" x1="8" y1="13" x2="14" y2="13" />
+            </symbol>
+            <!-- New Quote -->
+            <symbol id="icon-new-quote" viewBox="0 0 24 24">
+                <rect class="epos-icon" x="5" y="3" width="14" height="18" rx="2" />
+                <text x="9" y="15" font-size="10" font-family="sans-serif" fill="currentColor">“”</text>
+            </symbol>
+
+            <!-- Order Management (truck) -->
+            <symbol id="icon-order-mgmt" viewBox="0 0 24 24">
+                <rect class="epos-icon" x="3" y="7" width="13" height="10" rx="2" />
+                <path class="epos-icon" d="M16 10h3l2 3v4h-5z" />
+                <circle class="epos-icon" cx="7.5" cy="17" r="1.5" />
+                <circle class="epos-icon" cx="18.5" cy="17" r="1.5" />
+            </symbol>
+            <!-- Reports (bar chart) -->
+            <symbol id="icon-reports" viewBox="0 0 24 24">
+                <line class="epos-icon" x1="6" y1="20" x2="6" y2="10" />
+                <line class="epos-icon" x1="12" y1="20" x2="12" y2="4" />
+                <line class="epos-icon" x1="18" y1="20" x2="18" y2="14" />
+            </symbol>
+
+            <!-- End Of Day -->
+            <symbol id="icon-end-of-day" viewBox="0 0 24 24">
+                <circle class="epos-icon" cx="12" cy="12" r="9" />
+                <line class="epos-icon" x1="12" y1="12" x2="12" y2="7" />
+                <line class="epos-icon" x1="12" y1="12" x2="15" y2="14" />
+            </symbol>
+
+            <!-- Announcements (megaphone) -->
+            <symbol id="icon-announcements" viewBox="0 0 24 24">
+                <path class="epos-icon" d="M3 10v4c0 .6.4 1 1 1h2l4 4v-14l-4 4H4c-.6 0-1 .4-1 1z" />
+                <path class="epos-icon" d="M14 9h4a2 2 0 0 1 2 2v2a2 2 0 0 1-2 2h-4" />
+            </symbol>
+
+            <!-- Admin -->
+            <symbol id="icon-admin" viewBox="0 0 24 24">
+                <circle class="epos-icon" cx="12" cy="12" r="3" />
+                <path class="epos-icon"
+                    d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.5-1.2-2.1-2.3.5a7.6 7.6 0 0 0-1.8-1.8l.5-2.3-2.1-1.2L13 4.6a7.5 7.5 0 0 0-2 0L9.5 2.6 7.4 3.8l.5 2.3a7.6 7.6 0 0 0-1.8 1.8l-2.3-.5-1.2 2.1L4.6 11a7.5 7.5 0 0 0 0 2l-2 1.5 1.2 2.1 2.3-.5a7.6 7.6 0 0 0 1.8 1.8l-.5 2.3 2.1 1.2L11 19.4a7.5 7.5 0 0 0 2 0l1.5 2 2.1-1.2-.5-2.3a7.6 7.6 0 0 0 1.8-1.8l2.3.5 1.2-2.1z" />
+            </symbol>
+        </defs>
+    </svg>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+        <div>
+            <button class="burger" id="burger">☰</button>
+            <nav class="menu">
+                <a href="/home" class="menu-item">
+                    <svg>
+                        <use href="#icon-home" />
+                    </svg>
+                    <span class="menu-label">Home</span>
+                    <span class="tooltip">Home</span>
+                </a>
+
+                <a href="/sales/new" class="menu-item">
+                    <svg>
+                        <use href="#icon-new-order" />
+                    </svg>
+                    <span class="menu-label">New Sales Order</span>
+                    <span class="tooltip">New Sales Order</span>
+                </a>
+
+                <a href="/quote/new" class="menu-item">
+                    <svg>
+                        <use href="#icon-new-quote" />
+                    </svg>
+                    <span class="menu-label">New Quote</span>
+                    <span class="tooltip">New Quote</span>
+                </a>
+
+                <a href="/orders" class="menu-item">
+                    <svg>
+                        <use href="#icon-order-mgmt" />
+                    </svg>
+                    <span class="menu-label">Order Management</span>
+                    <span class="tooltip">Order Management</span>
+                </a>
+
+                <a href="/reports" class="menu-item">
+                    <svg>
+                        <use href="#icon-reports" />
+                    </svg>
+                    <span class="menu-label">Reports</span>
+                    <span class="tooltip">Reports</span>
+                </a>
+
+                <a href="/end-of-day" class="menu-item">
+                    <svg>
+                        <use href="#icon-end-of-day" />
+                    </svg>
+                    <span class="menu-label">End Of Day</span>
+                    <span class="tooltip">End Of Day</span>
+                </a>
+
+                <a href="/announcements" class="menu-item">
+                    <svg>
+                        <use href="#icon-announcements" />
+                    </svg>
+                    <span class="menu-label">Announcements</span>
+                    <span class="tooltip">Announcements</span>
+                </a>
+
+                <a href="/admin" class="menu-item">
+                    <svg>
+                        <use href="#icon-admin" />
+                    </svg>
+                    <span class="menu-label">Admin</span>
+                    <span class="tooltip">Admin</span>
+                </a>
+            </nav>
+
+        </div>
+
+        <!-- User Section -->
+        <div class="user-section" id="userSection">
+            <div class="user-top">
+                <div class="user-avatar" id="userAvatar">JD</div>
+                <div class="user-info">
+                    <div class="user-name" id="userName">Loading...</div>
+                    <select class="active-role" id="activeRoleSelect"></select>
+                </div>
+            </div>
+            <div class="user-actions">
+                <div class="user-action" id="manageBtn">⚙ Manage</div>
+                <div class="user-action" id="logoutBtn">⎋ Logout</div>
+            </div>
+        </div>
+    </aside>
+
+
+</body>
+
+</html>

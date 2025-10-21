@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Reset Password | Sussex Beds Epos</title>
+    <link rel="stylesheet" href="./css/index.css" />
+</head>
+
+<body>
+    <main class="auth-wrap">
+        <section class="brand-side">
+            <div class="brand-content">
+                <img class="brand-logo" src="./assets/moon-man-logo.png" alt="Sussex Beds logo" />
+                <h1 class="brand-title">Sussex Beds</h1>
+                <p class="brand-sub">Password Reset</p>
+            </div>
+        </section>
+
+        <section class="portal">
+            <header class="portal-head">
+                <h2>Reset Your Password</h2>
+                <p>Enter a new password below.</p>
+                <span class="accent-bar" aria-hidden="true"></span>
+            </header>
+
+            <form id="resetForm" class="auth-form" novalidate>
+                <label class="field">
+                    <span class="label">New Password</span>
+                    <input name="password" type="password" placeholder="New password" required />
+                </label>
+                <label class="field">
+                    <span class="label">Confirm Password</span>
+                    <input name="confirm" type="password" placeholder="Confirm password" required />
+                </label>
+
+                <button class="btn-primary" type="submit">Reset Password</button>
+            </form>
+
+            <footer class="portal-foot">
+                <a href="/index.html" class="link">Back to login</a>
+            </footer>
+        </section>
+    </main>
+
+    <script>
+        document.getElementById("resetForm").addEventListener("submit", async (e) => {
+            e.preventDefault();
+            const params = new URLSearchParams(window.location.search);
+            const token = params.get("token");
+            const password = e.target.password.value.trim();
+            const confirm = e.target.confirm.value.trim();
+
+            if (!token) return alert("Invalid or missing reset token.");
+            if (!password || password !== confirm) return alert("Passwords do not match.");
+
+            try {
+                const res = await fetch("/api/reset-password", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ token, password })
+                });
+                const data = await res.json();
+                alert(data.message || "Password reset complete.");
+                if (data.ok) window.location.href = "/index.html";
+            } catch {
+                alert("Error resetting password. Please try again.");
+            }
+        });
+    </script>
+</body>
+
+</html>

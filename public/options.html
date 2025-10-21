@@ -1,0 +1,208 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Item Options</title>
+    <style>
+        body {
+            font-family: "Segoe UI", Roboto, sans-serif;
+            padding: 20px;
+            background: #f9fafb;
+            color: #333;
+        }
+
+        h2 {
+            margin-top: 0;
+            font-size: 1.5rem;
+            color: #0081ab;
+            /* primary */
+        }
+
+        /* Summary table */
+        h2+div table {
+            width: auto;
+            margin-bottom: 15px;
+            border: 1px solid #d1d5db;
+            border-radius: 6px;
+            background: #ffffff;
+        }
+
+        h2+div th {
+            background: #ffd700;
+            /* accent */
+            color: #000;
+            font-weight: 600;
+            padding: 6px 12px;
+            border-right: 1px solid #d1d5db;
+        }
+
+        h2+div td {
+            padding: 6px 12px;
+            font-weight: 500;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+            margin-top: 15px;
+            background: #ffffff;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+        }
+
+        th {
+            background: #0081ab;
+            /* primary */
+            color: #fff;
+            text-align: left;
+            padding: 10px;
+            font-weight: 600;
+        }
+
+        td {
+            border-bottom: 1px solid #e5e7eb;
+            padding: 8px;
+            vertical-align: middle;
+        }
+
+        select,
+        input[type=number] {
+            padding: 6px;
+            border: 1px solid #d1d5db;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            width: 100%;
+            box-sizing: border-box;
+        }
+
+        select:focus,
+        input[type=number]:focus {
+            outline: none;
+            border-color: #0081ab;
+            /* primary */
+            box-shadow: 0 0 0 2px rgba(0, 129, 171, 0.2);
+        }
+
+        input[type=number] {
+            width: 80px;
+            text-align: right;
+        }
+
+        .btns {
+            margin-top: 20px;
+        }
+
+        button {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: background 0.2s ease;
+        }
+
+        #addRow {
+            background: #ffd700;
+            /* accent */
+            color: #000;
+        }
+
+        #addRow:hover {
+            background: #e6c200;
+        }
+
+        #saveBtn {
+            background: #0081ab;
+            /* primary */
+            color: white;
+        }
+
+        #saveBtn:hover {
+            background: #006d8f;
+        }
+
+        #cancelBtn {
+            background: #f3f4f6;
+            color: #333;
+        }
+
+        #cancelBtn:hover {
+            background: #e5e7eb;
+        }
+    </style>
+
+</head>
+
+<body>
+    <h2>Configure Item Options</h2>
+    <form id="optionsForm"></form>
+    <div class="btns">
+        <button type="button" id="saveBtn">Save</button>
+        <button type="button" onclick="window.close()">Cancel</button>
+    </div>
+
+    <script>
+        function getQueryParams() {
+            const params = {};
+            new URLSearchParams(window.location.search).forEach((v, k) => params[k] = decodeURIComponent(v));
+            return params;
+        }
+
+        const { itemId, selections } = getQueryParams();
+        const existing = selections ? JSON.parse(selections) : {};
+
+        console.log("🔎 Popup opened for itemId:", itemId);
+        console.log("🔎 Parent cache snapshot:", window.opener?.optionsCache);
+
+        const optionsCache = window.opener?.optionsCache || {};
+        const opts = optionsCache[itemId] || {};
+        console.log("🔎 Options found:", opts);
+
+
+        const form = document.getElementById("optionsForm");
+
+        Object.entries(opts).forEach(([field, values]) => {
+            if (!Array.isArray(values) || values.length === 0) return;
+
+            const group = document.createElement("div");
+            group.className = "opt-group";
+
+            const label = document.createElement("label");
+            label.textContent = field;
+            group.appendChild(label);
+
+            const select = document.createElement("select");
+            select.name = field;
+            select.innerHTML = `<option value="">Select...</option>`;
+
+            values.forEach(v => {
+                const opt = document.createElement("option");
+                opt.value = v;
+                opt.textContent = v;
+                if (existing[field] === v) opt.selected = true;
+                select.appendChild(opt);
+            });
+
+            group.appendChild(select);
+            form.appendChild(group);
+        });
+
+        document.getElementById("saveBtn").addEventListener("click", () => {
+            const selections = {};
+            form.querySelectorAll("select").forEach(sel => {
+                selections[sel.name] = sel.value || "";
+            });
+
+            if (window.opener && typeof window.opener.onOptionsSaved === "function") {
+                window.opener.onOptionsSaved(itemId, selections);
+            }
+            window.close();
+        });
+    </script>
+
+</body>
+
+</html>

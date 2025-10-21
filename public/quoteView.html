@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPOS : Quote View</title>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/salesView.css">
+    <script src="/js/storage.js"></script>
+
+    <!-- Scripts -->
+    <script src="/js/main.js" defer></script>
+    <script src="/js/menu.js" defer></script>
+    <script src="/js/salesNewNsFields.js" defer></script>
+    <script src="/js/quoteView.js" defer></script> <!-- ✅ changed to quoteView.js -->
+
+</head>
+
+
+<body>
+    <div id="menu"></div>
+    <!-- 🌀 Loading Overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden">
+        <div class="spinner-container">
+            <div class="spinner"></div>
+            <p>Loading sale...</p>
+        </div>
+    </div>
+    <main class="content">
+        <h1 class="page-title">Quote <span id="ordernumber"></span></h1>
+
+        <!-- Scrollable Form Container -->
+        <div class="form-scroll">
+
+            <!-- === MAIN ROW: CUSTOMER | CONTACT/ORDER | SUMMARY === -->
+            <div class="form-row three-column">
+
+                <!-- CUSTOMER INFO -->
+                <section class="form-section narrow" id="customerInfoSection">
+                    <div class="section-header">
+                        <h2>Customer Information</h2>
+                    </div>
+
+                    <div class="form-grid">
+                        <label>
+                            Title
+                            <select name="title" id="title">
+                                <option value="">Loading Titles...</option>
+                            </select>
+                        </label>
+
+                        <label>
+                            First Name
+                            <input type="text" name="firstName" />
+                        </label>
+                        <label>
+                            Last Name
+                            <input type="text" name="lastName" />
+                        </label>
+                    </div>
+
+                    <!-- ✅ Postcode + Find above address lines -->
+                    <label class="postcode-label">
+                        Postcode
+                        <div class="postcode-row">
+                            <input type="text" id="postcode" name="postcode" placeholder="e.g. BN27 1UX" />
+                        </div>
+                        <select id="addressResults" class="hidden"></select>
+                    </label>
+
+                    <!-- ✅ Address Lines -->
+                    <div class="address-block">
+                        <input type="text" name="address1" placeholder="Address Line 1" />
+                        <input type="text" name="address2" placeholder="Address Line 2" />
+                        <input type="text" name="address3" placeholder="Address Line 3" />
+                    </div>
+                </section>
+
+                <!-- CONTACT INFO + ORDER DETAILS -->
+                <div class="right-main">
+                    <!-- CONTACT INFO -->
+                    <section class="form-section" id="contactInfoSection">
+                        <h2>Contact Information</h2>
+                        <div class="form-grid">
+                            <label>
+                                Contact Number
+                                <input type="tel" name="contactNumber" placeholder="e.g. 07700 900123" />
+                            </label>
+                            <label>
+                                Alt Contact Number
+                                <input type="tel" name="altContactNumber" placeholder="Optional" />
+                            </label>
+                            <label>
+                                Email Address
+                                <input type="email" name="email" placeholder="customer@example.com" />
+                            </label>
+                        </div>
+                    </section>
+
+                    <!-- ORDER DETAILS -->
+                    <section class="form-section" id="orderDetailsSection">
+                        <h2>Order Details</h2>
+                        <div class="form-grid">
+                            <label>
+                                Sales Executive
+                                <select name="salesExec" id="salesExec">
+                                    <option>Loading users...</option>
+                                </select>
+                            </label>
+
+                            <label>
+                                Store
+                                <select name="store" id="store">
+                                    <option>Loading stores...</option>
+                                </select>
+                            </label>
+
+                            <label>
+                                Lead Source
+                                <select name="leadSource">
+                                    <option value="">Loading Lead Sources...</option>
+                                </select>
+                            </label>
+
+                            <label>
+                                Payment Info
+                                <select name="paymentInfo" id="paymentInfo">
+                                    <option value="">Loading Payment Methods...</option>
+                                </select>
+                            </label>
+
+                            <label>
+                                Warehouse
+                                <select name="warehouse" id="warehouse">
+                                    <option>Loading Warehouses...</option>
+                                </select>
+                            </label>
+                        </div>
+
+                        <!-- <label class="memo">
+                            Memo / Notes
+                            <textarea name="memo" rows="3" placeholder="Any notes for this order..."></textarea>
+                        </label> -->
+
+                    </section>
+                </div>
+
+                <!-- ORDER SUMMARY (Sticky) -->
+                <aside class="order-summary">
+                    <h2>Order Summary</h2>
+                    <p><strong>Order Number:</strong> <span id="orderNumber">To Be Generated</span></p>
+                    <p><strong>Sub-total (Net):</strong> <span id="subTotal">£0.00</span></p>
+                    <p><strong>Total Discount:</strong> <span id="discountTotal">£0.00</span></p>
+                    <p><strong>Tax (20%):</strong> <span id="taxTotal">£0.00</span></p>
+                    <p><strong>Grand Total (Gross):</strong> <span id="grandTotal">£0.00</span></p>
+                    <br>
+                    <p>Total Deposits: <span id="depositsTotal">£0.00</span></p>
+                    <p>Outstanding Balance: <span id="outstandingBalance">£0.00</span></p>
+
+                    <!-- 🌀 Spinner + Toast now INSIDE the aside -->
+                    <div id="orderStatusArea">
+                        <div id="orderSpinner" class="order-spinner hidden">
+                            <div class="spinner"></div>
+                            <p>Creating order...</p>
+                        </div>
+
+                        <div id="orderToast" class="order-toast hidden"></div>
+                    </div>
+                </aside>
+
+            </div>
+
+            <!-- === ORDER ITEMS TABLE (FULL WIDTH) === -->
+            <section class="form-section order-items-section">
+                <div class="section-header-flex">
+                    <h2>Order Items</h2>
+                    <button type="button" id="addItemBtn" class="btn-secondary small-btn">+ Add Item</button>
+                </div>
+
+                <table class="order-table" id="orderItemsTable">
+                    <thead>
+                        <tr>
+                            <th>Item</th>
+                            <th>Options</th>
+                            <th>Quantity</th>
+                            <th>Amount</th>
+                            <th>Discount %</th>
+                            <th>Tax (20%)</th> <!-- 🆕 added -->
+                            <th>Sale Price</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody id="orderItemsBody">
+                        <tr class="order-line" data-line="0">
+                            <td>
+                                <div class="autocomplete">
+                                    <input type="text" id="itemSearch-0" class="item-search" placeholder="Product name"
+                                        autocomplete="off" aria-autocomplete="list" />
+                                    <input type="hidden" class="item-internal-id" />
+                                    <input type="hidden" class="item-baseprice" />
+                                </div>
+                            </td>
+                            <td class="options-cell"></td>
+
+                            <td><input type="number" class="item-qty" value="1" min="1" step="1" /></td>
+                            <td><input type="number" class="item-amount" placeholder="£" step="0.01" readonly /></td>
+                            <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" />
+                            </td>
+                            <td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
+                            <td>
+                                <select name="fulfilmentMethod" class="item-fulfilment">
+                                    <option value="">Loading fulfilment methods...</option>
+                                </select>
+                            </td>
+                            <td class="inventory-cell"></td>
+                            <td><button type="button" class="delete-row">🗑</button></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </section>
+            <!-- === ACTION BUTTONS === -->
+            <div class="actions">
+                <button class="btn-secondary" id="backBtn">← Back</button>
+                <div id="orderActionWrapper" class="actions"></div>
+                <button class="btn-secondary" id="printBtn">🖨 Print Quote</button>
+            </div>
+
+
+            <!-- 🔄 Quote Conversion Spinner Overlay -->
+            <div id="quoteConvertSpinner" class="loading-overlay hidden">
+                <div class="spinner-container">
+                    <div class="spinner"></div>
+                    <p>Converting quote to sales order...</p>
+                </div>
+            </div>
+
+
+
+
+        </div>
+    </main>
+
+</body>
+
+
+</html>
