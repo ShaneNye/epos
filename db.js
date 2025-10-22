@@ -1,15 +1,19 @@
 // db.js
-const mysql = require("mysql2/promise");
+const { Pool } = require("pg");
 
-// Create a connection pool to MySQL
-const pool = mysql.createPool({
-  host: "localhost",
-  user: "root",       // adjust if you set a different user
-  password: "Pdcjybrt2!",       // add your MySQL root password if you set one
-  database: "epos",   // the database we created earlier
-  waitForConnections: true,
-  connectionLimit: 10,
-  queueLimit: 0
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL || "postgresql://eposdb_user:aobpjyQlCEEi4sN1uf61rAFDttL2Er7i@dpg-d3rq7a24d50c73de1d7g-a.frankfurt-postgres.render.com/eposdb",
+  ssl: {
+    rejectUnauthorized: false, // Required for Render-managed PostgreSQL
+  },
+});
+
+pool.on("connect", () => {
+  console.log("✅ Connected to PostgreSQL database");
+});
+
+pool.on("error", (err) => {
+  console.error("❌ PostgreSQL connection error:", err.message);
 });
 
 module.exports = pool;

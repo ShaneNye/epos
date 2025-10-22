@@ -22,7 +22,7 @@ async function createSession(user, activeRoleName = null, access = []) {
   const sessionData = {
     id: user.id,
     email: user.email,
-    name: `${user.firstName ?? ""} ${user.lastName ?? ""}`.trim(),
+    name: `${user.firstname ?? ""} ${user.lastname ?? ""}`.trim(),
     roles: (user.roles || []).map(normalizeRoleName),
     activeRole: {
       name: activeRole,
@@ -33,14 +33,14 @@ async function createSession(user, activeRoleName = null, access = []) {
 
   try {
     await pool.query(
-      `INSERT INTO sessions (token, user_id, data) VALUES (?, ?, ?)`,
+      `INSERT INTO sessions (token, user_id, data) VALUES ($1, $2, $3)`,
       [token, user.id, JSON.stringify(sessionData)]
     );
     console.log("✅ Session inserted into DB for user:", user.email);
     console.log("   ▶ Active Role:", activeRole);
     return token;
   } catch (err) {
-    console.error("❌ Error creating session:", err);
+    console.error("❌ Error creating session:", err.message);
     throw err;
   }
 }
@@ -50,27 +50,23 @@ async function createSession(user, activeRoleName = null, access = []) {
  */
 async function getSession(token) {
   try {
-    const [rows] = await pool.query(
-      `SELECT data, created_at FROM sessions WHERE token = ?`,
+    const result = await pool.query(
+      `SELECT data, created_at FROM sessions WHERE token = $1`,
       [token]
     );
-    if (!rows.length) {
+    if (result.rows.length === 0) {
       console.warn("⚠️ No session found for token:", token);
       return null;
     }
 
-    const record = rows[0];
+    const record = result.rows[0];
     let session;
 
-    if (typeof record.data === "object") {
-      session = record.data;
-    } else {
-      try {
-        session = JSON.parse(record.data);
-      } catch (parseErr) {
-        console.error("❌ Failed to parse session JSON:", parseErr);
-        return null;
-      }
+    try {
+      session = typeof record.data === "object" ? record.data : JSON.parse(record.data);
+    } catch (parseErr) {
+      console.error("❌ Failed to parse session JSON:", parseErr);
+      return null;
     }
 
     // Expire old sessions
@@ -86,14 +82,13 @@ async function getSession(token) {
     if (Array.isArray(session.roles)) {
       session.roles = session.roles.map(normalizeRoleName);
     }
-
     if (session.activeRole?.name) {
       session.activeRole.name = normalizeRoleName(session.activeRole.name);
     }
 
     return session;
   } catch (err) {
-    console.error("❌ Error fetching session:", err);
+    console.error("❌ Error fetching session:", err.message);
     return null;
   }
 }
@@ -103,14 +98,18 @@ async function getSession(token) {
  */
 async function updateSessionRole(token, roleName, access = []) {
   try {
-    const [rows] = await pool.query(`SELECT data FROM sessions WHERE token = ?`, [token]);
-    if (!rows.length) return false;
+    const result = await pool.query(`SELECT data FROM sessions WHERE token = $1`, [token]);
+    if (result.rows.length === 0) return false;
 
     let session;
-    if (typeof rows[0].data === "object") {
-      session = rows[0].data;
-    } else {
-      session = JSON.parse(rows[0].data);
+    try {
+      session =
+        typeof result.rows[0].data === "object"
+          ? result.rows[0].data
+          : JSON.parse(result.rows[0].data);
+    } catch (err) {
+      console.error("❌ Failed to parse session JSON for update:", err.message);
+      return false;
     }
 
     // Normalize role
@@ -126,7 +125,7 @@ async function updateSessionRole(token, roleName, access = []) {
       session.roles = session.roles.map(normalizeRoleName);
     }
 
-    await pool.query(`UPDATE sessions SET data = ? WHERE token = ?`, [
+    await pool.query(`UPDATE sessions SET data = $1 WHERE token = $2`, [
       JSON.stringify(session),
       token,
     ]);
@@ -134,7 +133,7 @@ async function updateSessionRole(token, roleName, access = []) {
     console.log(`🎯 Session role updated for token ${token}: ${normalizedRole}`);
     return true;
   } catch (err) {
-    console.error("❌ Error updating session role:", err);
+    console.error("❌ Error updating session role:", err.message);
     return false;
   }
 }
@@ -144,11 +143,11 @@ async function updateSessionRole(token, roleName, access = []) {
  */
 async function destroySession(token) {
   try {
-    await pool.query(`DELETE FROM sessions WHERE token = ?`, [token]);
+    await pool.query(`DELETE FROM sessions WHERE token = $1`, [token]);
     console.log("🧹 Session destroyed:", token);
     return true;
   } catch (err) {
-    console.error("❌ Error destroying session:", err);
+    console.error("❌ Error destroying session:", err.message);
     return false;
   }
 }

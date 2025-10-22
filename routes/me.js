@@ -13,59 +13,58 @@ router.get("/", async (req, res) => {
       return res.status(401).json({ ok: false, error: "Missing token" });
     }
 
-    //console.log("🟢 /api/me: Checking token", token);
     const session = await getSession(token);
     if (!session) {
       return res.status(401).json({ ok: false, error: "Invalid session" });
     }
 
-    // ✅ Include primary store/location in query
-    const [[u]] = await pool.query(
+    // ✅ Fetch user info
+    const userResult = await pool.query(
       `SELECT 
-          id, 
-          email, 
-          firstName, 
-          lastName, 
-          profileImage, 
-          location_id AS primaryStore
+          id,
+          email,
+          firstname,
+          lastname,
+          profileimage,
+          location_id AS "primaryStore"
        FROM users
-       WHERE id = ?`,
+       WHERE id = $1`,
       [session.id]
     );
 
+    const u = userResult.rows[0];
     if (!u) {
       return res.status(404).json({ ok: false, error: "User not found" });
     }
 
-    // 🔐 Always refresh roles from junction table
-    const [roleRows] = await pool.query(
+    // ✅ Refresh roles from junction table
+    const roleResult = await pool.query(
       `SELECT r.name
          FROM user_roles ur
          JOIN roles r ON r.id = ur.role_id
-        WHERE ur.user_id = ?
+        WHERE ur.user_id = $1
         ORDER BY r.id`,
       [u.id]
     );
 
-    const roles = roleRows.map((r) => r.name);
-    //console.log("✅ /api/me roles (fresh from DB):", roles);
+    const roles = roleResult.rows.map((r) => r.name);
 
-    // ✅ Return user object with primaryStore included
+    // ✅ Return consistent JSON
     return res.json({
       ok: true,
       user: {
         id: u.id,
         email: u.email,
-        firstName: u.firstName,
-        lastName: u.lastName,
-        profileImage: u.profileImage,
+        firstName: u.firstname,
+        lastName: u.lastname,
+        profileImage: u.profileimage,
         roles,
-        primaryStore: u.primaryStore || null, // ✅ added field
+        primaryStore: u.primaryStore || null,
       },
       activeRole: session.activeRole?.name || null,
     });
   } catch (err) {
-    console.error("❌ /api/me error:", err);
+    console.error("❌ /api/me error:", err.message);
     res.status(500).json({ ok: false, error: "Server error" });
   }
 });

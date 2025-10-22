@@ -33,10 +33,9 @@ function cleanAccess(val) {
 // Get all roles
 router.get("/roles", async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT id, name, access FROM roles ORDER BY name");
-    const roles = rows.map((r) => {
+    const result = await pool.query("SELECT id, name, access FROM roles ORDER BY name");
+    const roles = result.rows.map((r) => {
       let accessArr = [];
-
       if (Array.isArray(r.access)) {
         accessArr = r.access;
       } else if (typeof r.access === "string") {
@@ -46,7 +45,6 @@ router.get("/roles", async (req, res) => {
           accessArr = [];
         }
       }
-
       return {
         id: r.id,
         name: r.name,
@@ -54,10 +52,9 @@ router.get("/roles", async (req, res) => {
       };
     });
 
-    //console.log("🔍 Roles meta fetched:", roles);
     return res.json({ ok: true, roles });
   } catch (err) {
-    console.error("❌ GET /api/meta/roles error:", err);
+    console.error("❌ GET /api/meta/roles error:", err.message);
     return res.status(500).json({ ok: false, error: "DB error fetching roles" });
   }
 });
@@ -71,17 +68,17 @@ router.post("/roles", async (req, res) => {
     const accessArr = cleanAccess(access);
     console.log("🟢 Creating new role:", name, accessArr);
 
-    const [result] = await pool.query(
-      "INSERT INTO roles (name, access) VALUES (?, ?)",
+    const insertResult = await pool.query(
+      "INSERT INTO roles (name, access) VALUES ($1, $2) RETURNING *",
       [name, JSON.stringify(accessArr)]
     );
 
-    const [newRoleRows] = await pool.query("SELECT * FROM roles WHERE id = ?", [result.insertId]);
-    console.log("✅ Role created successfully:", newRoleRows[0]);
+    const newRole = insertResult.rows[0];
+    console.log("✅ Role created successfully:", newRole);
 
-    return res.json({ ok: true, message: "Role created", role: newRoleRows[0] });
+    return res.json({ ok: true, message: "Role created", role: newRole });
   } catch (err) {
-    console.error("❌ POST /api/meta/roles error:", err);
+    console.error("❌ POST /api/meta/roles error:", err.message);
     return res.status(500).json({ ok: false, error: "DB error creating role" });
   }
 });
@@ -95,20 +92,20 @@ router.put("/roles/:id", async (req, res) => {
     const accessArr = cleanAccess(access);
     console.log("🟡 Updating role:", req.params.id, { name, accessArr });
 
-    const [result] = await pool.query(
-      "UPDATE roles SET name = ?, access = ? WHERE id = ?",
+    const updateResult = await pool.query(
+      "UPDATE roles SET name = $1, access = $2 WHERE id = $3 RETURNING *",
       [name, JSON.stringify(accessArr), req.params.id]
     );
 
-    if (result.affectedRows === 0)
+    if (updateResult.rowCount === 0)
       return res.status(404).json({ ok: false, error: "Role not found" });
 
-    const [updated] = await pool.query("SELECT * FROM roles WHERE id = ?", [req.params.id]);
-    console.log("✅ Role updated in DB:", updated[0]);
+    const updated = updateResult.rows[0];
+    console.log("✅ Role updated in DB:", updated);
 
-    return res.json({ ok: true, message: "Role updated", role: updated[0] });
+    return res.json({ ok: true, message: "Role updated", role: updated });
   } catch (err) {
-    console.error("❌ PUT /api/meta/roles/:id error:", err);
+    console.error("❌ PUT /api/meta/roles/:id error:", err.message);
     return res.status(500).json({ ok: false, error: "DB error updating role" });
   }
 });
@@ -117,15 +114,15 @@ router.put("/roles/:id", async (req, res) => {
 router.delete("/roles/:id", async (req, res) => {
   try {
     console.log("🗑️ Deleting role:", req.params.id);
-    const [result] = await pool.query("DELETE FROM roles WHERE id = ?", [req.params.id]);
+    const deleteResult = await pool.query("DELETE FROM roles WHERE id = $1", [req.params.id]);
 
-    if (result.affectedRows === 0)
+    if (deleteResult.rowCount === 0)
       return res.status(404).json({ ok: false, error: "Role not found" });
 
     console.log("✅ Role deleted successfully:", req.params.id);
     return res.json({ ok: true, message: "Role deleted" });
   } catch (err) {
-    console.error("❌ DELETE /api/meta/roles/:id error:", err);
+    console.error("❌ DELETE /api/meta/roles/:id error:", err.message);
     return res.status(500).json({ ok: false, error: "DB error deleting role" });
   }
 });
@@ -137,7 +134,7 @@ router.delete("/roles/:id", async (req, res) => {
 // Get all locations
 router.get("/locations", async (req, res) => {
   try {
-    const [rows] = await pool.query(
+    const result = await pool.query(
       `SELECT 
         id,
         name,
@@ -150,9 +147,9 @@ router.get("/locations", async (req, res) => {
        ORDER BY name`
     );
 
-    res.json({ ok: true, locations: rows });
+    res.json({ ok: true, locations: result.rows });
   } catch (err) {
-    console.error("❌ GET /api/meta/locations error:", err);
+    console.error("❌ GET /api/meta/locations error:", err.message);
     res.status(500).json({ ok: false, error: "DB error fetching locations" });
   }
 });
@@ -177,7 +174,7 @@ router.post("/locations", async (req, res) => {
     await pool.query(
       `INSERT INTO locations 
         (name, netsuite_internal_id, invoice_location_id, intercompany_customer, petty_cash_account, current_account)
-       VALUES (?, ?, ?, ?, ?, ?)`,
+       VALUES ($1, $2, $3, $4, $5, $6)`,
       [
         name,
         netsuite_internal_id || null,
@@ -190,7 +187,7 @@ router.post("/locations", async (req, res) => {
 
     res.json({ ok: true, message: "Location created" });
   } catch (err) {
-    console.error("❌ POST /api/meta/locations error:", err);
+    console.error("❌ POST /api/meta/locations error:", err.message);
     res.status(500).json({ ok: false, error: "DB error creating location" });
   }
 });
@@ -212,15 +209,15 @@ router.put("/locations/:id", async (req, res) => {
     }
 
     console.log("🟡 Updating location:", req.params.id);
-    const [result] = await pool.query(
+    const updateResult = await pool.query(
       `UPDATE locations
-         SET name = ?,
-             netsuite_internal_id = ?,
-             invoice_location_id = ?,
-             intercompany_customer = ?,
-             petty_cash_account = ?,
-             current_account = ?
-       WHERE id = ?`,
+         SET name = $1,
+             netsuite_internal_id = $2,
+             invoice_location_id = $3,
+             intercompany_customer = $4,
+             petty_cash_account = $5,
+             current_account = $6
+       WHERE id = $7`,
       [
         name,
         netsuite_internal_id || null,
@@ -232,13 +229,13 @@ router.put("/locations/:id", async (req, res) => {
       ]
     );
 
-    if (result.affectedRows === 0) {
+    if (updateResult.rowCount === 0) {
       return res.status(404).json({ ok: false, error: "Location not found" });
     }
 
     res.json({ ok: true, message: "Location updated" });
   } catch (err) {
-    console.error("❌ PUT /api/meta/locations/:id error:", err);
+    console.error("❌ PUT /api/meta/locations/:id error:", err.message);
     res.status(500).json({ ok: false, error: "DB error updating location" });
   }
 });

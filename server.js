@@ -175,15 +175,15 @@ app.use(async (req, res, next) => {
 
 app.get("/api/dashboard-widgets", async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT widget_key, role_ids FROM widget_roles");
-    const data = rows.map(r => {
+    const result = await pool.query("SELECT widget_key, role_ids FROM widget_roles");
+    const rows = result.rows;
+
+    const data = rows.map((r) => {
       let roles = [];
       try {
         if (Array.isArray(r.role_ids)) {
-          // MySQL already returned parsed JSON
           roles = r.role_ids;
         } else if (typeof r.role_ids === "object" && r.role_ids !== null) {
-          // Some drivers parse JSON columns into objects automatically
           roles = Object.values(r.role_ids);
         } else if (typeof r.role_ids === "string") {
           roles = JSON.parse(r.role_ids || "[]");
@@ -197,24 +197,28 @@ app.get("/api/dashboard-widgets", async (req, res) => {
 
     res.json({ ok: true, widgets: data });
   } catch (err) {
-    console.error("❌ Failed to load widget visibility:");
-    console.error("   message:", err.message);
+    console.error("❌ Failed to load widget visibility:", err.message);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
 
-
 // === Update widget role visibility ===
+// PostgreSQL does not support REPLACE INTO, so use UPSERT (INSERT ... ON CONFLICT)
 app.post("/api/dashboard-widgets", async (req, res) => {
   const { widgetKey, roles } = req.body;
   try {
     await pool.query(
-      "REPLACE INTO widget_roles (widget_key, role_ids) VALUES (?, ?)",
+      `
+      INSERT INTO widget_roles (widget_key, role_ids)
+      VALUES ($1, $2)
+      ON CONFLICT (widget_key)
+      DO UPDATE SET role_ids = EXCLUDED.role_ids;
+      `,
       [widgetKey, JSON.stringify(roles)]
     );
     res.json({ ok: true });
   } catch (err) {
-    console.error("❌ Failed to save widget roles:", err);
+    console.error("❌ Failed to save widget roles:", err.message);
     res.status(500).json({ ok: false, error: "Database error" });
   }
 });
@@ -222,10 +226,10 @@ app.post("/api/dashboard-widgets", async (req, res) => {
 // === Roles for Widget Management ===
 app.get("/api/roles", async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT id, name FROM roles ORDER BY name ASC");
-    res.json(rows); // returns [{id, name}, ...]
+    const result = await pool.query("SELECT id, name FROM roles ORDER BY name ASC");
+    res.json(result.rows);
   } catch (err) {
-    console.error("❌ Failed to fetch roles:", err);
+    console.error("❌ Failed to fetch roles:", err.message);
     res.status(500).json({ ok: false, error: "Database error fetching roles" });
   }
 });

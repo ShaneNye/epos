@@ -8,11 +8,11 @@ function maskUser(u) {
   return {
     id: u.id,
     email: u.email,
-    firstName: u.firstName,
-    lastName: u.lastName,
-    netsuiteId: u.netsuiteId, // ✅ new field
-    profileImage: u.profileImage,
-    createdAt: u.createdAt,
+    firstName: u.firstname,
+    lastName: u.lastname,
+    netsuiteId: u.netsuiteid,
+    profileImage: u.profileimage,
+    createdAt: u.createdat,
     roles: u.roles || [],
     location: u.location_id
       ? { id: u.location_id, name: u.location_name, netsuite_internal_id: u.netsuite_internal_id }
@@ -27,23 +27,24 @@ function maskUser(u) {
 /* -------------------- GET all users -------------------- */
 router.get("/", async (req, res) => {
   try {
-    const [rows] = await pool.query(`
-      SELECT 
-        u.id, u.email, u.firstName, u.lastName, u.netsuiteId, u.profileImage, u.createdAt,
-        u.location_id, l.name AS location_name, l.netsuite_internal_id,
-        GROUP_CONCAT(DISTINCT r.name ORDER BY r.id) AS role_names,
-        GROUP_CONCAT(DISTINCT r.id ORDER BY r.id) AS role_ids,
-        u.sb_netsuite_token_id, u.sb_netsuite_token_secret,
-        u.prod_netsuite_token_id, u.prod_netsuite_token_secret
-      FROM users u
-      LEFT JOIN user_roles ur ON ur.user_id = u.id
-      LEFT JOIN roles r ON ur.role_id = r.id
-      LEFT JOIN locations l ON u.location_id = l.id
-      GROUP BY u.id
-      ORDER BY u.lastName, u.firstName
-    `);
+const result = await pool.query(`
+  SELECT 
+    u.id, u.email, u.firstname, u.lastname, u.netsuiteid, u.profileimage, u.createdat,
+    u.location_id, l.name AS location_name, l.netsuite_internal_id,
+    STRING_AGG(r.name, ',' ORDER BY r.id) AS role_names,
+    STRING_AGG(r.id::text, ',' ORDER BY r.id) AS role_ids,
+    u.sb_netsuite_token_id, u.sb_netsuite_token_secret,
+    u.prod_netsuite_token_id, u.prod_netsuite_token_secret
+  FROM users u
+  LEFT JOIN user_roles ur ON ur.user_id = u.id
+  LEFT JOIN roles r ON ur.role_id = r.id
+  LEFT JOIN locations l ON u.location_id = l.id
+  GROUP BY u.id, l.name, l.netsuite_internal_id
+  ORDER BY u.lastname, u.firstname;
+`);
 
-    const users = rows.map(u =>
+
+    const users = result.rows.map(u =>
       maskUser({
         ...u,
         roles: u.role_ids
@@ -57,7 +58,7 @@ router.get("/", async (req, res) => {
 
     res.json({ ok: true, users });
   } catch (err) {
-    console.error("GET /api/users failed:", err);
+    console.error("GET /api/users failed:", err.message);
     res.status(500).json({ ok: false, error: "DB error" });
   }
 });
@@ -65,7 +66,7 @@ router.get("/", async (req, res) => {
 /* -------------------- GET single user -------------------- */
 router.get("/:id", async (req, res) => {
   try {
-    const [[user]] = await pool.query(
+    const userResult = await pool.query(
       `
       SELECT 
         u.*, 
@@ -73,45 +74,46 @@ router.get("/:id", async (req, res) => {
         l.netsuite_internal_id
       FROM users u
       LEFT JOIN locations l ON u.location_id = l.id
-      WHERE u.id = ?
+      WHERE u.id = $1
       `,
       [req.params.id]
     );
 
-    if (!user)
+    const user = userResult.rows[0];
+    if (!user) {
       return res.status(404).json({ ok: false, message: "User not found" });
+    }
 
-    const [roleRows] = await pool.query(
+    const rolesResult = await pool.query(
       `
       SELECT r.id, r.name
       FROM user_roles ur
       JOIN roles r ON ur.role_id = r.id
-      WHERE ur.user_id = ?
+      WHERE ur.user_id = $1
       `,
       [req.params.id]
     );
 
-    user.roles = Array.isArray(roleRows) ? roleRows : [];
-
+    user.roles = rolesResult.rows;
     res.json({ ok: true, user: maskUser(user) });
   } catch (err) {
-    console.error("GET /api/users/:id failed:", err);
+    console.error("GET /api/users/:id failed:", err.message);
     res.status(500).json({ ok: false, error: "DB error" });
   }
 });
 
 /* -------------------- CREATE user -------------------- */
 router.post("/", async (req, res) => {
-  const conn = await pool.getConnection();
+  const client = await pool.connect();
   try {
-    await conn.beginTransaction();
+    await client.query("BEGIN");
 
     const {
       email,
       password,
       firstName,
       lastName,
-      netsuiteId, // ✅ new field
+      netsuiteId,
       role_ids = [],
       location_id,
       profileImage,
@@ -122,20 +124,19 @@ router.post("/", async (req, res) => {
     } = req.body;
 
     if (!email || !password) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Email and password required" });
+      return res.status(400).json({ ok: false, error: "Email and password required" });
     }
 
     const passwordHash = await bcrypt.hash(password, 10);
 
-    const [result] = await conn.query(
+    const insertResult = await client.query(
       `
       INSERT INTO users
-      (email, password_hash, firstName, lastName, netsuiteId, location_id, profileImage,
+      (email, password_hash, firstname, lastname, netsuiteid, location_id, profileimage,
        sb_netsuite_token_id, sb_netsuite_token_secret,
        prod_netsuite_token_id, prod_netsuite_token_secret)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      RETURNING id;
       `,
       [
         email,
@@ -152,40 +153,40 @@ router.post("/", async (req, res) => {
       ]
     );
 
-    const userId = result.insertId;
+    const userId = insertResult.rows[0].id;
 
     if (Array.isArray(role_ids) && role_ids.length > 0) {
       for (const roleId of role_ids) {
-        await conn.query("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)", [
-          userId,
-          roleId,
-        ]);
+        await client.query(
+          "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)",
+          [userId, roleId]
+        );
       }
     }
 
-    await conn.commit();
+    await client.query("COMMIT");
     res.json({ ok: true, id: userId });
   } catch (err) {
-    await conn.rollback();
-    console.error("POST /api/users failed:", err);
+    await client.query("ROLLBACK");
+    console.error("POST /api/users failed:", err.message);
     res.status(500).json({ ok: false, error: "DB error" });
   } finally {
-    conn.release();
+    client.release();
   }
 });
 
 /* -------------------- UPDATE user -------------------- */
 router.put("/:id", async (req, res) => {
-  const conn = await pool.getConnection();
+  const client = await pool.connect();
   try {
-    await conn.beginTransaction();
+    await client.query("BEGIN");
 
     const {
       email,
       password,
       firstName,
       lastName,
-      netsuiteId, // ✅ new field
+      netsuiteId,
       role_ids = [],
       location_id,
       profileImage,
@@ -197,63 +198,57 @@ router.put("/:id", async (req, res) => {
 
     const updates = {
       email,
-      firstName,
-      lastName,
-      netsuiteId: netsuiteId || null, // ✅ include field
+      firstname: firstName,
+      lastname: lastName,
+      netsuiteid: netsuiteId || null,
       location_id: location_id || null,
-      profileImage,
+      profileimage: profileImage,
+      sb_netsuite_token_id: sb_netsuite_token_id || null,
+      sb_netsuite_token_secret: sb_netsuite_token_secret || null,
+      prod_netsuite_token_id: prod_netsuite_token_id || null,
+      prod_netsuite_token_secret: prod_netsuite_token_secret || null,
     };
 
-    if (password)
-      updates.password_hash = await bcrypt.hash(password, 10);
+    if (password) updates.password_hash = await bcrypt.hash(password, 10);
 
-    if (sb_netsuite_token_id !== undefined)
-      updates.sb_netsuite_token_id = sb_netsuite_token_id || null;
-    if (sb_netsuite_token_secret !== undefined)
-      updates.sb_netsuite_token_secret = sb_netsuite_token_secret || null;
-    if (prod_netsuite_token_id !== undefined)
-      updates.prod_netsuite_token_id = prod_netsuite_token_id || null;
-    if (prod_netsuite_token_secret !== undefined)
-      updates.prod_netsuite_token_secret = prod_netsuite_token_secret || null;
-
-    const fields = Object.keys(updates)
-      .map((k) => `${k}=?`)
+    const setClauses = Object.keys(updates)
+      .map((key, i) => `${key} = $${i + 1}`)
       .join(", ");
     const values = Object.values(updates);
 
-    await conn.query(`UPDATE users SET ${fields} WHERE id=?`, [
-      ...values,
-      req.params.id,
-    ]);
+    await client.query(
+      `UPDATE users SET ${setClauses} WHERE id = $${values.length + 1}`,
+      [...values, req.params.id]
+    );
 
-    await conn.query("DELETE FROM user_roles WHERE user_id=?", [req.params.id]);
+    await client.query("DELETE FROM user_roles WHERE user_id = $1", [req.params.id]);
     if (Array.isArray(role_ids) && role_ids.length > 0) {
       for (const roleId of role_ids) {
-        await conn.query("INSERT INTO user_roles (user_id, role_id) VALUES (?, ?)", [
-          req.params.id,
-          roleId,
-        ]);
+        await client.query(
+          "INSERT INTO user_roles (user_id, role_id) VALUES ($1, $2)",
+          [req.params.id, roleId]
+        );
       }
     }
 
-    await conn.commit();
+    await client.query("COMMIT");
     res.json({ ok: true });
   } catch (err) {
-    await conn.rollback();
-    console.error("PUT /api/users/:id failed:", err);
+    await client.query("ROLLBACK");
+    console.error("PUT /api/users/:id failed:", err.message);
     res.status(500).json({ ok: false, error: "DB error" });
   } finally {
-    conn.release();
+    client.release();
   }
 });
 
 /* -------------------- DELETE user -------------------- */
 router.delete("/:id", async (req, res) => {
   try {
-    await pool.query("DELETE FROM users WHERE id=?", [req.params.id]);
+    await pool.query("DELETE FROM users WHERE id = $1", [req.params.id]);
     res.json({ ok: true });
   } catch (err) {
-    console.error("DELETE /api/users/:id failed:", err);
+    console.error("DELETE /api/users/:id failed:", err.message);
     res.status(500).json({ ok: false, error: "DB error" });
   }
 });
