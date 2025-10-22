@@ -1,14 +1,13 @@
-// routes/netsuiteSalesOrder.js
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
 const fetch = require("node-fetch");
+const { getSession } = require("../sessions");
 const {
   nsPost,
   nsGet,
   nsPostRaw,
-  nsPatch,
-  getAuthHeader // ✅ Added
+  nsPatch
 } = require("../netsuiteClient");
 
 /* =====================================================
@@ -16,8 +15,20 @@ const {
    ===================================================== */
 router.post("/create", async (req, res) => {
   try {
-    const { customer, order, items, deposits = [] } = req.body;
+    // 🔐 Get user session from Authorization header
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
+    let userId = null;
+   if (token) {
+  const session = await getSession(token);
+  console.log("🧠 Session returned from getSession():", session);
+  userId = session?.id || null;
+  console.log("🔐 Authenticated session for SO creation:", userId);
+}
+
+
+    const { customer, order, items, deposits = [] } = req.body;
     let customerId = customer?.id || null;
 
     // === 1️⃣ Create Customer if needed ===
@@ -31,7 +42,7 @@ router.post("/create", async (req, res) => {
         email: customer.email,
         phone: customer.contactNumber,
         altPhone: customer.altContactNumber,
-        subsidiary: { id: "1" }, // fallback default
+        subsidiary: { id: "1" },
         isPerson: true,
         addressbook: {
           items: [
@@ -50,26 +61,14 @@ router.post("/create", async (req, res) => {
       };
 
       console.log("🧾 Creating new customer:", JSON.stringify(custBody, null, 2));
-      const newCustomer = await nsPost("/customer", custBody);
+      const newCustomer = await nsPost("/customer", custBody, userId, "sb"); // 👈 use per-user token
 
-      // Extract customer ID
-      if (newCustomer._location) {
-        const match = newCustomer._location.match(/customer\/(\d+)/);
-        if (match) customerId = match[1];
-      }
-      if (!customerId) {
-        customerId =
-          newCustomer.id ||
-          newCustomer.internalId ||
-          newCustomer?.data?.id ||
-          null;
-      }
-      if (!customerId && newCustomer.links) {
-        const selfLink = newCustomer.links.find((l) => l.rel === "self");
-        if (selfLink?.href) {
-          const match = selfLink.href.match(/customer\/(\d+)/);
-          if (match) customerId = match[1];
-        }
+      // Extract customer ID as before
+      let match;
+      if (newCustomer._location && (match = newCustomer._location.match(/customer\/(\d+)/))) {
+        customerId = match[1];
+      } else if (newCustomer.id) {
+        customerId = newCustomer.id;
       }
 
       if (!customerId)
@@ -80,129 +79,94 @@ router.post("/create", async (req, res) => {
 
     console.log("🧩 Using Customer ID for Sales Order:", customerId);
 
-   // === 2️⃣ Lookup Sales Executive’s NetSuite ID ===
-let salesExecNsId = null;
-if (order.salesExec) {
-  try {
-    const resultExec = await pool.query(
-      "SELECT netsuiteid FROM users WHERE id = $1",
-      [order.salesExec]
-    );
-
-    if (resultExec.rows.length && resultExec.rows[0].netsuiteid) {
-      salesExecNsId = resultExec.rows[0].netsuiteid;
-      console.log("👤 Found NetSuite ID for Sales Exec:", salesExecNsId);
-    } else {
-      console.warn("⚠️ No NetSuite ID found for Sales Exec ID:", order.salesExec);
+    // === 2️⃣ Lookup Sales Executive’s NetSuite ID ===
+    let salesExecNsId = null;
+    if (order.salesExec) {
+      try {
+        const resultExec = await pool.query(
+          "SELECT netsuiteid FROM users WHERE id = $1",
+          [order.salesExec]
+        );
+        if (resultExec.rows.length && resultExec.rows[0].netsuiteid) {
+          salesExecNsId = resultExec.rows[0].netsuiteid;
+          console.log("👤 Found NetSuite ID for Sales Exec:", salesExecNsId);
+        }
+      } catch (err) {
+        console.error("❌ Error looking up Sales Exec NetSuite ID:", err.message);
+      }
     }
-  } catch (err) {
-    console.error("❌ Error looking up Sales Exec NetSuite ID:", err.message);
-  }
-}
 
-// === 3️⃣ Lookup Store Info ===
-let invoiceLocationId = null;
-let storeNsId = null;
-if (order.store) {
-  try {
-    const resultLoc = await pool.query(
-      `SELECT netsuite_internal_id, invoice_location_id 
-         FROM locations 
-        WHERE id = $1`,
-      [order.store]
-    );
-
-    if (resultLoc.rows.length) {
-      storeNsId = resultLoc.rows[0].netsuite_internal_id || null;
-      invoiceLocationId = resultLoc.rows[0].invoice_location_id || null;
-
-      console.log("🏬 Store lookup →", {
-        sqlId: order.store,
-        netsuite_internal_id: storeNsId,
-        invoice_location_id: invoiceLocationId,
-      });
-    } else {
-      console.warn("⚠️ No location found for store ID:", order.store);
+    // === 3️⃣ Lookup Store Info ===
+    let invoiceLocationId = null;
+    let storeNsId = null;
+    if (order.store) {
+      try {
+        const resultLoc = await pool.query(
+          `SELECT netsuite_internal_id, invoice_location_id 
+           FROM locations WHERE id = $1`,
+          [order.store]
+        );
+        if (resultLoc.rows.length) {
+          storeNsId = resultLoc.rows[0].netsuite_internal_id || null;
+          invoiceLocationId = resultLoc.rows[0].invoice_location_id || null;
+          console.log("🏬 Store lookup →", { storeNsId, invoiceLocationId });
+        }
+      } catch (err) {
+        console.error("❌ Error looking up store info:", err.message);
+      }
     }
-  } catch (err) {
-    console.error("❌ Error looking up store info:", err.message);
-  }
-}
 
+    // === 4️⃣ Build Sales Order payload ===
+    const orderBody = {
+      entity: { id: customerId },
+      subsidiary: storeNsId ? { id: String(storeNsId) } : undefined,
+      trandate: new Date().toISOString().split("T")[0],
+      orderstatus: "A",
+      location: invoiceLocationId ? { id: String(invoiceLocationId) } : undefined,
+      custbody_sb_bedspecialist: salesExecNsId ? { id: salesExecNsId } : undefined,
+      custbody_sb_primarystore: storeNsId ? { id: storeNsId } : undefined,
+      leadsource: { id: order.leadSource },
+      custbody_sb_paymentinfo: { id: order.paymentInfo },
+      custbody_sb_warehouse: { id: order.warehouse },
+      item: {
+        items: items.map((i, idx) => {
+          const line = {
+            item: { id: i.item },
+            quantity: i.quantity,
+            amount: i.amount / 1.2,
+            custcol_sb_itemoptionsdisplay: i.options || "",
+          };
 
-// === 4️⃣ Build Sales Order payload ===
-const orderBody = {
-  entity: { id: customerId },
-  subsidiary: storeNsId ? { id: String(storeNsId) } : undefined,
-  trandate: new Date().toISOString().split("T")[0],
-  orderstatus: "A",
-  location: invoiceLocationId ? { id: String(invoiceLocationId) } : undefined,
-  custbody_sb_bedspecialist: salesExecNsId ? { id: salesExecNsId } : undefined,
-  custbody_sb_primarystore: storeNsId ? { id: storeNsId } : undefined,
-  leadsource: { id: order.leadSource },
-  custbody_sb_paymentinfo: { id: order.paymentInfo },
-  custbody_sb_warehouse: { id: order.warehouse },
-  item: {
-    items: items.map((i, idx) => {
-      const line = {
-        item: { id: i.item },
-        quantity: i.quantity,
-        amount: i.amount / 1.2, // send NET price
-        custcol_sb_itemoptionsdisplay: i.options || "",
-      };
+          if (i.fulfilmentMethod && String(i.fulfilmentMethod).trim() !== "" && i.class !== "service") {
+            line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
+          }
 
-      // ✅ Only include fulfilment location if valid (non-empty and not service)
-      if (i.fulfilmentMethod && String(i.fulfilmentMethod).trim() !== "" && i.class !== "service") {
-        line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
-      }
+          if (i.lotnumber && i.lotnumber.trim() !== "") {
+            line.custcol_sb_lotnumber = { id: i.lotnumber };
+          } else if (i.inventoryMeta && i.inventoryMeta.trim() !== "") {
+            line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
+          }
+          return line;
+        }),
+      },
+    };
 
-      // 🔍 Debug incoming data
-      console.log(`\n🧾 [Line ${idx + 1}] Item ${i.item}`);
-      console.log("   Received from frontend:", {
-        lotnumber: i.lotnumber || "(none)",
-        inventoryMeta: i.inventoryMeta ? i.inventoryMeta.slice(0, 80) + "..." : "(none)",
-      });
+    console.log("🚀 Sales Order payload preview:", JSON.stringify(orderBody, null, 2));
 
-      // ✅ Case 1: Same warehouse → custcol_sb_lotnumber
-      if (i.lotnumber && i.lotnumber.trim() !== "") {
-        line.custcol_sb_lotnumber = { id: i.lotnumber };
-        console.log(`   ✅ Setting custcol_sb_lotnumber = ${i.lotnumber}`);
-      }
+    // ✅ Create SO using per-user token
+    const so = await nsPost("/salesOrder", orderBody, userId, "sb");
 
-      // ✅ Case 2: Different warehouse → custcol_sb_epos_inventory_meta
-      else if (i.inventoryMeta && i.inventoryMeta.trim() !== "") {
-        line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
-        console.log("   📦 Setting custcol_sb_epos_inventory_meta (transfer case)");
-      } else {
-        console.log("   ⚠️ No inventory data present for this line");
-      }
-
-      return line;
-    }),
-  },
-};
-
-console.log("🚀 Sales Order payload preview:", JSON.stringify(orderBody, null, 2));
-
-
-    const so = await nsPost("/salesOrder", orderBody);
-
-    // ✅ Extract numeric ID
     let salesOrderId = so.id || null;
     if (!salesOrderId && so._location) {
       const match = so._location.match(/salesorder\/(\d+)/i);
       if (match) salesOrderId = match[1];
     }
 
-    console.log("🎯 Extracted Sales Order ID:", salesOrderId || "(none)");
     if (!salesOrderId)
-      return res
-        .status(500)
-        .json({ ok: false, error: "Failed to resolve Sales Order ID from NetSuite response" });
+      return res.status(500).json({ ok: false, error: "Failed to resolve Sales Order ID" });
 
     console.log("✅ Sales Order created successfully with ID:", salesOrderId);
 
-    console.log("✅ Sales Order created successfully with ID:", salesOrderId);
 
 // ==========================================================
 // 💰 Create Customer Deposit(s) if provided in payload
@@ -438,13 +402,29 @@ router.get("/:id", async (req, res) => {
     const { id } = req.params;
     console.log(`📦 Fetching Sales Order ${id} from NetSuite...`);
 
-    const so = await nsGet(`/salesOrder/${id}`);
+    // 🔐 Resolve user session for per-user NetSuite token
+    const auth = req.headers.authorization || "";
+    const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    let userId = null;
+
+    if (bearerToken) {
+      try {
+        const session = await getSession(bearerToken);
+        userId = session?.id || null;
+        console.log("🔐 Authenticated user for SO view:", userId);
+      } catch (e) {
+        console.warn("⚠️ Could not resolve user session for SO view:", e.message);
+      }
+    }
+
+    // ✅ Use per-user token when calling NetSuite
+    const so = await nsGet(`/salesOrder/${id}`, userId, "sb");
 
     // 🔎 Fetch full entity (customer record) for title + custom fields
     let entityFull = null;
     if (so.entity?.id) {
       try {
-        entityFull = await nsGet(`/customer/${so.entity.id}`);
+        entityFull = await nsGet(`/customer/${so.entity.id}`, userId, "sb");
         console.log("✅ Entity fetched for SO:", {
           id: entityFull.id,
           title: entityFull.custentity_title?.refName,
@@ -457,12 +437,12 @@ router.get("/:id", async (req, res) => {
       so.entityFull = entityFull; // attach for frontend
     }
 
-    /* -----------------------------------------------------
+/* -----------------------------------------------------
        1️⃣ Fetch Item Feed (Name + Base Price)
     ----------------------------------------------------- */
-    const token = process.env.SALES_ORDER_ITEMS;
+    const itemFeedToken = process.env.SALES_ORDER_ITEMS;
     const nsUrlItems = `https://7972741-sb1.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4178&deploy=6&compid=7972741_SB1&ns-at=AAEJ7tMQlL2UP5SuRn6p9IsRJ-Rgkanx98uShulWU5RVHLRlgSs&token=${encodeURIComponent(
-      token
+      itemFeedToken
     )}`;
 
     const respItems = await fetch(nsUrlItems);
@@ -506,72 +486,71 @@ router.get("/:id", async (req, res) => {
     } catch (err) {
       console.warn("⚠️ Could not fetch fulfilment methods:", err.message);
     }
-
     /* -----------------------------------------------------
-   3️⃣ Expand Item Lines via SuiteQL
------------------------------------------------------ */
-if (!so.item?.items) {
-  const query = `
-    SELECT
-      id AS lineid,          -- 👈 internal line ID
-      item,
-      quantity,
-      netamount,
-      rate,
-      custcol_sb_itemoptionsdisplay AS options,
-      custcol_sb_fulfilmentlocation
-    FROM transactionline
-    WHERE transaction = ${id}
-    AND mainline = 'F'
-    AND taxline = 'F'
-    ORDER BY linesequencenumber
-  `;
+       3️⃣ Expand Item Lines via SuiteQL
+    ----------------------------------------------------- */
+    if (!so.item?.items) {
+      const query = `
+        SELECT
+          id AS lineid,
+          item,
+          quantity,
+          netamount,
+          rate,
+          custcol_sb_itemoptionsdisplay AS options,
+          custcol_sb_fulfilmentlocation
+        FROM transactionline
+        WHERE transaction = ${id}
+        AND mainline = 'F'
+        AND taxline = 'F'
+        ORDER BY linesequencenumber
+      `;
 
-  const suiteql = await nsPostRaw(
-    `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
-    { q: query }
-  );
+      const suiteql = await nsPostRaw(
+        `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
+        { q: query },
+        userId,
+        "sb"
+      );
 
-  if (suiteql && Array.isArray(suiteql.items)) {
-    const items = suiteql.items.map((r) => {
-      const itemId = String(r.item);
-      const lineId = String(r.lineid || ""); // 👈 cached for PATCH use later
-      const info = itemMap[itemId] || {};
-      const itemName = info.name || `Item ${itemId}`;
-      const qty = Math.abs(Number(r.quantity) || 0);
-      const net = Math.abs(Number(r.netamount) || 0);
-      const retailNet = parseFloat(info.baseprice || 0);
-      const retailGross = +(retailNet * 1.2).toFixed(2);
+      if (suiteql && Array.isArray(suiteql.items)) {
+        const items = suiteql.items.map((r) => {
+          const itemId = String(r.item);
+          const lineId = String(r.lineid || "");
+          const info = itemMap[itemId] || {};
+          const itemName = info.name || `Item ${itemId}`;
+          const qty = Math.abs(Number(r.quantity) || 0);
+          const net = Math.abs(Number(r.netamount) || 0);
+          const retailNet = parseFloat(info.baseprice || 0);
+          const retailGross = +(retailNet * 1.2).toFixed(2);
+          const vat = net > 0 ? +(net * 0.2).toFixed(2) : 0;
+          const saleprice = net > 0 ? +(net + vat).toFixed(2) : 0;
+          const fulfilId =
+            r.fulfilmentlocation ||
+            r.custcol_sb_fulfilmentlocation ||
+            r.CUSTCOL_SB_FULFILMENTLOCATION ||
+            "";
 
-      const vat = net > 0 ? +(net * 0.2).toFixed(2) : 0;
-      const saleprice = net > 0 ? +(net + vat).toFixed(2) : 0;
+          return {
+            lineId,
+            item: { id: itemId, refName: itemName },
+            quantity: qty,
+            amount: retailGross,
+            vat,
+            saleprice,
+            discount: 0,
+            custcol_sb_itemoptionsdisplay: r.options || "",
+            custcol_sb_fulfilmentlocation: {
+              id: fulfilId || null,
+              refName: fulfilId ? (fulfilmentMap[fulfilId] || `ID ${fulfilId}`) : "",
+            },
+          };
+        });
 
-      const fulfilId =
-        r.fulfilmentlocation ||
-        r.custcol_sb_fulfilmentlocation ||
-        r.CUSTCOL_SB_FULFILMENTLOCATION ||
-        "";
-
-      return {
-        lineId, // 👈 included in JSON payload for frontend caching
-        item: { id: itemId, refName: itemName },
-        quantity: qty,
-        amount: retailGross,
-        vat,
-        saleprice,
-        discount: 0,
-        custcol_sb_itemoptionsdisplay: r.options || "",
-        custcol_sb_fulfilmentlocation: {
-          id: fulfilId || null,
-          refName: fulfilId ? (fulfilmentMap[fulfilId] || `ID ${fulfilId}`) : "",
-        },
-      };
-    });
-
-    so.item = { items };
-    console.log(`✅ Loaded ${items.length} item lines`);
-  }
-}
+        so.item = { items };
+        console.log(`✅ Loaded ${items.length} item lines`);
+      }
+    }
 
     /* -----------------------------------------------------
        💰 Fetch Customer Deposits

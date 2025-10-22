@@ -280,12 +280,25 @@ async function submitOrder(orderPayload) {
 
     // Small delay for UI polish
     await new Promise((resolve) => setTimeout(resolve, 50));
+// 🧩 Include session token for authenticated NetSuite calls
+const saved = storageGet();
+const headers = {
+  "Content-Type": "application/json",
+  ...(saved?.token ? { Authorization: `Bearer ${saved.token}` } : {}),
+};
 
-    const res = await fetch("/api/netsuite/salesorder/create", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(orderPayload),
-    });
+if (!saved?.token) {
+  console.warn("⚠️ No session token found — request may fail with 401");
+}
+
+console.log("📡 Sending order request with headers:", headers);
+
+const res = await fetch("/api/netsuite/salesorder/create", {
+  method: "POST",
+  headers,
+  body: JSON.stringify(orderPayload),
+});
+
 
     const data = await res.json();
     console.log("🪵 [API Response]", data);

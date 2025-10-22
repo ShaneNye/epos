@@ -28,12 +28,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.warn("⚠️ loadingOverlay element not found");
   }
 
-  const saved = storageGet?.();
-  if (!saved || !saved.token) {
-    console.warn("🚫 No token in storage — redirecting to login");
-    return (window.location.href = "/index.html");
-  }
-  const headers = { Authorization: `Bearer ${saved.token}` };
+let saved = storageGet?.();
+if (!saved || !saved.token) {
+  console.warn("⚠️ No token found initially, retrying after 300ms…");
+  await new Promise(r => setTimeout(r, 300));
+  saved = storageGet?.();
+}
+
+if (!saved || !saved.token) {
+  console.error("🚫 Still no token — forcing logout");
+  return (window.location.href = "/index.html");
+}
+
+const headers = {
+  "Content-Type": "application/json",
+  Authorization: `Bearer ${saved.token}`,
+};
+console.log("✅ Auth header ready for Sales Order View:", headers);
+
 
   // keep deposits across UI updates
   window._currentDeposits = [];

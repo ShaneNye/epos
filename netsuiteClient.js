@@ -1,11 +1,14 @@
 const OAuth = require("oauth-1.0a");
 const crypto = require("crypto");
 const fetch = require("node-fetch");
-const pool = require("./db"); // ✅ new — so we can fetch user tokens
+const pool = require("./db"); // ✅ needed for per-user tokens
 
+/* ======================================================
+   ===============  Base Config  =========================
+   ====================================================== */
 const config = {
-  account: process.env.NS_ACCOUNT,
-  accountDash: process.env.NS_ACCOUNT_DASH,
+  account: process.env.NS_ACCOUNT,               // e.g. 7972741_SB1
+  accountDash: process.env.NS_ACCOUNT_DASH,      // e.g. 7972741-sb1
   consumerKey: process.env.NS_CONSUMER_KEY,
   consumerSecret: process.env.NS_CONSUMER_SECRET,
   restUrl: `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/record/v1`,
@@ -19,9 +22,12 @@ const oauth = OAuth({
   },
 });
 
+/* ======================================================
+   ===============  Auth Header Helper  =================
+   ====================================================== */
 /**
- * 🧩 Build OAuth Header dynamically
- * Optionally pass a userId to use per-user NetSuite tokens from DB.
+ * Build an OAuth 1.0 header.  If userId provided, pull their tokens from DB.
+ * envType: 'sb' or 'prod'
  */
 async function getAuthHeader(url, method, userId = null, envType = "sb") {
   let tokenId = process.env.NS_TOKEN_ID;
@@ -34,28 +40,42 @@ async function getAuthHeader(url, method, userId = null, envType = "sb") {
            sb_netsuite_token_id, sb_netsuite_token_secret,
            prod_netsuite_token_id, prod_netsuite_token_secret
          FROM users
-         WHERE id = $1 LIMIT 1`,
+         WHERE id = $1
+         LIMIT 1`,
         [userId]
       );
 
       if (result.rows.length) {
-        const user = result.rows[0];
+        const u = result.rows[0];
         if (envType === "prod") {
-          tokenId = user.prod_netsuite_token_id || tokenId;
-          tokenSecret = user.prod_netsuite_token_secret || tokenSecret;
+          tokenId = u.prod_netsuite_token_id || tokenId;
+          tokenSecret = u.prod_netsuite_token_secret || tokenSecret;
         } else {
-          tokenId = user.sb_netsuite_token_id || tokenId;
-          tokenSecret = user.sb_netsuite_token_secret || tokenSecret;
+          tokenId = u.sb_netsuite_token_id || tokenId;
+          tokenSecret = u.sb_netsuite_token_secret || tokenSecret;
         }
+
+        if (!tokenId || !tokenSecret) {
+          console.warn(`⚠️ User ${userId} has missing NetSuite token fields for ${envType}`);
+        } else {
+          console.log(`🔐 Using user-specific NetSuite tokens for user ${userId} (${envType})`);
+        }
+      } else {
+        console.warn(`⚠️ No DB record found for user ${userId}, falling back to global tokens`);
       }
     } catch (err) {
-      console.error("⚠️ Failed to fetch user NetSuite tokens:", err.message);
+      console.error("❌ DB token lookup failed:", err.message);
     }
+  }
+
+  if (!tokenId || !tokenSecret) {
+    console.warn("⚠️ Using fallback global .env NetSuite token credentials");
   }
 
   const token = { key: tokenId, secret: tokenSecret };
   const header = oauth.toHeader(oauth.authorize({ url, method }, token));
   header.Authorization += `, realm="${config.account}"`;
+
   return header;
 }
 
@@ -64,13 +84,17 @@ async function getAuthHeader(url, method, userId = null, envType = "sb") {
    ====================================================== */
 async function nsGet(endpoint, userId = null, envType = "sb") {
   const url = `${config.restUrl}${endpoint}`;
-  const headers = { ...(await getAuthHeader(url, "GET", userId, envType)), "Content-Type": "application/json" };
+  const headers = {
+    ...(await getAuthHeader(url, "GET", userId, envType)),
+    "Content-Type": "application/json",
+  };
 
   const res = await fetch(url, { headers });
   const text = await res.text();
 
   if (!res.ok) {
-    console.error(`❌ NetSuite GET ${endpoint} → ${res.status}`, text);
+    console.error(`❌ NetSuite GET ${endpoint} → ${res.status}`);
+    console.error("🧾 NetSuite response:", text);
     const err = new Error(`NetSuite GET ${endpoint} → ${res.status}`);
     err.responseBody = tryParse(text);
     throw err;
@@ -84,16 +108,33 @@ async function nsGet(endpoint, userId = null, envType = "sb") {
    ====================================================== */
 async function nsPost(endpoint, body, userId = null, envType = "sb") {
   const url = `${config.restUrl}${endpoint}`;
-  const headers = { ...(await getAuthHeader(url, "POST", userId, envType)), "Content-Type": "application/json" };
+  const headers = {
+    ...(await getAuthHeader(url, "POST", userId, envType)),
+    "Content-Type": "application/json",
+  };
 
-  console.log(`➡️ [POST] NetSuite ${endpoint}`);
+  console.log(`➡️ [POST] NetSuite ${endpoint} (user: ${userId || "env default"})`);
 
-  const res = await fetch(url, { method: "POST", headers, body: JSON.stringify(body) });
+  const res = await fetch(url, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
   const text = await res.text();
 
   if (!res.ok) {
     console.error(`❌ NetSuite POST ${endpoint} → ${res.status}`);
     console.error("🧾 NetSuite error response:", text);
+
+    // diagnostic dump for debugging
+    console.error("🔍 Token used →", {
+      userId,
+      envType,
+      account: config.account,
+      consumerKey: config.consumerKey ? "***" : "(missing)",
+      tokenId: userId ? "(from user DB)" : process.env.NS_TOKEN_ID,
+    });
 
     const err = new Error(`NetSuite POST ${endpoint} → ${res.status}`);
     err.responseBody = tryParse(text);
@@ -113,7 +154,11 @@ async function nsPost(endpoint, body, userId = null, envType = "sb") {
    ====================================================== */
 async function nsPatch(endpoint, body, userId = null, envType = "sb") {
   const url = `${config.restUrl}${endpoint}`;
-  const headers = { ...(await getAuthHeader(url, "PATCH", userId, envType)), "Content-Type": "application/json" };
+  const headers = {
+    ...(await getAuthHeader(url, "PATCH", userId, envType)),
+    "Content-Type": "application/json",
+  };
+
   console.log(`🔄 [PATCH] NetSuite ${endpoint}`);
 
   const res = await fetch(url, { method: "PATCH", headers, body: JSON.stringify(body) });
@@ -122,7 +167,6 @@ async function nsPatch(endpoint, body, userId = null, envType = "sb") {
   if (!res.ok) {
     console.error(`❌ NetSuite PATCH ${endpoint} → ${res.status}`);
     console.error("🧾 NetSuite error response:", text);
-
     const err = new Error(`NetSuite PATCH ${endpoint} → ${res.status}`);
     err.responseBody = tryParse(text);
     throw err;
