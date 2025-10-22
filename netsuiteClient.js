@@ -1,15 +1,13 @@
-// netsuiteClient.js
 const OAuth = require("oauth-1.0a");
 const crypto = require("crypto");
 const fetch = require("node-fetch");
+const pool = require("./db"); // ✅ new — so we can fetch user tokens
 
 const config = {
   account: process.env.NS_ACCOUNT,
   accountDash: process.env.NS_ACCOUNT_DASH,
   consumerKey: process.env.NS_CONSUMER_KEY,
   consumerSecret: process.env.NS_CONSUMER_SECRET,
-  tokenId: process.env.NS_TOKEN_ID,
-  tokenSecret: process.env.NS_TOKEN_SECRET,
   restUrl: `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/record/v1`,
 };
 
@@ -21,8 +19,41 @@ const oauth = OAuth({
   },
 });
 
-function getAuthHeader(url, method) {
-  const token = { key: config.tokenId, secret: config.tokenSecret };
+/**
+ * 🧩 Build OAuth Header dynamically
+ * Optionally pass a userId to use per-user NetSuite tokens from DB.
+ */
+async function getAuthHeader(url, method, userId = null, envType = "sb") {
+  let tokenId = process.env.NS_TOKEN_ID;
+  let tokenSecret = process.env.NS_TOKEN_SECRET;
+
+  if (userId) {
+    try {
+      const result = await pool.query(
+        `SELECT 
+           sb_netsuite_token_id, sb_netsuite_token_secret,
+           prod_netsuite_token_id, prod_netsuite_token_secret
+         FROM users
+         WHERE id = $1 LIMIT 1`,
+        [userId]
+      );
+
+      if (result.rows.length) {
+        const user = result.rows[0];
+        if (envType === "prod") {
+          tokenId = user.prod_netsuite_token_id || tokenId;
+          tokenSecret = user.prod_netsuite_token_secret || tokenSecret;
+        } else {
+          tokenId = user.sb_netsuite_token_id || tokenId;
+          tokenSecret = user.sb_netsuite_token_secret || tokenSecret;
+        }
+      }
+    } catch (err) {
+      console.error("⚠️ Failed to fetch user NetSuite tokens:", err.message);
+    }
+  }
+
+  const token = { key: tokenId, secret: tokenSecret };
   const header = oauth.toHeader(oauth.authorize({ url, method }, token));
   header.Authorization += `, realm="${config.account}"`;
   return header;
@@ -31,9 +62,9 @@ function getAuthHeader(url, method) {
 /* ======================================================
    ===============   GET   ===============================
    ====================================================== */
-async function nsGet(endpoint) {
+async function nsGet(endpoint, userId = null, envType = "sb") {
   const url = `${config.restUrl}${endpoint}`;
-  const headers = { ...getAuthHeader(url, "GET"), "Content-Type": "application/json" };
+  const headers = { ...(await getAuthHeader(url, "GET", userId, envType)), "Content-Type": "application/json" };
 
   const res = await fetch(url, { headers });
   const text = await res.text();
@@ -51,9 +82,9 @@ async function nsGet(endpoint) {
 /* ======================================================
    ===============   POST (record API)   =================
    ====================================================== */
-async function nsPost(endpoint, body) {
+async function nsPost(endpoint, body, userId = null, envType = "sb") {
   const url = `${config.restUrl}${endpoint}`;
-  const headers = { ...getAuthHeader(url, "POST"), "Content-Type": "application/json" };
+  const headers = { ...(await getAuthHeader(url, "POST", userId, envType)), "Content-Type": "application/json" };
 
   console.log(`➡️ [POST] NetSuite ${endpoint}`);
 
@@ -80,9 +111,9 @@ async function nsPost(endpoint, body) {
 /* ======================================================
    ===============   PATCH (update record)   =============
    ====================================================== */
-async function nsPatch(endpoint, body) {
+async function nsPatch(endpoint, body, userId = null, envType = "sb") {
   const url = `${config.restUrl}${endpoint}`;
-  const headers = { ...getAuthHeader(url, "PATCH"), "Content-Type": "application/json" };
+  const headers = { ...(await getAuthHeader(url, "PATCH", userId, envType)), "Content-Type": "application/json" };
   console.log(`🔄 [PATCH] NetSuite ${endpoint}`);
 
   const res = await fetch(url, { method: "PATCH", headers, body: JSON.stringify(body) });
@@ -104,9 +135,9 @@ async function nsPatch(endpoint, body) {
 /* ======================================================
    ===============   POST RAW (SuiteQL etc)  =============
    ====================================================== */
-async function nsPostRaw(fullUrl, body) {
+async function nsPostRaw(fullUrl, body, userId = null, envType = "sb") {
   const headers = {
-    ...getAuthHeader(fullUrl, "POST"),
+    ...(await getAuthHeader(fullUrl, "POST", userId, envType)),
     "Content-Type": "application/json",
     Prefer: "transient",
   };
@@ -137,7 +168,4 @@ function tryParse(text) {
   }
 }
 
-/* ======================================================
-   ===============   EXPORTS   ===========================
-   ====================================================== */
 module.exports = { nsGet, nsPost, nsPatch, nsPostRaw, getAuthHeader };
