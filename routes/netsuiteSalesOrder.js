@@ -80,41 +80,55 @@ router.post("/create", async (req, res) => {
 
     console.log("🧩 Using Customer ID for Sales Order:", customerId);
 
-    // === 2️⃣ Lookup Sales Executive’s NetSuite ID ===
-    let salesExecNsId = null;
-    if (order.salesExec) {
-      const [rows] = await pool.query("SELECT netsuiteId FROM users WHERE id = ?", [
-        order.salesExec,
-      ]);
-      if (rows.length && rows[0].netsuiteId) {
-        salesExecNsId = rows[0].netsuiteId;
-        console.log("👤 Found NetSuite ID for Sales Exec:", salesExecNsId);
-      } else {
-        console.warn("⚠️ No NetSuite ID found for Sales Exec ID:", order.salesExec);
-      }
-    }
+   // === 2️⃣ Lookup Sales Executive’s NetSuite ID ===
+let salesExecNsId = null;
+if (order.salesExec) {
+  try {
+    const resultExec = await pool.query(
+      "SELECT netsuiteid FROM users WHERE id = $1",
+      [order.salesExec]
+    );
 
-    // === 3️⃣ Lookup Store Info ===
-    let invoiceLocationId = null;
-    let storeNsId = null;
-    if (order.store) {
-      const [locRows] = await pool.query(
-        `SELECT netsuite_internal_id, invoice_location_id 
-         FROM locations WHERE id = ?`,
-        [order.store]
-      );
-      if (locRows.length) {
-        storeNsId = locRows[0].netsuite_internal_id || null;
-        invoiceLocationId = locRows[0].invoice_location_id || null;
-        console.log("🏬 Store lookup →", {
-          sqlId: order.store,
-          netsuite_internal_id: storeNsId,
-          invoice_location_id: invoiceLocationId,
-        });
-      } else {
-        console.warn("⚠️ No location found for store ID:", order.store);
-      }
+    if (resultExec.rows.length && resultExec.rows[0].netsuiteid) {
+      salesExecNsId = resultExec.rows[0].netsuiteid;
+      console.log("👤 Found NetSuite ID for Sales Exec:", salesExecNsId);
+    } else {
+      console.warn("⚠️ No NetSuite ID found for Sales Exec ID:", order.salesExec);
     }
+  } catch (err) {
+    console.error("❌ Error looking up Sales Exec NetSuite ID:", err.message);
+  }
+}
+
+// === 3️⃣ Lookup Store Info ===
+let invoiceLocationId = null;
+let storeNsId = null;
+if (order.store) {
+  try {
+    const resultLoc = await pool.query(
+      `SELECT netsuite_internal_id, invoice_location_id 
+         FROM locations 
+        WHERE id = $1`,
+      [order.store]
+    );
+
+    if (resultLoc.rows.length) {
+      storeNsId = resultLoc.rows[0].netsuite_internal_id || null;
+      invoiceLocationId = resultLoc.rows[0].invoice_location_id || null;
+
+      console.log("🏬 Store lookup →", {
+        sqlId: order.store,
+        netsuite_internal_id: storeNsId,
+        invoice_location_id: invoiceLocationId,
+      });
+    } else {
+      console.warn("⚠️ No location found for store ID:", order.store);
+    }
+  } catch (err) {
+    console.error("❌ Error looking up store info:", err.message);
+  }
+}
+
 
 // === 4️⃣ Build Sales Order payload ===
 const orderBody = {
@@ -300,33 +314,42 @@ try {
         console.log(`⚠️ [Line ${idx + 1}] Skipping — no quantity`);
         continue;
       }
+// Try to map by location name if ID missing
+let sourceLocId = locId;
+if (!sourceLocId && locName) {
+  try {
+    const resultLocName = await pool.query(
+      "SELECT netsuite_internal_id FROM locations WHERE name = $1 LIMIT 1",
+      [locName]
+    );
 
-      // Try to map by location name if ID missing
-      let sourceLocId = locId;
-      if (!sourceLocId && locName) {
-        const [locRow] = await pool.query(
-          "SELECT netsuite_internal_id FROM locations WHERE name = ? LIMIT 1",
-          [locName]
-        );
-        if (locRow?.length && locRow[0].netsuite_internal_id)
-          sourceLocId = String(locRow[0].netsuite_internal_id);
-      }
+    if (resultLocName.rows.length && resultLocName.rows[0].netsuite_internal_id) {
+      sourceLocId = String(resultLocName.rows[0].netsuite_internal_id);
+      console.log(`📍 Mapped "${locName}" → netsuite_internal_id ${sourceLocId}`);
+    } else {
+      console.warn(`⚠️ No matching location found for name "${locName}"`);
+    }
+  } catch (err) {
+    console.error(`❌ Location lookup failed for "${locName}":`, err.message);
+  }
+}
 
-      if (!sourceLocId) {
-        console.log(`⚠️ [Line ${idx + 1}] Skipping — missing locationId for "${locName}"`);
-        continue;
-      }
+if (!sourceLocId) {
+  console.log(`⚠️ [Line ${idx + 1}] Skipping — missing locationId for "${locName}"`);
+  continue;
+}
 
-      if (!invId) {
-        console.log(`⚠️ [Line ${idx + 1}] Skipping — missing inventoryNumberId`);
-        continue;
-      }
+if (!invId) {
+  console.log(`⚠️ [Line ${idx + 1}] Skipping — missing inventoryNumberId`);
+  continue;
+}
 
-      // Skip if same as main warehouse
-      if (String(sourceLocId) === String(order.warehouse)) {
-        console.log(`ℹ️ [Line ${idx + 1}] Same as main warehouse → no transfer`);
-        continue;
-      }
+// Skip if same as main warehouse
+if (String(sourceLocId) === String(order.warehouse)) {
+  console.log(`ℹ️ [Line ${idx + 1}] Same as main warehouse → no transfer`);
+  continue;
+}
+
 
       // Build Transfer Order body
 const transferBody = {
