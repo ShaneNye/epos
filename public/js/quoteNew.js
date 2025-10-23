@@ -226,9 +226,16 @@ async function submitQuote(quotePayload) {
 
     await new Promise((resolve) => setTimeout(resolve, 50));
 
+    // 🔐 Fetch stored auth again
+    const savedAuth = storageGet();
+    const token = savedAuth?.token;
+
     const res = await fetch("/api/netsuite/quote/create", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`, // ✅ include this header
+      },
       body: JSON.stringify(quotePayload),
     });
 
@@ -250,7 +257,6 @@ async function submitQuote(quotePayload) {
 
     showToast(`✅ Quote ${tranId || quoteId} created successfully! Redirecting...`, "success");
 
-    const savedAuth = storageGet();
     if (savedAuth && savedAuth.token) {
       localStorage.setItem("eposAuth", JSON.stringify(savedAuth));
       console.log("💾 Promoted session token to localStorage for redirect persistence");
@@ -275,3 +281,4 @@ async function submitQuote(quotePayload) {
     unlockForm();
   }
 }
+

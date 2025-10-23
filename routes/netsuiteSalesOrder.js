@@ -7,8 +7,10 @@ const {
   nsPost,
   nsGet,
   nsPostRaw,
-  nsPatch
+  nsPatch,
+  getAuthHeader, 
 } = require("../netsuiteClient");
+
 
 /* =====================================================
    === CREATE NEW SALES ORDER ===========================
@@ -191,10 +193,15 @@ if (Array.isArray(allDeposits) && allDeposits.length > 0) {
   let currentAccountId = null;
   let pettyCashAccountId = null;
   try {
-    const [accRows] = await pool.query(
-      `SELECT current_account, petty_cash_account FROM locations WHERE id = ? LIMIT 1`,
-      [order.store]
-    );
+const accResult = await pool.query(
+  `SELECT current_account, petty_cash_account 
+     FROM locations 
+    WHERE id = $1 
+    LIMIT 1`,
+  [order.store]
+);
+const accRows = accResult.rows;
+
     if (accRows.length) {
       currentAccountId = accRows[0].current_account || null;
       pettyCashAccountId = accRows[0].petty_cash_account || null;
@@ -235,7 +242,8 @@ if (Array.isArray(allDeposits) && allDeposits.length > 0) {
       console.log(`🧾 [Deposit ${index + 1}] Creating Customer Deposit:`);
       console.dir(depositBody, { depth: null });
 
-      const depositRes = await nsPost("/customerDeposit", depositBody);
+const depositRes = await nsPost("/customerDeposit", depositBody, userId, "sb");
+
 
       let depositId = depositRes?.id || null;
       if (!depositId && depositRes?._location) {
@@ -606,9 +614,9 @@ router.get("/:id", async (req, res) => {
 });
 
 
-/* =====================================================
-   === COMMIT SALES ORDER (Approve via RESTlet only) ===
-   ===================================================== */
+// =====================================================
+// === COMMIT SALES ORDER (Approve via RESTlet only) ===
+// =====================================================
 router.post("/:id/commit", async (req, res) => {
   try {
     const { id } = req.params;
@@ -617,29 +625,43 @@ router.post("/:id/commit", async (req, res) => {
     console.log(`🔁 Approving Sales Order ${id} via NetSuite RESTlet`);
     console.log("📦 Incoming updates:", JSON.stringify(updates, null, 2));
 
-    // ✅ Basic validation
+    // ✅ Validate
     if (!id || !Array.isArray(updates)) {
       return res
         .status(400)
         .json({ ok: false, error: "Missing Sales Order ID or updates array." });
     }
 
-    // 🔗 RESTlet endpoint (script & deploy from your environment)
+    // 🔐 Get session from Authorization header
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+
+    let userId = null;
+    if (token) {
+      try {
+        const { getSession } = require("../sessions");
+        const session = await getSession(token);
+        userId = session?.id || null;
+        console.log("🔐 Commit request for user:", userId);
+      } catch (e) {
+        console.warn("⚠️ Could not resolve session for commit:", e.message);
+      }
+    }
+
+    // 🔗 RESTlet URL
     const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
 
-    // ✅ Build headers
+    // ✅ Build OAuth headers using per-user tokens
+    const authHeader = await getAuthHeader(restletUrl, "POST", userId, "sb");
     const headers = {
-      ...getAuthHeader(restletUrl, "POST"),
+      ...authHeader,
       "Content-Type": "application/json",
     };
 
-    // ✅ Prevent accidental double-fire within <1s for same ID
+    // 🔁 Prevent rapid double-submit
     if (!global._recentCommits) global._recentCommits = {};
     const now = Date.now();
-    if (
-      global._recentCommits[id] &&
-      now - global._recentCommits[id] < 1000
-    ) {
+    if (global._recentCommits[id] && now - global._recentCommits[id] < 1000) {
       console.warn(`⚠️ Duplicate commit request ignored for Sales Order ${id}`);
       return res.json({
         ok: false,
@@ -648,12 +670,9 @@ router.post("/:id/commit", async (req, res) => {
     }
     global._recentCommits[id] = now;
 
+    // 🧾 Build payload
     const payload = { id, updates };
-
-    console.log(
-      "📡 Calling NetSuite RESTlet with payload:",
-      JSON.stringify(payload, null, 2)
-    );
+    console.log("📡 Calling NetSuite RESTlet with payload:", JSON.stringify(payload, null, 2));
 
     const response = await fetch(restletUrl, {
       method: "POST",
@@ -669,7 +688,6 @@ router.post("/:id/commit", async (req, res) => {
       data = { raw: text };
     }
 
-    // ✅ Handle RESTlet response
     if (!response.ok || !data.ok) {
       console.error("❌ RESTlet returned error:", text);
       return res.status(500).json({
@@ -679,14 +697,14 @@ router.post("/:id/commit", async (req, res) => {
       });
     }
 
-    console.log(`✅ Sales Order ${id} updated & approved via RESTlet`);
+    console.log(`✅ Sales Order ${id} approved via RESTlet`);
     return res.json({
       ok: true,
-      message: data.message || "Sales Order updated & approved",
+      message: data.message || "Sales Order approved",
       restletResult: data,
     });
   } catch (err) {
-    console.error("❌ Commit Sales Order (RESTlet) failed:", err);
+    console.error("❌ Commit Sales Order failed:", err);
     return res.status(500).json({
       ok: false,
       error: err.message || "Unexpected server error",
@@ -700,26 +718,66 @@ router.post("/:id/commit", async (req, res) => {
 // ==========================================================
 router.post("/:id/add-deposit", async (req, res) => {
   try {
-    const { id } = req.params; // Sales Order ID
-    const dep = req.body;      // { id, name, amount }
+    const { id } = req.params; // NetSuite Sales Order ID
+    const dep = req.body;      // { id, name, amount, storeId? }
     console.log(`💰 [Popup] Creating deposit for Sales Order ${id}`, dep);
 
     if (!dep?.id || !dep?.amount || !dep?.name) {
       return res.status(400).json({ ok: false, error: "Missing deposit fields" });
     }
 
-    // 🔎 Fetch store + account mapping (reusing same DB logic)
-    const [accRows] = await pool.query(
-      `SELECT current_account, petty_cash_account FROM locations WHERE id = (SELECT store FROM orders WHERE netsuite_id = ? LIMIT 1)`,
-      [id]
+    // 🔐 Resolve logged-in user → userId for per-user NetSuite tokens
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    let userId = null;
+    if (token) {
+      try {
+        const session = await getSession(token);
+        userId = session?.id || null;
+        console.log("🔐 Authenticated user for deposit creation:", userId);
+      } catch (e) {
+        console.warn("⚠️ Could not resolve session:", e.message);
+      }
+    }
+
+    // 🔍 Determine store ID
+    let storeId = dep.storeId || null;
+
+    if (!storeId && id) {
+      try {
+        // 🔎 If this is an existing Sales Order, get its store/location from NetSuite
+        const so = await nsGet(`/salesOrder/${id}`, userId, "sb");
+        storeId = so?.location?.id || so?.custbody_sb_primarystore?.id || null;
+        console.log("🏬 Store determined from NetSuite SO:", storeId);
+      } catch (err) {
+        console.warn("⚠️ Could not fetch store from NetSuite:", err.message);
+      }
+    }
+
+    if (!storeId) {
+      console.warn("⚠️ No store ID provided or found; using fallback location 1");
+      storeId = 1; // fallback location
+    }
+
+    // 🔎 Fetch account mapping for that store
+    const result = await pool.query(
+      `
+      SELECT current_account, petty_cash_account
+      FROM locations
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [storeId]
     );
 
+    const accRows = result.rows;
     const currentAccountId = accRows?.[0]?.current_account || null;
     const pettyCashAccountId = accRows?.[0]?.petty_cash_account || null;
+
     const isCash = /cash/i.test(dep.name || "");
     const selectedAccountId = isCash ? pettyCashAccountId : currentAccountId;
 
-    console.log("🏦 Account mapping for deposit:", { selectedAccountId });
+    console.log("🏦 Account mapping for deposit:", { storeId, selectedAccountId });
 
     // ✅ Build NetSuite deposit body
     const depositBody = {
@@ -733,8 +791,8 @@ router.post("/:id/add-deposit", async (req, res) => {
 
     console.log("🧾 [AddDeposit] Payload to NetSuite:", depositBody);
 
-    // ✅ Create Customer Deposit
-    const depositRes = await nsPost("/customerDeposit", depositBody);
+    // ✅ Create Customer Deposit using user's NetSuite credentials
+    const depositRes = await nsPost("/customerDeposit", depositBody, userId, "sb");
     console.log("💰 NetSuite Deposit response:", depositRes);
 
     let depositId = depositRes?.id || null;
@@ -757,6 +815,7 @@ router.post("/:id/add-deposit", async (req, res) => {
     return res.status(500).json({ ok: false, error: err.message || "Deposit creation failed" });
   }
 });
+
 
 
 module.exports = router;
