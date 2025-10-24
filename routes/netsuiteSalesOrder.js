@@ -698,6 +698,51 @@ router.post("/:id/commit", async (req, res) => {
     }
 
     console.log(`✅ Sales Order ${id} approved via RESTlet`);
+
+    // ==========================================================
+// 🧾 Create custom record: customrecord_sb_coms_sales_value
+// ==========================================================
+try {
+  console.log("📊 Creating customrecord_sb_coms_sales_value for SO:", id);
+
+  // Fetch SO to get field values
+  const soData = await nsGet(`/salesOrder/${id}`, userId, "sb");
+
+  // Extract fields
+  const tranId = soData?.tranId || soData?.tranid || "";
+  const grossValue = soData?.custbody_stc_total_after_discount || 0;
+  const profitValue = soData?.custrecord_sb_coms_profit || 0;
+  const salesRep = soData?.custbody_sb_bedspecialist?.id || null;
+
+  // Build custom record payload
+  const recordBody = {
+    custrecord_sb_coms_date: new Date().toISOString().split("T")[0],
+    custrecord_sb_coms_sales_order: tranId,
+    custrecord_sb_coms_gross: parseFloat(grossValue) || 0,
+    custrecord_sb_coms_profit: parseFloat(profitValue) || 0,
+    ...(salesRep && { custrecord_sb_coms_sales_rep: { id: String(salesRep) } }),
+  };
+
+  console.log("🧾 Custom record payload:", recordBody);
+
+  // Create the record in NetSuite
+  const customRes = await nsPost("/record/customrecord_sb_coms_sales_value", recordBody, userId, "sb");
+
+  let customId = customRes?.id || null;
+  if (!customId && customRes?._location) {
+    const match = customRes._location.match(/customrecord_sb_coms_sales_value\/(\d+)/i);
+    if (match) customId = match[1];
+  }
+
+  if (customId) {
+    console.log(`✅ Custom record created successfully → ID ${customId}`);
+  } else {
+    console.warn("⚠️ Custom record creation succeeded but ID not found:", customRes);
+  }
+} catch (err) {
+  console.error("❌ Failed to create customrecord_sb_coms_sales_value:", err.message);
+}
+
     return res.json({
       ok: true,
       message: data.message || "Sales Order approved",
