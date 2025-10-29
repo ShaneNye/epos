@@ -246,7 +246,10 @@
             <section id="depositsSection" class="form-section order-items-section" style="margin-top:20px;">
                 <div class="section-header-flex">
                     <h3>Customer Deposits</h3>
-                    <button id="addDepositBtn" class="btn-secondary small-btn">+ Add Deposit</button>
+<button id="addDepositBtn" class="btn-secondary">+ Add Deposit</button>
+  <span id="depositSpinner" class="hidden" style="font-size:0.85em; color:#0078d4; display:inline-flex; align-items:center;">
+    <span class="deposit-spinner"></span> Creating&nbsp;Deposit…
+  </span>
                 </div>
 
                 <table id="depositsTable" class="styled-table">

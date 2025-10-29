@@ -359,45 +359,87 @@ try {
 
     console.log("✅ Item lines rendered");
 
+// === Populate fulfilment dropdowns if Pending Approval ===
+if (so.orderStatus?.id === "A") {
+  try {
+    console.log("📡 Fetching fulfilment methods for dropdowns...");
+    const res = await fetch("/api/netsuite/fulfilmentmethods");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
 
-    // === Populate fulfilment dropdowns if Pending Approval ===
-    if (so.orderStatus?.id === "A") {
-      try {
-        console.log("📡 Fetching fulfilment methods for dropdowns...");
-        const res = await fetch("/api/netsuite/fulfilmentmethods");
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+    const fulfilmentMethods = data.results || [];
+    console.log("✅ Fulfilment methods loaded:", fulfilmentMethods);
 
-        const fulfilmentMethods = data.results || [];
-        console.log("✅ Fulfilment methods loaded:", fulfilmentMethods);
+    // Cache for later
+    window._fulfilmentMap = fulfilmentMethods.map(f => ({
+      id: f["Internal ID"] || f.id,
+      name: f["Name"] || f.name
+    }));
 
-        tbody.querySelectorAll(".fulfilmentSelect").forEach(sel => {
-          sel.innerHTML = '<option value="">-- Select --</option>';
-          fulfilmentMethods.forEach(method => {
-            const opt = document.createElement("option");
-            opt.value = method["Internal ID"] || method.id;
-            opt.textContent = method["Name"] || method.name;
-            sel.appendChild(opt);
-          });
+    tbody.querySelectorAll(".fulfilmentSelect").forEach((sel) => {
+      const lineIndex = sel.dataset.line;
+      const line = so.item?.items?.[lineIndex] || {};
 
-          // 🎯 Fulfilment change → toggle inventory button
-          sel.addEventListener("change", () => {
-            const lineIndex = sel.dataset.line;
-            const invWrapper = tbody.querySelector(`.item-inv-detail[data-line="${lineIndex}"]`)?.closest(".inventory-cell");
-            if (!invWrapper) return;
+      // 🧩 Try all known field paths for fulfilment ID + name
+      const currentFulfilId =
+        line?.custcol_sb_fulfilmentlocation?.id ||
+        line?.fulfilmentlocation ||
+        line?.CUSTCOL_SB_FULFILMENTLOCATION ||
+        line?.custcol_sb_fulfilmentlocation ||
+        "";
 
-            const selectedText = sel.options[sel.selectedIndex]?.textContent?.toLowerCase() || "";
-            if (["warehouse", "in store", "fulfil from store"].includes(selectedText)) {
-              invWrapper.style.display = "inline-block";
-            } else {
-              invWrapper.style.display = "none";
-            }
-          });
-        });
-      } catch (err) {
-        console.error("❌ Failed to load fulfilment methods:", err);
-      }
-    }
+      const currentFulfilName =
+        line?.custcol_sb_fulfilmentlocation?.refName ||
+        line?.custcol_sb_fulfilmentlocation?.name ||
+        line?.fulfilmentlocationname ||
+        "";
+
+      console.log(`🔎 Line ${lineIndex} fulfilment check:`, {
+        currentFulfilId,
+        currentFulfilName,
+        raw: line.custcol_sb_fulfilmentlocation,
+      });
+
+      // Build dropdown
+      sel.innerHTML = '<option value="">-- Select --</option>';
+      fulfilmentMethods.forEach((method) => {
+        const id = method["Internal ID"] || method.id;
+        const name = method["Name"] || method.name;
+        const opt = document.createElement("option");
+        opt.value = id;
+        opt.textContent = name;
+
+        // ✅ Preselect if matches existing fulfilment
+        if (
+          (currentFulfilId && String(id) === String(currentFulfilId)) ||
+          (currentFulfilName && name.toLowerCase() === currentFulfilName.toLowerCase())
+        ) {
+          opt.selected = true;
+          console.log(`✅ Preselected fulfilment "${name}" for line ${lineIndex}`);
+        }
+
+        sel.appendChild(opt);
+      });
+
+      // 🎯 Toggle inventory button visibility
+      sel.addEventListener("change", () => {
+        const row = tbody.querySelector(`tr[data-line="${lineIndex}"]`);
+        const invWrapper = row?.querySelector(".inventory-cell");
+        const selectedText = sel.options[sel.selectedIndex]?.textContent?.toLowerCase() || "";
+        if (invWrapper) {
+          invWrapper.style.display = ["warehouse", "in store", "fulfil from store"].includes(selectedText)
+            ? "inline-block"
+            : "none";
+        }
+      });
+    });
+
+    console.log("✅ Fulfilment dropdowns rendered with detected selections");
+  } catch (err) {
+    console.error("❌ Failed to load fulfilment methods:", err);
+  }
+}
+
 
 // === Attach inventory popup buttons ===
 tbody.querySelectorAll(".open-inventory").forEach(btn => {
@@ -484,20 +526,84 @@ if (so.orderStatus?.id === "A") {
     const fulfilmentMethods = data.results || [];
     console.log("✅ Fulfilment methods loaded:", fulfilmentMethods);
 
-    // Populate each select
-    tbody.querySelectorAll(".fulfilmentSelect").forEach(sel => {
+    // Cache for later reference if needed elsewhere
+    window._fulfilmentMap = fulfilmentMethods.map(f => ({
+      id: f["Internal ID"] || f.id,
+      name: f["Name"] || f.name,
+    }));
+
+    // Populate each fulfilment dropdown
+    tbody.querySelectorAll(".fulfilmentSelect").forEach((sel) => {
+      const lineIndex = sel.dataset.line;
+      const line = so.item?.items?.[lineIndex] || {};
+
+      // 🧩 Detect current fulfilment value (covers all known field shapes)
+      const currentFulfilId =
+        line?.custcol_sb_fulfilmentlocation?.id ||
+        line?.fulfilmentlocation ||
+        line?.CUSTCOL_SB_FULFILMENTLOCATION ||
+        "";
+      const currentFulfilName =
+        line?.custcol_sb_fulfilmentlocation?.refName ||
+        line?.custcol_sb_fulfilmentlocation?.name ||
+        line?.fulfilmentlocationname ||
+        "";
+
+      console.log(`🔎 Line ${lineIndex} fulfilment check:`, {
+        currentFulfilId,
+        currentFulfilName,
+        raw: line.custcol_sb_fulfilmentlocation,
+      });
+
+      // Build dropdown list
       sel.innerHTML = '<option value="">-- Select --</option>';
-      fulfilmentMethods.forEach(method => {
+      fulfilmentMethods.forEach((method) => {
+        const id = method["Internal ID"] || method.id;
+        const name = method["Name"] || method.name;
         const opt = document.createElement("option");
-        opt.value = method["Internal ID"] || method.id;
-        opt.textContent = method["Name"] || method.name;
+        opt.value = id;
+        opt.textContent = name;
         sel.appendChild(opt);
       });
+
+      // ✅ Set selected option *after* options are appended
+      if (currentFulfilId) {
+        sel.value = String(currentFulfilId);
+      } else if (currentFulfilName) {
+        const match = [...sel.options].find(
+          (o) => o.textContent.toLowerCase() === currentFulfilName.toLowerCase()
+        );
+        if (match) sel.value = match.value;
+      }
+
+      if (sel.value) {
+        console.log(
+          `✅ Fulfilment dropdown defaulted to "${sel.options[sel.selectedIndex].textContent}" (line ${lineIndex})`
+        );
+      } else {
+        console.warn(`⚠️ No fulfilment match found for line ${lineIndex}`);
+      }
+
+      // 🎯 Toggle inventory button visibility when changed
+      sel.addEventListener("change", () => {
+        const row = tbody.querySelector(`tr[data-line="${lineIndex}"]`);
+        const invWrapper = row?.querySelector(".inventory-cell");
+        const selectedText =
+          sel.options[sel.selectedIndex]?.textContent?.toLowerCase() || "";
+        if (invWrapper) {
+          invWrapper.style.display = ["warehouse", "in store", "fulfil from store"].includes(selectedText)
+            ? "inline-block"
+            : "none";
+        }
+      });
     });
+
+    console.log("✅ Fulfilment dropdowns rendered with existing selections");
   } catch (err) {
     console.error("❌ Failed to load fulfilment methods:", err);
   }
 }
+
 
 
 // === Attach inventory popup buttons ===
@@ -730,11 +836,31 @@ window.onDepositSaved = async (deposit) => {
   if (!deposit || !deposit.id || !deposit.amount) return;
 
   const soId = window.location.pathname.split("/").pop();
+  const addBtn = document.getElementById("addDepositBtn");
+  const spinner = document.getElementById("depositSpinner");
 
   try {
+    // 🌀 Show spinner + disable button
+    if (spinner) spinner.classList.remove("hidden");
+    if (addBtn) {
+      addBtn.disabled = true;
+      addBtn.classList.add("locked-input");
+    }
+
+    const savedAuth = storageGet?.();
+    const token = savedAuth?.token;
+
+    const headers = {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    };
+
+    console.log("🔑 Sending deposit with user token:", token ? "attached" : "missing");
+
+    // ✅ Send deposit request
     const res = await fetch(`/api/netsuite/salesorder/${soId}/add-deposit`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers,
       body: JSON.stringify(deposit),
     });
 
@@ -750,12 +876,21 @@ window.onDepositSaved = async (deposit) => {
 
     window._currentDeposits.push(newDeposit);
     renderDeposits(window._currentDeposits);
+
     showToast?.(`✅ Deposit £${Number(deposit.amount).toFixed(2)} added`, "success");
   } catch (err) {
     console.error("❌ Add deposit failed:", err.message);
     showToast?.(`❌ ${err.message}`, "error");
+  } finally {
+    // 🧹 Hide spinner + re-enable button
+    if (spinner) spinner.classList.add("hidden");
+    if (addBtn) {
+      addBtn.disabled = false;
+      addBtn.classList.remove("locked-input");
+    }
   }
 };
+
 
 /* =====================================================
    === Helper: Update Summary from Table ===============

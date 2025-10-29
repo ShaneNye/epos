@@ -699,7 +699,7 @@ router.post("/:id/commit", async (req, res) => {
 
     console.log(`✅ Sales Order ${id} approved via RESTlet`);
 
-    // ==========================================================
+// ==========================================================
 // 🧾 Create custom record: customrecord_sb_coms_sales_value
 // ==========================================================
 try {
@@ -709,7 +709,7 @@ try {
   const soData = await nsGet(`/salesOrder/${id}`, userId, "sb");
 
   // Extract fields
-  const tranId = soData?.tranId || soData?.tranid || "";
+  const soInternalId = soData?.id || soData?.internalId || id; // internal record ID
   const grossValue = soData?.custbody_stc_total_after_discount || 0;
   const profitValue = soData?.custrecord_sb_coms_profit || 0;
   const salesRep = soData?.custbody_sb_bedspecialist?.id || null;
@@ -717,7 +717,7 @@ try {
   // Build custom record payload
   const recordBody = {
     custrecord_sb_coms_date: new Date().toISOString().split("T")[0],
-    custrecord_sb_coms_sales_order: tranId,
+    custrecord_sb_coms_sales_order: { id: String(soInternalId) }, // link to SO ID
     custrecord_sb_coms_gross: parseFloat(grossValue) || 0,
     custrecord_sb_coms_profit: parseFloat(profitValue) || 0,
     ...(salesRep && { custrecord_sb_coms_sales_rep: { id: String(salesRep) } }),
@@ -725,38 +725,52 @@ try {
 
   console.log("🧾 Custom record payload:", recordBody);
 
-  // Create the record in NetSuite
-  const customRes = await nsPost("/record/customrecord_sb_coms_sales_value", recordBody, userId, "sb");
+  // ==========================================================
+  // 🌐 Post to RESTlet (customscript_sb_epos_coms_sales_data)
+  // ==========================================================
+  const restletUrl = "https://7972741-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=4193&deploy=1";
 
-  let customId = customRes?.id || null;
-  if (!customId && customRes?._location) {
-    const match = customRes._location.match(/customrecord_sb_coms_sales_value\/(\d+)/i);
-    if (match) customId = match[1];
+  // Available Without Login → no token header needed
+  const resCreate = await fetch(restletUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(recordBody),
+  });
+
+  const text = await resCreate.text();
+  let json;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    json = { ok: false, raw: text };
   }
 
-  if (customId) {
-    console.log(`✅ Custom record created successfully → ID ${customId}`);
+  if (resCreate.ok && json.ok) {
+    console.log(`✅ Custom record created successfully → ID ${json.id}`);
   } else {
-    console.warn("⚠️ Custom record creation succeeded but ID not found:", customRes);
+    console.error("❌ RESTlet returned error:", json);
   }
 } catch (err) {
   console.error("❌ Failed to create customrecord_sb_coms_sales_value:", err.message);
 }
 
-    return res.json({
-      ok: true,
-      message: data.message || "Sales Order approved",
-      restletResult: data,
-    });
-  } catch (err) {
-    console.error("❌ Commit Sales Order failed:", err);
-    return res.status(500).json({
-      ok: false,
-      error: err.message || "Unexpected server error",
-    });
-  }
-});
 
+// ==========================================================
+// ✅ Final API Response
+// ==========================================================
+return res.json({
+  ok: true,
+  message: data.message || "Sales Order approved",
+  restletResult: data,
+});
+} catch (err) {
+  console.error("❌ Commit Sales Order failed:", err);
+  return res.status(500).json({
+    ok: false,
+    error: err.message || "Unexpected server error",
+  });
+}
+});
 
 // ==========================================================
 // 💰 Add Deposit from Popup (Frontend -> REST -> NetSuite)
@@ -804,27 +818,68 @@ router.post("/:id/add-deposit", async (req, res) => {
       storeId = 1; // fallback location
     }
 
-    // 🔎 Fetch account mapping for that store
-    const result = await pool.query(
+// ==========================================================
+// 🔎 Fetch account mapping for that store (handles invoice vs store subsidiary)
+// ==========================================================
+let accRows = [];
+try {
+  // Step 1️⃣ — Try matching on id, netsuite_internal_id, or invoice_location_id
+  const query = `
+    SELECT id, name, netsuite_internal_id, invoice_location_id, current_account, petty_cash_account
+    FROM locations
+    WHERE id::text = $1::text 
+       OR netsuite_internal_id::text = $1::text
+       OR invoice_location_id::text = $1::text
+    LIMIT 1
+  `;
+  const result = await pool.query(query, [String(storeId)]);
+  accRows = result.rows || [];
+
+  // Step 2️⃣ — If we matched an invoice location, follow back to its store subsidiary
+  if (accRows.length && accRows[0].invoice_location_id?.toString() === String(storeId)) {
+    const realStoreNsId = accRows[0].netsuite_internal_id;
+    console.log(`🔁 Matched invoice location ${storeId}, resolving real store netsuite_internal_id → ${realStoreNsId}`);
+
+    const storeRes = await pool.query(
       `
-      SELECT current_account, petty_cash_account
+      SELECT id, name, netsuite_internal_id, current_account, petty_cash_account
       FROM locations
-      WHERE id = $1
+      WHERE netsuite_internal_id::text = $1::text
       LIMIT 1
       `,
-      [storeId]
+      [String(realStoreNsId)]
     );
+    if (storeRes.rows.length) accRows = storeRes.rows;
+  }
 
-    const accRows = result.rows;
-    const currentAccountId = accRows?.[0]?.current_account || null;
-    const pettyCashAccountId = accRows?.[0]?.petty_cash_account || null;
+  if (accRows.length) {
+    console.log("🏪 Store match found:", accRows[0]);
+  } else {
+    console.warn("⚠️ No location match found for storeId:", storeId);
+  }
+} catch (dbErr) {
+  console.error("❌ Failed to fetch account mapping:", dbErr.message);
+}
 
-    const isCash = /cash/i.test(dep.name || "");
-    const selectedAccountId = isCash ? pettyCashAccountId : currentAccountId;
+const currentAccountId = accRows?.[0]?.current_account || null;
+const pettyCashAccountId = accRows?.[0]?.petty_cash_account || null;
 
-    console.log("🏦 Account mapping for deposit:", { storeId, selectedAccountId });
+// ✅ Choose correct account based on payment method name
+const isCash = /cash/i.test(dep.name || dep.method || "");
+const selectedAccountId = isCash ? pettyCashAccountId : currentAccountId;
 
+console.log("🏦 Account mapping resolved →", {
+  storeId,
+  currentAccountId,
+  pettyCashAccountId,
+  selectedAccountId,
+  isCash,
+});
+
+
+    // ==========================================================
     // ✅ Build NetSuite deposit body
+    // ==========================================================
     const depositBody = {
       salesorder: { id: String(id) },
       payment: parseFloat(dep.amount || 0),

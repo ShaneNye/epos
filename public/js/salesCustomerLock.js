@@ -1,9 +1,12 @@
 /**
  * salesCustomerLock.js
  * -------------------------------------------------------------
- * Locks customer, contact info, order details,
- * and order items until confirmed.
- * Now requires mandatory fields before allowing confirm (popup alert).
+ * Locks customer, contact info, order details, and order items until confirmed.
+ * Allows full unlock when pencil icon clicked.
+ * After first confirm, triggers confirmation alert if store or warehouse is changed.
+ * Fixes:
+ *  - Cancel on store/warehouse now correctly reverts to the prior value (not null/blank)
+ *  - Order items unlock after Confirm (original behaviour restored)
  */
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -15,13 +18,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (!confirmBtn || !customerSection || !contactSection || !orderDetailsSection || !orderItemsSection) return;
 
-  // === Utility: lock/unlock a section's inputs
+  // === Utility: lock/unlock a section's inputs (EXCLUDES confirm/edit button)
   const setSectionLocked = (section, locked, includeButtons = false) => {
     if (!section) return;
     const selector = includeButtons ? "input, select, textarea, button" : "input, select, textarea";
     const inputs = section.querySelectorAll(selector);
 
     inputs.forEach(el => {
+      if (el.id === "confirmCustomerBtn") return; // never disable the main toggle
+
       if (locked) {
         el.setAttribute("readonly", true);
         el.setAttribute("disabled", true);
@@ -33,11 +38,19 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     });
 
-    if (locked) section.classList.add("locked");
-    else section.classList.remove("locked");
+    section.classList.toggle("locked", !!locked);
   };
 
-  // === Lock order items initially (must stay locked until confirm)
+  // Keep confirm/edit button active always
+  const ensureConfirmActive = () => {
+    confirmBtn.classList.remove("locked-input");
+    confirmBtn.removeAttribute("disabled");
+    confirmBtn.style.pointerEvents = "auto";
+    confirmBtn.style.opacity = "1";
+  };
+  ensureConfirmActive();
+
+  // Lock order items initially until the first confirm completes
   setSectionLocked(orderItemsSection, true, true);
 
   // Create or locate status element for feedback
@@ -58,11 +71,13 @@ document.addEventListener("DOMContentLoaded", () => {
     const lastName = document.querySelector('input[name="lastName"]').value.trim();
     const email = document.querySelector('input[name="email"]').value.trim();
     const postcode = document.querySelector('input[name="postcode"]').value.trim();
+    const title = document.querySelector('select[name="title"]').value;
 
     if (!firstName) errors.push("First Name is required");
     if (!lastName) errors.push("Last Name is required");
     if (!email) errors.push("Email is required");
     if (!postcode) errors.push("Postcode is required");
+    if (!title) errors.push("Title Is required");
 
     // Order details mandatory
     const leadSource = document.querySelector('select[name="leadSource"]').value;
@@ -76,36 +91,101 @@ document.addEventListener("DOMContentLoaded", () => {
     return { valid: errors.length === 0, errors };
   };
 
+  // === Helper to reset item table ===
+  function resetItemTable() {
+    const tableBody = document.getElementById("orderItemsBody");
+    if (tableBody) tableBody.innerHTML = "";
+    if (typeof updateOrderSummary === "function") updateOrderSummary();
+  }
+
+  // === Track and guard Store/Warehouse changes ===
+  let alertEnabled = false; // Only true after first confirm
+  const storeSelect = document.getElementById("store");
+  const warehouseSelect = document.getElementById("warehouse");
+
+  // Capture previous value on focus/mousedown so cancel can revert correctly
+  const bindPrevCapture = (selectEl) => {
+    if (!selectEl) return;
+    const capture = () => {
+      // store as string to avoid type mismatch issues
+      selectEl.dataset.prevValue = String(selectEl.value ?? "");
+    };
+    selectEl.addEventListener("focus", capture, { passive: true });
+    selectEl.addEventListener("mousedown", capture, { passive: true }); // pick up mouse-driven changes
+    // initialise once on load
+    capture();
+  };
+
+  bindPrevCapture(storeSelect);
+  bindPrevCapture(warehouseSelect);
+
+  const handleSelectChange = (e) => {
+    if (!alertEnabled) return; // no alert before first confirm
+
+    const selectEl = e.target;
+    if (!selectEl || (selectEl.id !== "store" && selectEl.id !== "warehouse")) return;
+
+    const prevValue = selectEl.dataset.prevValue ?? String(selectEl.value ?? "");
+    const newValue = String(selectEl.value ?? "");
+
+    if (prevValue !== newValue) {
+      const confirmed = confirm("Changing this field will result in the item table resetting — are you sure you want to do this?");
+      if (confirmed) {
+        resetItemTable();
+        // update stored previous value to the new one (so future cancel reverts to this)
+        selectEl.dataset.prevValue = newValue;
+      } else {
+        // revert to previous exact value (not null/blank)
+        selectEl.value = prevValue;
+        // fire a change so any UI bound to this updates
+        selectEl.dispatchEvent(new Event("change", { bubbles: true }));
+      }
+    }
+  };
+
+  storeSelect?.addEventListener("change", handleSelectChange);
+  warehouseSelect?.addEventListener("change", handleSelectChange);
+
+  // === Main confirm/edit toggle ===
   confirmBtn.addEventListener("click", async () => {
+    ensureConfirmActive();
+
     // === UNLOCK MODE === (user clicked Edit)
     if (confirmBtn.dataset.locked === "true") {
+      // Unlock everything
       setSectionLocked(customerSection, false);
       setSectionLocked(contactSection, false);
       setSectionLocked(orderDetailsSection, false);
-      setSectionLocked(orderItemsSection, true, true); // re-lock order items!
+      setSectionLocked(orderItemsSection, false, true);
 
       confirmBtn.innerHTML = "Confirm";
       confirmBtn.classList.add("btn-primary");
       confirmBtn.classList.remove("edit-btn");
       confirmBtn.dataset.locked = "false";
       matchStatus.textContent = "";
+
+      alertEnabled = true; // enable store/warehouse alert after first confirm has happened
       return;
     }
 
     // === VALIDATION before locking ===
- const { valid, errors } = validateRequiredFields();
-  if (!valid) {
-     alert("❌ Please fill in all required fields:\n\n- " + errors.join("\n- "));
-     return;
+    const { valid, errors } = validateRequiredFields();
+    if (!valid) {
+      alert("❌ Please fill in all required fields:\n\n- " + errors.join("\n- "));
+      return;
     }
 
     // === LOCK MODE === (user clicked Confirm)
     setSectionLocked(customerSection, true);
     setSectionLocked(contactSection, true);
     setSectionLocked(orderDetailsSection, true);
+    setSectionLocked(orderItemsSection, true, true); // lock items briefly during match
+
+    // keep confirm/edit button active after lock
+    ensureConfirmActive();
 
     confirmBtn.innerHTML = `
-      <svg xmlns="http://www.w3.org/2000/svg" height="16" width="16" viewBox="0 0 24 24" fill="currentColor">
+      <svg xmlns="http://www.w3.org/2000/svg" height="16" width="16" viewBox="0 0 24 24" fill="currentColor" aria-label="Edit">
         <path d="M3 17.25V21h3.75l11-11.03-3.75-3.75L3 17.25z"/>
       </svg>`;
     confirmBtn.classList.remove("btn-primary");
@@ -143,14 +223,15 @@ document.addEventListener("DOMContentLoaded", () => {
         matchStatus.innerHTML = "🆕 New customer!";
         window.currentCustomerId = null;
       }
-
-      // ✅ Unlock order items only now
-      setSectionLocked(orderItemsSection, false, true);
-
     } catch (err) {
       console.error("❌ Customer match lookup failed:", err);
       alert("❌ Error searching for customer.");
       window.currentCustomerId = null;
+    } finally {
+      // ✅ Restore original behaviour: unlock items after confirm completes
+      setSectionLocked(orderItemsSection, false, true);
+      // Start guarding store/warehouse changes from now on
+      alertEnabled = true;
     }
   });
 });
