@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EPOS Reports</title>
+
+  <!-- Styles -->
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/admin.css" /> <!-- reuse tab styling -->
+  <link rel="stylesheet" href="/assistant/assistant.css" />
+  <link rel="stylesheet" href="/css/reports.css">
+
+  <!-- Scripts -->
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/assistant/assistant.js"></script>
+  <script defer src="/js/reports/reports.js"></script>
+  <script defer src="/js/reports/customerLookup.js"></script>
+</head>
+
+<body>
+  <div id="menu"></div>
+
+  <main class="content" style="max-width: 1000px; margin: 2rem auto;">
+    <h1 style="margin-bottom: 1rem; color: var(--brand);">Reports</h1>
+
+    <!-- Main Tabs -->
+    <div class="tabs">
+      <div class="tab active" data-target="customerLookup">Customer Lookup</div>
+      <div class="tab" data-target="stockSearch">Stock Search</div>
+    </div>
+
+    <!-- === CUSTOMER LOOKUP TAB === -->
+    <div id="customerLookup" class="tab-content active">
+      <h2>Customer Lookup</h2>
+      <div class="lookup-toolbar">
+        <input type="text" id="lookupQuery" placeholder="Search by name, email, or postcode..." />
+        <button id="lookupBtn" class="btn-primary">Search</button>
+      </div>
+    <div class="table-wrapper">
+  <table id="customerLookupTable">
+    <thead>
+      <tr>
+        <th>Internal ID</th>
+        <th>Customer Name</th>
+        <th>Action</th>
+        <th>Go</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td colspan="4" style="text-align:center; color:#999;">Loading...</td></tr>
+    </tbody>
+  </table>
+</div>
+
+
+    </div>
+
+    <!-- === STOCK SEARCH TAB === -->
+    <div id="stockSearch" class="tab-content hidden">
+      <h2>Stock Search</h2>
+      <div class="lookup-toolbar">
+        <input type="text" id="stockQuery" placeholder="Search by SKU, name, or ID..." />
+        <button id="stockBtn" class="btn-primary">Search</button>
+      </div>
+      <table id="stockSearchTable">
+        <thead>
+          <tr>
+            <th>Item ID</th>
+            <th>Name</th>
+            <th>Available Qty</th>
+            <th>Warehouse</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr><td colspan="4" style="text-align:center; color:#999;">Enter a search query to begin.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </main>
+</body>
+</html>

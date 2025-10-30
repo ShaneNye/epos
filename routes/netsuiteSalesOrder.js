@@ -131,26 +131,32 @@ router.post("/create", async (req, res) => {
       custbody_sb_paymentinfo: { id: order.paymentInfo },
       custbody_sb_warehouse: { id: order.warehouse },
       item: {
-        items: items.map((i, idx) => {
-          const line = {
-            item: { id: i.item },
-            quantity: i.quantity,
-            amount: i.amount / 1.2,
-            custcol_sb_itemoptionsdisplay: i.options || "",
-          };
+  items: items.map((i, idx) => {
+    const line = {
+      item: { id: i.item },
+      quantity: i.quantity,
+      amount: i.amount / 1.2,
+      custcol_sb_itemoptionsdisplay: i.options || "",
+    };
 
-          if (i.fulfilmentMethod && String(i.fulfilmentMethod).trim() !== "" && i.class !== "service") {
-            line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
-          }
+    if (i.fulfilmentMethod && String(i.fulfilmentMethod).trim() !== "" && i.class !== "service") {
+      line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
+    }
 
-          if (i.lotnumber && i.lotnumber.trim() !== "") {
-            line.custcol_sb_lotnumber = { id: i.lotnumber };
-          } else if (i.inventoryMeta && i.inventoryMeta.trim() !== "") {
-            line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
-          }
-          return line;
-        }),
-      },
+    if (i.lotnumber && i.lotnumber.trim() !== "") {
+      line.custcol_sb_lotnumber = { id: i.lotnumber };
+    } else if (i.inventoryMeta && i.inventoryMeta.trim() !== "") {
+      line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
+
+      // 🧩 Cross-warehouse logic → set to Do Not Allocate
+      line.orderallocationstrategy = null; // blank value prevents early allocation
+      console.log(`🚫 Marking SO line ${idx + 1} (item ${i.item}) as Do Not Allocate`);
+    }
+
+    return line;
+  }),
+},
+
     };
 
     console.log("🚀 Sales Order payload preview:", JSON.stringify(orderBody, null, 2));
@@ -360,7 +366,7 @@ const transferBody = {
       console.dir(transferBody, { depth: null });
 
       try {
-        const transferResponse = await nsPost("/transferOrder", transferBody);
+        const transferResponse = await nsPost("/transferOrder", transferBody, userId, "sb");
         let transferId = transferResponse?.id || null;
         if (!transferId && transferResponse._location) {
           const match = transferResponse._location.match(/transferorder\/(\d+)/i);

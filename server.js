@@ -65,6 +65,7 @@ app.use("/api/fetchify", require("./routes/fetchify"));
 app.use("/api/netsuite/salesorder", require("./routes/netsuiteSalesOrder"));
 app.use("/api/netsuite/quote", require("./routes/netsuiteQuote"));
 app.use("/api/netsuite/entity", require("./routes/netsuiteEntity"));
+app.use("/api/netsuite", require("./routes/netsuiteCustomerRecords"));
 
 
 app.use("/api/meta/store", require("./routes/storeName"));
@@ -354,6 +355,12 @@ app.get("/api/netsuite/transfer-order-management", (req, res) =>
   fetchNetSuiteData("TRANSFER_ORDER_MANAGEMENT_URL", "TRANSFER_ORDER_MANAGEMENT", res, "transfer order management")
 );
 
+// === Customer Lookup Report ===
+app.get("/api/netsuite/customer-lookup", (req, res) =>
+  fetchNetSuiteData("CUSTOMER_LOOKUP_URL", "CUSOMER_LOOKUP", res, "customer lookup report")
+);
+
+
 // === GL Accounts ===
 app.get("/api/netsuite/glaccounts", (req, res) =>
   fetchNetSuiteData("GL_ACCOUNTS_URL", "GL_ACCOUNTS", res, "GL accounts")
@@ -475,6 +482,7 @@ app.get("/orders", (req, res) => res.sendFile(path.join(__dirname, "public", "or
 app.get("/reset", (req, res) => res.sendFile(path.join(__dirname, "public", "reset.html")));
 app.get("/sales/new", (req, res) => res.sendFile(path.join(__dirname, "public", "newSalesOrder.html")));
 app.get("/quote/new", (req, res) => res.sendFile(path.join(__dirname, "public", "quoteNew.html")));
+app.get("/reports", (req, res) => res.sendFile(path.join(__dirname, "public", "reports.html")))
 app.get("/quote/view/:id", (req, res) =>
   res.sendFile(path.join(__dirname, "public", "quoteView.html"))
 );
