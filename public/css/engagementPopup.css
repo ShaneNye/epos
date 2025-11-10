@@ -1,0 +1,242 @@
+/* =====================================================
+   ENGAGEMENT POPUP — CLEAN, MINIMAL, PROFESSIONAL
+   ===================================================== */
+
+:root {
+  --brand: #0081ab;
+  --brand-hover: #006c8e;
+  --muted: #6a7480;
+  --panel: #ffffff;
+  --border: #e3e7ec;
+  --bg: #f7fafc;
+}
+
+body {
+  background: var(--bg);
+  font-family: "Segoe UI", "Inter", sans-serif;
+  color: #1a1f24;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100vh;
+  margin: 0;
+  padding: 1rem;
+}
+
+.popup-wrapper {
+  width: 100%;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.popup-card {
+  background: var(--panel);
+  border-radius: 12px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  animation: fadeIn 0.25s ease;
+  width: 100%;
+}
+
+.popup-header {
+  background: var(--brand);
+  color: #fff;
+  padding: 0.85rem 1.2rem;
+  font-weight: 600;
+  font-size: 1rem;
+  display: flex;
+  align-items: center;
+  border-bottom: 3px solid var(--brand-hover);
+}
+
+.popup-header h2 {
+  margin: 0;
+  font-size: 1.05rem;
+}
+
+.popup-body {
+  padding: 1.25rem 1.5rem;
+  overflow-y: auto;
+  max-height: calc(100vh - 120px);
+}
+
+/* --- Form Elements --- */
+.form-group {
+  margin-bottom: 1.1rem;
+}
+
+.form-group label {
+  font-weight: 600;
+  display: block;
+  margin-bottom: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--ink);
+}
+
+.form-group input[type="text"],
+.form-group input[type="date"],
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 0.9rem;
+  font-family: inherit;
+  box-sizing: border-box;
+  background: #fbfcfd;
+  transition: all 0.2s ease;
+}
+
+.form-group input:focus,
+.form-group textarea:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.12);
+  background: #fff;
+}
+
+textarea {
+  resize: vertical;
+}
+
+/* --- Form Layout Rows --- */
+.form-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.form-group.half {
+  flex: 1 1 48%;
+  min-width: 200px;
+}
+
+/* --- Inline Date + Checkbox --- */
+.date-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+.checkbox-inline {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.checkbox-inline input {
+  accent-color: var(--brand);
+}
+
+.muted {
+  font-size: 0.8rem;
+  color: var(--muted);
+  margin-top: 0.2rem;
+}
+
+.required {
+  color: #d93025;
+  margin-left: 0.15rem;
+}
+
+/* --- Multi-selects --- */
+select[multiple] {
+  min-height: 90px;
+  background: #fbfcfd;
+}
+
+/* --- Section spacing --- */
+.form-group + .form-group {
+  border-top: 1px dashed #eceff3;
+  padding-top: 1rem;
+}
+
+/* --- Buttons --- */
+.btn-primary,
+.btn-secondary {
+  border: none;
+  border-radius: 8px;
+  padding: 0.65rem 1.4rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background: var(--brand-hover);
+  transform: translateY(-1px);
+}
+
+.btn-secondary {
+  background: #8a939b;
+  color: #fff;
+}
+
+.btn-secondary:hover {
+  background: #6c757d;
+  transform: translateY(-1px);
+}
+
+/* --- Actions Footer --- */
+.popup-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  border-top: 1px solid #e8edf2;
+  padding-top: 1.25rem;
+}
+
+/* --- Scrollbars --- */
+.popup-body::-webkit-scrollbar {
+  width: 8px;
+}
+.popup-body::-webkit-scrollbar-thumb {
+  background: #d0d5da;
+  border-radius: 4px;
+}
+
+/* --- Responsive --- */
+@media (max-width: 700px) {
+  .popup-card {
+    border-radius: 10px;
+  }
+
+  .popup-body {
+    padding: 1rem;
+  }
+
+  .form-group input,
+  .form-group select,
+  .form-group textarea {
+    font-size: 0.85rem;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    width: 100%;
+  }
+}
+
+/* --- Animation --- */
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

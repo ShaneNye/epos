@@ -1,0 +1,222 @@
+/* =====================================================
+   ENGAGEMENT MODULE — INTEGRATED LAYOUT (Announcements + Analytics)
+   ===================================================== */
+
+:root {
+  --brand: #0081ab;
+  --brand-hover: #006c8e;
+  --ink: #1a1f24;
+  --muted: #6a7480;
+  --border: #e2e6ea;
+  --panel: #ffffff;
+  --bg: #f8fafc;
+}
+
+/* === Page Base === */
+body {
+  background: var(--bg);
+  font-family: "Segoe UI", "Inter", sans-serif;
+  color: var(--ink);
+}
+
+.content {
+  max-width: 1100px;
+  margin: 2rem auto;
+}
+
+/* === Tabs (Main Navigation) === */
+.tabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 10px 10px 0 0;
+  overflow: hidden;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+}
+
+.tab {
+  flex: 1;
+  text-align: center;
+  padding: 0.75rem 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  color: var(--muted);
+  border-bottom: 3px solid transparent;
+  transition: all 0.25s ease;
+  font-size: 0.95rem;
+}
+
+.tab:hover {
+  background: #f1f5f9;
+  color: var(--brand);
+}
+
+.tab.active {
+  color: var(--brand);
+  border-color: var(--brand);
+  background: #f9fbfc;
+}
+
+/* === Integrated Workspace (Left + Right) === */
+.engagement-section {
+  display: none;
+  margin-top: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+  overflow: hidden;
+}
+
+.engagement-section.active {
+  display: flex;
+  align-items: stretch;
+  min-height: 450px;
+}
+
+/* === Left Column: Content Selection === */
+.left-panel {
+  width: 35%;
+  max-width: 380px;
+  border-right: 1px solid var(--border);
+  background: var(--panel);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+}
+
+/* === Right Column: Analytics === */
+.analytics-panel {
+  flex: 1;
+  background: #fcfeff;
+  padding: 1.25rem 1.5rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.analytics-panel h2 {
+  margin: 0 0 0.75rem 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--brand);
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.5rem;
+}
+
+.analytics-placeholder {
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+  border: 2px dashed var(--border);
+  border-radius: 10px;
+  padding: 2.5rem 1rem;
+  background: #f9fbfc;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.analytics-placeholder:hover {
+  border-color: var(--brand);
+  color: var(--brand-hover);
+  background: #f6fbfd;
+}
+
+/* === Subtabs (Mine / Public) === */
+.subtabs {
+  display: flex;
+  border-bottom: 1px solid var(--border);
+  margin-bottom: 1rem;
+}
+
+.subtab {
+  padding: 0.5rem 0.8rem;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+  border-bottom: 2px solid transparent;
+  transition: all 0.2s ease;
+  border-radius: 4px 4px 0 0;
+}
+
+.subtab:hover {
+  color: var(--brand);
+  background: #f1f5f9;
+}
+
+.subtab.active {
+  color: var(--brand);
+  border-color: var(--brand);
+  background: #f9fbfc;
+}
+
+.subtab-content {
+  display: none;
+}
+
+.subtab-content.active {
+  display: block;
+}
+
+/* === Toolbar === */
+.toolbar {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.75rem;
+}
+
+.btn-primary {
+  background: var(--brand);
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 0.55rem 1.1rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+}
+
+.btn-primary:hover {
+  background: var(--brand-hover);
+  transform: translateY(-1px);
+}
+
+/* === Announcement List === */
+.announcement-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.announcement-list li {
+  background: #f9fafb;
+  border: 1px solid var(--border);
+  padding: 0.8rem;
+  margin-bottom: 0.5rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  transition: background 0.2s ease;
+}
+
+.announcement-list li:hover {
+  background: #f1f8fa;
+  border-color: var(--brand);
+}
+
+/* === Responsive Layout === */
+@media (max-width: 960px) {
+  .engagement-section.active {
+    flex-direction: column;
+  }
+
+  .left-panel {
+    width: 100%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}

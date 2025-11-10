@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Create Announcement</title>
+
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/engagementPopup.css">
+    <script src="/js/storage.js"></script>
+    <script defer src="/js/engagement/announcementPopup.js"></script>
+</head>
+
+<body>
+    <div class="popup-wrapper">
+        <div class="popup-card">
+            <div class="popup-header">
+                <h2>📰 Create New Announcement</h2>
+            </div>
+
+            <form id="announcementForm" class="popup-body">
+                <!-- === TITLE === -->
+                <div class="form-group">
+                    <label for="title">Title <span class="required">*</span></label>
+                    <input type="text" id="title" name="title" placeholder="Enter announcement title" required>
+                </div>
+
+                <!-- === ANNOUNCEMENT BODY === -->
+                <div class="form-group">
+                    <label for="message">Announcement <span class="required">*</span></label>
+                    <textarea id="message" name="message" rows="4" placeholder="Write your announcement..."
+                        required></textarea>
+                </div>
+
+                <!-- === DATES === -->
+                <div class="form-row">
+                    <div class="form-group half">
+                        <label for="startDate">Start Date</label>
+                        <div class="date-inline">
+                            <input type="date" id="startDate" name="startDate">
+                            <label class="checkbox-inline">
+                                <input type="checkbox" id="immediate" name="immediate">
+                                <span>Immediate</span>
+                            </label>
+                        </div>
+                        <small class="muted">One of these must be set.</small>
+                    </div>
+
+                    <div class="form-group half">
+                        <label for="endDate">End Date</label>
+                        <input type="date" id="endDate" name="endDate">
+                    </div>
+                </div>
+
+                <!-- === AUDIENCE (ROLES) === -->
+                <div class="form-group">
+                    <label for="audience">Audience <span class="required">*</span></label>
+                    <select id="audience" name="audience" multiple size="5">
+                        <!-- populated dynamically -->
+                    </select>
+                    <small class="muted">Select which roles will see this announcement on their dashboard.</small>
+                </div>
+
+                <!-- === ANALYTICS VISIBILITY === -->
+                <div class="form-group">
+                    <label for="analytics">Analytics Visibility</label>
+                    <select id="analytics" name="analytics">
+                        <option value="private">Private</option>
+                        <option value="public">Public</option>
+                    </select>
+                </div>
+
+                <!-- === SHARED WITH USERS === -->
+                <div class="form-group">
+                    <label for="sharedWith">Shared With (Users)</label>
+                    <select id="sharedWith" name="sharedWith" multiple size="6">
+                        <!-- populated dynamically -->
+                    </select>
+                    <small class="muted">Even if analytics are private, shared users can view this announcement and its
+                        data.</small>
+                </div>
+
+                <!-- === ACTIONS === -->
+                <div class="popup-actions">
+                    <button type="submit" class="btn-primary">Create Announcement</button>
+                    <button type="button" id="cancelBtn" class="btn-secondary">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</body>
+
+</html>

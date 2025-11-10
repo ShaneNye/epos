@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Engagement</title>
+
+    <!-- Core styles -->
+    <link rel="stylesheet" href="/assistant/assistant.css" />
+    <link rel="stylesheet" href="/css/home.css" />
+    <link rel="stylesheet" href="/css/engagement.css" />
+
+    <!-- Core scripts -->
+    <script src="/js/storage.js"></script>
+    <script src="/assistant/assistant.js"></script>
+    <script src="/js/menu.js"></script>
+    <script src="/js/widgets/visibility.js"></script>
+    <script defer src="/js/engagement/engagement.js"></script>
+</head>
+
+<body>
+    <div id="menu"></div>
+
+    <main class="content">
+        <h1>Engagement</h1>
+
+        <!-- Primary Tabs -->
+        <div class="tabs">
+            <div class="tab active" data-target="announcements">Announcements</div>
+            <div class="tab" data-target="surveys">Surveys</div>
+            <div class="tab" data-target="votes">Votes</div>
+            <div class="tab" data-target="quizzes">Quizzes</div>
+        </div>
+
+        <!-- === ANNOUNCEMENTS SECTION === -->
+        <section id="announcements" class="engagement-section active">
+            <!-- Left side: List + sub-tabs -->
+            <div class="left-panel">
+                <div class="subtabs">
+                    <div class="subtab active" data-target="my-announcements">Mine</div>
+                    <div class="subtab" data-target="public-announcements">Public</div>
+                    <div class="subtab" data-target="shared-announcements">Shared with Me</div>
+                </div>
+
+                <div id="my-announcements" class="subtab-content active">
+                    <div class="toolbar">
+                        <button id="newAnnouncementBtn" class="btn-primary">+ New Announcement</button>
+                    </div>
+                    <ul id="myAnnouncementList" class="announcement-list">
+                        <li>Welcome to the Engagement Hub 👋</li>
+                    </ul>
+                </div>
+
+                <div id="public-announcements" class="subtab-content">
+                    <ul id="publicAnnouncementList" class="announcement-list">
+                        <li>Company-wide updates will appear here.</li>
+                    </ul>
+                </div>
+
+                <div id="shared-announcements" class="subtab-content">
+                    <ul id="sharedAnnouncementList" class="announcement-list">
+                        <li>Announcements shared directly with you will appear here.</li>
+                    </ul>
+                </div>
+            </div>
+
+            <!-- Right: Analytics Panel -->
+            <div class="analytics-panel">
+                <h2>Analytics</h2>
+                <div class="analytics-placeholder">
+                    📊 Engagement metrics will appear here once analytics are configured.
+                </div>
+            </div>
+        </section>
+
+        <!-- === PLACEHOLDERS for Other Features === -->
+        <section id="surveys" class="engagement-section">
+            <div class="analytics-placeholder">🧩 Surveys feature coming soon...</div>
+        </section>
+        <section id="votes" class="engagement-section">
+            <div class="analytics-placeholder">🧩 Votes feature coming soon...</div>
+        </section>
+        <section id="quizzes" class="engagement-section">
+            <div class="analytics-placeholder">🧩 Quizzes feature coming soon...</div>
+        </section>
+    </main>
+</body>
+
+</html>
