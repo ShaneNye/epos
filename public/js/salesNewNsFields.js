@@ -30,8 +30,26 @@ document.addEventListener("DOMContentLoaded", async () => {
       // Reset dropdown with placeholder
       select.innerHTML = `<option value="">${placeholder}</option>`;
 
+      // --- ✅ Filter inactive only for Lead Source ---
+      let results = data.results;
+      if (endpoint.includes("leadsource")) {
+        results = results.filter((item) => {
+          const val = String(item.Inactive ?? "").trim().toLowerCase();
+          // Treat "true", "t", "1", etc. as inactive
+          return (
+            !val ||
+            val === "false" ||
+            val === "f" ||
+            val === "0" ||
+            val === "null" ||
+            val === "undefined"
+          );
+        });
+        console.log(`📋 Filtered lead sources: ${results.length}/${data.results.length} active`);
+      }
+
       // Populate options (with key safety)
-      data.results.forEach((item) => {
+      results.forEach((item) => {
         const label =
           item[labelKey] ||
           item.Title ||
@@ -49,7 +67,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       });
 
-      console.log(`✅ Populated ${selector} (${data.results.length} options)`);
+      console.log(`✅ Populated ${selector} (${results.length} options)`);
     } catch (err) {
       console.error(`❌ Failed to load ${selector}:`, err);
       select.innerHTML = `<option value="">⚠️ Failed to load data</option>`;
@@ -96,7 +114,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 });
 
 
-
 // === Fulfilment Methods ===
 async function populateFulfilmentMethods() {
   try {
@@ -126,12 +143,6 @@ async function populateFulfilmentMethods() {
     console.error("❌ Failed to load fulfilment methods:", err);
   }
 }
-
-// Run on DOM ready
-document.addEventListener("DOMContentLoaded", () => {
-  populateFulfilmentMethods();
-});
-
 
 // Run on DOM ready
 document.addEventListener("DOMContentLoaded", () => {

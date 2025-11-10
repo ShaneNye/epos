@@ -105,71 +105,84 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
     return; // ✅ exit here for same-warehouse case
   }
 
-  /* ----------------------------------------------------
+/* ----------------------------------------------------
      🚚 CASE 2: Different warehouse — populate EPOS meta
   ---------------------------------------------------- */
-  console.log("📦 Different warehouse detected — using custcol_sb_epos_inventory_meta flow");
+console.log("📦 Different warehouse detected — using custcol_sb_epos_inventory_meta flow");
 
-  targetRow.dataset.lotnumber = "";
-  targetRow.dataset.inventoryMeta = detailString;
-  targetRow.dataset.invdetail = detailString;
-
-  try {
-    const jsonMeta = detailString.split(";").map((part) => {
-      const tokens = part.split("|");
-      return {
-        qty: tokens[0] || "",
-        locationName: tokens[1] || "",
-        locationId: tokens[2] || "",
-        statusName: tokens[3] || "",
-        statusId: tokens[4] || "",
-        inventoryNumberName: tokens[5] || "",
-        inventoryNumberId: tokens[6] || "",
-      };
-    });
-    targetRow.dataset.inventoryMetaJson = JSON.stringify(jsonMeta);
-  } catch (err) {
-    console.warn("⚠️ Failed to convert inventory meta to JSON:", err);
-  }
-
-  // === Update the visible cell summary
-  const cell = targetRow.querySelector(".inventory-cell");
-  if (cell) {
-    if (detailString && detailString.trim() !== "") {
-      const display = detailString
-        .split(";")
-        .map((part) => {
-          const [qty, locName, , , , invName] = part.split("|");
-          return `${qty}× ${invName || ""} @ ${locName || ""}`;
-        })
-        .join("<br>");
-      cell.innerHTML = display;
-    } else {
-      cell.textContent = "—";
+// 🧹 Clean up the detail string to remove "Store" from location names
+const cleanedDetail = detailString
+  .split(";")
+  .map((part) => {
+    const tokens = part.split("|");
+    if (tokens.length > 1 && tokens[1]) {
+      tokens[1] = tokens[1].replace(/\bstore\b/gi, "").trim();
     }
-    cell.classList.add("flash-success");
-    setTimeout(() => cell.classList.remove("flash-success"), 800);
-  }
+    return tokens.join("|");
+  })
+  .join(";");
 
-  // ✅ Log for validation
-  try {
-    const lastEntry = detailString.split(";").pop().split("|");
-    console.log("🧩 Parsed final saved fields:", {
-      qty: lastEntry[0],
-      locationName: lastEntry[1],
-      locationId: lastEntry[2],
-      statusName: lastEntry[3],
-      statusId: lastEntry[4],
-      inventoryName: lastEntry[5],
-      inventoryId: lastEntry[6],
-    });
-  } catch (e) {
-    console.warn("⚠️ Could not log parsed fields:", e);
-  }
+targetRow.dataset.lotnumber = "";
+targetRow.dataset.inventoryMeta = cleanedDetail;
+targetRow.dataset.invdetail = cleanedDetail;
 
-  console.log("💾 Final dataset after transfer logic:", {
-    lotnumber: targetRow.dataset.lotnumber || "(empty)",
-    inventoryMeta: targetRow.dataset.inventoryMeta || "(empty)",
+try {
+  const jsonMeta = cleanedDetail.split(";").map((part) => {
+    const tokens = part.split("|");
+    return {
+      qty: tokens[0] || "",
+      locationName: (tokens[1] || "").replace(/\bstore\b/gi, "").trim(),
+      locationId: tokens[2] || "",
+      statusName: tokens[3] || "",
+      statusId: tokens[4] || "",
+      inventoryNumberName: tokens[5] || "",
+      inventoryNumberId: tokens[6] || "",
+    };
   });
-  console.log("──────────────────────────────────────────────");
+  targetRow.dataset.inventoryMetaJson = JSON.stringify(jsonMeta);
+} catch (err) {
+  console.warn("⚠️ Failed to convert inventory meta to JSON:", err);
+}
+
+// === Update the visible cell summary
+const cell = targetRow.querySelector(".inventory-cell");
+if (cell) {
+  if (cleanedDetail && cleanedDetail.trim() !== "") {
+    const display = cleanedDetail
+      .split(";")
+      .map((part) => {
+        const [qty, locName, , , , invName] = part.split("|");
+        return `${qty}× ${invName || ""} @ ${locName || ""}`;
+      })
+      .join("<br>");
+    cell.innerHTML = display;
+  } else {
+    cell.textContent = "—";
+  }
+  cell.classList.add("flash-success");
+  setTimeout(() => cell.classList.remove("flash-success"), 800);
+}
+
+// ✅ Log for validation
+try {
+  const lastEntry = cleanedDetail.split(";").pop().split("|");
+  console.log("🧩 Parsed final saved fields:", {
+    qty: lastEntry[0],
+    locationName: lastEntry[1],
+    locationId: lastEntry[2],
+    statusName: lastEntry[3],
+    statusId: lastEntry[4],
+    inventoryName: lastEntry[5],
+    inventoryId: lastEntry[6],
+  });
+} catch (e) {
+  console.warn("⚠️ Could not log parsed fields:", e);
+}
+
+console.log("💾 Final dataset after transfer logic:", {
+  lotnumber: targetRow.dataset.lotnumber || "(empty)",
+  inventoryMeta: targetRow.dataset.inventoryMeta || "(empty)",
+});
+console.log("──────────────────────────────────────────────");
 };
+

@@ -1,234 +1,235 @@
 <!DOCTYPE html>
 <html lang="en">
-
-<head>
+  <head>
     <meta charset="UTF-8" />
     <title>Edit Location</title>
     <link rel="stylesheet" href="/css/styles.css" />
     <style>
-        :root {
-            --brand: #0081ab;
-            --brand-600: #006c8e;
-            --ink: #1a1f24;
-            --muted: #6a7480;
-            --line: #e6e9ee;
-            --panel: #ffffff;
-        }
+      :root {
+        --brand: #0081ab;
+        --brand-600: #006c8e;
+        --ink: #1a1f24;
+        --muted: #6a7480;
+        --line: #e6e9ee;
+        --panel: #ffffff;
+      }
 
-        body {
-            font-family: "Segoe UI", Roboto, sans-serif;
-            background: var(--panel);
-            color: var(--ink);
-            padding: 2rem;
-            margin: 0;
-        }
+      body {
+        font-family: "Segoe UI", Roboto, sans-serif;
+        background: var(--panel);
+        color: var(--ink);
+        padding: 2rem;
+        margin: 0;
+      }
 
-        h2 {
-            color: var(--brand-600);
-            font-size: 1.4rem;
-            margin-bottom: 1.2rem;
-            text-align: center;
-        }
+      h2 {
+        color: var(--brand-600);
+        font-size: 1.4rem;
+        margin-bottom: 1.2rem;
+        text-align: center;
+      }
 
-        form {
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
-            padding: 1.5rem;
-            max-width: 450px;
-            margin: 0 auto;
-        }
+      form {
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        padding: 1.5rem;
+        max-width: 450px;
+        margin: 0 auto;
+      }
 
-        form label {
-            display: block;
-            font-weight: 600;
-            margin-top: 1rem;
-            font-size: 0.9rem;
-            color: var(--muted);
-        }
+      form label {
+        display: block;
+        font-weight: 600;
+        margin-top: 1rem;
+        font-size: 0.9rem;
+        color: var(--muted);
+      }
 
-        form input,
-        form select {
-            width: 100%;
-            padding: 0.6rem 0.75rem;
-            margin-top: 0.3rem;
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            font-size: 0.95rem;
-            transition: border-color 0.2s, box-shadow 0.2s;
-        }
+      form input,
+      form select {
+        width: 100%;
+        padding: 0.6rem 0.75rem;
+        margin-top: 0.3rem;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        font-size: 0.95rem;
+        transition: border-color 0.2s, box-shadow 0.2s;
+      }
 
-        form input:focus,
-        form select:focus {
-            outline: none;
-            border-color: var(--brand);
-            box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.15);
-        }
+      form input:focus,
+      form select:focus {
+        outline: none;
+        border-color: var(--brand);
+        box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.15);
+      }
 
-        .btn-row {
-            display: flex;
-            justify-content: space-between;
-            margin-top: 1.5rem;
-            gap: 1rem;
-        }
+      .btn-row {
+        display: flex;
+        justify-content: space-between;
+        margin-top: 1.5rem;
+        gap: 1rem;
+      }
 
-        button {
-            flex: 1;
-            padding: 0.7rem 1rem;
-            font-size: 0.95rem;
-            font-weight: 600;
-            border: none;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: background 0.2s, transform 0.1s;
-        }
+      button {
+        flex: 1;
+        padding: 0.7rem 1rem;
+        font-size: 0.95rem;
+        font-weight: 600;
+        border: none;
+        border-radius: 8px;
+        cursor: pointer;
+        transition: background 0.2s, transform 0.1s;
+      }
 
-        button.save {
-            background: var(--brand);
-            color: white;
-        }
+      button.save {
+        background: var(--brand);
+        color: white;
+      }
 
-        button.save:hover {
-            background: var(--brand-600);
-            transform: translateY(-1px);
-        }
+      button.save:hover {
+        background: var(--brand-600);
+        transform: translateY(-1px);
+      }
 
-        button.cancel {
-            background: var(--line);
-            color: var(--ink);
-        }
+      button.cancel {
+        background: var(--line);
+        color: var(--ink);
+      }
 
-        button.cancel:hover {
-            background: #dfe3e8;
-            transform: translateY(-1px);
-        }
+      button.cancel:hover {
+        background: #dfe3e8;
+        transform: translateY(-1px);
+      }
     </style>
-</head>
+  </head>
 
-<body>
+  <body>
     <h2 id="formTitle">Edit Location</h2>
     <form id="locationForm">
-        <label>Name <input name="name" required /></label>
-        <label>NetSuite Internal ID <input name="netsuite_internal_id" /></label>
-        <label>Invoice Location ID <input name="invoice_location_id" /></label>
-        <label>Intercompany Customer <input name="intercompany_customer" /></label>
+      <label>Name <input name="name" required /></label>
+      <label>NetSuite Internal ID <input name="netsuite_internal_id" /></label>
+      <label>Invoice Location ID <input name="invoice_location_id" /></label>
+      <label>Intercompany Customer <input name="intercompany_customer" /></label>
 
-        <label>Petty Cash Account
-            <select name="petty_cash_account">
-                <option value="">Loading...</option>
-            </select>
-        </label>
+      <!-- ✅ NEW FIELD -->
+      <label>Distribution Location ID <input name="distribution_location_id" placeholder="e.g. 203" /></label>
 
-        <label>Current Account
-            <select name="current_account">
-                <option value="">Loading...</option>
-            </select>
-        </label>
+      <label>Petty Cash Account
+        <select name="petty_cash_account">
+          <option value="">Loading...</option>
+        </select>
+      </label>
 
-        <div class="btn-row">
-            <button type="button" class="save">💾 Save</button>
-            <button type="button" class="cancel">✖ Cancel</button>
-        </div>
+      <label>Current Account
+        <select name="current_account">
+          <option value="">Loading...</option>
+        </select>
+      </label>
+
+      <div class="btn-row">
+        <button type="button" class="save">💾 Save</button>
+        <button type="button" class="cancel">✖ Cancel</button>
+      </div>
     </form>
 
     <script>
-        let currentId = null;
-        let glAccounts = [];
-        let glAccountsLoaded = false;
-        let pendingLocationData = null;
+      let currentId = null;
+      let glAccounts = [];
+      let glAccountsLoaded = false;
+      let pendingLocationData = null;
 
-        /* === Load GL Accounts from NetSuite === */
-        async function loadGLAccounts() {
-            try {
-                const res = await fetch("/api/netsuite/glaccounts");
-                const data = await res.json();
+      /* === Load GL Accounts from NetSuite === */
+      async function loadGLAccounts() {
+        try {
+          const res = await fetch("/api/netsuite/glaccounts");
+          const data = await res.json();
 
-                if (data.ok && Array.isArray(data.results)) {
-                    glAccounts = data.results;
-                    glAccountsLoaded = true;
+          if (data.ok && Array.isArray(data.results)) {
+            glAccounts = data.results;
+            glAccountsLoaded = true;
 
-                    const pettySelect = document.querySelector('[name="petty_cash_account"]');
-                    const currentSelect = document.querySelector('[name="current_account"]');
+            const pettySelect = document.querySelector('[name="petty_cash_account"]');
+            const currentSelect = document.querySelector('[name="current_account"]');
 
-                    pettySelect.innerHTML = `<option value="">Select Account</option>`;
-                    currentSelect.innerHTML = `<option value="">Select Account</option>`;
+            pettySelect.innerHTML = `<option value="">Select Account</option>`;
+            currentSelect.innerHTML = `<option value="">Select Account</option>`;
 
-                    data.results.forEach(acc => {
-                        const opt1 = document.createElement("option");
-                        const opt2 = document.createElement("option");
-                        opt1.value = String(acc["Internal ID"]);
-                        opt1.textContent = acc["Name"];
-                        opt2.value = String(acc["Internal ID"]);
-                        opt2.textContent = acc["Name"];
-                        pettySelect.appendChild(opt1);
-                        currentSelect.appendChild(opt2);
-                    });
-
-                    // If edit data arrived before GL accounts were ready, apply now
-                    if (pendingLocationData) {
-                        applyLocationData(pendingLocationData);
-                        pendingLocationData = null;
-                    }
-                }
-            } catch (err) {
-                console.error("❌ Failed to load GL Accounts:", err);
-            }
-        }
-
-        /* === Apply existing location data === */
-        function applyLocationData(loc) {
-            document.getElementById("formTitle").textContent = loc ? "Edit Location" : "New Location";
-            currentId = loc?.id || null;
-
-            // Fill text inputs
-            for (const key in loc || {}) {
-                const input = document.querySelector(`[name="${key}"]`);
-                if (input && input.tagName !== "SELECT") {
-                    input.value = loc[key] ?? "";
-                }
-            }
-
-            // Set dropdown selections
-            if (glAccountsLoaded) {
-                document.querySelector('[name="petty_cash_account"]').value = loc.petty_cash_account || "";
-                document.querySelector('[name="current_account"]').value = loc.current_account || "";
-            }
-        }
-
-        /* === Listen for parent edit message === */
-        window.addEventListener("message", (event) => {
-            if (event.data?.action === "edit-location") {
-                const loc = event.data.location;
-                if (glAccountsLoaded) applyLocationData(loc);
-                else pendingLocationData = loc; // wait until GL accounts load
-            }
-        });
-
-        /* === Cancel and Save handlers === */
-        document.querySelector(".cancel").addEventListener("click", () => window.close());
-
-        document.querySelector(".save").addEventListener("click", async () => {
-            const formData = Object.fromEntries(new FormData(document.getElementById("locationForm")).entries());
-            const method = currentId ? "PUT" : "POST";
-            const url = currentId ? `/api/meta/locations/${currentId}` : `/api/meta/locations`;
-
-            const res = await fetch(url, {
-                method,
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(formData),
+            data.results.forEach(acc => {
+              const opt1 = document.createElement("option");
+              const opt2 = document.createElement("option");
+              opt1.value = String(acc["Internal ID"]);
+              opt1.textContent = acc["Name"];
+              opt2.value = String(acc["Internal ID"]);
+              opt2.textContent = acc["Name"];
+              pettySelect.appendChild(opt1);
+              currentSelect.appendChild(opt2);
             });
 
-            const data = await res.json();
-            if (data.ok) {
-                window.opener.postMessage({ action: "refresh-locations" }, "*");
-                window.close();
-            } else {
-                alert("Failed to save location: " + (data.error || "Unknown error"));
+            // If edit data arrived before GL accounts were ready, apply now
+            if (pendingLocationData) {
+              applyLocationData(pendingLocationData);
+              pendingLocationData = null;
             }
+          }
+        } catch (err) {
+          console.error("❌ Failed to load GL Accounts:", err);
+        }
+      }
+
+      /* === Apply existing location data === */
+      function applyLocationData(loc) {
+        document.getElementById("formTitle").textContent = loc ? "Edit Location" : "New Location";
+        currentId = loc?.id || null;
+
+        // Fill text inputs, including new field
+        for (const key in loc || {}) {
+          const input = document.querySelector(`[name="${key}"]`);
+          if (input && input.tagName !== "SELECT") {
+            input.value = loc[key] ?? "";
+          }
+        }
+
+        // Set dropdown selections
+        if (glAccountsLoaded) {
+          document.querySelector('[name="petty_cash_account"]').value = loc.petty_cash_account || "";
+          document.querySelector('[name="current_account"]').value = loc.current_account || "";
+        }
+      }
+
+      /* === Listen for parent edit message === */
+      window.addEventListener("message", (event) => {
+        if (event.data?.action === "edit-location") {
+          const loc = event.data.location;
+          if (glAccountsLoaded) applyLocationData(loc);
+          else pendingLocationData = loc; // wait until GL accounts load
+        }
+      });
+
+      /* === Cancel and Save handlers === */
+      document.querySelector(".cancel").addEventListener("click", () => window.close());
+
+      document.querySelector(".save").addEventListener("click", async () => {
+        const formData = Object.fromEntries(new FormData(document.getElementById("locationForm")).entries());
+        const method = currentId ? "PUT" : "POST";
+        const url = currentId ? `/api/meta/locations/${currentId}` : `/api/meta/locations`;
+
+        const res = await fetch(url, {
+          method,
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(formData),
         });
 
-        loadGLAccounts();
-    </script>
-</body>
+        const data = await res.json();
+        if (data.ok) {
+          window.opener.postMessage({ action: "refresh-locations" }, "*");
+          window.close();
+        } else {
+          alert("Failed to save location: " + (data.error || "Unknown error"));
+        }
+      });
 
+      loadGLAccounts();
+    </script>
+  </body>
 </html>

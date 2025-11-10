@@ -68,15 +68,23 @@ router.post("/create", async (req, res) => {
       console.warn("⚠️ Could not fetch original SO for warehouse mapping:", err.message);
     }
 
-    // === 3️⃣ Fetch Intercompany Purchase Orders from Suitelet ===
-    console.log("🌐 Fetching Intercompany Purchase Orders from Suitelet...");
-    const token = process.env.SALES_ORDER_INTERCO_PO;
-    const nsUrl = `https://7972741-sb1.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4178&deploy=11&compid=7972741_SB1&ns-at=AAEJ7tMQgUzbg7g2telUskwaxdv6S45Tnmr4UKOzvjT_AjQjsZk&token=${encodeURIComponent(
-      token
-    )}`;
-    const poRes = await fetch(nsUrl);
-    if (!poRes.ok) throw new Error(`Suitelet responded ${poRes.status}`);
-    const poJson = await poRes.json();
+// === 3️⃣ Fetch Intercompany Purchase Orders from Suitelet ===
+console.log("🌐 Fetching Intercompany Purchase Orders from Suitelet...");
+
+const baseUrl = process.env.SALES_PRDER_INTERCO_PO_URL;
+const token = process.env.SALES_ORDER_INTERCO_PO;
+
+if (!baseUrl || !token) {
+  throw new Error("Missing SALES_PRDER_INTERCO_PO_URL or SALES_ORDER_INTERCO_PO in .env");
+}
+
+const nsUrl = `${baseUrl}&token=${encodeURIComponent(token)}`;
+console.log(`📡 Fetching from: ${nsUrl}`);
+
+const poRes = await fetch(nsUrl);
+if (!poRes.ok) throw new Error(`Suitelet responded ${poRes.status}`);
+const poJson = await poRes.json();
+
 
     console.log(`📦 Suitelet returned ${poJson?.results?.length || 0} records`);
     console.log(`🎯 Looking for SO ID match: ${salesOrderId}`);

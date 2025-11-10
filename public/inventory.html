@@ -451,21 +451,62 @@
                     updateAddRowState();
                 }
 
-                // 5️⃣ Notice (transfer alert)
                 function updateNotice() {
                     if (!locSel.value) {
                         noticeCell.textContent = "";
                         noticeCell.className = "noticeCell";
                         return;
                     }
-                    if (locSel.value === selectedWarehouseName) {
-                        noticeCell.textContent = "✅ OK";
+
+                    // 🧭 Determine fulfilment method
+                    let fulfilmentMethod = "";
+                    try {
+                        const lineIdx = parseInt(params.line || "0", 10);
+                        const fulfilSelects = window.opener?.document.querySelectorAll(".item-fulfilment");
+                        const fulfilSelect = fulfilSelects ? fulfilSelects[lineIdx] : null;
+
+                        fulfilmentMethod =
+                            fulfilSelect?.selectedOptions?.[0]?.textContent?.trim()?.toLowerCase() || "";
+                        console.log(`🧾 Fulfilment method (text) for line ${lineIdx}:`, fulfilmentMethod);
+                    } catch (e) {
+                        console.warn("⚠️ Could not determine fulfilment method:", e);
+                    }
+
+                    // 🏪 Get store / warehouse names
+                    const storeSelect = window.opener?.document.getElementById("store");
+                    const storeName = storeSelect?.selectedOptions?.[0]?.textContent?.trim() || "";
+                    const storeNameLower = storeName.toLowerCase();
+                    const warehouseNameLower = selectedWarehouseName.toLowerCase();
+                    const locLower = locSel.value.toLowerCase();
+
+                    // ✅ Determine target destination
+                    let destinationName = selectedWarehouseName;
+                    if (fulfilmentMethod.includes("store")) {
+                        destinationName = storeName || selectedWarehouseName;
+                        console.log(`🏪 Using store as transfer destination: ${destinationName}`);
+                    } else {
+                        console.log(`🏭 Using warehouse as transfer destination: ${destinationName}`);
+                    }
+
+                    // ✅ Match logic (fuzzy for store)
+                    const isWarehouseMatch = locLower === warehouseNameLower;
+                    const isStoreMatch =
+                        fulfilmentMethod.includes("store") &&
+                        (locLower === storeNameLower ||
+                            locLower.includes(storeNameLower) ||
+                            storeNameLower.includes(locLower));
+
+                    // 🧾 Notice output
+                    if (isWarehouseMatch || isStoreMatch) {
+                        noticeCell.textContent = isStoreMatch ? "✅ OK" : "✅ OK";
                         noticeCell.className = "noticeCell notice-ok";
                     } else {
-                        noticeCell.textContent = `⚠️ Goods from ${locSel.value} will trigger a transfer to ${selectedWarehouseName}`;
+                        noticeCell.textContent = `⚠️ Goods from ${locSel.value} will trigger a transfer to ${destinationName}`;
                         noticeCell.className = "noticeCell notice-transfer";
                     }
                 }
+
+
 
                 /* ------------------------------------------
                    Events

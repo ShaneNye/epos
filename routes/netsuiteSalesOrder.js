@@ -8,7 +8,7 @@ const {
   nsGet,
   nsPostRaw,
   nsPatch,
-  getAuthHeader, 
+  getAuthHeader,
 } = require("../netsuiteClient");
 
 
@@ -22,13 +22,12 @@ router.post("/create", async (req, res) => {
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
     let userId = null;
-   if (token) {
-  const session = await getSession(token);
-  console.log("🧠 Session returned from getSession():", session);
-  userId = session?.id || null;
-  console.log("🔐 Authenticated session for SO creation:", userId);
-}
-
+    if (token) {
+      const session = await getSession(token);
+      console.log("🧠 Session returned from getSession():", session);
+      userId = session?.id || null;
+      console.log("🔐 Authenticated session for SO creation:", userId);
+    }
 
     const { customer, order, items, deposits = [] } = req.body;
     let customerId = customer?.id || null;
@@ -63,9 +62,8 @@ router.post("/create", async (req, res) => {
       };
 
       console.log("🧾 Creating new customer:", JSON.stringify(custBody, null, 2));
-      const newCustomer = await nsPost("/customer", custBody, userId, "sb"); // 👈 use per-user token
+      const newCustomer = await nsPost("/customer", custBody, userId, "sb");
 
-      // Extract customer ID as before
       let match;
       if (newCustomer._location && (match = newCustomer._location.match(/customer\/(\d+)/))) {
         customerId = match[1];
@@ -101,17 +99,20 @@ router.post("/create", async (req, res) => {
     // === 3️⃣ Lookup Store Info ===
     let invoiceLocationId = null;
     let storeNsId = null;
+    let storeName = "";
     if (order.store) {
       try {
         const resultLoc = await pool.query(
-          `SELECT netsuite_internal_id, invoice_location_id 
+          `SELECT name, netsuite_internal_id, invoice_location_id 
            FROM locations WHERE id = $1`,
           [order.store]
         );
         if (resultLoc.rows.length) {
-          storeNsId = resultLoc.rows[0].netsuite_internal_id || null;
-          invoiceLocationId = resultLoc.rows[0].invoice_location_id || null;
-          console.log("🏬 Store lookup →", { storeNsId, invoiceLocationId });
+          const row = resultLoc.rows[0];
+          storeNsId = row.netsuite_internal_id || null;
+          invoiceLocationId = row.invoice_location_id || null;
+          storeName = row.name || "";
+          console.log("🏬 Store lookup →", { storeNsId, invoiceLocationId, storeName });
         }
       } catch (err) {
         console.error("❌ Error looking up store info:", err.message);
@@ -131,32 +132,55 @@ router.post("/create", async (req, res) => {
       custbody_sb_paymentinfo: { id: order.paymentInfo },
       custbody_sb_warehouse: { id: order.warehouse },
       item: {
-  items: items.map((i, idx) => {
-    const line = {
-      item: { id: i.item },
-      quantity: i.quantity,
-      amount: i.amount / 1.2,
-      custcol_sb_itemoptionsdisplay: i.options || "",
-    };
+        items: items.map((i, idx) => {
+          const line = {
+            item: { id: i.item },
+            quantity: i.quantity,
+            amount: i.amount / 1.2,
+            custcol_sb_itemoptionsdisplay: i.options || "",
+          };
 
-    if (i.fulfilmentMethod && String(i.fulfilmentMethod).trim() !== "" && i.class !== "service") {
-      line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
-    }
+          // === Fulfilment Location
+          if (i.fulfilmentMethod && String(i.fulfilmentMethod).trim() !== "" && i.class !== "service") {
+            line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
+          }
 
-    if (i.lotnumber && i.lotnumber.trim() !== "") {
-      line.custcol_sb_lotnumber = { id: i.lotnumber };
-    } else if (i.inventoryMeta && i.inventoryMeta.trim() !== "") {
-      line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
+          // === Allocation Logic (lot vs meta)
+          if (i.lotnumber && i.lotnumber.trim() !== "") {
+            // ✅ Explicit lotnumber
+            line.custcol_sb_lotnumber = { id: i.lotnumber };
+          } else if (i.inventoryMeta && i.inventoryMeta.trim() !== "") {
+            // 🔍 Parse inventory meta to check for store match
+            const metaParts = i.inventoryMeta.split(";").map(p => p.trim()).filter(Boolean);
+            const firstPart = metaParts[0] || "";
+            const tokens = firstPart.split("|").map(v => (v || "").trim());
+            const locName = tokens[1] || "";
+            const invId = tokens[6] || "";
+            const fulfilName = (i.fulfilmentMethodName || "").toLowerCase();
 
-      // 🧩 Cross-warehouse logic → set to Do Not Allocate
-      line.orderallocationstrategy = null; // blank value prevents early allocation
-      console.log(`🚫 Marking SO line ${idx + 1} (item ${i.item}) as Do Not Allocate`);
-    }
+            const isStoreMatch =
+              fulfilName.includes("store") &&
+              (
+                locName.toLowerCase() === storeName.toLowerCase() ||
+                locName.toLowerCase().includes(storeName.toLowerCase()) ||
+                storeName.toLowerCase().includes(locName.toLowerCase())
+              );
 
-    return line;
-  }),
-},
+            if (isStoreMatch && invId) {
+              // ✅ In-Store match — treat like warehouse, allocate lotnumber
+              line.custcol_sb_lotnumber = { id: invId };
+              console.log(`🏪 Line ${idx + 1} (item ${i.item}) In-Store match — using lotnumber ${invId}`);
+            } else {
+              // 🚚 Cross-location or warehouse transfer — use EPOS meta
+              line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
+              line.orderallocationstrategy = null; // prevent early allocation
+              console.log(`🚚 Line ${idx + 1} (item ${i.item}) cross-location transfer required`);
+            }
+          }
 
+          return line;
+        }),
+      },
     };
 
     console.log("🚀 Sales Order payload preview:", JSON.stringify(orderBody, null, 2));
@@ -176,229 +200,284 @@ router.post("/create", async (req, res) => {
     console.log("✅ Sales Order created successfully with ID:", salesOrderId);
 
 
-// ==========================================================
-// 💰 Create Customer Deposit(s) if provided in payload
-// ==========================================================
-const allDeposits = Array.isArray(order?.deposits)
-  ? order.deposits
-  : Array.isArray(req.body?.deposits)
-  ? req.body.deposits
-  : [];
+    // ==========================================================
+    // 💰 Create Customer Deposit(s) if provided in payload
+    // ==========================================================
+    const allDeposits = Array.isArray(order?.deposits)
+      ? order.deposits
+      : Array.isArray(req.body?.deposits)
+        ? req.body.deposits
+        : [];
 
-if (Array.isArray(allDeposits) && allDeposits.length > 0) {
-  console.log(`💰 Found ${allDeposits.length} deposit(s) in payload — creating in NetSuite...`);
-  console.table(
-    allDeposits.map((d) => ({
-      MethodID: d.id,
-      MethodName: d.name,
-      Amount: d.amount,
-    }))
-  );
+    if (Array.isArray(allDeposits) && allDeposits.length > 0) {
+      console.log(`💰 Found ${allDeposits.length} deposit(s) in payload — creating in NetSuite...`);
+      console.table(
+        allDeposits.map((d) => ({
+          MethodID: d.id,
+          MethodName: d.name,
+          Amount: d.amount,
+        }))
+      );
 
-  // 🔍 Fetch account mapping from store
-  let currentAccountId = null;
-  let pettyCashAccountId = null;
-  try {
-const accResult = await pool.query(
-  `SELECT current_account, petty_cash_account 
+      // 🔍 Fetch account mapping from store
+      let currentAccountId = null;
+      let pettyCashAccountId = null;
+      try {
+        const accResult = await pool.query(
+          `SELECT current_account, petty_cash_account 
      FROM locations 
     WHERE id = $1 
     LIMIT 1`,
-  [order.store]
-);
-const accRows = accResult.rows;
-
-    if (accRows.length) {
-      currentAccountId = accRows[0].current_account || null;
-      pettyCashAccountId = accRows[0].petty_cash_account || null;
-      console.log("🏦 Store account mapping →", { currentAccountId, pettyCashAccountId });
-    } else {
-      console.warn("⚠️ No account mapping found for store:", order.store);
-    }
-  } catch (accErr) {
-    console.error("❌ Failed to load store account mapping:", accErr.message);
-  }
-
-  for (const [index, dep] of allDeposits.entries()) {
-    try {
-      const isCash = /cash/i.test(dep.name || "");
-      const selectedAccountId = isCash ? pettyCashAccountId : currentAccountId;
-
-      if (!selectedAccountId) {
-        console.warn(
-          `⚠️ [Deposit ${index + 1}] No ${
-            isCash ? "petty cash" : "current"
-          } account ID found — skipping account assignment.`
+          [order.store]
         );
+        const accRows = accResult.rows;
+
+        if (accRows.length) {
+          currentAccountId = accRows[0].current_account || null;
+          pettyCashAccountId = accRows[0].petty_cash_account || null;
+          console.log("🏦 Store account mapping →", { currentAccountId, pettyCashAccountId });
+        } else {
+          console.warn("⚠️ No account mapping found for store:", order.store);
+        }
+      } catch (accErr) {
+        console.error("❌ Failed to load store account mapping:", accErr.message);
       }
 
-      // ✅ Correct NetSuite payload
-      const depositBody = {
-        entity: { id: String(customerId) },
-        subsidiary: storeNsId ? { id: String(storeNsId) } : undefined,
-        trandate: new Date().toISOString().split("T")[0],
-        salesorder: { id: String(salesOrderId) },
-        payment: parseFloat(dep.amount || 0),
-        paymentmethod: { id: String(dep.id) },
-        undepfunds: false, // ✅ Use Account instead of Undeposited Funds
-        memo: dep.name || "", // ✅ NEW — populate memo with payment method name
-        ...(selectedAccountId && { account: { id: String(selectedAccountId) } }),
-      };
+      for (const [index, dep] of allDeposits.entries()) {
+        try {
+          const isCash = /cash/i.test(dep.name || "");
+          const selectedAccountId = isCash ? pettyCashAccountId : currentAccountId;
 
-      console.log(`🧾 [Deposit ${index + 1}] Creating Customer Deposit:`);
-      console.dir(depositBody, { depth: null });
+          if (!selectedAccountId) {
+            console.warn(
+              `⚠️ [Deposit ${index + 1}] No ${isCash ? "petty cash" : "current"
+              } account ID found — skipping account assignment.`
+            );
+          }
 
-const depositRes = await nsPost("/customerDeposit", depositBody, userId, "sb");
+          // ✅ Correct NetSuite payload
+          const depositBody = {
+            entity: { id: String(customerId) },
+            subsidiary: storeNsId ? { id: String(storeNsId) } : undefined,
+            trandate: new Date().toISOString().split("T")[0],
+            salesorder: { id: String(salesOrderId) },
+            payment: parseFloat(dep.amount || 0),
+            paymentmethod: { id: String(dep.id) },
+            undepfunds: false, // ✅ Use Account instead of Undeposited Funds
+            memo: dep.name || "", // ✅ NEW — populate memo with payment method name
+            ...(selectedAccountId && { account: { id: String(selectedAccountId) } }),
+          };
+
+          console.log(`🧾 [Deposit ${index + 1}] Creating Customer Deposit:`);
+          console.dir(depositBody, { depth: null });
+
+          const depositRes = await nsPost("/customerDeposit", depositBody, userId, "sb");
 
 
-      let depositId = depositRes?.id || null;
-      if (!depositId && depositRes?._location) {
-        const match = depositRes._location.match(/customerDeposit\/(\d+)/i);
-        if (match) depositId = match[1];
+          let depositId = depositRes?.id || null;
+          if (!depositId && depositRes?._location) {
+            const match = depositRes._location.match(/customerDeposit\/(\d+)/i);
+            if (match) depositId = match[1];
+          }
+
+          if (depositId) {
+            console.log(`✅ Deposit ${index + 1} created successfully → ID ${depositId}`);
+          } else {
+            console.warn(`⚠️ Deposit ${index + 1} created but no ID returned:`, depositRes);
+          }
+        } catch (err) {
+          console.error(`❌ Failed to create Customer Deposit ${index + 1}:`, err.message);
+        }
+      }
+    } else {
+      console.log("ℹ️ No customer deposits found in request — skipping deposit creation.");
+    }
+
+    // ==========================================================
+    //  🔁 Create Transfer Orders for cross-location lines
+    // ==========================================================
+    const createdTransfers = [];
+    try {
+      const salesOrderTranId = so.tranId || so.tranid || so.id || "";
+
+      // 🔍 Fetch full store record to get distribution location
+      let storeDistributionLocId = null;
+      try {
+        const storeRes = await pool.query(
+          `SELECT 
+         netsuite_internal_id, 
+         invoice_location_id, 
+         distribution_location_id 
+       FROM locations 
+       WHERE id = $1 
+       LIMIT 1`,
+          [order.store]
+        );
+
+        if (storeRes.rows.length) {
+          const row = storeRes.rows[0];
+
+          // ✅ Force-clean and prioritise non-empty strings
+          const dist = (row.distribution_location_id || "").toString().trim();
+          const inv = (row.invoice_location_id || "").toString().trim();
+          const main = (row.netsuite_internal_id || "").toString().trim();
+
+          storeDistributionLocId =
+            dist !== "" ? dist :
+              inv !== "" ? inv :
+                main !== "" ? main : null;
+
+          console.log("🏬 Store location mapping →", {
+            storeNsId: main,
+            invoiceLocationId: inv,
+            distributionLocationId: dist,
+            usedTransferDest: storeDistributionLocId,
+          });
+        } else {
+          console.warn("⚠️ No store record found for store ID:", order.store);
+        }
+      } catch (err) {
+        console.error("❌ Failed to load store distribution location:", err.message);
       }
 
-      if (depositId) {
-        console.log(`✅ Deposit ${index + 1} created successfully → ID ${depositId}`);
-      } else {
-        console.warn(`⚠️ Deposit ${index + 1} created but no ID returned:`, depositRes);
+      for (const [idx, line] of items.entries()) {
+        if (!line.inventoryMeta) continue;
+
+        const metaParts = line.inventoryMeta
+          .split(";")
+          .map((p) => p.trim())
+          .filter(Boolean);
+
+        for (const part of metaParts) {
+          const [qty, locName, locIdRaw, , , , invIdRaw] = part.split("|");
+          const locId = (locIdRaw || "").trim();
+          const invId = (invIdRaw || "").trim();
+          const quantity = parseFloat(qty || 0) || 0;
+
+          if (!quantity) {
+            console.log(`⚠️ [Line ${idx + 1}] Skipping — no quantity`);
+            continue;
+          }
+
+          // Try to map by location name if ID missing
+          let sourceLocId = locId;
+          if (!sourceLocId && locName) {
+            try {
+              const resultLocName = await pool.query(
+                "SELECT netsuite_internal_id FROM locations WHERE name ILIKE $1 LIMIT 1",
+                [locName]
+              );
+              if (resultLocName.rows.length && resultLocName.rows[0].netsuite_internal_id) {
+                sourceLocId = String(resultLocName.rows[0].netsuite_internal_id);
+                console.log(`📍 Mapped "${locName}" → netsuite_internal_id ${sourceLocId}`);
+              } else {
+                console.warn(`⚠️ No matching location found for name "${locName}"`);
+              }
+            } catch (err) {
+              console.error(`❌ Location lookup failed for "${locName}":`, err.message);
+            }
+          }
+
+          if (!sourceLocId) {
+            console.log(`⚠️ [Line ${idx + 1}] Skipping — missing locationId for "${locName}"`);
+            continue;
+          }
+
+          if (!invId) {
+            console.log(`⚠️ [Line ${idx + 1}] Skipping — missing inventoryNumberId`);
+            continue;
+          }
+
+          // Skip if same as main warehouse
+          if (String(sourceLocId) === String(order.warehouse)) {
+            console.log(`ℹ️ [Line ${idx + 1}] Same source/destination → no transfer`);
+            continue;
+          }
+
+          // ✅ Determine and validate destination location
+          let destinationLocId = storeDistributionLocId || order.warehouse;
+          if (!destinationLocId || isNaN(destinationLocId)) {
+            console.warn(
+              `⚠️ Destination location (${destinationLocId}) invalid — falling back to warehouse ${order.warehouse}`
+            );
+            destinationLocId = order.warehouse;
+          }
+          destinationLocId = String(destinationLocId).trim();
+          const sourceLocFinal = String(sourceLocId).trim();
+
+          console.log(
+            `🧭 [Line ${idx + 1}] SourceLoc: ${sourceLocFinal} | DestinationLoc: ${destinationLocId}`
+          );
+
+          // Build Transfer Order body
+          const transferBody = {
+            subsidiary: { id: "6" },
+            custbody_sb_needed_by: new Date(Date.now() + 3 * 86400000)
+              .toISOString()
+              .split("T")[0],
+            transferlocation: { id: destinationLocId }, // ✅ destination (store or its distribution)
+            location: { id: sourceLocFinal }, // ✅ source
+            custbody_sb_transfer_order_type: { id: "2" },
+            custbody_sb_relatedsalesorder: salesOrderId
+              ? { id: String(salesOrderId) }
+              : undefined,
+            item: {
+              items: [
+                {
+                  item: { id: line.item },
+                  quantity,
+                  inventorydetail: {
+                    inventoryassignment: {
+                      items: [
+                        {
+                          issueinventorynumber: { id: invId },
+                          quantity,
+                        },
+                      ],
+                    },
+                  },
+                },
+              ],
+            },
+          };
+
+          console.log(`🔁 Creating Transfer Order for line ${idx + 1}:`);
+          console.dir(transferBody, { depth: null });
+
+          try {
+            const transferResponse = await nsPost("/transferOrder", transferBody, userId, "sb");
+            let transferId = transferResponse?.id || null;
+            if (!transferId && transferResponse._location) {
+              const match = transferResponse._location.match(/transferorder\/(\d+)/i);
+              if (match) transferId = match[1];
+            }
+            console.log(
+              `✅ Transfer Order created for item ${line.item} → ID ${transferId || "(unknown)"}`
+            );
+            createdTransfers.push({
+              itemId: line.item,
+              transferOrderId: transferId,
+              sourceLocation: sourceLocFinal,
+              destinationWarehouse: destinationLocId,
+            });
+          } catch (postErr) {
+            console.error(
+              `❌ Failed to create Transfer Order for line ${idx + 1}:`,
+              postErr.message
+            );
+          }
+        }
       }
     } catch (err) {
-      console.error(`❌ Failed to create Customer Deposit ${index + 1}:`, err.message);
+      console.error("⚠️ Transfer Order creation block failed:", err.message);
     }
-  }
-} else {
-  console.log("ℹ️ No customer deposits found in request — skipping deposit creation.");
-}
 
-
-// ==========================================================
-//  🔁 Create Transfer Orders for cross-warehouse lines
-// ==========================================================
-const createdTransfers = [];
-try {
-  const salesOrderTranId = so.tranId || so.tranid || so.id || "";
-
-  for (const [idx, line] of items.entries()) {
-    if (!line.inventoryMeta) continue;
-
-    const metaParts = line.inventoryMeta.split(";").map(p => p.trim()).filter(Boolean);
-    for (const part of metaParts) {
-      const [qty, locName, locIdRaw, , , , invIdRaw] = part.split("|");
-      const locId = (locIdRaw || "").trim();
-      const invId = (invIdRaw || "").trim();
-      const quantity = parseFloat(qty || 0) || 0;
-
-      if (!quantity) {
-        console.log(`⚠️ [Line ${idx + 1}] Skipping — no quantity`);
-        continue;
-      }
-// Try to map by location name if ID missing
-let sourceLocId = locId;
-if (!sourceLocId && locName) {
-  try {
-    const resultLocName = await pool.query(
-      "SELECT netsuite_internal_id FROM locations WHERE name = $1 LIMIT 1",
-      [locName]
-    );
-
-    if (resultLocName.rows.length && resultLocName.rows[0].netsuite_internal_id) {
-      sourceLocId = String(resultLocName.rows[0].netsuite_internal_id);
-      console.log(`📍 Mapped "${locName}" → netsuite_internal_id ${sourceLocId}`);
-    } else {
-      console.warn(`⚠️ No matching location found for name "${locName}"`);
-    }
-  } catch (err) {
-    console.error(`❌ Location lookup failed for "${locName}":`, err.message);
-  }
-}
-
-if (!sourceLocId) {
-  console.log(`⚠️ [Line ${idx + 1}] Skipping — missing locationId for "${locName}"`);
-  continue;
-}
-
-if (!invId) {
-  console.log(`⚠️ [Line ${idx + 1}] Skipping — missing inventoryNumberId`);
-  continue;
-}
-
-// Skip if same as main warehouse
-if (String(sourceLocId) === String(order.warehouse)) {
-  console.log(`ℹ️ [Line ${idx + 1}] Same as main warehouse → no transfer`);
-  continue;
-}
-
-
-      // Build Transfer Order body
-const transferBody = {
-  subsidiary: { id: "6" },
-  custbody_sb_needed_by: new Date(Date.now() + 3 * 86400000)
-    .toISOString()
-    .split("T")[0],
-  transferlocation: { id: String(order.warehouse) },
-  location: { id: String(sourceLocId) },
-  custbody_sb_transfer_order_type: { id: "2" },
-  custbody_sb_relatedsalesorder: salesOrderId
-    ? { id: String(salesOrderId) }
-    : undefined,
-  item: {
-    items: [
-      {
-        item: { id: line.item },
-        quantity,
-        inventorydetail: {
-          inventoryassignment: {
-            items: [
-              {
-                issueinventorynumber: { id: invId },
-                quantity,
-              },
-            ],
-          },
-        },
-      },
-    ],
-  },
-};
-
-
-      console.log(`🔁 Creating Transfer Order for line ${idx + 1}:`);
-      console.dir(transferBody, { depth: null });
-
-      try {
-        const transferResponse = await nsPost("/transferOrder", transferBody, userId, "sb");
-        let transferId = transferResponse?.id || null;
-        if (!transferId && transferResponse._location) {
-          const match = transferResponse._location.match(/transferorder\/(\d+)/i);
-          if (match) transferId = match[1];
-        }
-        console.log(
-          `✅ Transfer Order created for item ${line.item} → ID ${transferId || "(unknown)"}`
-        );
-        createdTransfers.push({
-          itemId: line.item,
-          transferOrderId: transferId,
-          sourceLocation: sourceLocId,
-          destinationWarehouse: order.warehouse,
-        });
-      } catch (postErr) {
-        console.error(`❌ Failed to create Transfer Order for line ${idx + 1}:`, postErr.message);
-      }
-    }
-  }
-} catch (err) {
-  console.error("⚠️ Transfer Order creation block failed:", err.message);
-}
-
-return res.json({
-  ok: true,
-  salesOrderId,
-  createdTransfers,
-  response: so,
-});
-
-
-
+    return res.json({
+      ok: true,
+      salesOrderId,
+      createdTransfers,
+      response: so,
+    });
 
 
   } catch (err) {
@@ -451,13 +530,19 @@ router.get("/:id", async (req, res) => {
       so.entityFull = entityFull; // attach for frontend
     }
 
-/* -----------------------------------------------------
-       1️⃣ Fetch Item Feed (Name + Base Price)
-    ----------------------------------------------------- */
+    /* -----------------------------------------------------
+           1️⃣ Fetch Item Feed (Name + Base Price)
+        ----------------------------------------------------- */
+    const baseUrlItems = process.env.SALES_ORDER_ITEMS_URL;
     const itemFeedToken = process.env.SALES_ORDER_ITEMS;
-    const nsUrlItems = `https://7972741-sb1.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4178&deploy=6&compid=7972741_SB1&ns-at=AAEJ7tMQlL2UP5SuRn6p9IsRJ-Rgkanx98uShulWU5RVHLRlgSs&token=${encodeURIComponent(
-      itemFeedToken
-    )}`;
+
+    if (!baseUrlItems || !itemFeedToken) {
+      throw new Error("Missing SALES_ORDER_ITEMS_URL or SALES_ORDER_ITEMS in .env");
+    }
+
+    const nsUrlItems = `${baseUrlItems}&token=${encodeURIComponent(itemFeedToken)}`;
+    console.log(`📡 Fetching item feed from: ${nsUrlItems}`);
+
 
     const respItems = await fetch(nsUrlItems);
     if (!respItems.ok) throw new Error(`NetSuite item feed returned ${respItems.status}`);
@@ -582,7 +667,7 @@ router.get("/:id", async (req, res) => {
       const normalizeKeys = (obj) => {
         const newObj = {};
         for (const [key, value] of Object.entries(obj)) {
-          const cleanKey = key.replace(/\u00A0/g, " "); 
+          const cleanKey = key.replace(/\u00A0/g, " ");
           newObj[cleanKey.trim()] = value;
         }
         return newObj;
@@ -705,77 +790,77 @@ router.post("/:id/commit", async (req, res) => {
 
     console.log(`✅ Sales Order ${id} approved via RESTlet`);
 
-// ==========================================================
-// 🧾 Create custom record: customrecord_sb_coms_sales_value
-// ==========================================================
-try {
-  console.log("📊 Creating customrecord_sb_coms_sales_value for SO:", id);
+    // ==========================================================
+    // 🧾 Create custom record: customrecord_sb_coms_sales_value
+    // ==========================================================
+    try {
+      console.log("📊 Creating customrecord_sb_coms_sales_value for SO:", id);
 
-  // Fetch SO to get field values
-  const soData = await nsGet(`/salesOrder/${id}`, userId, "sb");
+      // Fetch SO to get field values
+      const soData = await nsGet(`/salesOrder/${id}`, userId, "sb");
 
-  // Extract fields
-  const soInternalId = soData?.id || soData?.internalId || id; // internal record ID
-  const grossValue = soData?.custbody_stc_total_after_discount || 0;
-  const profitValue = soData?.custrecord_sb_coms_profit || 0;
-  const salesRep = soData?.custbody_sb_bedspecialist?.id || null;
+      // Extract fields
+      const soInternalId = soData?.id || soData?.internalId || id; // internal record ID
+      const grossValue = soData?.custbody_stc_total_after_discount || 0;
+      const profitValue = soData?.custrecord_sb_coms_profit || 0;
+      const salesRep = soData?.custbody_sb_bedspecialist?.id || null;
 
-  // Build custom record payload
-  const recordBody = {
-    custrecord_sb_coms_date: new Date().toISOString().split("T")[0],
-    custrecord_sb_coms_sales_order: { id: String(soInternalId) }, // link to SO ID
-    custrecord_sb_coms_gross: parseFloat(grossValue) || 0,
-    custrecord_sb_coms_profit: parseFloat(profitValue) || 0,
-    ...(salesRep && { custrecord_sb_coms_sales_rep: { id: String(salesRep) } }),
-  };
+      // Build custom record payload
+      const recordBody = {
+        custrecord_sb_coms_date: new Date().toISOString().split("T")[0],
+        custrecord_sb_coms_sales_order: { id: String(soInternalId) }, // link to SO ID
+        custrecord_sb_coms_gross: parseFloat(grossValue) || 0,
+        custrecord_sb_coms_profit: parseFloat(profitValue) || 0,
+        ...(salesRep && { custrecord_sb_coms_sales_rep: { id: String(salesRep) } }),
+      };
 
-  console.log("🧾 Custom record payload:", recordBody);
+      console.log("🧾 Custom record payload:", recordBody);
 
-  // ==========================================================
-  // 🌐 Post to RESTlet (customscript_sb_epos_coms_sales_data)
-  // ==========================================================
-  const restletUrl = "https://7972741-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=4193&deploy=1";
+      // ==========================================================
+      // 🌐 Post to RESTlet (customscript_sb_epos_coms_sales_data)
+      // ==========================================================
+      const restletUrl = "https://7972741-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=4193&deploy=1";
 
-  // Available Without Login → no token header needed
-  const resCreate = await fetch(restletUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(recordBody),
-  });
+      // Available Without Login → no token header needed
+      const resCreate = await fetch(restletUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(recordBody),
+      });
 
-  const text = await resCreate.text();
-  let json;
-  try {
-    json = JSON.parse(text);
-  } catch {
-    json = { ok: false, raw: text };
+      const text = await resCreate.text();
+      let json;
+      try {
+        json = JSON.parse(text);
+      } catch {
+        json = { ok: false, raw: text };
+      }
+
+      if (resCreate.ok && json.ok) {
+        console.log(`✅ Custom record created successfully → ID ${json.id}`);
+      } else {
+        console.error("❌ RESTlet returned error:", json);
+      }
+    } catch (err) {
+      console.error("❌ Failed to create customrecord_sb_coms_sales_value:", err.message);
+    }
+
+
+    // ==========================================================
+    // ✅ Final API Response
+    // ==========================================================
+    return res.json({
+      ok: true,
+      message: data.message || "Sales Order approved",
+      restletResult: data,
+    });
+  } catch (err) {
+    console.error("❌ Commit Sales Order failed:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Unexpected server error",
+    });
   }
-
-  if (resCreate.ok && json.ok) {
-    console.log(`✅ Custom record created successfully → ID ${json.id}`);
-  } else {
-    console.error("❌ RESTlet returned error:", json);
-  }
-} catch (err) {
-  console.error("❌ Failed to create customrecord_sb_coms_sales_value:", err.message);
-}
-
-
-// ==========================================================
-// ✅ Final API Response
-// ==========================================================
-return res.json({
-  ok: true,
-  message: data.message || "Sales Order approved",
-  restletResult: data,
-});
-} catch (err) {
-  console.error("❌ Commit Sales Order failed:", err);
-  return res.status(500).json({
-    ok: false,
-    error: err.message || "Unexpected server error",
-  });
-}
 });
 
 // ==========================================================
@@ -824,13 +909,13 @@ router.post("/:id/add-deposit", async (req, res) => {
       storeId = 1; // fallback location
     }
 
-// ==========================================================
-// 🔎 Fetch account mapping for that store (handles invoice vs store subsidiary)
-// ==========================================================
-let accRows = [];
-try {
-  // Step 1️⃣ — Try matching on id, netsuite_internal_id, or invoice_location_id
-  const query = `
+    // ==========================================================
+    // 🔎 Fetch account mapping for that store (handles invoice vs store subsidiary)
+    // ==========================================================
+    let accRows = [];
+    try {
+      // Step 1️⃣ — Try matching on id, netsuite_internal_id, or invoice_location_id
+      const query = `
     SELECT id, name, netsuite_internal_id, invoice_location_id, current_account, petty_cash_account
     FROM locations
     WHERE id::text = $1::text 
@@ -838,49 +923,49 @@ try {
        OR invoice_location_id::text = $1::text
     LIMIT 1
   `;
-  const result = await pool.query(query, [String(storeId)]);
-  accRows = result.rows || [];
+      const result = await pool.query(query, [String(storeId)]);
+      accRows = result.rows || [];
 
-  // Step 2️⃣ — If we matched an invoice location, follow back to its store subsidiary
-  if (accRows.length && accRows[0].invoice_location_id?.toString() === String(storeId)) {
-    const realStoreNsId = accRows[0].netsuite_internal_id;
-    console.log(`🔁 Matched invoice location ${storeId}, resolving real store netsuite_internal_id → ${realStoreNsId}`);
+      // Step 2️⃣ — If we matched an invoice location, follow back to its store subsidiary
+      if (accRows.length && accRows[0].invoice_location_id?.toString() === String(storeId)) {
+        const realStoreNsId = accRows[0].netsuite_internal_id;
+        console.log(`🔁 Matched invoice location ${storeId}, resolving real store netsuite_internal_id → ${realStoreNsId}`);
 
-    const storeRes = await pool.query(
-      `
+        const storeRes = await pool.query(
+          `
       SELECT id, name, netsuite_internal_id, current_account, petty_cash_account
       FROM locations
       WHERE netsuite_internal_id::text = $1::text
       LIMIT 1
       `,
-      [String(realStoreNsId)]
-    );
-    if (storeRes.rows.length) accRows = storeRes.rows;
-  }
+          [String(realStoreNsId)]
+        );
+        if (storeRes.rows.length) accRows = storeRes.rows;
+      }
 
-  if (accRows.length) {
-    console.log("🏪 Store match found:", accRows[0]);
-  } else {
-    console.warn("⚠️ No location match found for storeId:", storeId);
-  }
-} catch (dbErr) {
-  console.error("❌ Failed to fetch account mapping:", dbErr.message);
-}
+      if (accRows.length) {
+        console.log("🏪 Store match found:", accRows[0]);
+      } else {
+        console.warn("⚠️ No location match found for storeId:", storeId);
+      }
+    } catch (dbErr) {
+      console.error("❌ Failed to fetch account mapping:", dbErr.message);
+    }
 
-const currentAccountId = accRows?.[0]?.current_account || null;
-const pettyCashAccountId = accRows?.[0]?.petty_cash_account || null;
+    const currentAccountId = accRows?.[0]?.current_account || null;
+    const pettyCashAccountId = accRows?.[0]?.petty_cash_account || null;
 
-// ✅ Choose correct account based on payment method name
-const isCash = /cash/i.test(dep.name || dep.method || "");
-const selectedAccountId = isCash ? pettyCashAccountId : currentAccountId;
+    // ✅ Choose correct account based on payment method name
+    const isCash = /cash/i.test(dep.name || dep.method || "");
+    const selectedAccountId = isCash ? pettyCashAccountId : currentAccountId;
 
-console.log("🏦 Account mapping resolved →", {
-  storeId,
-  currentAccountId,
-  pettyCashAccountId,
-  selectedAccountId,
-  isCash,
-});
+    console.log("🏦 Account mapping resolved →", {
+      storeId,
+      currentAccountId,
+      pettyCashAccountId,
+      selectedAccountId,
+      isCash,
+    });
 
 
     // ==========================================================

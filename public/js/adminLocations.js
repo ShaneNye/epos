@@ -23,6 +23,8 @@ document.addEventListener("DOMContentLoaded", () => {
         <td>${l.netsuite_internal_id || "-"}</td>
         <td>${l.invoice_location_id || "-"}</td>
         <td>${l.intercompany_customer || "-"}</td>
+       <!-- <td>${l.intercompany_location || "-"}</td> -->
+        <td>${l.distribution_location_id || "-"}</td> <!-- ✅ NEW COLUMN -->
         <td>${l.petty_cash_account || "-"}</td>
         <td>${l.current_account || "-"}</td>
         <td>
@@ -52,7 +54,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const win = window.open(
       "/adminLocationPopup.html",
       "EditLocation",
-      "width=500,height=600,resizable=yes,scrollbars=yes"
+      "width=500,height=650,resizable=yes,scrollbars=yes"
     );
 
     if (id) {
@@ -61,6 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (data.ok) {
         const loc = data.locations.find((l) => String(l.id) === String(id));
         if (loc) {
+          // ✅ Pass the new field too
           setTimeout(() => win.postMessage({ action: "edit-location", location: loc }, "*"), 300);
         }
       }

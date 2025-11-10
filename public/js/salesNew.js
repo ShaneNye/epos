@@ -56,42 +56,49 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("Failed to load sales executives:", err);
   }
 
-  /* === Load Stores === */
-  try {
-    const res = await fetch("/api/meta/locations", { headers });
-    const data = await res.json();
+/* === Load Stores === */
+try {
+  const res = await fetch("/api/meta/locations", { headers });
+  const data = await res.json();
 
-    if (data.ok) {
-      const storeSelect = document.getElementById("store");
-      storeSelect.innerHTML = '<option value="">Select Store</option>';
+  if (data.ok) {
+    const storeSelect = document.getElementById("store");
+    storeSelect.innerHTML = '<option value="">Select Store</option>';
 
-      data.locations.forEach((loc) => {
-        const opt = document.createElement("option");
-        opt.value = String(loc.id);
-        opt.textContent = loc.name;
-        storeSelect.appendChild(opt);
-      });
+    // ✅ Filter out any location whose name includes 'Warehouse'
+    const filteredLocations = data.locations.filter(
+      (loc) => !/warehouse/i.test(loc.name)
+    );
 
-      if (currentUser && currentUser.primaryStore) {
-        const match = data.locations.find(
-          (l) =>
-            String(l.id) === String(currentUser.primaryStore) ||
-            l.name === currentUser.primaryStore
+    filteredLocations.forEach((loc) => {
+      const opt = document.createElement("option");
+      opt.value = String(loc.id);
+      opt.textContent = loc.name;
+      storeSelect.appendChild(opt);
+    });
+
+    if (currentUser && currentUser.primaryStore) {
+      const match = filteredLocations.find(
+        (l) =>
+          String(l.id) === String(currentUser.primaryStore) ||
+          l.name === currentUser.primaryStore
+      );
+
+      if (match) {
+        storeSelect.value = String(match.id);
+        console.log(`🏪 Default store set to: ${match.name} (ID: ${match.id})`);
+      } else {
+        console.warn(
+          `⚠️ No store match found for primaryStore: ${currentUser.primaryStore}`
         );
-
-        if (match) {
-          storeSelect.value = String(match.id);
-          console.log(`🏪 Default store set to: ${match.name} (ID: ${match.id})`);
-        } else {
-          console.warn(
-            `⚠️ No store match found for primaryStore: ${currentUser.primaryStore}`
-          );
-        }
       }
     }
-  } catch (err) {
-    console.error("Failed to load stores:", err);
   }
+} catch (err) {
+  console.error("Failed to load stores:", err);
+}
+
+
 
   /* === ORDER SUMMARY CALCULATIONS === */
   window.updateOrderSummary = function () {

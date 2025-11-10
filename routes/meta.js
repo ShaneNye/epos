@@ -141,6 +141,8 @@ router.get("/locations", async (req, res) => {
         netsuite_internal_id,
         invoice_location_id,
         intercompany_customer,
+        intercompany_location,
+        distribution_location_id,  -- ✅ new field
         petty_cash_account,
         current_account
        FROM locations
@@ -162,6 +164,8 @@ router.post("/locations", async (req, res) => {
       netsuite_internal_id,
       invoice_location_id,
       intercompany_customer,
+      intercompany_location,
+      distribution_location_id, // ✅ new
       petty_cash_account,
       current_account,
     } = req.body;
@@ -173,13 +177,15 @@ router.post("/locations", async (req, res) => {
     console.log("🟢 Creating location:", name);
     await pool.query(
       `INSERT INTO locations 
-        (name, netsuite_internal_id, invoice_location_id, intercompany_customer, petty_cash_account, current_account)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
+        (name, netsuite_internal_id, invoice_location_id, intercompany_customer, intercompany_location, distribution_location_id, petty_cash_account, current_account)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
       [
         name,
         netsuite_internal_id || null,
         invoice_location_id || null,
         intercompany_customer || null,
+        intercompany_location || null,
+        distribution_location_id || null,
         petty_cash_account || null,
         current_account || null,
       ]
@@ -200,6 +206,8 @@ router.put("/locations/:id", async (req, res) => {
       netsuite_internal_id,
       invoice_location_id,
       intercompany_customer,
+      intercompany_location,
+      distribution_location_id, // ✅ new
       petty_cash_account,
       current_account,
     } = req.body;
@@ -215,14 +223,18 @@ router.put("/locations/:id", async (req, res) => {
              netsuite_internal_id = $2,
              invoice_location_id = $3,
              intercompany_customer = $4,
-             petty_cash_account = $5,
-             current_account = $6
-       WHERE id = $7`,
+             intercompany_location = $5,
+             distribution_location_id = $6,
+             petty_cash_account = $7,
+             current_account = $8
+       WHERE id = $9`,
       [
         name,
         netsuite_internal_id || null,
         invoice_location_id || null,
         intercompany_customer || null,
+        intercompany_location || null,
+        distribution_location_id || null,
         petty_cash_account || null,
         current_account || null,
         req.params.id,
@@ -239,5 +251,6 @@ router.put("/locations/:id", async (req, res) => {
     res.status(500).json({ ok: false, error: "DB error updating location" });
   }
 });
+
 
 module.exports = router;

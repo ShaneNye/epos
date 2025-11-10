@@ -385,14 +385,18 @@ app.get("/api/netsuite/widget-sales", (req, res) =>
 /****************************************************
  * virtual sales assistant routes
  *****************************************************/
-
 // === VSA Item Data ===
 app.get("/api/netsuite/vsa-item-data", async (req, res) => {
   try {
-    const token = process.env.VSA_ITEM_DATA; // stored in .env
-    const nsUrl = `https://7972741-sb1.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4178&deploy=19&compid=7972741_SB1&ns-at=AAEJ7tMQ0vfZOQQdABintdKMZAMwvdNbSaGSxpsFfoN_apLkppQ&token=${encodeURIComponent(
-      token
-    )}`;
+    const baseUrl = process.env.VSA_ITEM_DATA_URL;
+    const token = process.env.VSA_ITEM_DATA;
+
+    if (!baseUrl || !token) {
+      throw new Error("Missing VSA_ITEM_DATA_URL or VSA_ITEM_DATA in .env");
+    }
+
+    const nsUrl = `${baseUrl}&token=${encodeURIComponent(token)}`;
+    console.log(`📡 Fetching VSA item data from: ${nsUrl}`);
 
     const response = await fetch(nsUrl);
     if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
@@ -406,6 +410,7 @@ app.get("/api/netsuite/vsa-item-data", async (req, res) => {
       .json({ ok: false, error: "Failed to fetch VSA item data" });
   }
 });
+
 
 
 
