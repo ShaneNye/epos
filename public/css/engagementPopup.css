@@ -1,457 +1,235 @@
-/* =====================================================
-   ENGAGEMENT POPUP — CLEAN, MINIMAL, PROFESSIONAL
-   ===================================================== */
+/* === ENGAGEMENT POPUP — Unified Styling (Surveys & Announcements) === */
 
-:root {
-  --brand: #0081ab;
-  --brand-hover: #006c8e;
-  --muted: #6a7480;
-  --panel: #ffffff;
-  --border: #e3e7ec;
-  --bg: #f7fafc;
-}
-
-body {
-  background: var(--bg);
-  font-family: "Segoe UI", "Inter", sans-serif;
-  color: #1a1f24;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 100vh;
-  margin: 0;
-  padding: 1rem;
-}
-
-.popup-wrapper {
-  width: 100%;
-  max-width: 600px;
-  margin: 0 auto;
-}
-
-.popup-card {
-  background: var(--panel);
-  border-radius: 12px;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
-  animation: fadeIn 0.25s ease;
-  width: 100%;
-}
-
-.popup-header {
-  background: var(--brand);
-  color: #fff;
-  padding: 0.85rem 1.2rem;
-  font-weight: 600;
-  font-size: 1rem;
-  display: flex;
-  align-items: center;
-  border-bottom: 3px solid var(--brand-hover);
-}
-
-.popup-header h2 {
-  margin: 0;
-  font-size: 1.05rem;
-}
-
-.popup-body {
-  padding: 1.25rem 1.5rem;
-  overflow-y: auto;
-  max-height: calc(100vh - 120px);
-}
-
-/* --- Form Elements --- */
-.form-group {
-  margin-bottom: 1.1rem;
-}
-
-.form-group label {
-  font-weight: 600;
-  display: block;
-  margin-bottom: 0.4rem;
-  font-size: 0.9rem;
-  color: var(--ink);
-}
-
-.form-group input[type="text"],
-.form-group input[type="date"],
-.form-group select,
-.form-group textarea {
-  width: 100%;
-  padding: 0.55rem 0.65rem;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  font-size: 0.9rem;
-  font-family: inherit;
-  box-sizing: border-box;
-  background: #fbfcfd;
-  transition: all 0.2s ease;
-}
-
-.form-group input:focus,
-.form-group textarea:focus,
-.form-group select:focus {
-  outline: none;
-  border-color: var(--brand);
-  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.12);
-  background: #fff;
-}
-
-textarea {
-  resize: vertical;
-}
-
-/* --- Form Layout Rows --- */
-.form-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1rem;
-}
-
-.form-group.half {
-  flex: 1 1 48%;
-  min-width: 200px;
-}
-
-/* --- Inline Date + Checkbox --- */
-.date-inline {
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-}
-
-.checkbox-inline {
-  display: flex;
-  align-items: center;
-  gap: 0.35rem;
-  cursor: pointer;
-  font-size: 0.85rem;
-  color: var(--muted);
-}
-
-.checkbox-inline input {
-  accent-color: var(--brand);
-}
-
-.muted {
-  font-size: 0.8rem;
-  color: var(--muted);
-  margin-top: 0.2rem;
-}
-
-.required {
-  color: #d93025;
-  margin-left: 0.15rem;
-}
-
-/* --- Multi-selects --- */
-select[multiple] {
-  min-height: 90px;
-  background: #fbfcfd;
-}
-
-/* --- Section spacing --- */
-.form-group + .form-group {
-  border-top: 1px dashed #eceff3;
-  padding-top: 1rem;
-}
-
-/* --- Buttons --- */
-.btn-primary,
-.btn-secondary {
-  border: none;
-  border-radius: 8px;
-  padding: 0.65rem 1.4rem;
-  font-weight: 600;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.2s ease;
-}
-
-.btn-primary {
-  background: var(--brand);
-  color: #fff;
-}
-
-.btn-primary:hover {
-  background: var(--brand-hover);
-  transform: translateY(-1px);
-}
-
-.btn-secondary {
-  background: #8a939b;
-  color: #fff;
-}
-
-.btn-secondary:hover {
-  background: #6c757d;
-  transform: translateY(-1px);
-}
-
-/* --- Actions Footer --- */
-.popup-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 0.75rem;
-  margin-top: 1.5rem;
-  border-top: 1px solid #e8edf2;
-  padding-top: 1.25rem;
-}
-
-/* --- Scrollbars --- */
-.popup-body::-webkit-scrollbar {
-  width: 8px;
-}
-.popup-body::-webkit-scrollbar-thumb {
-  background: #d0d5da;
-  border-radius: 4px;
-}
-
-/* --- Responsive --- */
-@media (max-width: 700px) {
-  .popup-card {
-    border-radius: 10px;
-  }
-
-  .popup-body {
-    padding: 1rem;
-  }
-
-  .form-group input,
-  .form-group select,
-  .form-group textarea {
-    font-size: 0.85rem;
-  }
-
-  .btn-primary,
-  .btn-secondary {
-    width: 100%;
-  }
-}
-
-/* --- Animation --- */
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-    transform: translateY(-10px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-/* =====================================================
-   EPOS SURVEY RESPONSE POPUP — CLEAN, BALANCED, RESPONSIVE
-   ===================================================== */
-
+/* --- Base Layout --- */
 html, body {
-  height: 100%;
-  background-color: #f5f7fa;
-  font-family: "Segoe UI", Roboto, sans-serif;
-  color: #1e293b;
+  font-family: "ProximaNova", "Segoe UI", sans-serif;
+  background: #f5f7fa;
+  color: #1a1f24;
   margin: 0;
-}
-
-/* === Centered Wrapper === */
-.popup-wrapper {
+  padding: 0;
+  height: 100%;
   display: flex;
   justify-content: center;
-  align-items: center;
-  height: 100%;
+  align-items: flex-start;
+  overflow-y: auto;
 }
 
-/* === Popup Card === */
+/* --- Center Wrapper --- */
+.popup-wrapper {
+  width: 100%;
+  max-width: 720px;
+  padding: 1.25rem 1rem;
+  margin-top: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-sizing: border-box;
+  display: flex;
+  justify-content: center;
+}
+
+/* --- Card --- */
 .popup-card {
-  width: 90%;
-  min-width: 750px;
-  max-width: 950px;
-  background: #fff;
+  background: #ffffff;
   border-radius: 10px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
-  overflow: hidden;
+  border: 1px solid #e6eef3;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  width: 100%;
+  max-width: 680px;
+  min-width: 500px;
   display: flex;
   flex-direction: column;
-  transition: width 0.3s ease;
-  animation: fadeIn 0.25s ease;
+  overflow: hidden;
+  transition: box-shadow 0.25s ease;
 }
 
-/* === Header === */
+.popup-card:hover {
+  box-shadow: 0 4px 12px rgba(0, 129, 171, 0.12);
+}
+
+/* --- Header --- */
 .popup-header {
-  background: linear-gradient(135deg, #1f497d, #2b6cb0);
-  padding: 0.9rem 1.5rem;
+  background: linear-gradient(90deg, #007ea8, #0092c7);
+  color: white;
+  padding: 1rem 1.25rem;
+  border-top-left-radius: 10px;
+  border-top-right-radius: 10px;
 }
 
 .popup-header h2 {
-  margin: 0;
   font-size: 1.1rem;
   font-weight: 600;
-  color: #fff;
-}
-
-/* === Body === */
-.popup-body {
-  padding: 1.25rem 2rem 1rem;
-  flex: 1;
+  margin: 0;
   display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  align-items: stretch;
-}
-
-/* === Survey Form === */
-.survey-form {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-  width: 100%;
-  max-width: 800px;
-  margin: 0 auto;
-}
-
-.survey-form h3 {
-  font-size: 1.25rem;
-  font-weight: 600;
-  color: #243447;
-  margin-bottom: 0.25rem;
-}
-
-.survey-form p.muted {
-  font-size: 0.9rem;
-  color: #64748b;
-  margin-bottom: 0.25rem;
-}
-
-/* === Question Block === */
-.question-block {
-  display: flex;
-  flex-direction: column;
+  align-items: center;
   gap: 0.4rem;
+}
+
+/* --- Body --- */
+.popup-body {
+  padding: 1.25rem 1.5rem;
+  flex: 1;
+  box-sizing: border-box;
+}
+
+.popup-body h3 {
+  font-size: 1.1rem;
+  color: #0081ab;
+  margin-bottom: 0.5rem;
+}
+
+.popup-body p.muted {
+  color: #7f8a91;
+  font-size: 0.9rem;
+  margin-bottom: 1.25rem;
+}
+
+/* --- Question Block --- */
+.question-block {
+  background: #f9fbfd;
+  border: 1px solid #e0e6ed;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+  transition: background 0.25s ease;
+}
+
+.question-block:hover {
+  background: #f3f7fa;
 }
 
 .question-block label {
   font-weight: 600;
-  font-size: 1rem;
-  color: #1e293b;
+  color: #1a1f24;
+  display: block;
+  margin-bottom: 0.5rem;
 }
 
-.question-block input,
-.question-block select,
-.question-block textarea {
-  border: 1px solid #cbd5e1;
-  border-radius: 6px;
-  padding: 0.55rem 0.8rem;
-  font-size: 0.95rem;
-  background-color: #f9fafb;
-  color: #111827;
-  transition: all 0.2s ease;
+.question-input input[type="text"],
+.question-input input[type="number"],
+.question-input select,
+.question-input textarea {
   width: 100%;
+  font-family: inherit;
+  font-size: 0.9rem;
+  padding: 0.55rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid #ccd8df;
+  background: #fff;
+  transition: all 0.2s ease;
   box-sizing: border-box;
 }
 
-.question-block input:focus,
-.question-block select:focus,
-.question-block textarea:focus {
-  border-color: #0078d4;
-  background: #fff;
-  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.15);
+.question-input input:focus,
+.question-input textarea:focus,
+.question-input select:focus {
   outline: none;
+  border-color: #0081ab;
+  box-shadow: 0 0 0 2px rgba(0, 129, 171, 0.2);
 }
 
-.question-block textarea {
+textarea {
   resize: vertical;
-  min-height: 70px;
+  min-height: 90px;
 }
 
-.question-block small.muted {
-  font-size: 0.8rem;
-  color: #6b7280;
-  margin-top: 0.25rem;
-}
-
-/* === Progress Indicator === */
+/* --- Question Progress --- */
 .question-progress {
   text-align: right;
   font-size: 0.85rem;
-  color: #64748b;
-  margin-top: 0.25rem;
+  color: #7f8a91;
   font-style: italic;
+  margin-top: -0.25rem;
 }
 
-/* === Footer Buttons === */
+/* --- Form Actions --- */
 .form-actions {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  background: #f8fafc;
-  border-top: 1px solid #e2e8f0;
-  padding: 1rem 1.75rem;
-  gap: 1rem;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  padding: 1rem 1.25rem;
+  border-top: 1px solid #e6eef3;
+  background: #fafbfc;
+  box-sizing: border-box;
 }
 
-.form-actions button {
+button {
+  font-family: inherit;
+  font-size: 0.9rem;
+  font-weight: 600;
   border: none;
   border-radius: 6px;
-  font-size: 0.95rem;
-  font-weight: 500;
-  padding: 0.6rem 1.75rem;
   cursor: pointer;
+  padding: 0.55rem 1.2rem;
   transition: all 0.2s ease;
-  min-width: 140px;
 }
 
+/* --- Primary Button --- */
 .btn-primary {
-  background-color: #2563eb;
+  background: linear-gradient(90deg, #007ea8, #0092c7);
   color: #fff;
+  box-shadow: 0 2px 4px rgba(0, 129, 171, 0.2);
 }
-
 .btn-primary:hover {
-  background-color: #1e4db7;
+  background: linear-gradient(90deg, #008cb8, #00a4d6);
+  box-shadow: 0 3px 6px rgba(0, 129, 171, 0.25);
 }
 
+/* --- Secondary Button --- */
 .btn-secondary {
-  background-color: #e5e7eb;
-  color: #1e293b;
+  background: #eef3f6;
+  color: #333;
 }
-
 .btn-secondary:hover {
-  background-color: #d1d5db;
+  background: #e1ebf0;
 }
 
-/* === Animation === */
-@keyframes fadeIn {
-  from { opacity: 0; transform: scale(0.97); }
-  to { opacity: 1; transform: scale(1); }
+/* --- Muted Text --- */
+.muted {
+  color: #7f8a91;
+  font-size: 0.85rem;
 }
 
-/* === Responsive Adjustments === */
-@media (max-width: 1000px) {
-  .popup-card {
-    min-width: 600px;
-    width: 95%;
-  }
+/* --- Error Message --- */
+.error {
+  color: #d62828;
+  font-weight: 600;
+  background: #fde8e8;
+  border: 1px solid #f6b5b5;
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  margin-top: 1rem;
 }
 
+/* --- Delete Button --- */
+button.danger {
+  background: #e63946;
+  color: white;
+}
+button.danger:hover {
+  background: #d62828;
+}
+
+/* --- Responsive --- */
 @media (max-width: 700px) {
+  .popup-wrapper {
+    padding: 1.25rem;
+    margin: 0;
+  }
+
   .popup-card {
-    min-width: unset;
-    width: 96%;
     border-radius: 8px;
+    max-width: 95%;
   }
 
   .popup-body {
-    padding: 1rem 1.25rem;
-  }
-
-  .survey-form {
-    gap: 1rem;
+    padding: 1.25rem;
   }
 
   .form-actions {
     flex-direction: column;
-    gap: 0.5rem;
+    align-items: stretch;
   }
 
-  .form-actions button {
+  button {
     width: 100%;
   }
 }

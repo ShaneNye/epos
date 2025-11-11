@@ -373,3 +373,223 @@ button.danger:hover {
   background-color: rgba(0, 0, 0, 0.15);
   border-radius: 4px;
 }
+
+/* =====================================================
+   === SURVEY ANALYTICS PANEL ===========================
+   ===================================================== */
+
+.analytics-panel {
+  flex: 1;
+  background: #fff;
+  border-radius: 8px;
+  border: 1px solid #e6eef3;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  padding: 1rem 1.25rem;
+  margin-left: 1rem;
+  overflow-y: auto;
+  min-height: 400px;
+}
+
+.analytics-panel h2 {
+  font-size: 1.1rem;
+  color: #0081ab;
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-weight: 600;
+  border-bottom: 1px solid #e6eef3;
+  padding-bottom: 0.4rem;
+}
+
+.analytics-panel .loading {
+  text-align: center;
+  color: #7f8a91;
+  padding: 2rem 0;
+  font-style: italic;
+}
+
+/* === Completion Summary === */
+.analytics-summary {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  justify-content: flex-start;
+  background: #f9fbfc;
+  border-radius: 6px;
+  border: 1px solid #e6eef3;
+  padding: 1rem 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.analytics-summary canvas {
+  flex-shrink: 0;
+}
+
+.analytics-summary p {
+  margin: 0;
+  color: #1a1f24;
+  font-size: 0.95rem;
+  line-height: 1.4;
+}
+.analytics-summary strong {
+  color: #0081ab;
+  font-size: 1.2rem;
+}
+
+/* === Question Results === */
+#questionResults details {
+  background: #fafcfd;
+  border: 1px solid #e0e6ed;
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 0.8rem;
+  transition: all 0.25s ease;
+}
+
+#questionResults details[open] {
+  background: #f3f8fa;
+  box-shadow: 0 1px 3px rgba(0, 129, 171, 0.1);
+}
+
+#questionResults summary {
+  font-weight: 600;
+  color: #005f78;
+  cursor: pointer;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#questionResults summary::after {
+  content: "▾";
+  font-size: 0.8rem;
+  color: #7f8a91;
+  transition: transform 0.2s ease;
+}
+#questionResults details[open] summary::after {
+  transform: rotate(180deg);
+}
+
+#questionResults p {
+  font-size: 0.9rem;
+  color: #333;
+  margin: 0.6rem 0 0.3rem;
+}
+#questionResults ul {
+  margin: 0.3rem 0 0.6rem;
+  padding-left: 1.25rem;
+  font-size: 0.88rem;
+  color: #444;
+}
+#questionResults li {
+  line-height: 1.5;
+  margin-bottom: 0.25rem;
+}
+
+/* === Detailed Responses Section === */
+.detailed-responses {
+  margin-top: 1.25rem;
+  border-top: 1px solid #e6eef3;
+  padding-top: 1rem;
+}
+
+.detailed-responses h3 {
+  margin-top: 0;
+  font-size: 1rem;
+  color: #0081ab;
+  font-weight: 600;
+  border-bottom: 1px solid #e6eef3;
+  padding-bottom: 0.4rem;
+  margin-bottom: 0.75rem;
+}
+
+.detailed-responses details {
+  border: 1px solid #e0e6ed;
+  border-radius: 6px;
+  padding: 0.8rem 1rem;
+  margin-bottom: 0.6rem;
+  background: #fafcfd;
+  transition: all 0.25s ease;
+}
+
+.detailed-responses details[open] {
+  background: #f2f8fa;
+  box-shadow: 0 1px 3px rgba(0, 129, 171, 0.1);
+}
+
+.detailed-responses summary {
+  font-weight: 600;
+  color: #005f78;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detailed-responses summary::after {
+  content: "▾";
+  font-size: 0.8rem;
+  color: #7f8a91;
+  transition: transform 0.2s ease;
+}
+.detailed-responses details[open] summary::after {
+  transform: rotate(180deg);
+}
+
+.detailed-responses ul {
+  margin: 0.5rem 0 0.5rem 1.25rem;
+  padding: 0;
+  font-size: 0.88rem;
+  color: #444;
+}
+.detailed-responses li {
+  margin-bottom: 0.3rem;
+  line-height: 1.4;
+}
+
+/* === Error / Empty States === */
+.analytics-panel .error {
+  color: #d62828;
+  font-weight: 600;
+  background: #fde8e8;
+  border: 1px solid #f6b5b5;
+  border-radius: 6px;
+  padding: 0.6rem 0.8rem;
+  margin-top: 1rem;
+  text-align: center;
+}
+
+.analytics-panel .empty {
+  color: #7f8a91;
+  text-align: center;
+  padding: 1rem 0;
+  font-style: italic;
+}
+
+/* === Scrollbar Tidy === */
+.analytics-panel::-webkit-scrollbar {
+  width: 6px;
+}
+.analytics-panel::-webkit-scrollbar-thumb {
+  background: #cdeef7;
+  border-radius: 4px;
+}
+.analytics-panel::-webkit-scrollbar-thumb:hover {
+  background: #a7e0f0;
+}
+
+/* === Responsive === */
+@media (max-width: 900px) {
+  .analytics-panel {
+    margin-left: 0;
+    margin-top: 1rem;
+  }
+  .analytics-summary {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .analytics-summary p {
+    font-size: 0.9rem;
+  }
+}

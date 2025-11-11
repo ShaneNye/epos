@@ -424,6 +424,136 @@ router.post("/survey/:id/response", async (req, res) => {
   }
 });
 
+/* =====================================================
+   === SURVEY ANALYTICS ================================
+   ===================================================== */
+router.get("/analytics/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 1️⃣ Basic survey + target audience
+    const surveyRes = await pool.query(
+      "SELECT * FROM engagement_surveys WHERE id = $1",
+      [id]
+    );
+    if (!surveyRes.rows.length)
+      return res.status(404).json({ ok: false, error: "Survey not found" });
+    const survey = surveyRes.rows[0];
+
+    // 2️⃣ Response summary
+    const totalRes = await pool.query(
+      "SELECT COUNT(*) FROM engagement_survey_responses WHERE survey_id = $1",
+      [id]
+    );
+    const totalResponded = parseInt(totalRes.rows[0].count);
+    const totalTargeted =
+      (survey.audience_roles?.length || 0) + (survey.shared_with_users?.length || 0) || 0;
+    const completionRate = totalTargeted
+      ? ((totalResponded / totalTargeted) * 100).toFixed(1)
+      : 0;
+
+// 3️⃣ Questions + answer breakdown
+const qRes = await pool.query(
+  "SELECT * FROM engagement_survey_questions WHERE survey_id = $1 ORDER BY sort_order",
+  [id]
+);
+const questions = [];
+
+for (const q of qRes.rows) {
+  if (q.response_type === "number") {
+    const distRes = await pool.query(
+      `SELECT answer_number, COUNT(*) 
+       FROM engagement_survey_answers
+       WHERE question_id = $1 
+       GROUP BY answer_number 
+       ORDER BY answer_number`,
+      [q.id]
+    );
+    const dist = Object.fromEntries(distRes.rows.map(r => [r.answer_number, parseInt(r.count)]));
+    const avgRes = await pool.query(
+      `SELECT AVG(answer_number)::numeric(10,2) AS avg 
+       FROM engagement_survey_answers 
+       WHERE question_id = $1`,
+      [q.id]
+    );
+    const average = parseFloat(avgRes.rows[0].avg || 0);
+    questions.push({
+      ...q,
+      responses: { distribution: dist, average, total: totalResponded }
+    });
+  } else if (q.response_type === "dropdown") {
+    const optRes = await pool.query(
+      `SELECT answer_text, COUNT(*) 
+       FROM engagement_survey_answers
+       WHERE question_id = $1 
+       GROUP BY answer_text 
+       ORDER BY COUNT(*) DESC`,
+      [q.id]
+    );
+    questions.push({
+      ...q,
+      responses: {
+        options: Object.fromEntries(optRes.rows.map(r => [r.answer_text, parseInt(r.count)])),
+        total: totalResponded
+      }
+    });
+  } else {
+    const textRes = await pool.query(
+      `SELECT 
+          a.answer_text, 
+          u.firstname || ' ' || u.lastname AS user
+       FROM engagement_survey_answers a
+       LEFT JOIN engagement_survey_responses r ON a.response_id = r.id
+       LEFT JOIN users u ON r.user_id = u.id
+       WHERE a.question_id = $1`,
+      [q.id]
+    );
+    questions.push({ ...q, responses: textRes.rows });
+  }
+}
+
+// 4️⃣ Detailed responses by user
+const detailed = await pool.query(
+  `SELECT 
+      r.id AS response_id, 
+      r.submitted_at, 
+      u.id AS user_id, 
+      u.firstname, 
+      u.lastname,
+      json_agg(
+        json_build_object(
+          'question_id', a.question_id,
+          'answer_text', a.answer_text,
+          'answer_number', a.answer_number
+        )
+      ) AS answers
+   FROM engagement_survey_responses r
+   LEFT JOIN users u ON r.user_id = u.id
+   LEFT JOIN engagement_survey_answers a ON r.id = a.response_id
+   WHERE r.survey_id = $1
+   GROUP BY r.id, u.id, u.firstname, u.lastname
+   ORDER BY r.submitted_at DESC`,
+  [id]
+);
+
+// ✅ Console summary for visibility
+console.log(
+  `📊 Survey ${id} analytics: ${totalResponded}/${totalTargeted} responded (${completionRate}%)`
+);
+
+res.json({
+  ok: true,
+  summary: { totalTargeted, totalResponded, completionRate },
+  questions,
+  detailed: detailed.rows
+});
+
+  } catch (err) {
+    console.error("❌ Error loading survey analytics:", err);
+    res.status(500).json({ ok: false, error: "Failed to load analytics" });
+  }
+});
+
 
 
 module.exports = router;

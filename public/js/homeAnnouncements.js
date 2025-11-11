@@ -107,7 +107,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function loadActiveSurveys() {
     if (!surveyContainer) return;
     try {
-      const res = await fetch("/api/engagement/active-surveys", {
+      // ✅ Updated path to new namespace
+      const res = await fetch("/api/engagement/surveys/active-surveys", {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -162,7 +163,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               token
             )}`,
             "SurveyResponse",
-            "width=650,height=720,resizable=yes,scrollbars=yes"
+            "width=950,height=850,resizable=yes,scrollbars=yes"
           );
 
           if (!popup) {

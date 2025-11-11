@@ -26,7 +26,7 @@ document.addEventListener("DOMContentLoaded", async () => {
      === LOAD SURVEY QUESTIONS ============================
      ===================================================== */
   try {
-    const res = await fetch(`/api/engagement/survey/${surveyId}`, {
+    const res = await fetch(`/api/engagement/surveys/survey/${surveyId}`, {
       headers: { Authorization: `Bearer ${token}` },
     });
     const data = await res.json();
@@ -106,10 +106,50 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* =====================================================
+     === SAVE CURRENT ANSWER (with validation) ============
+     ===================================================== */
+  function saveCurrentAnswer() {
+    const q = questions[currentIndex];
+    if (!q) return false;
+    const input = body.querySelector(`[name="q_${q.id}"]`);
+    if (!input) return false;
+
+    const val = input.value.trim();
+
+    // 🧠 Validation for number inputs
+    if (q.response_type === "number") {
+      const num = parseFloat(val);
+      const min = q.numeric_min ?? 0;
+      const max = q.numeric_max ?? 10;
+
+      if (isNaN(num)) {
+        alert("❌ Please enter a number before proceeding.");
+        input.focus();
+        return false;
+      }
+      if (num < min || num > max) {
+        alert(`⚠️ Please enter a value between ${min} and ${max}.`);
+        input.focus();
+        return false;
+      }
+    }
+
+    // Basic required field check
+    if (val === "") {
+      alert("❌ Please answer this question before continuing.");
+      input.focus();
+      return false;
+    }
+
+    answers[q.id] = val;
+    return true;
+  }
+
+  /* =====================================================
      === NAVIGATION =======================================
      ===================================================== */
   nextBtn.addEventListener("click", () => {
-    saveCurrentAnswer();
+    if (!saveCurrentAnswer()) return;
     if (currentIndex < questions.length - 1) {
       currentIndex++;
       renderQuestion();
@@ -117,25 +157,18 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   backBtn.addEventListener("click", () => {
-    saveCurrentAnswer();
+    if (!saveCurrentAnswer()) return;
     if (currentIndex > 0) {
       currentIndex--;
       renderQuestion();
     }
   });
 
-  function saveCurrentAnswer() {
-    const q = questions[currentIndex];
-    if (!q) return;
-    const input = body.querySelector(`[name="q_${q.id}"]`);
-    if (input) answers[q.id] = input.value;
-  }
-
   /* =====================================================
      === SUBMIT SURVEY ===================================
      ===================================================== */
   submitBtn.addEventListener("click", async () => {
-    saveCurrentAnswer();
+    if (!saveCurrentAnswer()) return;
 
     const payload = {
       answers: Object.entries(answers).map(([id, val]) => ({
@@ -146,7 +179,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     };
 
     try {
-      const res = await fetch(`/api/engagement/survey/${surveyId}/response`, {
+      const res = await fetch(`/api/engagement/surveys/survey/${surveyId}/response`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -169,5 +202,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   });
 
+  /* =====================================================
+     === CANCEL ===========================================
+     ===================================================== */
   cancelBtn.addEventListener("click", () => window.close());
 });

@@ -62,7 +62,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // === Handle edit/view mode ===
   if (recordId && (mode === "edit" || mode === "view")) {
     try {
-      const res = await fetch(`/api/engagement/survey/${recordId}`, {
+      const res = await fetch(`/api/engagement/surveys/survey/${recordId}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
       const data = await res.json();
@@ -218,8 +218,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const url =
       mode === "edit"
-        ? `/api/engagement/survey/${recordId}`
-        : "/api/engagement/survey";
+        ? `/api/engagement/surveys/survey/${recordId}`
+        : "/api/engagement/surveys/survey";
     const method = mode === "edit" ? "PUT" : "POST";
 
     try {
@@ -256,7 +256,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!confirm("🗑️ Are you sure you want to delete this survey?")) return;
 
       try {
-        const res = await fetch(`/api/engagement/survey/${recordId}`, {
+        const res = await fetch(`/api/engagement/surveys/survey/${recordId}`, {
           method: "DELETE",
           headers: { Authorization: `Bearer ${token}` },
         });

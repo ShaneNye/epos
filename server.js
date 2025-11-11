@@ -66,19 +66,18 @@ app.use("/api/netsuite/salesorder", require("./routes/netsuiteSalesOrder"));
 app.use("/api/netsuite/quote", require("./routes/netsuiteQuote"));
 app.use("/api/netsuite/entity", require("./routes/netsuiteEntity"));
 app.use("/api/netsuite", require("./routes/netsuiteCustomerRecords"));
-
-
 app.use("/api/meta/store", require("./routes/storeName"));
 app.use("/api/vsa", require("./routes/vsa"));
-
-
 const intercompanyRoutes = require("./routes/intercompany");
 app.use("/api/netsuite/intercompany", intercompanyRoutes);
+// === Engagement (Announcements, Analytics) ===
 const engagementRoutes = require("./routes/engagement");
 app.use("/api/engagement", engagementRoutes);
 
+// === Surveys (Survey creation, questions, responses) ===
 const surveysRoutes = require("./routes/surveys");
-app.use("/api/engagement", surveysRoutes);
+app.use("/api/engagement/surveys", surveysRoutes);
+
 
 
 
