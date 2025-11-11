@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1.0" />
+  <title>Complete Survey</title>
+
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/engagementPopup.css" />
+  <script src="/js/storage.js"></script>
+  <script defer src="/js/engagement/surveyResponsePopup.js"></script>
+</head>
+
+<body>
+<div class="popup-wrapper">
+  <div class="popup-card">
+    <div class="popup-header">
+      <h2>📝 Complete Survey</h2>
+    </div>
+
+    <div class="popup-body" id="surveyResponseBody">
+      <p class="muted">Loading survey...</p>
+    </div>
+
+    <div class="form-actions" id="surveyActions" style="display:none;">
+      <button type="button" id="backBtn" class="btn-secondary">← Back</button>
+      <button type="button" id="nextBtn" class="btn-primary">Next →</button>
+      <button type="button" id="submitSurveyBtn" class="btn-primary" style="display:none;">Submit</button>
+      <button type="button" id="cancelBtn" class="btn-secondary">Cancel</button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

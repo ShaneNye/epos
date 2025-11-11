@@ -2,89 +2,169 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Engagement</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Engagement</title>
 
-    <!-- Core styles -->
-    <link rel="stylesheet" href="/assistant/assistant.css" />
-    <link rel="stylesheet" href="/css/home.css" />
-    <link rel="stylesheet" href="/css/engagement.css" />
+  <!-- 🧩 Core Styles -->
+  <link rel="stylesheet" href="/assistant/assistant.css" />
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/engagement.css" />
 
-    <!-- Core scripts -->
-    <script src="/js/storage.js"></script>
-    <script src="/assistant/assistant.js"></script>
-    <script src="/js/menu.js"></script>
-    <script src="/js/widgets/visibility.js"></script>
-    <script defer src="/js/engagement/engagement.js"></script>
+  <!-- 🧩 Core Scripts -->
+  <script src="/js/storage.js"></script>
+  <script src="/assistant/assistant.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/js/widgets/visibility.js"></script>
 </head>
 
 <body>
-    <div id="menu"></div>
+  <!-- === Sidebar Menu === -->
+  <div id="menu"></div>
 
-    <main class="content">
-        <h1>Engagement</h1>
+  <!-- === Main Content === -->
+  <main class="content">
+    <h1>Engagement</h1>
 
-        <!-- Primary Tabs -->
-        <div class="tabs">
-            <div class="tab active" data-target="announcements">Announcements</div>
-            <div class="tab" data-target="surveys">Surveys</div>
-            <div class="tab" data-target="votes">Votes</div>
-            <div class="tab" data-target="quizzes">Quizzes</div>
+    <!-- === Primary Tabs === -->
+    <div class="tabs">
+      <div class="tab active" data-target="announcements">Announcements</div>
+      <div class="tab" data-target="surveys">Surveys</div>
+      <div class="tab" data-target="votes">Votes</div>
+      <div class="tab" data-target="quizzes">Quizzes</div>
+    </div>
+
+    <!-- === ANNOUNCEMENTS SECTION === -->
+    <section id="announcements" class="engagement-section active">
+      <!-- Left: Announcements Lists -->
+      <div class="left-panel">
+        <div class="subtabs">
+          <div class="subtab active" data-target="my-announcements">Mine</div>
+          <div class="subtab" data-target="public-announcements">Public</div>
+          <div class="subtab" data-target="shared-announcements">Shared with Me</div>
         </div>
 
-        <!-- === ANNOUNCEMENTS SECTION === -->
-        <section id="announcements" class="engagement-section active">
-            <!-- Left side: List + sub-tabs -->
-            <div class="left-panel">
-                <div class="subtabs">
-                    <div class="subtab active" data-target="my-announcements">Mine</div>
-                    <div class="subtab" data-target="public-announcements">Public</div>
-                    <div class="subtab" data-target="shared-announcements">Shared with Me</div>
-                </div>
+        <!-- === Mine === -->
+        <div id="my-announcements" class="subtab-content active">
+          <div class="toolbar">
+            <button id="newAnnouncementBtn" class="btn-primary">+ New Announcement</button>
+          </div>
+          <ul id="myAnnouncementList" class="announcement-list">
+            <li class="empty">Welcome to the Engagement Hub 👋</li>
+          </ul>
+        </div>
 
-                <div id="my-announcements" class="subtab-content active">
-                    <div class="toolbar">
-                        <button id="newAnnouncementBtn" class="btn-primary">+ New Announcement</button>
-                    </div>
-                    <ul id="myAnnouncementList" class="announcement-list">
-                        <li>Welcome to the Engagement Hub 👋</li>
-                    </ul>
-                </div>
+        <!-- === Public === -->
+        <div id="public-announcements" class="subtab-content">
+          <ul id="publicAnnouncementList" class="announcement-list">
+            <li class="empty">Company-wide updates will appear here.</li>
+          </ul>
+        </div>
 
-                <div id="public-announcements" class="subtab-content">
-                    <ul id="publicAnnouncementList" class="announcement-list">
-                        <li>Company-wide updates will appear here.</li>
-                    </ul>
-                </div>
+        <!-- === Shared with Me === -->
+        <div id="shared-announcements" class="subtab-content">
+          <ul id="sharedAnnouncementList" class="announcement-list">
+            <li class="empty">Announcements shared directly with you will appear here.</li>
+          </ul>
+        </div>
+      </div>
 
-                <div id="shared-announcements" class="subtab-content">
-                    <ul id="sharedAnnouncementList" class="announcement-list">
-                        <li>Announcements shared directly with you will appear here.</li>
-                    </ul>
-                </div>
-            </div>
+      <!-- Right: Analytics Panel -->
+      <div class="analytics-panel">
+        <h2>Analytics</h2>
+        <div class="analytics-placeholder">
+          📊 Engagement metrics will appear here once analytics are available.
+        </div>
 
-            <!-- Right: Analytics Panel -->
-            <div class="analytics-panel">
-                <h2>Analytics</h2>
-                <div class="analytics-placeholder">
-                    📊 Engagement metrics will appear here once analytics are configured.
-                </div>
-            </div>
-        </section>
+        <!-- Chart Canvas -->
+        <canvas id="ackChart" width="280" height="280" style="display:none;"></canvas>
 
-        <!-- === PLACEHOLDERS for Other Features === -->
-        <section id="surveys" class="engagement-section">
-            <div class="analytics-placeholder">🧩 Surveys feature coming soon...</div>
-        </section>
-        <section id="votes" class="engagement-section">
-            <div class="analytics-placeholder">🧩 Votes feature coming soon...</div>
-        </section>
-        <section id="quizzes" class="engagement-section">
-            <div class="analytics-placeholder">🧩 Quizzes feature coming soon...</div>
-        </section>
-    </main>
+        <!-- User Table -->
+        <div class="acknowledgement-table" style="display:none;">
+          <div class="table-filters">
+            <label>Filter:
+              <select id="filterAcknowledgement">
+                <option value="all">All</option>
+                <option value="acknowledged">Acknowledged</option>
+                <option value="remaining">Remaining</option>
+              </select>
+            </label>
+          </div>
+          <table id="ackTable">
+            <thead>
+              <tr>
+                <th>User</th>
+                <th>Role</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+<!-- === SURVEYS SECTION === -->
+<section id="surveys" class="engagement-section">
+  <!-- Left: Surveys Lists -->
+  <div class="left-panel">
+    <div class="subtabs">
+      <div class="subtab active" data-target="my-surveys">Mine</div>
+      <div class="subtab" data-target="public-surveys">Public</div>
+      <div class="subtab" data-target="shared-surveys">Shared with Me</div>
+    </div>
+
+    <!-- === Mine === -->
+    <div id="my-surveys" class="subtab-content active">
+      <div class="toolbar">
+        <button id="newSurveyBtn" class="btn-primary">+ New Survey</button>
+      </div>
+      <ul id="mySurveyList" class="announcement-list">
+        <li class="empty">Your created surveys will appear here.</li>
+      </ul>
+    </div>
+
+    <!-- === Public === -->
+    <div id="public-surveys" class="subtab-content">
+      <ul id="publicSurveyList" class="announcement-list">
+        <li class="empty">Public surveys will appear here.</li>
+      </ul>
+    </div>
+
+    <!-- === Shared with Me === -->
+    <div id="shared-surveys" class="subtab-content">
+      <ul id="sharedSurveyList" class="announcement-list">
+        <li class="empty">Surveys shared directly with you will appear here.</li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Right: Analytics Panel -->
+  <div class="analytics-panel">
+    <h2>Survey Analytics</h2>
+    <div class="analytics-placeholder">
+      📊 Survey participation metrics will appear here once analytics are available.
+    </div>
+  </div>
+</section>
+
+
+    <section id="votes" class="engagement-section">
+      <div class="analytics-placeholder">🧩 Votes feature coming soon...</div>
+    </section>
+
+    <section id="quizzes" class="engagement-section">
+      <div class="analytics-placeholder">🧩 Quizzes feature coming soon...</div>
+    </section>
+  </main>
+
+  <!-- === Chart.js for Analytics === -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+  <!-- === Engagement Logic === -->
+  <script src="/js/engagement/engagement.js"></script>
+  <script src="/js/engagement/engagementSurvey.js"></script>
+
 </body>
 
 </html>

@@ -442,3 +442,223 @@ select#activeRoleSelect::-internal-list-box {
     max-height: none;
   }
 }
+/* === Dashboard + Announcements Side Layout === */
+#dashboardWrapper {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  width: 100%;
+  margin-top: 8px;
+  box-sizing: border-box;
+}
+
+/* Let the grid fill remaining width */
+#dashboardGrid {
+  flex: 1;
+}
+
+/* Announcement column */
+#announcementContainer {
+  flex-shrink: 0;
+  width: 320px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #fff;
+  border: 1px solid #e6eef3;
+  border-radius: 6px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+  padding: 10px 12px;
+  max-height: 480px;
+  overflow-y: auto;
+  margin-top: 25px;
+}
+
+/* Section header */
+#announcementContainer::before {
+  content: "📢 Announcements";
+  display: block;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #0081ab;
+  border-bottom: 1px solid #e6eef3;
+  margin-bottom: 6px;
+  padding-bottom: 4px;
+}
+
+/* Scrollbar styling */
+#announcementContainer::-webkit-scrollbar {
+  width: 6px;
+}
+#announcementContainer::-webkit-scrollbar-thumb {
+  background: #cdeef7;
+  border-radius: 4px;
+}
+#announcementContainer::-webkit-scrollbar-thumb:hover {
+  background: #a7e0f0;
+}
+
+/* === Individual Announcement Cards === */
+.announcement-card {
+  background: #fff;
+  border: 1px solid #e6eef3;
+  border-left: 4px solid #0081ab;
+  border-radius: 5px;
+  padding: 0.8rem 1rem;
+  transition: all 0.25s ease;
+}
+
+.announcement-card:hover {
+  box-shadow: 0 2px 6px rgba(0,129,171,0.12);
+  border-color: #bde7f3;
+}
+
+.announcement-card h3 {
+  margin: 0 0 0.4rem;
+  color: #0081ab;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.announcement-card p {
+  margin: 0.25rem 0;
+  font-size: 0.88rem;
+  color: #1a1f24;
+}
+
+.announcement-card .muted {
+  color: #7f8a91;
+  font-size: 0.78rem;
+}
+
+/* acknowledgment line */
+.ack-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: 500;
+  font-size: 0.83rem;
+  margin-top: 0.6rem;
+  color: #005b72;
+}
+
+.ack-label input[type="checkbox"] {
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  border: 2px solid #0081ab;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+}
+.ack-label input[type="checkbox"]:checked {
+  background-color: #0081ab;
+  border-color: #0081ab;
+}
+.ack-label input[type="checkbox"]:checked::after {
+  content: "✓";
+  color: #fff;
+  position: absolute;
+  top: -2px;
+  left: 3px;
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+
+/* Fade-out animation when acknowledged */
+.announcement-card.fade-out {
+  opacity: 0;
+  transform: translateY(-5px);
+  transition: all 0.3s ease;
+}
+
+/* Responsive stacking */
+@media (max-width: 1100px) {
+  #dashboardWrapper {
+    flex-direction: column;
+  }
+
+  #announcementContainer {
+    width: 100%;
+    max-height: none;
+    
+  }
+}
+
+
+
+/* === SURVEY PANEL STYLING === */
+.survey-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  margin-top:25px;
+}
+
+.survey-area .announcement-panel {
+  background: #fff;
+  border-radius: 8px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  padding: 1rem 1.25rem;
+}
+
+.survey-area h3 {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #333;
+  margin-bottom: 0.75rem;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.survey-area .announcement-item {
+  border: 1px solid #e0e6ed;
+  border-radius: 6px;
+  padding: 0.75rem;
+  margin-bottom: 0.6rem;
+  background: #fafbfc;
+  transition: background 0.2s;
+}
+
+.survey-area .announcement-item:hover {
+  background: #f3f6f9;
+}
+
+.survey-area .announcement-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.survey-area .announcement-header strong {
+  font-weight: 600;
+  color: #222;
+}
+
+.survey-area .announcement-item p {
+  margin: 0.5rem 0;
+  font-size: 0.9rem;
+  color: #444;
+}
+
+.survey-area .btn-primary {
+  background-color: #0078d4;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.survey-area .btn-primary:hover {
+  background-color: #005ea0;
+}
+
+.survey-area .muted {
+  color: #888;
+  font-size: 0.8rem;
+}

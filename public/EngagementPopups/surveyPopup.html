@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Create Survey</title>
+
+  <link rel="stylesheet" href="/css/home.css">
+  <link rel="stylesheet" href="/css/engagementPopup.css">
+  <script src="/js/storage.js"></script>
+  <script defer src="/js/engagement/surveyPopup.js"></script>
+</head>
+
+<body>
+  <div class="popup-wrapper">
+    <div class="popup-card">
+      <div class="popup-header">
+        <h2>📋 Create New Survey</h2>
+      </div>
+
+      <form id="surveyForm" class="popup-body">
+        <!-- === CORE FIELDS === -->
+        <div class="form-group">
+          <label for="title">Title <span class="required">*</span></label>
+          <input type="text" id="title" name="title" placeholder="Enter survey title" required>
+        </div>
+
+        <div class="form-group">
+          <label for="summary">Summary</label>
+          <textarea id="summary" name="summary" rows="3" placeholder="Short description of this survey..."></textarea>
+        </div>
+
+        <!-- === DATES === -->
+        <div class="form-row">
+          <div class="form-group half">
+            <label for="startDate">Start Date</label>
+            <div class="date-inline">
+              <input type="date" id="startDate" name="startDate">
+              <label class="checkbox-inline">
+                <input type="checkbox" id="immediate" name="immediate">
+                <span>Immediate</span>
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group half">
+            <label for="deadlineDate">Deadline Date</label>
+            <input type="date" id="deadlineDate" name="deadlineDate">
+          </div>
+        </div>
+
+        <!-- === AUDIENCE & VISIBILITY === -->
+        <div class="form-group">
+          <label for="audience">Audience (Roles)</label>
+          <select id="audience" name="audience" multiple size="5"></select>
+          <small class="muted">Who will see this survey.</small>
+        </div>
+
+        <div class="form-group">
+          <label for="visibility">Visibility</label>
+          <select id="visibility" name="visibility">
+            <option value="private">Private</option>
+            <option value="public">Public</option>
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="sharedWith">Shared With (Users)</label>
+          <select id="sharedWith" name="sharedWith" multiple size="5"></select>
+          <small class="muted">These users can view/manage this survey.</small>
+        </div>
+
+        <!-- === QUESTIONS BUILDER === -->
+        <div class="form-group">
+          <label>Survey Questions</label>
+          <div id="questionList" class="question-list"></div>
+          <button type="button" id="addQuestionBtn" class="btn-primary" style="margin-top:0.5rem;">+ Add Question</button>
+        </div>
+
+        <!-- === ACTIONS === -->
+        <div class="form-actions">
+          <button type="submit" id="saveBtn">Save</button>
+          <button type="button" id="cancelBtn">Cancel</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+
+</html>

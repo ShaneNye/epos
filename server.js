@@ -74,6 +74,13 @@ app.use("/api/vsa", require("./routes/vsa"));
 
 const intercompanyRoutes = require("./routes/intercompany");
 app.use("/api/netsuite/intercompany", intercompanyRoutes);
+const engagementRoutes = require("./routes/engagement");
+app.use("/api/engagement", engagementRoutes);
+
+const surveysRoutes = require("./routes/surveys");
+app.use("/api/engagement", surveysRoutes);
+
+
 
 
 
@@ -122,7 +129,6 @@ app.use(async (req, res, next) => {
       "/api/netsuite/quote",
       "/api/netsuite/order-management",
       "/api/netsuite/quote-management",
-      "/engagement",
     ];
 
     if (alwaysAllowed.some((prefix) => req.path.startsWith(prefix))) {
@@ -488,14 +494,16 @@ app.get("/orders", (req, res) => res.sendFile(path.join(__dirname, "public", "or
 app.get("/reset", (req, res) => res.sendFile(path.join(__dirname, "public", "reset.html")));
 app.get("/sales/new", (req, res) => res.sendFile(path.join(__dirname, "public", "newSalesOrder.html")));
 app.get("/quote/new", (req, res) => res.sendFile(path.join(__dirname, "public", "quoteNew.html")));
-app.get("/reports", (req, res) => res.sendFile(path.join(__dirname, "public", "reports.html")));
-app.get("/engagement", (req, res) => res.sendFile(path.join(__dirname, "public", "engagement.html")));
+app.get("/reports", (req, res) => res.sendFile(path.join(__dirname, "public", "reports.html")))
 app.get("/quote/view/:id", (req, res) =>
   res.sendFile(path.join(__dirname, "public", "quoteView.html"))
 );
 app.get("/sales/view/:id", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "salesOrderView.html"));
 });
+app.get("/engagement", (req, res) =>
+  res.sendFile(path.join(__dirname, "public", "engagement.html"))
+);
 
 
 

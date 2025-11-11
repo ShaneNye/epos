@@ -13,6 +13,7 @@
     <script src="/js/menu.js"></script>
     <script src="/js/widgets/visibility.js"></script>
 
+
 </head>
 
 <body>
@@ -20,22 +21,32 @@
     <div id="menu"></div>
 
     <!-- Main content -->
-    <main class="content">
-        <h1>Welcome to the EPOS System</h1>
-        <div id="dashboardGrid">
-            <section id="salesTodayWidget" class="widget-card wide"></section>
-            <section id="salesByStoreWidget" class="widget-card half"></section>
-            <section id="topThreeWidget" class="widget-card half"></section>
-        </div>
+   <main class="content">
+  <h1>Welcome to the EPOS System</h1>
+
+  <div id="dashboardWrapper">
+    <div id="dashboardGrid">
+      <section id="salesTodayWidget" class="widget-card wide"></section>
+      <section id="salesByStoreWidget" class="widget-card half"></section>
+      <section id="topThreeWidget" class="widget-card half"></section>
+    </div>
+
+    <!-- 🔔 Announcement Column -->
+    <section id="announcementContainer" class="announcement-area" style="display:none;"></section>
+    <!-- 📋 Surveys Column -->
+<section id="surveyContainer" class="survey-area" style="display:none;"></section>
+
+  </div>
 
 
-        <!-- scripts -->
-        <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-        <script src="/js/widgets/salesByStore.js"></script>
-        <script src="/js/widgets/salestoday.js"></script>
-        <script src="/js/widgets/topThree.js"></script>
 
-    </main>
+  <!-- scripts -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/js/widgets/salesByStore.js"></script>
+  <script src="/js/widgets/salestoday.js"></script>
+  <script src="/js/widgets/topThree.js"></script>
+  <script src="/js/homeAnnouncements.js"></script>
+</main>
 
 
 </body>

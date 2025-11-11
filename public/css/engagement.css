@@ -220,3 +220,156 @@ body {
     border-bottom: 1px solid var(--border);
   }
 }
+.announcement-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.action-icon {
+  cursor: pointer;
+  font-size: 1rem;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+.action-icon:hover {
+  opacity: 1;
+}
+button.danger {
+  background: #dc3545;
+  color: white;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+button.danger:hover {
+  background: #c82333;
+}
+/* === Analytics Panel (fixed height, scrollable user list) === */
+.analytics-panel {
+  background: #fff;
+  border: 1px solid #e6eef3;
+  border-radius: 8px;
+  padding: 1rem 1.25rem;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  max-height: 520px;             /* ✅ fixed height */
+  overflow: hidden;              /* contain internal scroll */
+}
+
+.analytics-panel h2 {
+  color: #0081ab;
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 0.75rem;
+  border-bottom: 2px solid #e6eef3;
+  padding-bottom: 0.4rem;
+}
+
+/* Chart area stays fixed at top */
+.analytics-chart-area {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  margin: 0.5rem auto 0.75rem;
+  flex-shrink: 0; /* prevents it from shrinking when table scrolls */
+}
+.analytics-chart-area canvas {
+  width: 140px;
+  height: 140px;
+}
+.analytics-chart-area .chart-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  color: #0081ab;
+}
+.analytics-chart-area .chart-text span {
+  font-size: 1.3rem;
+}
+
+/* Filter row (sticky under chart) */
+.analytics-filter {
+  flex-shrink: 0;
+  text-align: right;
+  margin: 0.25rem 0;
+  padding: 0.35rem 0;
+  border-bottom: 1px solid #e6eef3;
+  background: #f9fbfc;
+  position: sticky;
+  top: 155px; /* keeps below chart area */
+  z-index: 3;
+}
+.analytics-filter select {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.85rem;
+  border: 1px solid #d8e9ee;
+  border-radius: 4px;
+  background: #fff;
+}
+
+/* === Table === */
+.analytics-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  overflow: hidden;
+}
+.analytics-table th,
+.analytics-table td {
+  padding: 6px 8px;
+  text-align: left;
+  border-bottom: 1px solid #edf3f6;
+}
+.analytics-table th {
+  background: #0081ab;
+  color: #fff;
+  font-weight: 600;
+  position: sticky;
+  top: 185px; /* sticks below filter row */
+  z-index: 2;
+}
+
+/* Scroll container for user rows */
+.analytics-table tbody {
+  display: block;
+  max-height: 220px; /* ✅ scrollable user area */
+  overflow-y: auto;
+  width: 100%;
+}
+.analytics-table thead,
+.analytics-table tbody tr {
+  display: table;
+  width: 100%;
+  table-layout: fixed;
+}
+
+/* Row hover + status colors */
+.analytics-table tbody tr:hover {
+  background: #f3fafc;
+}
+.analytics-table td.ack {
+  color: #1b7c1b;
+  font-weight: 600;
+}
+.analytics-table td.rem {
+  color: #b70000;
+  font-weight: 600;
+}
+
+/* Custom scrollbar for table body */
+.analytics-table tbody::-webkit-scrollbar {
+  width: 8px;
+}
+.analytics-table tbody::-webkit-scrollbar-thumb {
+  background-color: rgba(0, 0, 0, 0.15);
+  border-radius: 4px;
+}

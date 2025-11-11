@@ -1,15 +1,11 @@
-// sessions.js
 const crypto = require("crypto");
 const pool = require("./db");
 
 const SESSION_TTL_DAYS = 7; // expire sessions after 7 days
 
-/**
- * Normalize role names (trim + consistent capitalization)
- */
 function normalizeRoleName(name) {
   if (!name) return null;
-  return name.trim(); // keep original case (DB “Admin”, “Sales Executive”, etc.)
+  return name.trim();
 }
 
 /**
@@ -51,9 +47,10 @@ async function createSession(user, activeRoleName = null, access = []) {
 async function getSession(token) {
   try {
     const result = await pool.query(
-      `SELECT data, created_at FROM sessions WHERE token = $1`,
+      `SELECT user_id, data, created_at FROM sessions WHERE token = $1`,
       [token]
     );
+
     if (result.rows.length === 0) {
       console.warn("⚠️ No session found for token:", token);
       return null;
@@ -63,22 +60,31 @@ async function getSession(token) {
     let session;
 
     try {
-      session = typeof record.data === "object" ? record.data : JSON.parse(record.data);
+      session =
+        typeof record.data === "object"
+          ? record.data
+          : JSON.parse(record.data);
     } catch (parseErr) {
       console.error("❌ Failed to parse session JSON:", parseErr);
       return null;
     }
 
+    // ✅ Always include numeric user_id
+    if (!session.user_id) {
+      session.user_id = record.user_id;
+    }
+
     // Expire old sessions
     const ageDays =
-      (Date.now() - new Date(record.created_at).getTime()) / (1000 * 60 * 60 * 24);
+      (Date.now() - new Date(record.created_at).getTime()) /
+      (1000 * 60 * 60 * 24);
     if (ageDays > SESSION_TTL_DAYS) {
       console.warn("⚠️ Session expired, deleting:", token);
       await destroySession(token);
       return null;
     }
 
-    // Normalize all stored roles
+    // Normalize roles
     if (Array.isArray(session.roles)) {
       session.roles = session.roles.map(normalizeRoleName);
     }
@@ -93,9 +99,6 @@ async function getSession(token) {
   }
 }
 
-/**
- * Update the active role and its access list for a session.
- */
 async function updateSessionRole(token, roleName, access = []) {
   try {
     const result = await pool.query(`SELECT data FROM sessions WHERE token = $1`, [token]);
@@ -112,7 +115,6 @@ async function updateSessionRole(token, roleName, access = []) {
       return false;
     }
 
-    // Normalize role
     const normalizedRole = normalizeRoleName(roleName);
 
     session.activeRole = {
@@ -120,7 +122,6 @@ async function updateSessionRole(token, roleName, access = []) {
       access: Array.isArray(access) ? access : [],
     };
 
-    // Ensure roles array contains normalized names
     if (Array.isArray(session.roles)) {
       session.roles = session.roles.map(normalizeRoleName);
     }
@@ -138,9 +139,6 @@ async function updateSessionRole(token, roleName, access = []) {
   }
 }
 
-/**
- * Destroy a session (logout).
- */
 async function destroySession(token) {
   try {
     await pool.query(`DELETE FROM sessions WHERE token = $1`, [token]);

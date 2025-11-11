@@ -240,3 +240,218 @@ select[multiple] {
     transform: translateY(0);
   }
 }
+/* =====================================================
+   EPOS SURVEY RESPONSE POPUP — CLEAN, BALANCED, RESPONSIVE
+   ===================================================== */
+
+html, body {
+  height: 100%;
+  background-color: #f5f7fa;
+  font-family: "Segoe UI", Roboto, sans-serif;
+  color: #1e293b;
+  margin: 0;
+}
+
+/* === Centered Wrapper === */
+.popup-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+}
+
+/* === Popup Card === */
+.popup-card {
+  width: 90%;
+  min-width: 750px;
+  max-width: 950px;
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.08);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: width 0.3s ease;
+  animation: fadeIn 0.25s ease;
+}
+
+/* === Header === */
+.popup-header {
+  background: linear-gradient(135deg, #1f497d, #2b6cb0);
+  padding: 0.9rem 1.5rem;
+}
+
+.popup-header h2 {
+  margin: 0;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #fff;
+}
+
+/* === Body === */
+.popup-body {
+  padding: 1.25rem 2rem 1rem;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  align-items: stretch;
+}
+
+/* === Survey Form === */
+.survey-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+.survey-form h3 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: #243447;
+  margin-bottom: 0.25rem;
+}
+
+.survey-form p.muted {
+  font-size: 0.9rem;
+  color: #64748b;
+  margin-bottom: 0.25rem;
+}
+
+/* === Question Block === */
+.question-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.question-block label {
+  font-weight: 600;
+  font-size: 1rem;
+  color: #1e293b;
+}
+
+.question-block input,
+.question-block select,
+.question-block textarea {
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+  padding: 0.55rem 0.8rem;
+  font-size: 0.95rem;
+  background-color: #f9fafb;
+  color: #111827;
+  transition: all 0.2s ease;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.question-block input:focus,
+.question-block select:focus,
+.question-block textarea:focus {
+  border-color: #0078d4;
+  background: #fff;
+  box-shadow: 0 0 0 2px rgba(0, 120, 212, 0.15);
+  outline: none;
+}
+
+.question-block textarea {
+  resize: vertical;
+  min-height: 70px;
+}
+
+.question-block small.muted {
+  font-size: 0.8rem;
+  color: #6b7280;
+  margin-top: 0.25rem;
+}
+
+/* === Progress Indicator === */
+.question-progress {
+  text-align: right;
+  font-size: 0.85rem;
+  color: #64748b;
+  margin-top: 0.25rem;
+  font-style: italic;
+}
+
+/* === Footer Buttons === */
+.form-actions {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background: #f8fafc;
+  border-top: 1px solid #e2e8f0;
+  padding: 1rem 1.75rem;
+  gap: 1rem;
+}
+
+.form-actions button {
+  border: none;
+  border-radius: 6px;
+  font-size: 0.95rem;
+  font-weight: 500;
+  padding: 0.6rem 1.75rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  min-width: 140px;
+}
+
+.btn-primary {
+  background-color: #2563eb;
+  color: #fff;
+}
+
+.btn-primary:hover {
+  background-color: #1e4db7;
+}
+
+.btn-secondary {
+  background-color: #e5e7eb;
+  color: #1e293b;
+}
+
+.btn-secondary:hover {
+  background-color: #d1d5db;
+}
+
+/* === Animation === */
+@keyframes fadeIn {
+  from { opacity: 0; transform: scale(0.97); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+/* === Responsive Adjustments === */
+@media (max-width: 1000px) {
+  .popup-card {
+    min-width: 600px;
+    width: 95%;
+  }
+}
+
+@media (max-width: 700px) {
+  .popup-card {
+    min-width: unset;
+    width: 96%;
+    border-radius: 8px;
+  }
+
+  .popup-body {
+    padding: 1rem 1.25rem;
+  }
+
+  .survey-form {
+    gap: 1rem;
+  }
+
+  .form-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .form-actions button {
+    width: 100%;
+  }
+}
