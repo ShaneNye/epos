@@ -2,366 +2,290 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EPOS Admin</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EPOS Admin</title>
 
-    <!-- Styles -->
-    <link rel="stylesheet" href="/css/home.css">
-    <link rel="stylesheet" href="/css/admin.css">
+  <!-- Styles -->
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/admin.css" />
 
-    <!-- MUST come before menu.js so storageGet() is defined -->
-    <script src="/js/storage.js"></script>
+  <!-- MUST come before menu.js so storageGet() is defined -->
+  <script src="/js/storage.js"></script>
 
-    <!-- Menu (uses storageGet + token) -->
-    <script defer src="/js/menu.js"></script>
+  <!-- Menu (uses storageGet + token) -->
+  <script defer src="/js/menu.js"></script>
 
-    <!-- Admin-only scripts after menu -->
-    <script defer src="/js/adminMeta.js"></script>
-    <script defer src="/js/adminUser.js"></script>
-    <script defer src="/js/adminMain.js"></script>
-    <script defer src="/js/adminUserSearch.js"></script>
-    <script defer src="/js/adminRoles.js"></script>
-    <script defer src="/js/adminLocations.js"></script>
-    <script src="/assistant/assistant.js"></script>
-    <script defer src="/js/widgets/adminWidgets.js"></script>
-    <link rel="stylesheet" href="/assistant/assistant.css" />
-
+  <!-- Admin-only scripts after menu -->
+  <script defer src="/js/adminMeta.js"></script>
+  <script defer src="/js/adminUser.js"></script>
+  <script defer src="/js/adminMain.js"></script>
+  <script defer src="/js/adminUserSearch.js"></script>
+  <script defer src="/js/adminRoles.js"></script>
+  <script defer src="/js/adminLocations.js"></script>
+  <script src="/assistant/assistant.js"></script>
+  <script defer src="/js/widgets/adminWidgets.js"></script>
+  <link rel="stylesheet" href="/assistant/assistant.css" />
 </head>
 
 <body>
-    <!-- Menu -->
-    <div id="menu"></div>
+  <!-- Menu -->
+  <div id="menu"></div>
 
-    <main class="content" style="max-width: 1000px; margin: 2rem auto;">
-        <h1 style="margin-bottom: 1rem; color: var(--brand);">Admin Dashboard</h1>
+  <main class="content" style="max-width: 1000px; margin: 2rem auto;">
+    <h1 style="margin-bottom: 1rem; color: var(--brand);">Admin Dashboard</h1>
 
-        <!-- Main Tabs -->
-        <div class="tabs">
-            <div class="tab active" data-target="users">User Management</div>
-            <div class="tab" data-target="permissions">Feature Permissions</div>
-            <div class="tab" data-target="fields">Field Mapping</div>
-            <div class="tab" data-target="dashboard-widgets">Dashboard widgets</div>
+    <!-- Main Tabs -->
+    <div class="tabs">
+      <div class="tab active" data-target="users">User Management</div>
+      <div class="tab" data-target="permissions">Feature Permissions</div>
+      <div class="tab" data-target="fields">Field Mapping</div>
+      <div class="tab" data-target="dashboard-widgets">Dashboard Widgets</div>
+    </div>
 
+    <!-- === USER MANAGEMENT MASTER TAB === -->
+    <div id="users" class="tab-content active">
+      <h2>User Management</h2>
+
+      <!-- Subtabs -->
+      <div class="subtabs">
+        <div class="subtab active" data-target="sub-users">Users</div>
+        <div class="subtab" data-target="sub-roles">Roles</div>
+        <div class="subtab" data-target="sub-locations">Locations</div>
+      </div>
+
+      <!-- === USERS Subtab === -->
+      <div id="sub-users" class="subtab-content active">
+        <div class="user-toolbar">
+          <button id="addUserBtn" class="btn-primary">+ Add User</button>
+
+          <div class="user-search">
+            <select id="searchColumn">
+              <option value="name">Name</option>
+              <option value="email">Email</option>
+              <option value="roles">Role</option>
+              <option value="location">Location</option>
+            </select>
+            <input type="text" id="searchQuery" placeholder="Search users..." />
+            <button type="button" id="clearSearch" class="btn-secondary">Clear</button>
+          </div>
         </div>
 
-        <!-- === USER MANAGEMENT MASTER TAB === -->
-        <div id="users" class="tab-content active">
-            <h2>User Management</h2>
+        <table id="userTable">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Email</th>
+              <th>Roles</th>
+              <th>Primary Store</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
 
-            <!-- Subtabs -->
-            <div class="subtabs">
-                <div class="subtab active" data-target="sub-users">Users</div>
-                <div class="subtab" data-target="sub-roles">Roles</div>
-                <div class="subtab" data-target="sub-locations">Locations</div>
+        <!-- User Modal -->
+        <div id="userModal" class="modal hidden">
+          <div class="modal-content">
+            <h3 id="modalTitle">Edit User</h3>
+            <div class="modal-body">
+              <form id="userForm">
+                <input type="hidden" name="id" />
+
+                <label>First Name<input type="text" id="firstName" name="firstName" required /></label>
+                <label>Last Name<input type="text" id="lastName" name="lastName" required /></label>
+                <label>Email<input type="email" id="email" name="email" required /></label>
+
+                <label for="roleSelect">Roles</label>
+                <select name="role_ids" id="roleSelect" multiple></select>
+
+                <label for="locationSelect">Primary Store</label>
+                <select name="location_id" id="locationSelect"></select>
+
+                <label for="profileImage">Profile Image URL</label>
+                <input type="url" id="profileImage" name="profileImage" placeholder="https://example.com/avatar.png" />
+
+                <label for="password">Password</label>
+                <input type="password" id="password" name="password" placeholder="Leave blank to keep current" />
+
+                <label for="sb_netsuite_token_id">Sandbox Token ID</label>
+                <input type="password" id="sb_netsuite_token_id" name="sb_netsuite_token_id" placeholder="************" />
+
+                <label>NetSuite ID
+                  <input type="text" id="netsuiteId" name="netsuiteId" placeholder="e.g. 12345" />
+                </label>
+
+                <label for="sb_netsuite_token_secret">Sandbox Token Secret</label>
+                <input type="password" id="sb_netsuite_token_secret" name="sb_netsuite_token_secret"
+                  placeholder="************" />
+
+                <label for="prod_netsuite_token_id">Production Token ID</label>
+                <input type="password" id="prod_netsuite_token_id" name="prod_netsuite_token_id"
+                  placeholder="************" />
+
+                <label for="prod_netsuite_token_secret">Production Token Secret</label>
+                <input type="password" id="prod_netsuite_token_secret" name="prod_netsuite_token_secret"
+                  placeholder="************" />
+              </form>
             </div>
 
-            <!-- === USERS Subtab === -->
-            <div id="sub-users" class="subtab-content active">
-                <div class="user-toolbar">
-                    <button id="addUserBtn" class="btn-primary">+ Add User</button>
-
-                    <div class="user-search">
-                        <select id="searchColumn">
-                            <option value="name">Name</option>
-                            <option value="email">Email</option>
-                            <option value="roles">Role</option>
-                            <option value="location">Location</option>
-                        </select>
-                        <input type="text" id="searchQuery" placeholder="Search users...">
-                        <button type="button" id="clearSearch" class="btn-secondary">Clear</button>
-                    </div>
-                </div>
-
-                <table id="userTable">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Roles</th>
-                            <th>Primary Store</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-
-                <!-- User Modal -->
-                <div id="userModal" class="modal hidden">
-                    <div class="modal-content">
-                        <h3 id="modalTitle">Edit User</h3>
-                        <div class="modal-body">
-                            <form id="userForm">
-                                <input type="hidden" name="id" />
-
-                                <div class="form-group">
-                                    <label for="firstName">First Name</label>
-                                    <input type="text" id="firstName" name="firstName" required>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="lastName">Last Name</label>
-                                    <input type="text" id="lastName" name="lastName" required>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="email">Email</label>
-                                    <input type="email" id="email" name="email" required>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="roleSelect">Roles</label>
-                                    <select name="role_ids" id="roleSelect" multiple></select>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="locationSelect">Primary Store</label>
-                                    <select name="location_id" id="locationSelect"></select>
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="profileImage">Profile Image URL</label>
-                                    <input type="url" id="profileImage" name="profileImage"
-                                        placeholder="https://example.com/avatar.png">
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="password">Password</label>
-                                    <input type="password" id="password" name="password"
-                                        placeholder="Leave blank to keep current">
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="sb_netsuite_token_id">Sandbox Token ID</label>
-                                    <input type="password" id="sb_netsuite_token_id" name="sb_netsuite_token_id"
-                                        placeholder="************">
-                                </div>
-
-                                <label>
-                                    NetSuite ID
-                                    <input type="text" id="netsuiteId" name="netsuiteId" placeholder="e.g. 12345" />
-                                </label>
-
-
-                                <div class="form-group">
-                                    <label for="sb_netsuite_token_secret">Sandbox Token Secret</label>
-                                    <input type="password" id="sb_netsuite_token_secret" name="sb_netsuite_token_secret"
-                                        placeholder="************">
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="prod_netsuite_token_id">Production Token ID</label>
-                                    <input type="password" id="prod_netsuite_token_id" name="prod_netsuite_token_id"
-                                        placeholder="************">
-                                </div>
-
-                                <div class="form-group">
-                                    <label for="prod_netsuite_token_secret">Production Token Secret</label>
-                                    <input type="password" id="prod_netsuite_token_secret"
-                                        name="prod_netsuite_token_secret" placeholder="************">
-                                </div>
-                            </form>
-                        </div>
-
-                        <div class="modal-actions">
-                            <button type="submit" form="userForm" class="btn-primary">Save</button>
-                            <button type="button" id="cancelModal" class="btn-secondary">Cancel</button>
-                        </div>
-                    </div>
-                </div>
+            <div class="modal-actions">
+              <button type="submit" form="userForm" class="btn-primary">Save</button>
+              <button type="button" id="cancelModal" class="btn-secondary">Cancel</button>
             </div>
+          </div>
+        </div>
+      </div>
 
-            <!-- === ROLES Subtab === -->
-            <div id="sub-roles" class="subtab-content hidden">
-                <div class="user-toolbar">
-                    <button id="addRoleBtn" class="btn-primary">+ Add Role</button>
-                </div>
+      <!-- === ROLES Subtab === -->
+      <div id="sub-roles" class="subtab-content hidden">
+        <div class="user-toolbar">
+          <button id="addRoleBtn" class="btn-primary">+ Add Role</button>
+        </div>
 
-                <table id="roleTable">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Role Name</th>
-                            <th>Access</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
+        <table id="roleTable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Role Name</th>
+              <th>Access</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
 
-                <!-- Role Modal -->
-                <div id="roleModal" class="modal hidden">
-                    <div class="modal-content">
-                        <h3 id="roleModalTitle">Add Role</h3>
-                        <div class="modal-body">
-                            <form id="roleForm">
-                                <label>
-                                    Role Name
-                                    <input type="text" name="name" required>
-                                </label>
-
-                                <label>
-                                    Access
-                                    <select name="access" id="accessSelect" multiple size="8">
-                                        <option value="home">Home</option>
-                                        <option value="sales/new">New Sales Order</option>
-                                        <option value="quote/new">New Quote</option>
-                                        <option value="orders">Order Management</option>
-                                        <option value="reports">Reports</option>
-                                        <option value="end-of-day">End Of Day</option>
-                                        <option value="engagement">Engagement</option>
-                                        <option value="admin">Admin</option>
-                                    </select>
-                                </label>
-                            </form>
-                        </div>
-                        <div class="modal-actions">
-                            <button type="submit" form="roleForm" class="btn-primary">Save</button>
-                            <button type="button" id="cancelRoleModal" class="btn-secondary">Cancel</button>
-                        </div>
-                    </div>
-                </div>
+        <!-- Role Modal -->
+        <div id="roleModal" class="modal hidden">
+          <div class="modal-content">
+            <h3 id="roleModalTitle">Add Role</h3>
+            <div class="modal-body">
+              <form id="roleForm">
+                <label>Role Name<input type="text" name="name" required /></label>
+                <label>Access
+                  <select name="access" id="accessSelect" multiple size="8">
+                    <option value="home">Home</option>
+                    <option value="sales/new">New Sales Order</option>
+                    <option value="quote/new">New Quote</option>
+                    <option value="orders">Order Management</option>
+                    <option value="reports">Reports</option>
+                    <option value="end-of-day">End Of Day</option>
+                    <option value="engagement">Engagement</option>
+                    <option value="admin">Admin</option>
+                  </select>
+                </label>
+              </form>
             </div>
-
-            <!-- === LOCATIONS Subtab === -->
-            <div id="sub-locations" class="subtab-content hidden">
-                <div class="user-toolbar">
-                    <button id="addLocationBtn" class="btn-primary">+ Add Location</button>
-                </div>
-
-                <table id="locationTable">
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Store Name</th>
-                            <th>NetSuite Internal ID</th>
-                            <th>Invoicing ID</th>
-                            <th>Interco Customer ID</th>
-                            <!--<th>Intercompany Location</th> -->
-                            <th>Distribution Location ID</th> <!-- ✅ NEW COLUMN -->
-                            <th>Petty Cash Account</th>
-                            <th>Current Account</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-
-                <div id="locationModal" class="modal hidden">
-                    <div class="modal-content">
-                        <h3 id="locationModalTitle">Add Location</h3>
-                        <div class="modal-body">
-                            <form id="locationForm">
-                                <input type="hidden" name="id" />
-
-                                <label for="locationName">Store Name</label>
-                                <input type="text" id="locationName" name="name" required />
-
-                                <label>
-                                    Invoice Location ID
-                                    <input type="number" id="invoice_location_id" name="invoice_location_id"
-                                        placeholder="e.g. 3" />
-                                </label>
-
-                                <label for="netsuiteId">NetSuite Internal ID</label>
-                                <input type="text" id="netsuiteId" name="netsuite_internal_id" required />
-
-                                <label>
-                                    Intercompany Customer
-                                    <input type="text" name="intercompany_customer" />
-                                </label>
-                                <!--
-                                <label>
-                                    Intercompany Location
-                                    <input type="text" name="intercompany_location" />
-                                </label>
-                            -->
-                                <!-- ✅ NEW FIELD -->
-                                <label>
-                                    Distribution Location ID
-                                    <input type="text" name="distribution_location_id" placeholder="e.g. 203" />
-                                </label>
-
-                                <label>
-                                    Petty Cash Account
-                                    <input type="text" name="petty_cash_account" placeholder="e.g. 123" />
-                                </label>
-
-                                <label>
-                                    Current Account
-                                    <input type="text" name="current_account" placeholder="e.g. 456" />
-                                </label>
-                            </form>
-                        </div>
-                        <div class="modal-actions">
-                            <button type="submit" form="locationForm" class="btn-primary">
-                                Save
-                            </button>
-                            <button type="button" id="cancelLocationModal" class="btn-secondary">
-                                Cancel
-                            </button>
-                        </div>
-                    </div>
-                </div>
+            <div class="modal-actions">
+              <button type="submit" form="roleForm" class="btn-primary">Save</button>
+              <button type="button" id="cancelRoleModal" class="btn-secondary">Cancel</button>
             </div>
+          </div>
+        </div>
+      </div>
 
+      <!-- === LOCATIONS Subtab === -->
+      <div id="sub-locations" class="subtab-content hidden">
+        <div class="user-toolbar">
+          <button id="addLocationBtn" class="btn-primary">+ Add Location</button>
+        </div>
 
-            <!-- === Feature Permissions === -->
-            <div id="permissions" class="tab-content hidden">
-                <h2>Feature Permissions</h2>
-                <p>Configure which features are available to different roles.</p>
+        <table id="locationTable">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Store Name</th>
+              <th>NetSuite Internal ID</th>
+              <th>Invoicing ID</th>
+              <th>Interco Customer ID</th>
+              <th>Distribution Location ID</th>
+              <th>Petty Cash Account</th>
+              <th>Current Account</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+
+        <div id="locationModal" class="modal hidden">
+          <div class="modal-content">
+            <h3 id="locationModalTitle">Add Location</h3>
+            <div class="modal-body">
+              <form id="locationForm">
+                <input type="hidden" name="id" />
+                <label>Store Name<input type="text" id="locationName" name="name" required /></label>
+                <label>Invoice Location ID<input type="number" id="invoice_location_id" name="invoice_location_id"
+                    placeholder="e.g. 3" /></label>
+                <label>NetSuite Internal ID<input type="text" id="netsuiteId" name="netsuite_internal_id" required /></label>
+                <label>Intercompany Customer<input type="text" name="intercompany_customer" /></label>
+                <label>Distribution Location ID<input type="text" name="distribution_location_id"
+                    placeholder="e.g. 203" /></label>
+                <label>Petty Cash Account<input type="text" name="petty_cash_account" placeholder="e.g. 123" /></label>
+                <label>Current Account<input type="text" name="current_account" placeholder="e.g. 456" /></label>
+              </form>
             </div>
-
-            <!-- === Field Mapping === -->
-            <div id="fields" class="tab-content hidden">
-                <h2>Field Mapping</h2>
-                <p>Map external data fields to system fields.</p>
+            <div class="modal-actions">
+              <button type="submit" form="locationForm" class="btn-primary">Save</button>
+              <button type="button" id="cancelLocationModal" class="btn-secondary">Cancel</button>
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
 
-            <!-- === Field Mapping === -->
-            <div id="dashboard-widgets" class="tab-content hidden">
-                <h2>Dashboard Widgets</h2>
-                <p>Control which roles can view each dashboard widget.</p>
+    <!-- === Feature Permissions (now outside #users) === -->
+    <div id="permissions" class="tab-content hidden">
+      <h2>Feature Permissions</h2>
+      <p>Configure which features are available to different roles.</p>
+    </div>
 
-                <!-- Where the cards render -->
-                <div id="widgetList" class="widget-admin-grid"></div>
+    <!-- === Field Mapping (now outside #users) === -->
+    <div id="fields" class="tab-content hidden">
+      <h2>Field Mapping</h2>
+      <p>Map external data fields to system fields.</p>
+    </div>
 
-                <!-- Widget Role Modal -->
-                <div id="widgetRoleModal" class="modal hidden">
-                    <div class="modal-content">
-                        <h3 id="widgetRoleModalTitle">Edit Widget Access</h3>
-                        <div class="modal-body">
-                            <form id="widgetRoleForm">
-                                <input type="hidden" id="widgetKey" name="widgetKey" />
-                                <label for="widgetRoleSelect">Select Roles</label>
-                                <select id="widgetRoleSelect" name="roles" multiple size="8"></select>
-                            </form>
-                        </div>
-                        <div class="modal-actions">
-                            <button type="submit" form="widgetRoleForm" class="btn-primary">Save</button>
-                            <button type="button" id="cancelWidgetRoleModal" class="btn-secondary">Cancel</button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+    <!-- === Dashboard Widgets (now outside #users) === -->
+    <div id="dashboard-widgets" class="tab-content hidden">
+      <h2>Dashboard Widgets</h2>
+      <p>Control which roles can view each dashboard widget.</p>
 
+      <div id="widgetList" class="widget-admin-grid"></div>
 
-    </main>
+      <!-- Widget Role Modal -->
+      <div id="widgetRoleModal" class="modal hidden">
+        <div class="modal-content">
+          <h3 id="widgetRoleModalTitle">Edit Widget Access</h3>
+          <div class="modal-body">
+            <form id="widgetRoleForm">
+              <input type="hidden" id="widgetKey" name="widgetKey" />
+              <label for="widgetRoleSelect">Select Roles</label>
+              <select id="widgetRoleSelect" name="roles" multiple size="8"></select>
+            </form>
+          </div>
+          <div class="modal-actions">
+            <button type="submit" form="widgetRoleForm" class="btn-primary">Save</button>
+            <button type="button" id="cancelWidgetRoleModal" class="btn-secondary">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
 
-    <!-- Subtab toggle logic -->
-    <script>
-        document.addEventListener("DOMContentLoaded", () => {
-            document.querySelectorAll(".subtab").forEach(tab => {
-                tab.addEventListener("click", () => {
-                    document.querySelectorAll(".subtab").forEach(t => t.classList.remove("active"));
-                    document.querySelectorAll(".subtab-content").forEach(c => c.classList.add("hidden"));
-                    tab.classList.add("active");
-                    const target = document.getElementById(tab.dataset.target);
-                    if (target) target.classList.remove("hidden");
-                });
-            });
+  <!-- Subtab toggle logic -->
+  <script>
+    document.addEventListener("DOMContentLoaded", () => {
+      document.querySelectorAll(".subtab").forEach((tab) => {
+        tab.addEventListener("click", () => {
+          document.querySelectorAll(".subtab").forEach((t) => t.classList.remove("active"));
+          document.querySelectorAll(".subtab-content").forEach((c) => c.classList.add("hidden"));
+          tab.classList.add("active");
+          const target = document.getElementById(tab.dataset.target);
+          if (target) target.classList.remove("hidden");
         });
-    </script>
+      });
+    });
+  </script>
 </body>
 
 </html>

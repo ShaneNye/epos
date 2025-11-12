@@ -466,9 +466,9 @@ select#activeRoleSelect::-internal-list-box {
   gap: 10px;
   background: #fff;
   border: 1px solid #e6eef3;
-  border-radius: 6px;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-  padding: 10px 12px;
+  border-radius: 10px;            /* softer radius */
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05); /* consistent shadow */
+  padding: 12px 14px;
   max-height: 480px;
   overflow-y: auto;
   margin-top: 25px;
@@ -478,67 +478,65 @@ select#activeRoleSelect::-internal-list-box {
 #announcementContainer::before {
   content: "📢 Announcements";
   display: block;
-  font-size: 0.95rem;
+  font-size: 0.98rem;
   font-weight: 600;
   color: #0081ab;
   border-bottom: 1px solid #e6eef3;
-  margin-bottom: 6px;
-  padding-bottom: 4px;
+  margin-bottom: 8px;
+  padding-bottom: 6px;
 }
 
 /* Scrollbar styling */
-#announcementContainer::-webkit-scrollbar {
-  width: 6px;
-}
+#announcementContainer::-webkit-scrollbar { width: 6px; }
 #announcementContainer::-webkit-scrollbar-thumb {
   background: #cdeef7;
   border-radius: 4px;
 }
-#announcementContainer::-webkit-scrollbar-thumb:hover {
-  background: #a7e0f0;
-}
+#announcementContainer::-webkit-scrollbar-thumb:hover { background: #a7e0f0; }
 
 /* === Individual Announcement Cards === */
 .announcement-card {
   background: #fff;
   border: 1px solid #e6eef3;
   border-left: 4px solid #0081ab;
-  border-radius: 5px;
-  padding: 0.8rem 1rem;
-  transition: all 0.25s ease;
+  border-radius: 8px;                   /* match popup cards */
+  padding: 0.9rem 1rem;
+  transition: box-shadow 0.25s ease, transform 0.2s ease, border-color 0.25s ease;
 }
 
 .announcement-card:hover {
-  box-shadow: 0 2px 6px rgba(0,129,171,0.12);
+  box-shadow: 0 4px 12px rgba(0,129,171,0.12);
   border-color: #bde7f3;
+  transform: translateY(-2px);
 }
 
 .announcement-card h3 {
-  margin: 0 0 0.4rem;
+  margin: 0 0 0.45rem;
   color: #0081ab;
-  font-size: 0.95rem;
+  font-size: 0.98rem;
   font-weight: 600;
 }
 
 .announcement-card p {
-  margin: 0.25rem 0;
-  font-size: 0.88rem;
+  margin: 0.35rem 0;
+  font-size: 0.9rem;
   color: #1a1f24;
+  line-height: 1.4;
 }
 
 .announcement-card .muted {
   color: #7f8a91;
-  font-size: 0.78rem;
+  font-size: 0.8rem;
 }
 
 /* acknowledgment line */
 .ack-label {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.55rem;
   font-weight: 500;
-  font-size: 0.83rem;
-  margin-top: 0.6rem;
+  font-size: 0.85rem;
+  margin-top: 0.7rem;
   color: #005b72;
 }
 
@@ -575,55 +573,59 @@ select#activeRoleSelect::-internal-list-box {
 
 /* Responsive stacking */
 @media (max-width: 1100px) {
-  #dashboardWrapper {
-    flex-direction: column;
-  }
-
+  #dashboardWrapper { flex-direction: column; }
   #announcementContainer {
     width: 100%;
     max-height: none;
-    
   }
 }
-
-
 
 /* === SURVEY PANEL STYLING === */
 .survey-area {
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
-  margin-top:25px;
+  gap: 1rem;                 /* unified spacing */
+  margin-top: 25px;
 }
 
 .survey-area .announcement-panel {
   background: #fff;
-  border-radius: 8px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
-  padding: 1rem 1.25rem;
+  border-radius: 10px;       /* match cards */
+  border: 1px solid #e6eef3;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  padding: 1.25rem 1.5rem;
+  transition: box-shadow 0.25s ease, transform 0.2s ease;
+}
+.survey-area .announcement-panel:hover {
+  box-shadow: 0 4px 12px rgba(0,129,171,0.12);
+  transform: translateY(-2px);
 }
 
 .survey-area h3 {
   font-size: 1rem;
   font-weight: 600;
-  color: #333;
-  margin-bottom: 0.75rem;
+  color: #0081ab;
+  margin: 0 0 0.8rem;
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid #e6eef3;  /* match section header */
 }
 
 .survey-area .announcement-item {
   border: 1px solid #e0e6ed;
-  border-radius: 6px;
-  padding: 0.75rem;
-  margin-bottom: 0.6rem;
+  border-left: 4px solid #0081ab;    /* teal accent like announcements */
+  border-radius: 8px;
+  padding: 0.9rem 1rem;
+  margin-bottom: 0.75rem;
   background: #fafbfc;
-  transition: background 0.2s;
+  transition: all 0.25s ease;
 }
-
 .survey-area .announcement-item:hover {
-  background: #f3f6f9;
+  background: #f5fafd;
+  border-color: #bde7f3;
+  box-shadow: 0 2px 6px rgba(0,129,171,0.10);
 }
 
 .survey-area .announcement-header {
@@ -634,31 +636,33 @@ select#activeRoleSelect::-internal-list-box {
 
 .survey-area .announcement-header strong {
   font-weight: 600;
-  color: #222;
+  color: #1a1f24;
 }
 
 .survey-area .announcement-item p {
   margin: 0.5rem 0;
   font-size: 0.9rem;
-  color: #444;
+  color: #333;
+  line-height: 1.4;
 }
 
 .survey-area .btn-primary {
-  background-color: #0078d4;
-  color: white;
+  background: linear-gradient(90deg, #007ea8, #0092c7); /* match primary */
+  color: #fff;
   border: none;
-  border-radius: 4px;
-  padding: 0.4rem 0.75rem;
-  font-size: 0.85rem;
+  border-radius: 6px;
+  padding: 0.48rem 0.9rem;
+  font-size: 0.86rem;
+  font-weight: 600;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: all 0.2s ease;
 }
-
 .survey-area .btn-primary:hover {
-  background-color: #005ea0;
+  background: linear-gradient(90deg, #008cb8, #00a4d6);
+  box-shadow: 0 2px 4px rgba(0, 129, 171, 0.25);
 }
 
 .survey-area .muted {
-  color: #888;
+  color: #7f8a91;
   font-size: 0.8rem;
 }
