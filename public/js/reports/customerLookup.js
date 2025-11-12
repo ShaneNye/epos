@@ -44,9 +44,7 @@ document.addEventListener("DOMContentLoaded", () => {
             <option value="quote">New Quote</option>
           </select>
         </td>
-        <td>
-          <button class="btn-primary small-btn goBtn" data-id="${id}">Go</button>
-        </td>
+
       `;
       tableBody.appendChild(tr);
     }
@@ -295,19 +293,29 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 
-  tableBody?.addEventListener("change", e => {
-    if (!e.target.classList.contains("actionSelect")) return;
-    const action = e.target.value;
-    const custId = e.target.dataset.id;
+tableBody?.addEventListener("change", e => {
+  if (!e.target.classList.contains("actionSelect")) return;
+  const action = e.target.value;
+  const custId = e.target.dataset.id;
+  if (!action) return;
 
-    if (action === "sale") {
-      window.location.href = `/sales/new?customer=${custId}`;
-    } else if (action === "quote") {
-      window.location.href = `/quote/new?customer=${custId}`;
-    }
+  // 🔍 find the full record for this customer
+  const customer = allResults.find(r => String(r["Internal ID"]) === String(custId));
+  if (!customer) return;
 
-    e.target.value = "";
-  });
+  // ✅ store for the next page
+  localStorage.setItem("selectedCustomer", JSON.stringify(customer));
+
+  // redirect
+  if (action === "sale") {
+    window.location.href = `/sales/new?customer=${custId}`;
+  } else if (action === "quote") {
+    window.location.href = `/quote/new?customer=${custId}`;
+  }
+
+  e.target.value = "";
+});
+
 
   window.addEventListener("reports:tabchange", e => {
     if (e.detail.id === "customerLookup" && allResults.length === 0) runCustomerLookup(true);

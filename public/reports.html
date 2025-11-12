@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -17,6 +18,7 @@
   <script src="/assistant/assistant.js"></script>
   <script defer src="/js/reports/reports.js"></script>
   <script defer src="/js/reports/customerLookup.js"></script>
+  <script defer src="/js/reports/stockSearch.js"></script>
 </head>
 
 <body>
@@ -38,21 +40,22 @@
         <input type="text" id="lookupQuery" placeholder="Search by name, email, or postcode..." />
         <button id="lookupBtn" class="btn-primary">Search</button>
       </div>
-    <div class="table-wrapper">
-  <table id="customerLookupTable">
-    <thead>
-      <tr>
-        <th>Internal ID</th>
-        <th>Customer Name</th>
-        <th>Action</th>
-        <th>Go</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr><td colspan="4" style="text-align:center; color:#999;">Loading...</td></tr>
-    </tbody>
-  </table>
-</div>
+      <div class="table-wrapper">
+        <table id="customerLookupTable">
+          <thead>
+            <tr>
+              <th>Internal ID</th>
+              <th>Customer Name</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td colspan="4" style="text-align:center; color:#999;">Loading...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
 
 
     </div>
@@ -60,24 +63,46 @@
     <!-- === STOCK SEARCH TAB === -->
     <div id="stockSearch" class="tab-content hidden">
       <h2>Stock Search</h2>
-      <div class="lookup-toolbar">
-        <input type="text" id="stockQuery" placeholder="Search by SKU, name, or ID..." />
-        <button id="stockBtn" class="btn-primary">Search</button>
+
+      <div class="stock-controls">
+        <label class="location-select-label">
+          Location:
+          <select id="stockLocationSelect"></select>
+        </label>
+
+        <label class="status-select-label">
+          Status:
+          <select id="stockStatusSelect">
+            <option value="">All Statuses</option>
+          </select>
+        </label>
       </div>
-      <table id="stockSearchTable">
-        <thead>
-          <tr>
-            <th>Item ID</th>
-            <th>Name</th>
-            <th>Available Qty</th>
-            <th>Warehouse</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr><td colspan="4" style="text-align:center; color:#999;">Enter a search query to begin.</td></tr>
-        </tbody>
-      </table>
+
+      <div id="stockTableWrapper" class="stock-table-container">
+        <h3 id="stockLocationTitle"></h3>
+        <input type="text" id="stockFilter" class="stock-filter" placeholder="Filter items...">
+
+        <div class="stock-table-scroll">
+          <table class="stock-table">
+            <thead>
+              <tr>
+                <th>Item</th>
+                <th>Lot Number</th>
+                <th>Bin</th>
+                <th>Status</th>
+                <th>Available Qty</th>
+              </tr>
+            </thead>
+            <tbody id="stockTableBody"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
+
+
+
+
   </main>
 </body>
+
 </html>

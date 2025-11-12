@@ -1,5 +1,6 @@
 console.log("✅ salesNew.js loaded and running");
 
+
 document.addEventListener("DOMContentLoaded", async () => {
   const saved = storageGet(); // from main.js
   if (!saved || !saved.token) return (window.location.href = "/index.html");
@@ -56,47 +57,70 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("Failed to load sales executives:", err);
   }
 
-/* === Load Stores === */
-try {
-  const res = await fetch("/api/meta/locations", { headers });
-  const data = await res.json();
+  /* === Load Stores === */
+  try {
+    const res = await fetch("/api/meta/locations", { headers });
+    const data = await res.json();
 
-  if (data.ok) {
-    const storeSelect = document.getElementById("store");
-    storeSelect.innerHTML = '<option value="">Select Store</option>';
+    if (data.ok) {
+      const storeSelect = document.getElementById("store");
+      storeSelect.innerHTML = '<option value="">Select Store</option>';
 
-    // ✅ Filter out any location whose name includes 'Warehouse'
-    const filteredLocations = data.locations.filter(
-      (loc) => !/warehouse/i.test(loc.name)
-    );
-
-    filteredLocations.forEach((loc) => {
-      const opt = document.createElement("option");
-      opt.value = String(loc.id);
-      opt.textContent = loc.name;
-      storeSelect.appendChild(opt);
-    });
-
-    if (currentUser && currentUser.primaryStore) {
-      const match = filteredLocations.find(
-        (l) =>
-          String(l.id) === String(currentUser.primaryStore) ||
-          l.name === currentUser.primaryStore
+      const filteredLocations = data.locations.filter(
+        (loc) => !/warehouse/i.test(loc.name)
       );
 
-      if (match) {
-        storeSelect.value = String(match.id);
-        console.log(`🏪 Default store set to: ${match.name} (ID: ${match.id})`);
-      } else {
-        console.warn(
-          `⚠️ No store match found for primaryStore: ${currentUser.primaryStore}`
+      filteredLocations.forEach((loc) => {
+        const opt = document.createElement("option");
+        opt.value = String(loc.id);
+        opt.textContent = loc.name;
+        storeSelect.appendChild(opt);
+      });
+
+      if (currentUser && currentUser.primaryStore) {
+        const match = filteredLocations.find(
+          (l) =>
+            String(l.id) === String(currentUser.primaryStore) ||
+            l.name === currentUser.primaryStore
         );
+
+        if (match) {
+          storeSelect.value = String(match.id);
+          console.log(`🏪 Default store set to: ${match.name} (ID: ${match.id})`);
+        } else {
+          console.warn(
+            `⚠️ No store match found for primaryStore: ${currentUser.primaryStore}`
+          );
+        }
       }
     }
+  } catch (err) {
+    console.error("Failed to load stores:", err);
   }
-} catch (err) {
-  console.error("Failed to load stores:", err);
-}
+
+  // ✅ Move Prefill HERE — runs after user + store are ready
+  const stored = localStorage.getItem("selectedCustomer");
+  if (stored) {
+    try {
+      const c = JSON.parse(stored);
+      console.log("🧾 Prefilling customer from lookup:", c);
+
+      document.querySelector('input[name="firstName"]').value = c["First Name"] || "";
+      document.querySelector('input[name="lastName"]').value  = c["Last Name"] || "";
+      document.querySelector('input[name="email"]').value     = c["Email"] || "";
+      document.querySelector('input[name="contactNumber"]').value = c["Phone"] || "";
+      document.querySelector('input[name="postcode"]').value  = c["Postal Code"] || "";
+      document.querySelector('input[name="address1"]').value  = c["Address 1"] || "";
+      document.querySelector('input[name="address2"]').value  = c["Address 2"] || "";
+      document.querySelector('input[name="address3"]').value  = c["Address 3"] || "";
+
+      window.currentCustomerId = c["Internal ID"];
+    } catch (err) {
+      console.error("❌ Failed to parse stored customer:", err);
+    } finally {
+      localStorage.removeItem("selectedCustomer");
+    }
+  }
 
 
 

@@ -94,6 +94,34 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("Failed to load stores:", err);
   }
 
+    // ✅ Prefill from Customer Lookup — place this AFTER stores/users are loaded
+  const stored = localStorage.getItem("selectedCustomer");
+  if (stored) {
+    try {
+      const c = JSON.parse(stored);
+      console.log("🧾 Prefilling quote customer from lookup:", c);
+
+      // Map JSON to your form fields
+      document.querySelector('input[name="firstName"]').value = c["First Name"] || "";
+      document.querySelector('input[name="lastName"]').value  = c["Last Name"] || "";
+      document.querySelector('input[name="email"]').value     = c["Email"] || "";
+      document.querySelector('input[name="contactNumber"]').value = c["Phone"] || "";
+      document.querySelector('input[name="postcode"]').value  = c["Postal Code"] || "";
+      document.querySelector('input[name="address1"]').value  = c["Address 1"] || "";
+      document.querySelector('input[name="address2"]').value  = c["Address 2"] || "";
+      document.querySelector('input[name="address3"]').value  = c["Address 3"] || "";
+
+      // Keep the internal id available for save payloads
+      window.currentCustomerId = c["Internal ID"];
+    } catch (err) {
+      console.error("❌ Failed to parse stored customer:", err);
+    } finally {
+      // Clear so future quotes don’t get accidentally prefilled
+      localStorage.removeItem("selectedCustomer");
+    }
+  }
+
+
   /* === QUOTE SUMMARY CALCULATIONS === */
   window.updateQuoteSummary = function () {
     let netTotal = 0;

@@ -310,3 +310,154 @@
   flex: 1;
   overflow-y: auto;
 }
+
+
+
+/* =====================================================
+   STOCK SEARCH (Dropdown + Status Filter + Scrollable Table)
+   ===================================================== */
+
+#stockSearch {
+  background: #fff;
+  border: 1px solid #e6eef3;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+}
+
+#stockSearch h2 {
+  margin: 0 0 16px;
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: #0081ab;
+}
+
+/* === Control Bar (Location + Status) === */
+.stock-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.location-select-label,
+.status-select-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  color: #1a1f24;
+}
+
+#stockLocationSelect,
+#stockStatusSelect {
+  padding: 6px 10px;
+  border: 1px solid #cfd8df;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  min-width: 220px;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#stockLocationSelect:focus,
+#stockStatusSelect:focus {
+  outline: none;
+  border-color: #0081ab;
+  box-shadow: 0 0 0 2px rgba(0, 129, 171, 0.2);
+}
+
+/* === Section Header + Filter === */
+#stockLocationTitle {
+  color: #0081ab;
+  font-size: 1.1rem;
+  margin-bottom: 8px;
+  font-weight: 600;
+}
+
+.stock-filter {
+  width: 250px;
+  padding: 6px 10px;
+  margin-bottom: 12px;
+  border: 1px solid #d0dae1;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.stock-filter:focus {
+  outline: none;
+  border-color: #0081ab;
+  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.15);
+}
+
+/* === Scrollable Table Container === */
+.stock-table-scroll {
+  max-height: 480px;
+  overflow-y: auto;
+  border: 1px solid #e0e6ea;
+  border-radius: 8px;
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.03);
+}
+
+/* === Table Styling === */
+.stock-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+  background: #fff;
+}
+
+.stock-table thead th {
+  background: #0081ab;
+  color: #fff;
+  font-weight: 600;
+  padding: 10px 12px;
+  text-align: left;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.stock-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid #e8edf0;
+  color: #333;
+}
+
+.stock-table tr:nth-child(even) {
+  background: #f9fbfc;
+}
+
+.stock-table tr:hover {
+  background: #f1f7fa;
+}
+
+/* === Empty State === */
+.stock-table-container p,
+.stock-table td[colspan] {
+  text-align: center;
+  color: #777;
+  font-style: italic;
+  padding: 12px 0;
+}
+
+/* === Scrollbar Styling === */
+.stock-table-scroll::-webkit-scrollbar {
+  width: 10px;
+}
+
+.stock-table-scroll::-webkit-scrollbar-thumb {
+  background: #c5d2da;
+  border-radius: 6px;
+}
+
+.stock-table-scroll::-webkit-scrollbar-thumb:hover {
+  background: #a7b6be;
+}
+
+/* === Sticky header shadow when scrolling === */
+.stock-table-scroll.scrolled thead th {
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.08);
+  transition: box-shadow 0.2s ease;
+}

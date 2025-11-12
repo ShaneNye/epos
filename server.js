@@ -363,8 +363,9 @@ app.get("/api/netsuite/transfer-order-management", (req, res) =>
 
 // === Customer Lookup Report ===
 app.get("/api/netsuite/customer-lookup", (req, res) =>
-  fetchNetSuiteData("CUSTOMER_LOOKUP_URL", "CUSOMER_LOOKUP", res, "customer lookup report")
+  fetchNetSuiteData("CUSTOMER_LOOKUP_URL", "CUSTOMER_LOOKUP", res, "customer lookup report")
 );
+
 
 
 // === GL Accounts ===
