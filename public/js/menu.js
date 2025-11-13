@@ -31,15 +31,36 @@ function initMenuLogic() {
   // Load current user
   loadUser();
 
-  // Logout
-  const logoutBtn = document.getElementById("logoutBtn");
-  if (logoutBtn) {
-    logoutBtn.addEventListener("click", () => {
-      sessionStorage.removeItem("eposAuth");
-      localStorage.removeItem("eposAuth");
-      window.location.href = "/index.html";
+// Logout
+const logoutBtn = document.getElementById("logoutBtn");
+if (logoutBtn) {
+  logoutBtn.addEventListener("click", () => {
+    sessionStorage.removeItem("eposAuth");
+    localStorage.removeItem("eposAuth");
+    window.location.href = "/index.html";
+  });
+}
+
+const manageBtn = document.getElementById("manageBtn");
+if (manageBtn) {
+    manageBtn.addEventListener("click", () => {
+        const saved = storageGet();
+
+        // 🔥 FIX: ensure popup can access the token
+        if (sessionStorage.getItem("eposAuth")) {
+            localStorage.setItem("eposAuth", sessionStorage.getItem("eposAuth"));
+        }
+
+        const popup = window.open(
+            "/manage.html",
+            "ManageProfile",
+            "width=500,height=650,resizable=yes,scrollbars=yes"
+        );
+
+        if (!popup) alert("Please allow pop-ups to use the Manage feature.");
     });
-  }
+}
+
 }
 
 // --- Helpers ---

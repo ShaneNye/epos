@@ -9,7 +9,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const html = await resp.text();
     document.body.insertAdjacentHTML("beforeend", html);
 
-    // Wait for DOM to update
+    // Wait for DOM update
     await new Promise((r) => requestAnimationFrame(r));
 
     const widget = document.getElementById("salesAssistant");
@@ -21,8 +21,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     const input = document.getElementById("assistantInput");
     const body = document.getElementById("assistantBody");
     const handles = document.querySelectorAll(".resize-handle");
+    const sendBtn = form?.querySelector("button");
 
-    if (!widget || !toggle || !close || !header || !form || !input || !body) return;
+    if (!widget || !toggle || !close || !header || !form || !body) return;
+
+    /* ---------- Remove input field entirely ---------- */
+    if (input) input.remove();
+    if (sendBtn) {
+      sendBtn.textContent = "Reset";
+      sendBtn.type = "button";
+    }
 
     /* ---------- Utility ---------- */
     function unlockButton(btn) {
@@ -50,18 +58,59 @@ document.addEventListener("DOMContentLoaded", async () => {
       return "an unknown page";
     }
 
-    /* ---------- Toggle behaviour ---------- */
-    toggle.addEventListener("pointerdown", () => unlockButton(toggle));
     toggle.addEventListener("click", () => {
-      unlockButton(toggle);
-      const pageName = detectPageName();
-      locationDiv.textContent = `We are currently on ${pageName}`;
-      widget.style.display = "flex";
-      widget.dataset.vsaOpen = "true";
-      widget.classList.add("vsa-open");
-      toggle.style.display = "none";
-      input.focus();
-    });
+  unlockButton(toggle);
+
+  const pageName = detectPageName();
+  locationDiv.textContent = `We are currently on ${pageName}`;
+
+  widget.style.display = "flex";
+  widget.dataset.vsaOpen = "true";
+  widget.classList.add("vsa-open");
+  toggle.style.display = "none";
+
+  /* =======================================================
+     🟦 Responsive Default Expansion (only once)
+     ======================================================= */
+  if (!widget.dataset.userResized || widget.dataset.userResized !== "true") {
+
+    const screenW = window.innerWidth;
+    const screenH = window.innerHeight;
+
+    let targetW, targetH, targetTop, targetLeft;
+
+    if (screenW >= 1400) {
+      targetW = 360;
+      targetH = 720;
+      targetTop = screenH * 0.10;   // 10% from top
+      targetLeft = screenW - targetW - 30;
+    }
+    else if (screenW >= 1000) {
+      targetW = 320;
+      targetH = 560;
+      targetTop = screenH * 0.12;
+      targetLeft = screenW - targetW - 25;
+    }
+    else {
+      // Mobile / compact fallback
+      targetW = Math.round(screenW * 0.9);
+      targetH = Math.round(screenH * 0.7);
+      targetTop = screenH * 0.15;
+      targetLeft = screenW * 0.05;
+    }
+
+    widget.style.transition = "all 0.25s ease";
+    widget.style.width = `${targetW}px`;
+    widget.style.height = `${targetH}px`;
+    widget.style.left = `${targetLeft}px`;
+    widget.style.top = `${Math.max(20, targetTop)}px`;
+
+    setTimeout(() => (widget.style.transition = ""), 300);
+  }
+
+  input?.focus();
+});
+
 
     /* ---------- Close behaviour ---------- */
     close.addEventListener("pointerdown", () => unlockButton(close));
@@ -73,6 +122,41 @@ document.addEventListener("DOMContentLoaded", async () => {
       widget.classList.remove("vsa-open");
       toggle.style.display = "block";
     });
+
+    /* ---------- Reset Chat button ---------- */
+    if (sendBtn) {
+     sendBtn.addEventListener("click", () => {
+  // 🔄 Reset chat back to original "opened" state
+  body.innerHTML = "";
+
+  // Rebuild from assistantHooks.js if available
+  if (window.AssistantExtensions?.length) {
+    const pageTitle = document.getElementById("assistantLocation")?.textContent || "";
+    const intro = document.createElement("div");
+    intro.className = "assistant-message bot";
+    intro.textContent = `I can help with various tasks ${pageTitle ? `(${pageTitle})` : ""}`;
+    body.appendChild(intro);
+
+    // Recreate feature buttons
+    window.AssistantExtensions.forEach((feature) => {
+      const btn = document.createElement("button");
+      btn.textContent = feature.label;
+      btn.className = "assistant-btn";
+      btn.onclick = () => feature.callback(body);
+      body.appendChild(btn);
+    });
+  } else {
+    // Fallback if no features registered yet
+    const msg = document.createElement("div");
+    msg.className = "assistant-message bot";
+    msg.textContent = "No assistant features are available right now.";
+    body.appendChild(msg);
+  }
+
+  body.scrollTop = 0;
+});
+
+    }
 
     /* ---------- Drag logic ---------- */
     let isDragging = false, offsetX = 0, offsetY = 0;
@@ -166,44 +250,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     });
 
-    /* ---------- Message sending ---------- */
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const msg = input.value.trim();
-      if (!msg) return;
-
-      addMessage(msg, "user");
-      input.value = "";
-      addMessage("...", "bot");
-
-      try {
-        const res = await fetch("/api/vsa/query", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ message: msg }),
-        });
-        const data = await res.json();
-        const reply = data.ok
-          ? data.reply
-          : "Sorry, something went wrong retrieving that info.";
-        const lastBot = document.querySelector(".assistant-message.bot:last-child");
-        if (lastBot) lastBot.textContent = reply;
-      } catch (err) {
-        const lastBot = document.querySelector(".assistant-message.bot:last-child");
-        if (lastBot) lastBot.textContent = "⚠️ Couldn’t connect to the server.";
-        console.error("VSA fetch failed:", err);
-      }
-      body.scrollTop = body.scrollHeight;
-    });
-
-    /* ---------- Helper: add chat message ---------- */
-    function addMessage(text, sender) {
-      const div = document.createElement("div");
-      div.className = `assistant-message ${sender}`;
-      div.textContent = text;
-      body.appendChild(div);
-      body.scrollTop = body.scrollHeight;
-    }
   } catch (err) {
     console.error("❌ assistant.js initialization failed:", err);
   }

@@ -234,3 +234,76 @@
   opacity: 1 !important;
   cursor: pointer !important;
 }
+/* Small stock result table inside chat */
+.assistant-stock-table {
+  width: 100%;
+  margin-top: 8px;
+  border-collapse: collapse;
+  background: #f7fcfd;
+  border: 1px solid #cce3e7;
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 0.85rem;
+}
+.assistant-stock-table th {
+  background: #0081ab;
+  color: white;
+  text-align: left;
+  padding: 4px 8px;
+  font-weight: 600;
+}
+.assistant-stock-table td {
+  padding: 4px 8px;
+  border-top: 1px solid #e0ecef;
+}
+.assistant-stock-table tr:nth-child(even) {
+  background: #edf8fa;
+}
+/* === Reset Button Styling === */
+#assistantForm button {
+  flex: 1;
+  background: transparent;
+  color: #0081ab;
+  border: none;
+  padding: 8px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  border-top: 1px solid #e0e0e0;
+  border-radius: 0 0 12px 12px;
+}
+
+/* Hover / focus styles */
+#assistantForm button:hover {
+  background: #f4fdfd;
+  color: #006d8c;
+}
+
+/* Optional subtle icon look */
+#assistantForm button::before {
+  content: "↻ ";
+  font-weight: bold;
+  font-size: 1rem;
+  vertical-align: middle;
+  opacity: 0.8;
+}
+/* Small inline spinner for Daily Digest */
+.vsa-spinner {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border: 2px solid #c8e6ee;
+  border-top-color: #0081ab;
+  border-radius: 50%;
+  animation: vsaSpin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+@keyframes vsaSpin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}

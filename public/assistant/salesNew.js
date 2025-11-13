@@ -1,7 +1,7 @@
-// public/assistant/salesView.js
-console.log("🤖 VSA Sales View Assistant active");
+// public/assistant/salesNew.js
+console.log("🤖 VSA Sales New Assistant active");
 
-// ✅ Import the shared registration hook
+// ✅ Import from shared assistant hook
 import { registerAssistantFeature } from "/assistant/assistantHooks.js";
 
 document.addEventListener("DOMContentLoaded", async () => {
@@ -10,14 +10,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const headers = { Authorization: `Bearer ${saved.token}` };
   const path = window.location.pathname;
-  if (!path.includes("/sales/view")) return; // ✅ Only run on Sales View pages
+  if (!path.includes("/sales/new")) return; // ✅ Only run on New Sales Order pages
 
-  /* ---------- Extract Sales Order ID ---------- */
-  const parts = path.split("/");
-  const tranId = parts.pop() || parts.pop();
-  if (!tranId) return console.warn("⚠️ No transaction ID found in URL");
-
-  /* ---------- Preload VSA item dataset ---------- */
+  // --- Preload VSA item dataset ---
   let itemDataCache = [];
   try {
     const res = await fetch("/api/netsuite/vsa-item-data", { headers });
@@ -29,57 +24,64 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* ==========================================================
-     🧭 Register Assistant Feature
+     📡 Dynamic item tracking
+     ========================================================== */
+  function getCurrentItems() {
+    const rows = document.querySelectorAll("#orderItemsBody tr");
+    const items = [];
+    rows.forEach((row) => {
+      const nameInput = row.querySelector(".item-search");
+      const val = nameInput?.value?.trim();
+      if (val) items.push(val);
+    });
+    return [...new Set(items)];
+  }
+
+  const orderBody = document.getElementById("orderItemsBody");
+  const observer = new MutationObserver(() => {
+    console.log("🔄 Items changed:", getCurrentItems());
+  });
+  if (orderBody) observer.observe(orderBody, { childList: true, subtree: true });
+
+  /* ==========================================================
+     🧭 Assistant Registration (using shared hook)
      ========================================================== */
   registerAssistantFeature("Items", (chatBody) => {
-    startSalesViewFlow(chatBody);
+    startSalesNewFlow(chatBody);
   });
 
   /* ==========================================================
-     💬 Chat Flow Functions
+     💬 Chat Flow
      ========================================================== */
-
-  function startSalesViewFlow(chatBody) {
+  function startSalesNewFlow(chatBody) {
     chatBody.innerHTML = "";
-    addMessage("I can help with your sales order items…", "bot", chatBody);
+    addMessage("I can help with your new sales order…", "bot", chatBody);
     showItemsList(chatBody);
   }
 
   function showItemsList(chatBody) {
     clearInteractive(chatBody);
-    addMessage("Which item do you need help with?", "bot", chatBody);
+    const items = getCurrentItems();
 
-    // ✅ Collect items from the order table
-    const rows = document.querySelectorAll("#orderItemsBody tr");
-    const itemsOnOrder = [];
-
-    rows.forEach((row) => {
-      const name = (row.querySelector("td")?.textContent || "").trim();
-      if (!name || name.toLowerCase().includes("service")) return;
-      itemsOnOrder.push(name);
-    });
-
-    console.log("🧾 Items found on this order:", itemsOnOrder);
-
-    if (!itemsOnOrder.length) {
-      addMessage("I couldn’t find any valid items on this sales order.", "bot", chatBody);
+    if (!items.length) {
+      addMessage("You haven’t added any items yet — please add one first!", "bot", chatBody);
       return;
     }
 
-    addMessage("Select an item to view details:", "bot", chatBody);
+    addMessage("Which item would you like help with?", "bot", chatBody);
 
-    itemsOnOrder.forEach((name) => {
+    items.forEach((item) => {
       const btn = document.createElement("button");
-      btn.textContent = name;
+      btn.textContent = item;
       btn.className = "assistant-btn";
-      btn.onclick = () => showFieldOptions(name, chatBody);
+      btn.onclick = () => showFieldOptions(item, chatBody);
       chatBody.appendChild(btn);
     });
   }
 
   function showFieldOptions(itemName, chatBody) {
     clearInteractive(chatBody);
-    addMessage(`What do you want to know about "${itemName}"?`, "bot", chatBody);
+    addMessage(`What would you like to know about "${itemName}"?`, "bot", chatBody);
 
     const match = (itemDataCache || []).find(
       (i) => i["Display Name"]?.trim().toLowerCase() === itemName.trim().toLowerCase()
@@ -111,7 +113,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   /* ==========================================================
      Helpers
      ========================================================== */
-
   function addMessage(text, sender, targetBody) {
     const div = document.createElement("div");
     div.className = `assistant-message ${sender}`;

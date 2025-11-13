@@ -449,3 +449,32 @@
   font-size: 0.85rem;
   padding: 6px 10px;
 }
+
+
+/* --- Scrollable Table Containers for User Management --- */
+.table-scroll-wrapper {
+  max-height: 420px;          /* adjust height as needed */
+  overflow-y: auto;
+  overflow-x: hidden;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.04);
+}
+
+/* Keep table headers sticky for clarity */
+.table-scroll-wrapper table thead th {
+  position: sticky;
+  top: 0;
+  background: var(--brand);
+  color: #fff;
+  z-index: 2;
+}
+
+/* Optional: make scrollbars subtle */
+.table-scroll-wrapper::-webkit-scrollbar {
+  width: 8px;
+}
+.table-scroll-wrapper::-webkit-scrollbar-thumb {
+  background: #d0d5da;
+  border-radius: 4px;
+}

@@ -19,6 +19,7 @@ async function createSession(user, activeRoleName = null, access = []) {
     id: user.id,
     email: user.email,
     name: `${user.firstname ?? ""} ${user.lastname ?? ""}`.trim(),
+      netsuiteid: user.netsuiteid,              // ← ADD THIS
     roles: (user.roles || []).map(normalizeRoleName),
     activeRole: {
       name: activeRole,
@@ -69,15 +70,34 @@ async function getSession(token) {
       return null;
     }
 
-    // ✅ Always include numeric user_id
+    // ✅ Ensure numeric user_id always present
     if (!session.user_id) {
       session.user_id = record.user_id;
     }
 
-    // Expire old sessions
+    // 🔥 ALWAYS inject user's NetSuite Employee ID
+    try {
+      const userRow = await pool.query(
+        `SELECT netsuiteid FROM users WHERE id = $1 LIMIT 1`,
+        [session.user_id]
+      );
+      session.netsuiteid = userRow.rows?.[0]?.netsuiteid || null;
+
+      if (!session.netsuiteid) {
+        console.warn(`⚠️ No netsuiteid found for user_id ${session.user_id}`);
+      } else {
+        console.log(`🔗 Injected netsuiteid for user ${session.user_id}: ${session.netsuiteid}`);
+      }
+    } catch (err) {
+      console.error("❌ Failed to fetch netsuiteid:", err.message);
+      session.netsuiteid = null;
+    }
+
+    // Session expiration check
     const ageDays =
       (Date.now() - new Date(record.created_at).getTime()) /
       (1000 * 60 * 60 * 24);
+
     if (ageDays > SESSION_TTL_DAYS) {
       console.warn("⚠️ Session expired, deleting:", token);
       await destroySession(token);
@@ -98,6 +118,7 @@ async function getSession(token) {
     return null;
   }
 }
+
 
 async function updateSessionRole(token, roleName, access = []) {
   try {

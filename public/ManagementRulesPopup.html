@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Edit Management Rules</title>
+
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/admin.css">
+
+    <!-- Must be absolute path (popups cannot load ./js/...) -->
+    <script src="/js/storage.js"></script>
+
+    <style>
+        body {
+            background: #f7fafc;
+            font-family: "Segoe UI", "Inter", sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .popup-wrapper {
+            width: 100%;
+            max-width: 520px;
+            margin: 30px auto;
+        }
+
+        .popup-card {
+            background: #fff;
+            border-radius: 10px;
+            border: 1px solid #e3e7ec;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .popup-header {
+            background: var(--brand);
+            color: #fff;
+            padding: 14px 18px;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .popup-body {
+            padding: 18px 22px;
+        }
+
+        .field-list {
+            background: #f9fbfd;
+            border: 1px solid #e0e6ed;
+            border-radius: 8px;
+            padding: 12px 14px;
+            margin-bottom: 20px;
+        }
+
+        .field-list label {
+            display: block;
+            padding: 6px 0;
+        }
+
+        .actions {
+            display: flex;
+            justify-content: flex-end;
+            padding: 14px 18px;
+            border-top: 1px solid #e6e9ee;
+            background: #fafbfc;
+            gap: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="popup-wrapper">
+        <div class="popup-card">
+            <div class="popup-header">Management Rules</div>
+
+            <div class="popup-body">
+                <h3>Allowed Fields</h3>
+                <p>Tick the fields this role may edit using the "Manage" menu button.</p>
+
+                <form id="rulesForm">
+                    <div id="fieldList" class="field-list">Loading fields...</div>
+
+                    <div class="actions">
+                        <button type="button" class="btn-secondary" onclick="window.close()">Close</button>
+                        <button type="submit" class="btn-primary">Save</button>
+                    </div>
+                </form>
+            </div>
+
+        </div>
+    </div>
+
+    <script>
+        // ---------------------------------------------------------
+        // Read roleName from querystring
+        // ---------------------------------------------------------
+        const params = new URLSearchParams(window.location.search);
+        const roleName = params.get("roleName");
+
+        if (!roleName) {
+            alert("Missing role name");
+            window.close();
+        }
+
+        // ---------------------------------------------------------
+        // Load dynamic user table fields
+        // ---------------------------------------------------------
+        async function loadFieldList() {
+            try {
+                const res = await fetch("/api/meta/user-fields");
+                const data = await res.json();
+
+                const list = document.getElementById("fieldList");
+
+                if (!data.ok) {
+                    list.innerHTML = "<p style='color:red;'>Failed to load fields</p>";
+                    return;
+                }
+
+                list.innerHTML = "";
+                data.fields.forEach(field => {
+                    const label = field
+                        .replace(/_/g, " ")
+                        .replace(/([A-Z])/g, " $1")
+                        .replace(/\b\w/g, c => c.toUpperCase());
+
+                    list.innerHTML += `
+                        <label>
+                            <input type="checkbox" name="field" value="${field}">
+                            ${label}
+                        </label>
+                    `;
+                });
+
+            } catch (err) {
+                console.error("Field load error:", err);
+                document.getElementById("fieldList").innerHTML =
+                    "<p style='color:red;'>Error loading fields</p>";
+            }
+        }
+
+        // ---------------------------------------------------------
+        // Load current saved rules for this role
+        // ---------------------------------------------------------
+        async function loadRules() {
+            try {
+                const res = await fetch(`/api/meta/management-rules/${roleName}`);
+                const data = await res.json();
+
+                if (!data.ok) return;
+
+                const allowed = data.fields;
+
+                document.querySelectorAll("input[name='field']").forEach(cb => {
+                    cb.checked = allowed.includes(cb.value);
+                });
+
+            } catch (err) {
+                console.error("Rules load error:", err);
+            }
+        }
+
+        // ---------------------------------------------------------
+        // Save rules for this role
+        // ---------------------------------------------------------
+        document.getElementById("rulesForm").addEventListener("submit", async e => {
+            e.preventDefault();
+
+            const fields = Array.from(
+                document.querySelectorAll("input[name='field']:checked")
+            ).map(cb => cb.value);
+
+            try {
+                const res = await fetch(`/api/meta/management-rules/${roleName}`, {
+                    method: "PUT",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ fields })
+                });
+
+                const data = await res.json();
+
+                if (!data.ok) {
+                    alert("Failed to save rules");
+                    return;
+                }
+
+                // Refresh parent admin page
+                if (window.opener) {
+                    window.opener.postMessage({ action: "refresh-mgmt-rules" }, "*");
+                }
+
+                window.close();
+
+            } catch (err) {
+                console.error("Save error:", err);
+                alert("Error saving rules");
+            }
+        });
+
+        // ---------------------------------------------------------
+        // INIT
+        // ---------------------------------------------------------
+        (async () => {
+            await loadFieldList();
+            await loadRules();
+        })();
+    </script>
+
+</body>
+
+</html>

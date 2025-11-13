@@ -13,28 +13,29 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function renderLocations(locations) {
-    tableBody.innerHTML = locations
-      .map(
-        (l) => `
+function renderLocations(locations) {
+  tableBody.innerHTML = locations
+    .map(
+      (l) => `
       <tr>
         <td>${l.id}</td>
         <td>${l.name}</td>
         <td>${l.netsuite_internal_id || "-"}</td>
         <td>${l.invoice_location_id || "-"}</td>
         <td>${l.intercompany_customer || "-"}</td>
-       <!-- <td>${l.intercompany_location || "-"}</td> -->
-        <td>${l.distribution_location_id || "-"}</td> <!-- ✅ NEW COLUMN -->
+        <td>${l.distribution_location_id || "-"}</td>
         <td>${l.petty_cash_account || "-"}</td>
         <td>${l.current_account || "-"}</td>
+
         <td>
           <button class="edit-btn" data-id="${l.id}">Edit</button>
           <button class="delete-btn" data-id="${l.id}">Delete</button>
         </td>
       </tr>`
-      )
-      .join("");
-  }
+    )
+    .join("");
+}
+
 
   // === Add new ===
   addBtn.addEventListener("click", () => openPopup(null));

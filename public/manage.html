@@ -1,0 +1,301 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Manage My Profile</title>
+
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/admin.css">
+
+    <!-- MUST be absolute for popup -->
+    <script src="/js/storage.js"></script>
+
+    <style>
+        body {
+            background: #f7fafc;
+            font-family: "Segoe UI", "Inter", sans-serif;
+            margin: 0;
+            padding: 0;
+        }
+
+        .popup-wrapper {
+            width: 100%;
+            max-width: 520px;
+            margin: 30px auto;
+        }
+
+        .popup-card {
+            background: #fff;
+            border-radius: 10px;
+            border: 1px solid #e3e7ec;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .popup-header {
+            background: var(--brand);
+            color: #fff;
+            padding: 14px 18px;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .popup-body {
+            padding: 18px 22px;
+        }
+
+        .form-field {
+            margin-bottom: 14px;
+        }
+
+        .form-field label {
+            display: block;
+            font-weight: 600;
+            margin-bottom: 4px;
+        }
+
+        .form-field input,
+        .form-field select {
+            width: 100%;
+            padding: 8px 10px;
+            border: 1px solid #d1d8e0;
+            border-radius: 6px;
+            font-size: 0.95rem;
+        }
+
+        .actions {
+            display: flex;
+            justify-content: flex-end;
+            padding: 14px 18px;
+            border-top: 1px solid #e6e9ee;
+            background: #fafbfc;
+            gap: 10px;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="popup-wrapper">
+        <div class="popup-card">
+            <div class="popup-header">Manage My Profile</div>
+
+            <div class="popup-body">
+                <h3>Edit Allowed Fields</h3>
+                <p>Update only the fields your role permits.</p>
+
+                <form id="manageForm"></form>
+            </div>
+
+            <div class="actions">
+                <button type="button" class="btn-secondary" onclick="window.close()">Close</button>
+                <button type="button" id="saveBtn" class="btn-primary">Save</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const manageForm = document.getElementById("manageForm");
+
+        /* ---------------------------------------------------------
+           Load session & active role
+        --------------------------------------------------------- */
+        const session = storageGet();
+        const token = session?.token;
+        const activeRoleName = session?.activeRole;
+
+        if (!token || !activeRoleName) {
+            alert("Missing session. Please log in again.");
+            window.close();
+        }
+
+        const authHeaders = { Authorization: `Bearer ${token}` };
+
+        /* ---------------------------------------------------------
+           Fetch user from /api/me
+        --------------------------------------------------------- */
+        async function loadUser() {
+            const res = await fetch("/api/me", { headers: authHeaders });
+            const data = await res.json();
+            if (!data.ok) {
+                alert("Could not load your profile.");
+                window.close();
+            }
+            return data.user;
+        }
+
+        /* ---------------------------------------------------------
+           Fetch allowed fields for role
+        --------------------------------------------------------- */
+        async function loadAllowedFields() {
+            const res = await fetch(`/api/meta/management-rules/${activeRoleName}`, {
+                headers: authHeaders
+            });
+            const data = await res.json();
+            if (!data.ok) return [];
+            return data.fields;
+        }
+
+        /* ---------------------------------------------------------
+           Fetch locations (for dropdown)
+        --------------------------------------------------------- */
+        async function loadLocations() {
+            const res = await fetch("/api/meta/locations");
+            const data = await res.json();
+            return data.ok ? data.locations : [];
+        }
+
+        /* ---------------------------------------------------------
+           Fields user must NEVER edit
+        --------------------------------------------------------- */
+        const DISALLOWED_FIELDS = [
+            "role_ids",
+            "roles",
+            "sb_netsuite_token_id",
+            "sb_netsuite_token_secret",
+            "prod_netsuite_token_id",
+            "prod_netsuite_token_secret"
+        ];
+
+        /* ---------------------------------------------------------
+           Location fields (DB-driven)
+        --------------------------------------------------------- */
+        const LOCATION_FIELDS = [
+            "location_id",
+            "locationid",
+            "locationId",
+            "primary_store",
+            "primarystore",
+            "store_id",
+            "storeId"
+        ];
+
+        /* ---------------------------------------------------------
+           Create field element using Admin modal rules
+        --------------------------------------------------------- */
+        function createField(field, value, locations) {
+            const wrapper = document.createElement("div");
+            wrapper.className = "form-field";
+
+            const label = field
+                .replace(/_/g, " ")
+                .replace(/([A-Z])/g, " $1")
+                .replace(/\b\w/g, c => c.toUpperCase());
+
+            wrapper.innerHTML = `<label>${label}</label>`;
+
+            // ▸ LOCATION DROPDOWN
+            if (LOCATION_FIELDS.includes(field)) {
+                wrapper.innerHTML += `
+                    <select name="${field}">
+                        <option value="">Select Store</option>
+                        ${locations.map(l => `
+                            <option value="${l.id}" ${l.id == value ? "selected" : ""}>
+                                ${l.name}
+                            </option>
+                        `).join("")}
+                    </select>
+                `;
+                return wrapper;
+            }
+
+            // ▸ EMAIL
+            if (field.toLowerCase().includes("email")) {
+                wrapper.innerHTML += `<input type="email" name="${field}" value="${value || ""}">`;
+                return wrapper;
+            }
+
+            // ▸ TEL / CONTACT
+            if (field.toLowerCase().includes("contact")) {
+                wrapper.innerHTML += `<input type="tel" name="${field}" value="${value || ""}">`;
+                return wrapper;
+            }
+
+            // ▸ URL (images)
+            if (field.toLowerCase().includes("image") || field.toLowerCase().includes("url")) {
+                wrapper.innerHTML += `<input type="url" name="${field}" value="${value || ""}">`;
+                return wrapper;
+            }
+
+            // ▸ DEFAULT
+            wrapper.innerHTML += `<input type="text" name="${field}" value="${value || ""}">`;
+            return wrapper;
+        }
+
+        /* ---------------------------------------------------------
+           Render the form
+        --------------------------------------------------------- */
+        async function renderForm() {
+            const allowed = await loadAllowedFields();
+            const user = await loadUser();
+            const locations = await loadLocations();
+
+            manageForm.innerHTML = "";
+
+            if (allowed.length === 0) {
+                manageForm.innerHTML = `<p>No editable fields assigned to this role.</p>`;
+                document.getElementById("saveBtn").disabled = true;
+                return;
+            }
+
+            for (const field of allowed) {
+                if (DISALLOWED_FIELDS.includes(field)) continue;
+                manageForm.appendChild(createField(field, user[field], locations));
+            }
+        }
+
+        /* ---------------------------------------------------------
+           Save profile
+        --------------------------------------------------------- */
+        async function saveProfile() {
+            const formData = new FormData(manageForm);
+            const payload = {};
+
+            for (const [key, val] of formData.entries()) {
+                payload[key] = val || null;
+            }
+
+            let res;
+            try {
+                res = await fetch("/api/users/self-update", {
+                    method: "PUT",
+                    headers: {
+                        "Content-Type": "application/json",
+                        ...authHeaders
+                    },
+                    body: JSON.stringify(payload)
+                });
+            } catch (err) {
+                console.error("❌ Network error:", err);
+                alert("Network error while saving profile");
+                return;
+            }
+
+            let data;
+            try {
+                data = await res.json();
+            } catch (err) {
+                console.error("❌ Failed to parse JSON:", err);
+                alert("Bad response from server");
+                return;
+            }
+
+            console.log("SELF UPDATE RESPONSE:", data);
+
+            if (!data.ok) {
+                alert("Failed to save changes: " + (data.error || "Unknown error"));
+                return;
+            }
+
+            window.close();
+        }
+
+        document.getElementById("saveBtn").addEventListener("click", saveProfile);
+
+        // INIT
+        renderForm();
+    </script>
+
+</body>
+
+</html>

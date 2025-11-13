@@ -131,7 +131,6 @@ router.delete("/roles/:id", async (req, res) => {
    ====== LOCATIONS =========
    ========================== */
 
-// Get all locations
 router.get("/locations", async (req, res) => {
   try {
     const result = await pool.query(
@@ -142,9 +141,10 @@ router.get("/locations", async (req, res) => {
         invoice_location_id,
         intercompany_customer,
         intercompany_location,
-        distribution_location_id,  -- ✅ new field
+        distribution_location_id,
         petty_cash_account,
-        current_account
+        current_account,
+        email                       -- ⭐ NEW FIELD
        FROM locations
        ORDER BY name`
     );
@@ -156,6 +156,7 @@ router.get("/locations", async (req, res) => {
   }
 });
 
+
 // Create new location
 router.post("/locations", async (req, res) => {
   try {
@@ -165,9 +166,10 @@ router.post("/locations", async (req, res) => {
       invoice_location_id,
       intercompany_customer,
       intercompany_location,
-      distribution_location_id, // ✅ new
+      distribution_location_id,
       petty_cash_account,
       current_account,
+      email                   // ⭐ NEW
     } = req.body;
 
     if (!name) {
@@ -177,8 +179,9 @@ router.post("/locations", async (req, res) => {
     console.log("🟢 Creating location:", name);
     await pool.query(
       `INSERT INTO locations 
-        (name, netsuite_internal_id, invoice_location_id, intercompany_customer, intercompany_location, distribution_location_id, petty_cash_account, current_account)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        (name, netsuite_internal_id, invoice_location_id, intercompany_customer, intercompany_location,
+         distribution_location_id, petty_cash_account, current_account, email)     -- ⭐ NEW
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
       [
         name,
         netsuite_internal_id || null,
@@ -188,6 +191,7 @@ router.post("/locations", async (req, res) => {
         distribution_location_id || null,
         petty_cash_account || null,
         current_account || null,
+        email || null             // ⭐ NEW
       ]
     );
 
@@ -198,6 +202,7 @@ router.post("/locations", async (req, res) => {
   }
 });
 
+
 // Update existing location
 router.put("/locations/:id", async (req, res) => {
   try {
@@ -207,9 +212,10 @@ router.put("/locations/:id", async (req, res) => {
       invoice_location_id,
       intercompany_customer,
       intercompany_location,
-      distribution_location_id, // ✅ new
+      distribution_location_id,
       petty_cash_account,
       current_account,
+      email                     // ⭐ NEW
     } = req.body;
 
     if (!name) {
@@ -226,8 +232,9 @@ router.put("/locations/:id", async (req, res) => {
              intercompany_location = $5,
              distribution_location_id = $6,
              petty_cash_account = $7,
-             current_account = $8
-       WHERE id = $9`,
+             current_account = $8,
+             email = $9                       -- ⭐ NEW
+       WHERE id = $10`,
       [
         name,
         netsuite_internal_id || null,
@@ -237,7 +244,8 @@ router.put("/locations/:id", async (req, res) => {
         distribution_location_id || null,
         petty_cash_account || null,
         current_account || null,
-        req.params.id,
+        email || null,                        // ⭐ NEW
+        req.params.id
       ]
     );
 
@@ -251,6 +259,7 @@ router.put("/locations/:id", async (req, res) => {
     res.status(500).json({ ok: false, error: "DB error updating location" });
   }
 });
+
 
 
 module.exports = router;

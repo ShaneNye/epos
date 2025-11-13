@@ -682,3 +682,26 @@ textarea:focus {
   0%   { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
+/* === Memo Panel Styling === */
+.memo-header {
+  cursor: pointer;
+}
+
+.memo-panel {
+  background: #fff;
+  border: 1px solid #e5e9ef;
+  border-radius: 6px;
+  padding: 10px;
+  margin-top: 10px;
+  transition: max-height 0.3s ease;
+  overflow: hidden;
+  max-height: 0;
+}
+
+.memo-panel.expanded {
+  max-height: 400px;
+}
+
+.memo-panel table {
+  width: 100%;
+}

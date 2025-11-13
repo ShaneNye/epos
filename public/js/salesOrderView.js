@@ -28,6 +28,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.warn("⚠️ loadingOverlay element not found");
   }
 
+  
+
 let saved = storageGet?.();
 if (!saved || !saved.token) {
   console.warn("⚠️ No token found initially, retrying after 300ms…");
@@ -690,11 +692,15 @@ if (so.orderStatus?.id === "A") {
   });
 } else {
   document.querySelectorAll("input, select, textarea, button").forEach(el => {
+    // 🔓 ALLOW MEMO BUTTON EVEN WHEN VIEW IS LOCKED
+    if (el.id === "newMemoBtn") return;
+
     el.disabled = true;
     el.classList.add("locked-input");
   });
-  console.log("🔒 Form locked (read-only)");
+  console.log("🔒 Form locked (read-only, memo remains enabled)");
 }
+
 
 setTimeout(() => {
   updateOrderSummaryFromTable();
@@ -748,6 +754,77 @@ try {
 }
 }
 });
+
+
+
+document.addEventListener("DOMContentLoaded", () => {
+    const auth = storageGet();
+    const token = auth?.token || null;
+
+    const memoPanel = document.getElementById("memoPanel");
+    const memoHeader = document.querySelector(".memo-header");
+    const memoTableBody = document.querySelector("#memoTable tbody");
+    const noMemosMsg = document.getElementById("noMemosMsg");
+
+    let orderId = null;
+
+    // Extract order ID from URL
+    const parts = window.location.pathname.split("/");
+    orderId = parts.pop() || parts.pop();
+
+    /* === Toggle Expand Panel === */
+    memoHeader.addEventListener("click", () => {
+        memoPanel.classList.toggle("expanded");
+    });
+
+    /* === Open Popup === */
+    document.getElementById("newMemoBtn").addEventListener("click", () => {
+        if (!token) return alert("Missing session token");
+       const url = `/memo.html?orderId=${orderId}&token=${token}`;
+        const w = window.open(url, "MemoPopup",
+            "width=550,height=600,resizable=yes,scrollbars=yes"
+        );
+        if (!w) alert("Please allow popups.");
+    });
+
+    /* === Load memos === */
+    async function loadMemos() {
+        const res = await fetch(`/api/sales/memo/${orderId}`, {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        const data = await res.json();
+
+        memoTableBody.innerHTML = "";
+
+        if (!data.ok || !data.memos.length) {
+            noMemosMsg.style.display = "block";
+            return;
+        }
+
+        noMemosMsg.style.display = "none";
+
+        data.memos.forEach(m => {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+                <td>${new Date(m.created_at).toLocaleDateString()}</td>
+                <td>${m.author}</td>
+                <td>${m.title}</td>
+            `;
+            memoTableBody.appendChild(tr);
+        });
+    }
+
+    /* === Listen for popup refresh === */
+    window.addEventListener("message", (event) => {
+        if (event.data?.action === "refresh-memos") {
+            loadMemos();
+        }
+    });
+
+    // Initial load
+    loadMemos();
+});
+
 
 /* =====================================================
    === 💰 Render Deposits Table + Summary Update ========

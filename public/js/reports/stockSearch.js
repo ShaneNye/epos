@@ -30,7 +30,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       // --- Merge them on Inventory Number ---
       const merged = balance.map(bal => {
         const balNum = (bal["Inventory Number"] || "").trim().toLowerCase();
-        const match = numbers.find(num => 
+        const match = numbers.find(num =>
           (num["Number"] || "").trim().toLowerCase() === balNum
         );
 
@@ -57,34 +57,69 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  /* =====================================================
-     LOAD + PREPARE DATA
-  ===================================================== */
-  const mergedData = await fetchInventoryData();
+/* =====================================================
+   LOAD + PREPARE DATA
+===================================================== */
+const mergedData = await fetchInventoryData();
 
-  // Group by location
-  const grouped = {};
-  mergedData.forEach(item => {
-    const loc = item.location || "Unknown";
-    if (!grouped[loc]) grouped[loc] = [];
-    grouped[loc].push(item);
-  });
+// --- Group by location name ---
+const grouped = {};
+mergedData.forEach(item => {
+  const locName = item.location || "Unknown";
+  if (!grouped[locName]) grouped[locName] = [];
+  grouped[locName].push(item);
+});
 
-  const locations = Object.keys(grouped).sort();
-  locSelect.innerHTML = locations.map(l => `<option value="${l}">${l}</option>`).join("");
-  titleEl.textContent = locations[0] || "";
+// --- Map location names to IDs (if you have IDs from session) ---
+const locations = Object.keys(grouped).sort();
 
-  // Populate status dropdown
-  const allStatuses = [...new Set(mergedData.map(r => r.status).filter(Boolean))].sort();
-  statusSelect.innerHTML = `<option value="">All Statuses</option>`;
-  allStatuses.forEach(s => {
-    const opt = document.createElement("option");
-    opt.value = s;
-    opt.textContent = s;
-    statusSelect.appendChild(opt);
-  });
+// 🔐 Get user’s primary store (ID) from session
+const session = storageGet();
+const primaryStoreId =
+  session?.user?.location?.id ||
+  session?.location_id ||
+  session?.user?.location_id ||
+  null;
 
-  renderTable(grouped[locations[0]] || []);
+// 🧩 Attempt to map location ID → name using your /api/meta/locations endpoint
+let defaultLocName = locations[0] || "";
+
+try {
+  if (primaryStoreId) {
+    const res = await fetch("/api/meta/locations");
+    const data = await res.json();
+
+    if (data.ok && Array.isArray(data.locations)) {
+      const match = data.locations.find(l => String(l.id) === String(primaryStoreId));
+      if (match && locations.includes(match.name)) {
+        defaultLocName = match.name;
+      }
+    }
+  }
+} catch (err) {
+  console.warn("⚠️ Could not match primary store ID to location name:", err);
+}
+
+// === Populate dropdown ===
+locSelect.innerHTML = locations.map(l => `<option value="${l}">${l}</option>`).join("");
+
+// === Apply default ===
+locSelect.value = defaultLocName;
+titleEl.textContent = defaultLocName;
+
+// === Populate status dropdown ===
+const allStatuses = [...new Set(mergedData.map(r => r.status).filter(Boolean))].sort();
+statusSelect.innerHTML = `<option value="">All Statuses</option>`;
+allStatuses.forEach(s => {
+  const opt = document.createElement("option");
+  opt.value = s;
+  opt.textContent = s;
+  statusSelect.appendChild(opt);
+});
+
+// === Render default table ===
+renderTable(grouped[defaultLocName] || []);
+
 
   /* =====================================================
      EVENT HANDLERS

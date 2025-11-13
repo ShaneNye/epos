@@ -21,8 +21,12 @@
     <script src="/js/salesNewItemLine.js" defer></script>
     <script src="/js/salesInventoryModal.js" defer></script>
     <script src="/js/salesOrderView.js" defer></script>
+    <!-- Virtual Sales Assistant -->
     <script src="/assistant/assistant.js"></script>
-    <script src="/assistant/salesView.js" defer></script>
+    <script type="module" src="/assistant/assistantHooks.js"></script>
+    <script type="module" src="/assistant/stockSearch.js"></script>
+    <script type="module" src="/assistant/salesNew.js"></script>
+
 
     <link rel="stylesheet" href="/assistant/assistant.css" />
 
@@ -160,6 +164,30 @@
                     </section>
                 </div>
 
+                <!-- === MEMOS PANEL (Expandable) === -->
+                <section class="form-section order-items-section">
+                    <div class="section-header-flex memo-header">
+                        <h2>Memos</h2>
+                        <button type="button" id="newMemoBtn" class="btn-secondary small-btn">+ New Memo</button>
+                    </div>
+
+                    <div id="memoPanel" class="memo-panel collapsed">
+                        <table class="styled-table" id="memoTable">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Author</th>
+                                    <th>Title</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                        <p id="noMemosMsg" class="muted" style="padding:8px; display:none;">No memos recorded for this
+                            order.</p>
+                    </div>
+                </section>
+
+
                 <!-- ORDER SUMMARY (Sticky) -->
                 <aside class="order-summary">
                     <h2>Order Summary</h2>
@@ -246,10 +274,11 @@
             <section id="depositsSection" class="form-section order-items-section" style="margin-top:20px;">
                 <div class="section-header-flex">
                     <h3>Customer Deposits</h3>
-<button id="addDepositBtn" class="btn-secondary">+ Add Deposit</button>
-  <span id="depositSpinner" class="hidden" style="font-size:0.85em; color:#0078d4; display:inline-flex; align-items:center;">
-    <span class="deposit-spinner"></span> Creating&nbsp;Deposit…
-  </span>
+                    <button id="addDepositBtn" class="btn-secondary">+ Add Deposit</button>
+                    <span id="depositSpinner" class="hidden"
+                        style="font-size:0.85em; color:#0078d4; display:inline-flex; align-items:center;">
+                        <span class="deposit-spinner"></span> Creating&nbsp;Deposit…
+                    </span>
                 </div>
 
                 <table id="depositsTable" class="styled-table">

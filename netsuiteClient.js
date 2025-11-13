@@ -201,6 +201,36 @@ async function nsPostRaw(fullUrl, body, userId = null, envType = "sb") {
   return tryParse(text);
 }
 
+async function nsRestlet(fullUrl, body = null, userId = null, envType = "sb", method = "POST") {
+  // Build OAuth header for the correct HTTP method
+  const headers = {
+    ...(await getAuthHeader(fullUrl, method, userId, envType)),
+    "Content-Type": "application/json"
+  };
+
+  console.log(`🛠 [RESTlet] ${method} ${fullUrl}`);
+  if (body && method === "POST") {
+    console.log("📤 RESTlet payload:", body);
+  }
+
+  const res = await fetch(fullUrl, {
+    method,
+    headers,
+    body: method === "POST" ? JSON.stringify(body || {}) : undefined
+  });
+
+  const text = await res.text();
+  console.log("📥 Raw RESTlet response:", text);
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { ok: false, raw: text };
+  }
+}
+
+
+
 /* ======================================================
    ===============   Helper: safe JSON parse   ===========
    ====================================================== */
@@ -212,4 +242,4 @@ function tryParse(text) {
   }
 }
 
-module.exports = { nsGet, nsPost, nsPatch, nsPostRaw, getAuthHeader };
+module.exports = { nsGet, nsPost, nsPatch, nsPostRaw, nsRestlet, getAuthHeader };

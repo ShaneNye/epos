@@ -1,4 +1,6 @@
 // server.js
+console.log("🟦 Loaded salesMemos.js FROM:", __filename);
+
 console.log("🟢 Server starting from directory:", __dirname);
 
 const express = require("express");
@@ -15,11 +17,22 @@ const PORT = process.env.PORT || 3000;
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
+app.use("/assistant", (req, res, next) => {
+  if (req.path.endsWith(".js")) res.type("application/javascript");
+  next();
+}, express.static(path.join(__dirname, "public", "assistant")));
+
+// ✅ Force correct MIME type for .js module files
+app.use((req, res, next) => {
+  if (req.path.endsWith(".js")) {
+    res.type("application/javascript");
+  }
+  next();
+});
+
 // --- Serve static files ---
 app.use(express.static(path.join(__dirname, "public")));
 
-// near the top of server.js, before access middleware
-app.use("/assistant", express.static(path.join(__dirname, "public", "assistant")));
 
 /**
  * Utility to call NetSuite external Suitelet JSON endpoints.
@@ -67,6 +80,7 @@ app.use("/api/netsuite/quote", require("./routes/netsuiteQuote"));
 app.use("/api/netsuite/entity", require("./routes/netsuiteEntity"));
 app.use("/api/netsuite", require("./routes/netsuiteCustomerRecords"));
 app.use("/api/meta/store", require("./routes/storeName"));
+app.use("/api/meta/management-rules", require("./routes/managementRules"));
 app.use("/api/vsa", require("./routes/vsa"));
 const intercompanyRoutes = require("./routes/intercompany");
 app.use("/api/netsuite/intercompany", intercompanyRoutes);
@@ -78,7 +92,7 @@ app.use("/api/engagement", engagementRoutes);
 const surveysRoutes = require("./routes/surveys");
 app.use("/api/engagement/surveys", surveysRoutes);
 
-
+app.use("/api/sales", require("./routes/salesMemos"));
 
 
 
@@ -387,6 +401,46 @@ app.get("/api/netsuite/vsa-item-data", (req, res) =>
 app.get("/api/netsuite/widget-sales", (req, res) =>
   fetchNetSuiteData("WIDGET_SALES_URL", "WIDGET_SALES", res, "Widget Sales data")
 );
+
+
+// === Purchase Order Management ===
+app.get("/api/netsuite/purchase-order-management", async (req, res) => {
+  try {
+    const baseUrl = process.env.PURCH_ORD_MANAGEMENT_URL;
+    const token = process.env.PURCH_ORD_MANAGEMENT;
+
+    const url = `${baseUrl}&token=${encodeURIComponent(token)}`;
+    const response = await fetch(url);
+
+    if (!response.ok) throw new Error(`NetSuite returned ${response.status}`);
+
+    const json = await response.json();
+    res.json({ ok: true, results: json.results || json.data || [] });
+  } catch (err) {
+    console.error("❌ PO Management fetch error:", err);
+    res.status(500).json({ ok: false, error: "Failed to load PO management" });
+  }
+});
+
+// === Supplier Lead Time ===
+app.get("/api/netsuite/supplier-lead-time", async (req, res) => {
+  try {
+    const baseUrl = process.env.SUPPLIER_LEAD_TIME_URL;
+    const token = process.env.SUPPLIER_LEAD_TIME;
+
+    const url = `${baseUrl}&token=${encodeURIComponent(token)}`;
+    const response = await fetch(url);
+
+    if (!response.ok) throw new Error(`NetSuite returned ${response.status}`);
+
+    const json = await response.json();
+    res.json({ ok: true, results: json.results || json.data || [] });
+  } catch (err) {
+    console.error("❌ Supplier Lead Time fetch error:", err);
+    res.status(500).json({ ok: false, error: "Failed to load supplier lead times" });
+  }
+});
+
 
 
 /****************************************************
