@@ -164,28 +164,6 @@
                     </section>
                 </div>
 
-                <!-- === MEMOS PANEL (Expandable) === -->
-                <section class="form-section order-items-section">
-                    <div class="section-header-flex memo-header">
-                        <h2>Memos</h2>
-                        <button type="button" id="newMemoBtn" class="btn-secondary small-btn">+ New Memo</button>
-                    </div>
-
-                    <div id="memoPanel" class="memo-panel collapsed">
-                        <table class="styled-table" id="memoTable">
-                            <thead>
-                                <tr>
-                                    <th>Date</th>
-                                    <th>Author</th>
-                                    <th>Title</th>
-                                </tr>
-                            </thead>
-                            <tbody></tbody>
-                        </table>
-                        <p id="noMemosMsg" class="muted" style="padding:8px; display:none;">No memos recorded for this
-                            order.</p>
-                    </div>
-                </section>
 
 
                 <!-- ORDER SUMMARY (Sticky) -->
@@ -212,6 +190,33 @@
                 </aside>
 
             </div>
+
+            <!-- ===================== MEMOS PANEL ===================== -->
+            <div id="memoPanel" class="memo-panel collapsed">
+                <div class="memo-header">
+                    <h3>Memos</h3>
+                    <button id="newMemoBtn" class="btn-secondary small-btn">+ New Memo</button>
+                </div>
+
+                <div class="memo-content">
+                    <table id="memoTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 160px;">Date</th>
+                                <th style="width: 160px;">Author</th>
+                                <th style="width: 160px;">Title</th>
+                                <th style="width: 120px;">Type</th>
+                                <th>Memo</th>
+                            </tr>
+                        </thead>
+
+
+                        <tbody></tbody>
+                    </table>
+                    <p id="noMemosMsg" class="no-memos">No memos found for this order.</p>
+                </div>
+            </div>
+            <!-- ===================== END MEMOS PANEL ===================== -->
 
             <!-- === ORDER ITEMS TABLE (FULL WIDTH) === -->
             <section class="form-section order-items-section">

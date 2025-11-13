@@ -70,36 +70,51 @@ router.post("/memo", async (req, res) => {
 });
 
 
-/* ============================================================
-   GET /api/sales/memo/:orderId
-   Fetch memo list from NetSuite RESTlet
-============================================================ */
 router.get("/memo/:orderId", async (req, res) => {
   try {
     const orderId = req.params.orderId;
-    console.log("🔎 Fetching memos for order:", orderId);
 
-    const rawAuth = req.headers.authorization || "";
-    const token = rawAuth.replace("Bearer ", "");
-    const session = await getSession(token);
-    const userId = session?.user_id || session?.id;
+    const suiteletBase = process.env.USER_NOTES_URL;
+    const suiteletToken = process.env.USER_NOTES;
 
-    console.log("🔐 User Session:", session);
+    if (!suiteletBase || !suiteletToken) {
+      return res.json({ ok: false, error: "USER_NOTES_URL or USER_NOTES missing" });
+    }
 
-    const url = `${MEMO_RESTLET_URL}&id=${orderId}`;
-    console.log("🌐 RESTlet GET URL:", url);
+    // Append token correctly
+    const suiteletUrl = `${suiteletBase}&token=${suiteletToken}`;
 
-    const nsResponse = await nsRestlet(url, null, userId, "sb", "GET");
-    console.log("📥 RESTlet GET Response:", nsResponse);
+    console.log("📡 Fetching notes from Suitelet:", suiteletUrl);
 
-    return res.json({
-      ok: nsResponse.ok,
-      memos: nsResponse.results || []
-    });
+    const resp = await fetch(suiteletUrl);
+    const text = await resp.text();
+
+    // If NetSuite returned HTML → authentication error
+    if (text.startsWith("<")) {
+      console.error("🛑 Suitelet returned HTML instead of JSON:");
+      return res.json({
+        ok: false,
+        error: "Authentication failed calling Suitelet.",
+        details: text.substring(0, 200)
+      });
+    }
+
+    const data = JSON.parse(text);
+
+    if (!data.ok || !Array.isArray(data.results)) {
+      return res.json({ ok: false, error: "Invalid Suitelet JSON structure" });
+    }
+
+    // Filter by Sales Order internal ID
+    const memos = data.results.filter(n =>
+      String(n["Internal ID"]) === String(orderId)
+    );
+
+    return res.json({ ok: true, memos });
 
   } catch (err) {
-    console.error("❌ Error fetching memos:", err);
-    res.status(500).json({ ok: false, error: "Server error" });
+    console.error("❌ Error fetching memos via Suitelet:", err);
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
 });
 

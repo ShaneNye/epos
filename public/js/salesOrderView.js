@@ -805,11 +805,15 @@ document.addEventListener("DOMContentLoaded", () => {
 
         data.memos.forEach(m => {
             const tr = document.createElement("tr");
-            tr.innerHTML = `
-                <td>${new Date(m.created_at).toLocaleDateString()}</td>
-                <td>${m.author}</td>
-                <td>${m.title}</td>
-            `;
+tr.innerHTML = `
+    <td>${m["Date"] || ""}</td>
+    <td>${m["Author"] || ""}</td>
+    <td>${m["Title"] || ""}</td>
+    <td>${m["Type"] || ""}</td>
+    <td>${m["Memo"] || ""}</td>
+`;
+
+
             memoTableBody.appendChild(tr);
         });
     }

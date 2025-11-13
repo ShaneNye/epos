@@ -682,26 +682,67 @@ textarea:focus {
   0%   { transform: rotate(0deg); }
   100% { transform: rotate(360deg); }
 }
-/* === Memo Panel Styling === */
-.memo-header {
-  cursor: pointer;
+/* ===== MEMO PANEL ===== */
+.memo-panel {
+  width: 100%;
+  background: #ffffff;
+  border: 1px solid #e3e8ee;
+  border-radius: 6px;
+  margin-top: 20px;
+  padding: 0;
+  overflow: hidden;
+  transition: max-height 0.3s ease;
 }
 
-.memo-panel {
-  background: #fff;
-  border: 1px solid #e5e9ef;
-  border-radius: 6px;
-  padding: 10px;
-  margin-top: 10px;
-  transition: max-height 0.3s ease;
-  overflow: hidden;
-  max-height: 0;
+.memo-panel.collapsed {
+  max-height: 58px; /* header height only */
 }
 
 .memo-panel.expanded {
-  max-height: 400px;
+  max-height: 400px; /* enough for 3–4 rows */
 }
 
-.memo-panel table {
+.memo-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 15px;
+  background: #f7f9fc;
+  border-bottom: 1px solid #e3e8ee;
+  cursor: pointer;
+}
+
+.memo-header h3 {
+  margin: 0;
+  font-size: 16px;
+  color: #2f3e46;
+}
+
+.memo-content {
+  padding: 10px 15px;
+}
+
+.memo-content table {
   width: 100%;
+  border-collapse: collapse;
+}
+
+.memo-content th {
+  text-align: left;
+  background: #006d83;
+  color: white;
+  font-weight: 600;
+  padding: 6px 8px;
+}
+
+.memo-content td {
+  padding: 6px 8px;
+  border-bottom: 1px solid #e8eef3;
+}
+
+.no-memos {
+  text-align: center;
+  padding: 12px;
+  color: #7a869a;
+  font-style: italic;
 }
