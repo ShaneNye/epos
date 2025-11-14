@@ -592,6 +592,7 @@ select#activeRoleSelect::-internal-list-box {
   background: #fff;
   border-radius: 10px;       /* match cards */
   border: 1px solid #e6eef3;
+  max-width: 250px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   padding: 1.25rem 1.5rem;
   transition: box-shadow 0.25s ease, transform 0.2s ease;

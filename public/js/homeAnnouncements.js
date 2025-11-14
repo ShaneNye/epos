@@ -101,83 +101,162 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  /* =====================================================
-     === LOAD ACTIVE SURVEYS =============================
-     ===================================================== */
-  async function loadActiveSurveys() {
-    if (!surveyContainer) return;
+/* =====================================================
+   === LOAD ACTIVE SURVEYS =============================
+   ===================================================== */
+async function loadActiveSurveys() {
+  if (!surveyContainer) return;
+
+  try {
+    const session = storageGet();
+    const token = session?.token;
+    const activeRoleName =
+      (session?.activeRole &&
+        typeof session.activeRole === "object" &&
+        session.activeRole.name) ||
+      session?.activeRole ||
+      null; // handles "Admin" or { name: "Admin" }
+
+    if (!token) {
+      console.warn("⚠️ No token found, cannot load surveys.");
+      surveyContainer.style.display = "none";
+      return;
+    }
+
+    /* -------------------------------
+       1) Resolve activeRole → roleId
+       ------------------------------- */
+    let activeRoleId = null;
+
     try {
-      // ✅ Updated path to new namespace
-      const res = await fetch("/api/engagement/surveys/active-surveys", {
+      const rolesRes = await fetch("/api/meta/roles", {
         headers: { Authorization: `Bearer ${token}` },
       });
-      const data = await res.json();
+      const rolesData = await rolesRes.json();
 
-      if (!data.ok || !Array.isArray(data.surveys)) {
-        console.warn("⚠️ No active surveys available.");
-        surveyContainer.style.display = "none";
-        return;
-      }
-
-      const surveys = data.surveys || [];
-      if (!surveys.length) {
-        surveyContainer.style.display = "none";
-        surveyContainer.innerHTML = "";
-        return;
-      }
-
-      // Otherwise, show container
-      surveyContainer.style.display = "block";
-
-      surveyContainer.innerHTML = `
-        <div class="announcement-panel">
-          <h3>📋 Active Surveys</h3>
-          <div class="announcement-list">
-            ${surveys
-              .map((s) => {
-                const date = s.start_date
-                  ? new Date(s.start_date).toLocaleDateString()
-                  : "Ongoing";
-                return `
-                  <div class="announcement-item">
-                    <div class="announcement-header">
-                      <strong>${s.title}</strong>
-                      <span class="muted">${date}</span>
-                    </div>
-                    <p>${s.summary || "No summary provided."}</p>
-                    <button class="btn-primary take-survey-btn" data-id="${s.id}">Take Survey</button>
-                  </div>
-                `;
-              })
-              .join("")}
-          </div>
-        </div>
-      `;
-
-      // Add click handlers for each survey
-      surveyContainer.querySelectorAll(".take-survey-btn").forEach((btn) => {
-        btn.addEventListener("click", (e) => {
-          const id = e.target.dataset.id;
-          const popup = window.open(
-            `/EngagementPopups/surveyResponsePopup.html?id=${id}&token=${encodeURIComponent(
-              token
-            )}`,
-            "SurveyResponse",
-            "width=950,height=850,resizable=yes,scrollbars=yes"
+      if (rolesData.ok && Array.isArray(rolesData.roles) && activeRoleName) {
+        const match = rolesData.roles.find(
+          (r) =>
+            String(r.name || "")
+              .trim()
+              .toLowerCase() === String(activeRoleName).trim().toLowerCase()
+        );
+        if (match) {
+          activeRoleId = Number(match.id);
+          console.log(
+            `🎭 Active role '${activeRoleName}' mapped to id ${activeRoleId}`
           );
-
-          if (!popup) {
-            alert("⚠️ Please allow pop-ups to complete surveys.");
-          } else {
-            popup.focus();
-          }
-        });
-      });
+        } else {
+          console.warn(
+            `⚠️ No role record found matching activeRole='${activeRoleName}'`
+          );
+        }
+      }
     } catch (err) {
-      console.error("❌ Failed to load active surveys:", err);
-      surveyContainer.style.display = "none";
+      console.error("❌ Failed to resolve active role id:", err);
     }
+
+    /* -------------------------------
+       2) Load all active surveys
+       ------------------------------- */
+    const res = await fetch("/api/engagement/surveys/active-surveys", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const data = await res.json();
+
+    if (!data.ok || !Array.isArray(data.surveys)) {
+      console.warn("⚠️ No active surveys available from API.");
+      surveyContainer.style.display = "none";
+      surveyContainer.innerHTML = "";
+      return;
+    }
+
+    let surveys = data.surveys || [];
+
+    /* -------------------------------
+       3) Filter by audience_roles
+       ------------------------------- */
+    if (activeRoleId) {
+      surveys = surveys.filter((s) => {
+        const audience = Array.isArray(s.audience_roles)
+          ? s.audience_roles.map((v) => Number(v))
+          : [];
+        return audience.includes(activeRoleId);
+      });
+    } else {
+      // If we *cannot* resolve a role id, safest is to hide surveys
+      console.warn(
+        "⚠️ activeRoleId could not be resolved — hiding surveys for safety."
+      );
+      surveys = [];
+    }
+
+    if (!surveys.length) {
+      console.log(
+        "ℹ️ No surveys visible for current active role; hiding survey widget."
+      );
+      surveyContainer.style.display = "none";
+      surveyContainer.innerHTML = "";
+      return;
+    }
+
+    /* -------------------------------
+       4) Render filtered surveys
+       ------------------------------- */
+    surveyContainer.style.display = "block";
+
+    surveyContainer.innerHTML = `
+      <div class="announcement-panel">
+        <h3>📋 Active Surveys</h3>
+        <div class="announcement-list">
+          ${surveys
+            .map((s) => {
+              const date = s.start_date
+                ? new Date(s.start_date).toLocaleDateString()
+                : "Ongoing";
+              return `
+                <div class="announcement-item">
+                  <div class="announcement-header">
+                    <strong>${s.title}</strong>
+                    <span class="muted">${date}</span>
+                  </div>
+                  <p>${s.summary || "No summary provided."}</p>
+                  <button class="btn-primary take-survey-btn" data-id="${s.id}">
+                    Take Survey
+                  </button>
+                </div>
+              `;
+            })
+            .join("")}
+        </div>
+      </div>
+    `;
+
+    // Attach click handlers
+    surveyContainer.querySelectorAll(".take-survey-btn").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        const id = e.target.dataset.id;
+        const popup = window.open(
+          `/EngagementPopups/surveyResponsePopup.html?id=${id}&token=${encodeURIComponent(
+            token
+          )}`,
+          "SurveyResponse",
+          "width=950,height=850,resizable=yes,scrollbars=yes"
+        );
+
+        if (!popup) {
+          alert("⚠️ Please allow pop-ups to complete surveys.");
+        } else {
+          popup.focus();
+        }
+      });
+    });
+  } catch (err) {
+    console.error("❌ Failed to load active surveys:", err);
+    surveyContainer.style.display = "none";
   }
+}
+
 
   /* =====================================================
      === INITIAL LOAD ===================================

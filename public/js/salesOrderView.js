@@ -28,25 +28,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.warn("⚠️ loadingOverlay element not found");
   }
 
-  
 
-let saved = storageGet?.();
-if (!saved || !saved.token) {
-  console.warn("⚠️ No token found initially, retrying after 300ms…");
-  await new Promise(r => setTimeout(r, 300));
-  saved = storageGet?.();
-}
 
-if (!saved || !saved.token) {
-  console.error("🚫 Still no token — forcing logout");
-  return (window.location.href = "/index.html");
-}
+  let saved = storageGet?.();
+  if (!saved || !saved.token) {
+    console.warn("⚠️ No token found initially, retrying after 300ms…");
+    await new Promise(r => setTimeout(r, 300));
+    saved = storageGet?.();
+  }
 
-const headers = {
-  "Content-Type": "application/json",
-  Authorization: `Bearer ${saved.token}`,
-};
-console.log("✅ Auth header ready for Sales Order View:", headers);
+  if (!saved || !saved.token) {
+    console.error("🚫 Still no token — forcing logout");
+    return (window.location.href = "/index.html");
+  }
+
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${saved.token}`,
+  };
+  console.log("✅ Auth header ready for Sales Order View:", headers);
 
 
   // keep deposits across UI updates
@@ -99,40 +99,40 @@ console.log("✅ Auth header ready for Sales Order View:", headers);
       console.log("💰 No deposits returned");
     }
 
-   // === Populate Customer Title (via entity lookup) ===
-try {
-  if (so.entity?.id) {
-    console.log("🔎 Fetching full entity for title field:", so.entity.id);
-    const entRes = await fetch(`/api/netsuite/entity/${so.entity.id}`, { headers });
-    if (entRes.ok) {
-      const entData = await entRes.json();
-      console.log("🔎 Full Entity for SalesOrder:", entData);
+    // === Populate Customer Title (via entity lookup) ===
+    try {
+      if (so.entity?.id) {
+        console.log("🔎 Fetching full entity for title field:", so.entity.id);
+        const entRes = await fetch(`/api/netsuite/entity/${so.entity.id}`, { headers });
+        if (entRes.ok) {
+          const entData = await entRes.json();
+          console.log("🔎 Full Entity for SalesOrder:", entData);
 
-      const entity = entData.entity || {};
-      const titleObj = entity.custentity_title || entity.title || null;
+          const entity = entData.entity || {};
+          const titleObj = entity.custentity_title || entity.title || null;
 
-      if (titleObj && titleObj.id) {
-        console.log("🎩 NetSuite Title candidate (SO):", titleObj);
-        const titleSelect = document.querySelector('select[name="title"]');
-        if (titleSelect) {
-          const match = Array.from(titleSelect.options).find(
-            opt => String(opt.value) === String(titleObj.id)
-          );
-          if (match) {
-            titleSelect.value = titleObj.id;
-            console.log("✅ Title populated from entity:", titleObj.refName);
+          if (titleObj && titleObj.id) {
+            console.log("🎩 NetSuite Title candidate (SO):", titleObj);
+            const titleSelect = document.querySelector('select[name="title"]');
+            if (titleSelect) {
+              const match = Array.from(titleSelect.options).find(
+                opt => String(opt.value) === String(titleObj.id)
+              );
+              if (match) {
+                titleSelect.value = titleObj.id;
+                console.log("✅ Title populated from entity:", titleObj.refName);
+              } else {
+                console.warn("⚠️ No matching title option found for:", titleObj);
+              }
+            }
           } else {
-            console.warn("⚠️ No matching title option found for:", titleObj);
+            console.warn("⚠️ No title field found on entity:", entity);
           }
         }
-      } else {
-        console.warn("⚠️ No title field found on entity:", entity);
       }
+    } catch (err) {
+      console.error("❌ Failed to populate title from entity:", err.message);
     }
-  }
-} catch (err) {
-  console.error("❌ Failed to populate title from entity:", err.message);
-}
 
 
     // === Populate Customer + Address Info ===
@@ -217,77 +217,77 @@ try {
     }
 
     // === Cache warehouse for inventory popup use ===
-try {
-  const warehouseSelect = document.getElementById("warehouse");
-  if (warehouseSelect) {
-    window.selectedWarehouseId = warehouseSelect.value.trim();
-    window.selectedWarehouseName =
-      warehouseSelect.options[warehouseSelect.selectedIndex]?.textContent.trim() || "";
-    console.log("🏭 Cached warehouse from SO view:", window.selectedWarehouseId, window.selectedWarehouseName);
+    try {
+      const warehouseSelect = document.getElementById("warehouse");
+      if (warehouseSelect) {
+        window.selectedWarehouseId = warehouseSelect.value.trim();
+        window.selectedWarehouseName =
+          warehouseSelect.options[warehouseSelect.selectedIndex]?.textContent.trim() || "";
+        console.log("🏭 Cached warehouse from SO view:", window.selectedWarehouseId, window.selectedWarehouseName);
 
-    // keep it updated if user changes warehouse
-    warehouseSelect.addEventListener("change", () => {
-      window.selectedWarehouseId = warehouseSelect.value.trim();
-      window.selectedWarehouseName =
-        warehouseSelect.options[warehouseSelect.selectedIndex]?.textContent.trim() || "";
-      console.log("🏭 Updated warehouse cache:", window.selectedWarehouseId, window.selectedWarehouseName);
-    });
-  } else {
-    console.warn("⚠️ Warehouse select not found in SO view");
-  }
-} catch (err) {
-  console.error("❌ Failed to cache warehouse:", err.message);
-}
+        // keep it updated if user changes warehouse
+        warehouseSelect.addEventListener("change", () => {
+          window.selectedWarehouseId = warehouseSelect.value.trim();
+          window.selectedWarehouseName =
+            warehouseSelect.options[warehouseSelect.selectedIndex]?.textContent.trim() || "";
+          console.log("🏭 Updated warehouse cache:", window.selectedWarehouseId, window.selectedWarehouseName);
+        });
+      } else {
+        console.warn("⚠️ Warehouse select not found in SO view");
+      }
+    } catch (err) {
+      console.error("❌ Failed to cache warehouse:", err.message);
+    }
 
 
-// === Populate Order Items ===
-console.log("🧾 Rendering item lines to table");
-document.getElementById("orderNumber").textContent = so.tranId || tranId;
-const tbody = document.getElementById("orderItemsBody");
-tbody.innerHTML = "";
+    // === Populate Order Items ===
+    console.log("🧾 Rendering item lines to table");
+    document.getElementById("orderNumber").textContent = so.tranId || tranId;
+    const tbody = document.getElementById("orderItemsBody");
+    tbody.innerHTML = "";
 
-try {
-  if (Array.isArray(so.item?.items)) {
-    console.log("🧮 Item lines:", so.item.items.length);
-    console.log("📦 Cached items in window.items:", Array.isArray(window.items) ? window.items.length : "not loaded");
+    try {
+      if (Array.isArray(so.item?.items)) {
+        console.log("🧮 Item lines:", so.item.items.length);
+        console.log("📦 Cached items in window.items:", Array.isArray(window.items) ? window.items.length : "not loaded");
 
-    so.item.items.forEach((line, idx) => {
-      const tr = document.createElement("tr");
-      tr.classList.add("order-line");
-      tr.dataset.line = idx;
-      tr.dataset.lineid = line.lineId || ""; // ✅ cache true NetSuite internal line ID
+        so.item.items.forEach((line, idx) => {
+          const tr = document.createElement("tr");
+          tr.classList.add("order-line");
+          tr.dataset.line = idx;
+          tr.dataset.lineid = line.lineId || ""; // ✅ cache true NetSuite internal line ID
 
-      // guard against NaN (amount may be NET per line)
-      const gross = Number(line.amount * line.quantity) || 0;
-      const vat = line.vat ?? Number(line.saleprice || 0) * 0.2;
-      const sale = Number(line.saleprice || 0);
+          // guard against NaN (amount may be NET per line)
+          const gross = Number(line.amount * line.quantity) || 0;
+          const vat = line.vat ?? Number(line.saleprice || 0) * 0.2;
+          const sale = Number(line.saleprice || 0);
 
-      // 🔎 Detect Service items by cached item feed
-      const itemId = String(line.item?.id || "");
-      const itemData = window.items?.find(it => String(it["Internal ID"]) === itemId);
-      const classFromLine = line.item?.class;
-      const classFromCache = itemData?.["Class"];
-      const className = (classFromCache || "").toLowerCase();
-      const isService = className === "service";
+          // 🔎 Detect Service items by cached item feed
+          const itemId = String(line.item?.id || "");
+          const itemData = window.items?.find(it => String(it["Internal ID"]) === itemId);
+          const classFromLine = line.item?.class;
+          const classFromCache = itemData?.["Class"];
+          const className = (classFromCache || "").toLowerCase();
+          const isService = className === "service";
 
-      console.log(`🔎 Line ${idx} — Item check`, {
-        itemId,
-        itemRef: line.item,
-        classFromLine,
-        classFromCache,
-        className,
-        isService,
-        rawItemData: itemData
-      });
+          console.log(`🔎 Line ${idx} — Item check`, {
+            itemId,
+            itemRef: line.item,
+            classFromLine,
+            classFromCache,
+            className,
+            isService,
+            rawItemData: itemData
+          });
 
-      let fulfilCell = "";
-      let invCell = "";
+          let fulfilCell = "";
+          let invCell = "";
 
-      if (!isService) {
-        if (so.orderStatus?.id === "A") {
-          // Pending approval → editable
-          fulfilCell = `<select class="fulfilmentSelect" data-line="${idx}"></select>`;
-          invCell = `
+          if (!isService) {
+            if (so.orderStatus?.id === "A") {
+              // Pending approval → editable
+              fulfilCell = `<select class="fulfilmentSelect" data-line="${idx}"></select>`;
+              invCell = `
             <div class="inventory-cell" style="display:none">
               <button 
                 type="button" 
@@ -318,32 +318,31 @@ try {
               <span class="inv-summary">${line.inventoryDetail || ""}</span>
             </div>
           `;
-        } else {
-          fulfilCell = line.custcol_sb_fulfilmentlocation?.refName || "";
-          invCell = line.inventoryDetail ? "📦" : "";
-        }
-      } else {
-        // 🚫 Service item → hide both
-        fulfilCell = "";
-        invCell = "";
-        console.log(`🧾 Service item row ${idx} (${line.item?.refName}) — fulfilment & inventory hidden`);
-      }
+            } else {
+              fulfilCell = line.custcol_sb_fulfilmentlocation?.refName || "";
+              invCell = line.inventoryDetail ? "📦" : "";
+            }
+          } else {
+            // 🚫 Service item → hide both
+            fulfilCell = "";
+            invCell = "";
+            console.log(`🧾 Service item row ${idx} (${line.item?.refName}) — fulfilment & inventory hidden`);
+          }
 
-      // === Render row ===
-      tr.innerHTML = `
+          // === Render row ===
+          tr.innerHTML = `
         <td>${line.item?.refName || "—"}</td>
         <td>${line.custcol_sb_itemoptionsdisplay || ""}</td>
         <td class="qty">${line.quantity || 0}</td>
         <td class="amount">£${gross.toFixed(2)}</td>
-        <td class="discount">${
-          (() => {
-            const retailGross = Number(line.amount * line.quantity) || 0;
-            const saleGross = sale || 0;
-            if (retailGross <= 0) return "0%";
-            const pct = ((retailGross - saleGross) / retailGross) * 100;
-            return `${Math.max(0, pct).toFixed(1)}%`;
-          })()
-        }</td>
+        <td class="discount">${(() => {
+              const retailGross = Number(line.amount * line.quantity) || 0;
+              const saleGross = sale || 0;
+              if (retailGross <= 0) return "0%";
+              const pct = ((retailGross - saleGross) / retailGross) * 100;
+              return `${Math.max(0, pct).toFixed(1)}%`;
+            })()
+            }</td>
         <td class="vat">£${Number(vat || 0).toFixed(2)}</td>
         <td class="saleprice">£${sale ? sale.toFixed(2) : "0.00"}</td>
         <td class="fulfilment-cell">${fulfilCell}</td>
@@ -353,459 +352,462 @@ try {
         <input type="hidden" class="item-internal-id" data-line="${idx}" value="${line.item?.id || ""}" />
       `;
 
-      console.log(`💾 Cached quantity for line ${idx}:`, line.quantity);
-      tbody.appendChild(tr);
+          console.log(`💾 Cached quantity for line ${idx}:`, line.quantity);
+          tbody.appendChild(tr);
 
-      if ((idx + 1) % 10 === 0) console.log("…rendered %d rows", idx + 1);
-    });
+          if ((idx + 1) % 10 === 0) console.log("…rendered %d rows", idx + 1);
+        });
 
-    console.log("✅ Item lines rendered");
+        console.log("✅ Item lines rendered");
 
-// === Populate fulfilment dropdowns if Pending Approval ===
-if (so.orderStatus?.id === "A") {
-  try {
-    console.log("📡 Fetching fulfilment methods for dropdowns...");
-    const res = await fetch("/api/netsuite/fulfilmentmethods");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+        // === Populate fulfilment dropdowns if Pending Approval ===
+        if (so.orderStatus?.id === "A") {
+          try {
+            console.log("📡 Fetching fulfilment methods for dropdowns...");
+            const res = await fetch("/api/netsuite/fulfilmentmethods");
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
 
-    const fulfilmentMethods = data.results || [];
-    console.log("✅ Fulfilment methods loaded:", fulfilmentMethods);
+            const fulfilmentMethods = data.results || [];
+            console.log("✅ Fulfilment methods loaded:", fulfilmentMethods);
 
-    // Cache for later
-    window._fulfilmentMap = fulfilmentMethods.map(f => ({
-      id: f["Internal ID"] || f.id,
-      name: f["Name"] || f.name
-    }));
+            // Cache for later
+            window._fulfilmentMap = fulfilmentMethods.map(f => ({
+              id: f["Internal ID"] || f.id,
+              name: f["Name"] || f.name
+            }));
 
-    tbody.querySelectorAll(".fulfilmentSelect").forEach((sel) => {
-      const lineIndex = sel.dataset.line;
-      const line = so.item?.items?.[lineIndex] || {};
+            tbody.querySelectorAll(".fulfilmentSelect").forEach((sel) => {
+              const lineIndex = sel.dataset.line;
+              const line = so.item?.items?.[lineIndex] || {};
 
-      // 🧩 Try all known field paths for fulfilment ID + name
-      const currentFulfilId =
-        line?.custcol_sb_fulfilmentlocation?.id ||
-        line?.fulfilmentlocation ||
-        line?.CUSTCOL_SB_FULFILMENTLOCATION ||
-        line?.custcol_sb_fulfilmentlocation ||
-        "";
+              // 🧩 Try all known field paths for fulfilment ID + name
+              const currentFulfilId =
+                line?.custcol_sb_fulfilmentlocation?.id ||
+                line?.fulfilmentlocation ||
+                line?.CUSTCOL_SB_FULFILMENTLOCATION ||
+                line?.custcol_sb_fulfilmentlocation ||
+                "";
 
-      const currentFulfilName =
-        line?.custcol_sb_fulfilmentlocation?.refName ||
-        line?.custcol_sb_fulfilmentlocation?.name ||
-        line?.fulfilmentlocationname ||
-        "";
+              const currentFulfilName =
+                line?.custcol_sb_fulfilmentlocation?.refName ||
+                line?.custcol_sb_fulfilmentlocation?.name ||
+                line?.fulfilmentlocationname ||
+                "";
 
-      console.log(`🔎 Line ${lineIndex} fulfilment check:`, {
-        currentFulfilId,
-        currentFulfilName,
-        raw: line.custcol_sb_fulfilmentlocation,
-      });
+              console.log(`🔎 Line ${lineIndex} fulfilment check:`, {
+                currentFulfilId,
+                currentFulfilName,
+                raw: line.custcol_sb_fulfilmentlocation,
+              });
 
-      // Build dropdown
-      sel.innerHTML = '<option value="">-- Select --</option>';
-      fulfilmentMethods.forEach((method) => {
-        const id = method["Internal ID"] || method.id;
-        const name = method["Name"] || method.name;
-        const opt = document.createElement("option");
-        opt.value = id;
-        opt.textContent = name;
+              // Build dropdown
+              sel.innerHTML = '<option value="">-- Select --</option>';
+              fulfilmentMethods.forEach((method) => {
+                const id = method["Internal ID"] || method.id;
+                const name = method["Name"] || method.name;
+                const opt = document.createElement("option");
+                opt.value = id;
+                opt.textContent = name;
 
-        // ✅ Preselect if matches existing fulfilment
-        if (
-          (currentFulfilId && String(id) === String(currentFulfilId)) ||
-          (currentFulfilName && name.toLowerCase() === currentFulfilName.toLowerCase())
-        ) {
-          opt.selected = true;
-          console.log(`✅ Preselected fulfilment "${name}" for line ${lineIndex}`);
+                // ✅ Preselect if matches existing fulfilment
+                if (
+                  (currentFulfilId && String(id) === String(currentFulfilId)) ||
+                  (currentFulfilName && name.toLowerCase() === currentFulfilName.toLowerCase())
+                ) {
+                  opt.selected = true;
+                  console.log(`✅ Preselected fulfilment "${name}" for line ${lineIndex}`);
+                }
+
+                sel.appendChild(opt);
+              });
+
+              // 🎯 Toggle inventory button visibility
+              sel.addEventListener("change", () => {
+                const row = tbody.querySelector(`tr[data-line="${lineIndex}"]`);
+                const invWrapper = row?.querySelector(".inventory-cell");
+                const selectedText = sel.options[sel.selectedIndex]?.textContent?.toLowerCase() || "";
+                if (invWrapper) {
+                  invWrapper.style.display = ["warehouse", "in store", "fulfil from store"].includes(selectedText)
+                    ? "inline-block"
+                    : "none";
+                }
+              });
+            });
+
+            console.log("✅ Fulfilment dropdowns rendered with detected selections");
+          } catch (err) {
+            console.error("❌ Failed to load fulfilment methods:", err);
+          }
         }
 
-        sel.appendChild(opt);
-      });
 
-      // 🎯 Toggle inventory button visibility
-      sel.addEventListener("change", () => {
-        const row = tbody.querySelector(`tr[data-line="${lineIndex}"]`);
-        const invWrapper = row?.querySelector(".inventory-cell");
-        const selectedText = sel.options[sel.selectedIndex]?.textContent?.toLowerCase() || "";
-        if (invWrapper) {
-          invWrapper.style.display = ["warehouse", "in store", "fulfil from store"].includes(selectedText)
-            ? "inline-block"
-            : "none";
-        }
-      });
-    });
+        // === Attach inventory popup buttons ===
+        tbody.querySelectorAll(".open-inventory").forEach(btn => {
+          btn.addEventListener("click", () => {
+            const lineIndex = btn.dataset.line;
 
-    console.log("✅ Fulfilment dropdowns rendered with detected selections");
-  } catch (err) {
-    console.error("❌ Failed to load fulfilment methods:", err);
-  }
-}
+            // 🔎 Item ID (from dataset OR hidden field)
+            const itemId =
+              btn.dataset.itemid ||
+              document.querySelector(`.item-internal-id[data-line="${lineIndex}"]`)?.value ||
+              "";
 
+            // 🔎 Quantity sources
+            let qty = btn.dataset.qty;
+            const cacheQty =
+              document.querySelector(`.item-qty-cache[data-line="${lineIndex}"]`)?.value || 0;
 
-// === Attach inventory popup buttons ===
-tbody.querySelectorAll(".open-inventory").forEach(btn => {
-  btn.addEventListener("click", () => {
-    const lineIndex = btn.dataset.line;
+            console.log("📊 Qty sources for line", lineIndex, {
+              fromDataset: qty,
+              fromCacheField: cacheQty
+            });
 
-    // 🔎 Item ID (from dataset OR hidden field)
-    const itemId =
-      btn.dataset.itemid ||
-      document.querySelector(`.item-internal-id[data-line="${lineIndex}"]`)?.value ||
-      "";
+            if (!qty || isNaN(qty) || Number(qty) <= 0) {
+              qty = cacheQty;
+            }
 
-    // 🔎 Quantity sources
-    let qty = btn.dataset.qty;
-    const cacheQty =
-      document.querySelector(`.item-qty-cache[data-line="${lineIndex}"]`)?.value || 0;
+            console.log("🪟 Final qty being passed to popup:", qty);
 
-    console.log("📊 Qty sources for line", lineIndex, {
-      fromDataset: qty,
-      fromCacheField: cacheQty
-    });
+            // 🔎 Existing detail string
+            const existing =
+              document.querySelector(`.item-inv-detail[data-line="${lineIndex}"]`)?.value || "";
 
-    if (!qty || isNaN(qty) || Number(qty) <= 0) {
-      qty = cacheQty;
-    }
+            // 🔑 Ensure warehouse cached
+            const warehouseSel = document.getElementById("warehouse");
+            if (warehouseSel) {
+              window.selectedWarehouseId = warehouseSel.value.trim();
+              window.selectedWarehouseName =
+                warehouseSel.options[warehouseSel.selectedIndex]?.textContent.trim() || "";
+              console.log(
+                "🏭 Cached warehouse for popup:",
+                window.selectedWarehouseId,
+                window.selectedWarehouseName
+              );
+            }
 
-    console.log("🪟 Final qty being passed to popup:", qty);
+            // 🔗 Build popup URL
+            const url = `/inventory.html?itemId=${encodeURIComponent(itemId)}&qty=${encodeURIComponent(
+              qty
+            )}&detail=${encodeURIComponent(existing)}&line=${lineIndex}`;
 
-    // 🔎 Existing detail string
-    const existing =
-      document.querySelector(`.item-inv-detail[data-line="${lineIndex}"]`)?.value || "";
+            console.log("🪟 Opening inventory popup with URL:", url);
 
-    // 🔑 Ensure warehouse cached
-    const warehouseSel = document.getElementById("warehouse");
-    if (warehouseSel) {
-      window.selectedWarehouseId = warehouseSel.value.trim();
-      window.selectedWarehouseName =
-        warehouseSel.options[warehouseSel.selectedIndex]?.textContent.trim() || "";
-      console.log(
-        "🏭 Cached warehouse for popup:",
-        window.selectedWarehouseId,
-        window.selectedWarehouseName
-      );
-    }
-
-    // 🔗 Build popup URL
-    const url = `/inventory.html?itemId=${encodeURIComponent(itemId)}&qty=${encodeURIComponent(
-      qty
-    )}&detail=${encodeURIComponent(existing)}&line=${lineIndex}`;
-
-    console.log("🪟 Opening inventory popup with URL:", url);
-
-    const win = window.open(
-      url,
-      "InventoryDetail",
-      "width=900,height=600,resizable=yes,scrollbars=yes"
-    );
-    if (win) win.focus();
-  });
-});
+            const win = window.open(
+              url,
+              "InventoryDetail",
+              "width=900,height=600,resizable=yes,scrollbars=yes"
+            );
+            if (win) win.focus();
+          });
+        });
 
 
 
 
-  } else {
-    console.warn("⚠️ so.item.items missing or not array");
-    const empty = document.createElement("tr");
-    empty.innerHTML = `<td colspan="8" style="text-align:center; color:#888;">No item lines found.</td>`;
-    tbody.appendChild(empty);
-  }
-} catch (err) {
-  console.error("❌ Item rendering error:", err);
-}
-
-
-// === Load fulfilment methods if we are in Pending Approval ===
-if (so.orderStatus?.id === "A") {
-  try {
-    console.log("📡 Fetching fulfilment methods for dropdowns...");
-    const res = await fetch("/api/netsuite/fulfilmentmethods");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-
-    const fulfilmentMethods = data.results || [];
-    console.log("✅ Fulfilment methods loaded:", fulfilmentMethods);
-
-    // Cache for later reference if needed elsewhere
-    window._fulfilmentMap = fulfilmentMethods.map(f => ({
-      id: f["Internal ID"] || f.id,
-      name: f["Name"] || f.name,
-    }));
-
-    // Populate each fulfilment dropdown
-    tbody.querySelectorAll(".fulfilmentSelect").forEach((sel) => {
-      const lineIndex = sel.dataset.line;
-      const line = so.item?.items?.[lineIndex] || {};
-
-      // 🧩 Detect current fulfilment value (covers all known field shapes)
-      const currentFulfilId =
-        line?.custcol_sb_fulfilmentlocation?.id ||
-        line?.fulfilmentlocation ||
-        line?.CUSTCOL_SB_FULFILMENTLOCATION ||
-        "";
-      const currentFulfilName =
-        line?.custcol_sb_fulfilmentlocation?.refName ||
-        line?.custcol_sb_fulfilmentlocation?.name ||
-        line?.fulfilmentlocationname ||
-        "";
-
-      console.log(`🔎 Line ${lineIndex} fulfilment check:`, {
-        currentFulfilId,
-        currentFulfilName,
-        raw: line.custcol_sb_fulfilmentlocation,
-      });
-
-      // Build dropdown list
-      sel.innerHTML = '<option value="">-- Select --</option>';
-      fulfilmentMethods.forEach((method) => {
-        const id = method["Internal ID"] || method.id;
-        const name = method["Name"] || method.name;
-        const opt = document.createElement("option");
-        opt.value = id;
-        opt.textContent = name;
-        sel.appendChild(opt);
-      });
-
-      // ✅ Set selected option *after* options are appended
-      if (currentFulfilId) {
-        sel.value = String(currentFulfilId);
-      } else if (currentFulfilName) {
-        const match = [...sel.options].find(
-          (o) => o.textContent.toLowerCase() === currentFulfilName.toLowerCase()
-        );
-        if (match) sel.value = match.value;
-      }
-
-      if (sel.value) {
-        console.log(
-          `✅ Fulfilment dropdown defaulted to "${sel.options[sel.selectedIndex].textContent}" (line ${lineIndex})`
-        );
       } else {
-        console.warn(`⚠️ No fulfilment match found for line ${lineIndex}`);
+        console.warn("⚠️ so.item.items missing or not array");
+        const empty = document.createElement("tr");
+        empty.innerHTML = `<td colspan="8" style="text-align:center; color:#888;">No item lines found.</td>`;
+        tbody.appendChild(empty);
       }
+    } catch (err) {
+      console.error("❌ Item rendering error:", err);
+    }
 
-      // 🎯 Toggle inventory button visibility when changed
-      sel.addEventListener("change", () => {
-        const row = tbody.querySelector(`tr[data-line="${lineIndex}"]`);
-        const invWrapper = row?.querySelector(".inventory-cell");
-        const selectedText =
-          sel.options[sel.selectedIndex]?.textContent?.toLowerCase() || "";
-        if (invWrapper) {
-          invWrapper.style.display = ["warehouse", "in store", "fulfil from store"].includes(selectedText)
-            ? "inline-block"
-            : "none";
+
+    // === Load fulfilment methods if we are in Pending Approval ===
+    if (so.orderStatus?.id === "A") {
+      try {
+        console.log("📡 Fetching fulfilment methods for dropdowns...");
+        const res = await fetch("/api/netsuite/fulfilmentmethods");
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        const fulfilmentMethods = data.results || [];
+        console.log("✅ Fulfilment methods loaded:", fulfilmentMethods);
+
+        // Cache for later reference if needed elsewhere
+        window._fulfilmentMap = fulfilmentMethods.map(f => ({
+          id: f["Internal ID"] || f.id,
+          name: f["Name"] || f.name,
+        }));
+
+        // Populate each fulfilment dropdown
+        tbody.querySelectorAll(".fulfilmentSelect").forEach((sel) => {
+          const lineIndex = sel.dataset.line;
+          const line = so.item?.items?.[lineIndex] || {};
+
+          // 🧩 Detect current fulfilment value (covers all known field shapes)
+          const currentFulfilId =
+            line?.custcol_sb_fulfilmentlocation?.id ||
+            line?.fulfilmentlocation ||
+            line?.CUSTCOL_SB_FULFILMENTLOCATION ||
+            "";
+          const currentFulfilName =
+            line?.custcol_sb_fulfilmentlocation?.refName ||
+            line?.custcol_sb_fulfilmentlocation?.name ||
+            line?.fulfilmentlocationname ||
+            "";
+
+          console.log(`🔎 Line ${lineIndex} fulfilment check:`, {
+            currentFulfilId,
+            currentFulfilName,
+            raw: line.custcol_sb_fulfilmentlocation,
+          });
+
+          // Build dropdown list
+          sel.innerHTML = '<option value="">-- Select --</option>';
+          fulfilmentMethods.forEach((method) => {
+            const id = method["Internal ID"] || method.id;
+            const name = method["Name"] || method.name;
+            const opt = document.createElement("option");
+            opt.value = id;
+            opt.textContent = name;
+            sel.appendChild(opt);
+          });
+
+          // ✅ Set selected option *after* options are appended
+          if (currentFulfilId) {
+            sel.value = String(currentFulfilId);
+          } else if (currentFulfilName) {
+            const match = [...sel.options].find(
+              (o) => o.textContent.toLowerCase() === currentFulfilName.toLowerCase()
+            );
+            if (match) sel.value = match.value;
+          }
+
+          if (sel.value) {
+            console.log(
+              `✅ Fulfilment dropdown defaulted to "${sel.options[sel.selectedIndex].textContent}" (line ${lineIndex})`
+            );
+          } else {
+            console.warn(`⚠️ No fulfilment match found for line ${lineIndex}`);
+          }
+
+          // 🎯 Toggle inventory button visibility when changed
+          sel.addEventListener("change", () => {
+            const row = tbody.querySelector(`tr[data-line="${lineIndex}"]`);
+            const invWrapper = row?.querySelector(".inventory-cell");
+            const selectedText =
+              sel.options[sel.selectedIndex]?.textContent?.toLowerCase() || "";
+            if (invWrapper) {
+              invWrapper.style.display = ["warehouse", "in store", "fulfil from store"].includes(selectedText)
+                ? "inline-block"
+                : "none";
+            }
+          });
+        });
+
+        console.log("✅ Fulfilment dropdowns rendered with existing selections");
+      } catch (err) {
+        console.error("❌ Failed to load fulfilment methods:", err);
+      }
+    }
+
+
+
+    // === Attach inventory popup buttons ===
+    tbody.querySelectorAll(".open-inventory").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const lineIndex = btn.dataset.line;
+
+        // item id: button → hidden → row
+        let itemId =
+          btn.dataset.itemid ||
+          document.querySelector(`.item-internal-id[data-line="${lineIndex}"]`)?.value ||
+          tbody.querySelector(`tr.order-line[data-line="${lineIndex}"]`)?.dataset.itemid ||
+          "";
+
+        // qty: button → hidden → row .qty text → server map → 0
+        let qty = btn.dataset.qty;
+        if (!qty || isNaN(qty) || Number(qty) <= 0) {
+          qty =
+            document.querySelector(`.item-qty-cache[data-line="${lineIndex}"]`)?.value ||
+            tbody.querySelector(`tr.order-line[data-line="${lineIndex}"] .qty`)?.textContent ||
+            (Array.isArray(window._soLineQtyMap) ? window._soLineQtyMap[Number(lineIndex)] : 0) ||
+            0;
         }
+        qty = String(qty).trim();
+        if (!qty || isNaN(qty)) qty = "0";
+
+        const existing =
+          document.querySelector(`.item-inv-detail[data-line="${lineIndex}"]`)?.value || "";
+
+        // 🔑 Ensure warehouse is cached for popup
+        const warehouseSel = document.getElementById("warehouse");
+        if (warehouseSel) {
+          window.selectedWarehouseId = warehouseSel.value.trim();
+          window.selectedWarehouseName =
+            warehouseSel.options[warehouseSel.selectedIndex]?.textContent.trim() || "";
+          console.log("🏭 Cached warehouse for popup:", window.selectedWarehouseId, window.selectedWarehouseName);
+        }
+
+        console.log("🪟 Opening inventory popup with:", { lineIndex, itemId, qty, existing });
+
+        const url = `/inventory.html?itemId=${encodeURIComponent(itemId)}&qty=${encodeURIComponent(qty)}&detail=${encodeURIComponent(existing)}&line=${lineIndex}`;
+        const win = window.open(url, "InventoryDetail", "width=900,height=600,resizable=yes,scrollbars=yes");
+        if (win) win.focus();
       });
     });
 
-    console.log("✅ Fulfilment dropdowns rendered with existing selections");
-  } catch (err) {
-    console.error("❌ Failed to load fulfilment methods:", err);
-  }
-}
 
+    // === Show/hide inventory by fulfilment ===
+    function validateInventoryForRow(row) {
+      const fulfilSel = row.querySelector(".fulfilmentSelect");
+      const invCell = row.querySelector(".inventory-cell");
+      if (!fulfilSel || !invCell) return;
 
+      const value = (fulfilSel.options[fulfilSel.selectedIndex]?.textContent || "").toLowerCase();
+      const allowed = ["warehouse", "in store", "fulfil from store"];
 
-// === Attach inventory popup buttons ===
-tbody.querySelectorAll(".open-inventory").forEach(btn => {
-  btn.addEventListener("click", () => {
-    const lineIndex = btn.dataset.line;
-
-    // item id: button → hidden → row
-    let itemId =
-      btn.dataset.itemid ||
-      document.querySelector(`.item-internal-id[data-line="${lineIndex}"]`)?.value ||
-      tbody.querySelector(`tr.order-line[data-line="${lineIndex}"]`)?.dataset.itemid ||
-      "";
-
-    // qty: button → hidden → row .qty text → server map → 0
-    let qty = btn.dataset.qty;
-    if (!qty || isNaN(qty) || Number(qty) <= 0) {
-      qty =
-        document.querySelector(`.item-qty-cache[data-line="${lineIndex}"]`)?.value ||
-        tbody.querySelector(`tr.order-line[data-line="${lineIndex}"] .qty`)?.textContent ||
-        (Array.isArray(window._soLineQtyMap) ? window._soLineQtyMap[Number(lineIndex)] : 0) ||
-        0;
-    }
-    qty = String(qty).trim();
-    if (!qty || isNaN(qty)) qty = "0";
-
-    const existing =
-      document.querySelector(`.item-inv-detail[data-line="${lineIndex}"]`)?.value || "";
-
-    // 🔑 Ensure warehouse is cached for popup
-    const warehouseSel = document.getElementById("warehouse");
-    if (warehouseSel) {
-      window.selectedWarehouseId = warehouseSel.value.trim();
-      window.selectedWarehouseName =
-        warehouseSel.options[warehouseSel.selectedIndex]?.textContent.trim() || "";
-      console.log("🏭 Cached warehouse for popup:", window.selectedWarehouseId, window.selectedWarehouseName);
+      if (allowed.some(a => value.includes(a))) {
+        invCell.style.display = "block";
+      } else {
+        invCell.style.display = "none";
+      }
     }
 
-    console.log("🪟 Opening inventory popup with:", { lineIndex, itemId, qty, existing });
+    // Attach fulfilment listeners + initial validation
+    tbody.querySelectorAll("tr").forEach(row => {
+      const fulfilSel = row.querySelector(".fulfilmentSelect");
+      if (fulfilSel) {
+        fulfilSel.addEventListener("change", () => validateInventoryForRow(row));
+        validateInventoryForRow(row); // run once
+      }
+    });
 
-    const url = `/inventory.html?itemId=${encodeURIComponent(itemId)}&qty=${encodeURIComponent(qty)}&detail=${encodeURIComponent(existing)}&line=${lineIndex}`;
-    const win = window.open(url, "InventoryDetail", "width=900,height=600,resizable=yes,scrollbars=yes");
-    if (win) win.focus();
-  });
-});
-
-
-// === Show/hide inventory by fulfilment ===
-function validateInventoryForRow(row) {
-  const fulfilSel = row.querySelector(".fulfilmentSelect");
-  const invCell = row.querySelector(".inventory-cell");
-  if (!fulfilSel || !invCell) return;
-
-  const value = (fulfilSel.options[fulfilSel.selectedIndex]?.textContent || "").toLowerCase();
-  const allowed = ["warehouse", "in store", "fulfil from store"];
-
-  if (allowed.some(a => value.includes(a))) {
-    invCell.style.display = "block";
-  } else {
-    invCell.style.display = "none";
-  }
-}
-
-// Attach fulfilment listeners + initial validation
-tbody.querySelectorAll("tr").forEach(row => {
-  const fulfilSel = row.querySelector(".fulfilmentSelect");
-  if (fulfilSel) {
-    fulfilSel.addEventListener("change", () => validateInventoryForRow(row));
-    validateInventoryForRow(row); // run once
-  }
-});
-
-// === Lock View (with exceptions for pending approval) ===
-if (so.orderStatus?.id === "A") {
-  console.log("🔓 Pending approval — fulfilment + inventory remain editable");
-  document.querySelectorAll("input, select, textarea, button").forEach(el => {
-    if (el.classList.contains("fulfilmentSelect") ||
-        el.classList.contains("open-inventory") ||
-        el.classList.contains("item-inv-detail")) {
-      return; // keep these editable
-    }
-    el.disabled = true;
-    el.classList.add("locked-input");
-  });
-} else {
-  document.querySelectorAll("input, select, textarea, button").forEach(el => {
-    // 🔓 ALLOW MEMO BUTTON EVEN WHEN VIEW IS LOCKED
-    if (el.id === "newMemoBtn") return;
-
-    el.disabled = true;
-    el.classList.add("locked-input");
-  });
-  console.log("🔒 Form locked (read-only, memo remains enabled)");
-}
-
-
-setTimeout(() => {
-  updateOrderSummaryFromTable();
-  console.log("📊 Summary recalculated");
-}, 200);
-
-updateActionButton(so.orderStatus || so.status || {}, tranId, so);
-console.log("🧭 Action buttons set");
-
-// === Enable Add Deposit Popup ===
-setTimeout(() => {
-  const addDepositBtn = document.getElementById("addDepositBtn");
-  if (!addDepositBtn) {
-    console.warn("⚠️ Add Deposit button not found");
-    return;
-  }
-  addDepositBtn.disabled = false;
-  addDepositBtn.classList.remove("locked-input");
-  addDepositBtn.addEventListener("click", (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    console.log("🟦 Add Deposit clicked — opening popup");
-    const popup = window.open(
-      window.location.origin + "/deposit.html",
-      "AddDeposit",
-      "width=420,height=520,resizable=yes,scrollbars=no"
-    );
-    if (!popup) {
-      alert("⚠️ Please allow popups for this site to add deposits.");
-      console.warn("🚫 Popup blocked");
+    // === Lock View (with exceptions for pending approval) ===
+    if (so.orderStatus?.id === "A") {
+      console.log("🔓 Pending approval — fulfilment + inventory remain editable");
+      document.querySelectorAll("input, select, textarea, button").forEach(el => {
+        if (el.classList.contains("fulfilmentSelect") ||
+          el.classList.contains("open-inventory") ||
+          el.classList.contains("item-inv-detail")) {
+          return; // keep these editable
+        }
+        el.disabled = true;
+        el.classList.add("locked-input");
+      });
     } else {
-      popup.focus();
-      console.log("✅ Deposit popup opened");
-    }
-  });
-}, 500);
+      document.querySelectorAll("input, select, textarea, button").forEach(el => {
+        // 🔓 ALLOW MEMO BUTTON EVEN WHEN VIEW IS LOCKED
+        if (el.id === "newMemoBtn") return;
 
-} catch (err) {
-console.error("❌ Load failure:", err);
-alert("Failed to load Sales Order details. " + err.message);
-} finally {
-// Always hide the spinner
-console.log("🏁 finally{} reached — hiding spinner");
-try {
-  setTimeout(() => {
-    overlay?.classList.add("hidden");
-    console.log("🟢 Spinner hidden");
-  }, 300);
-} catch (e) {
-  console.warn("⚠️ Failed to hide spinner:", e.message);
-}
-}
+        el.disabled = true;
+        el.classList.add("locked-input");
+      });
+      console.log("🔒 Form locked (read-only, memo remains enabled)");
+    }
+
+
+    setTimeout(() => {
+      updateOrderSummaryFromTable();
+      console.log("📊 Summary recalculated");
+    }, 200);
+
+    updateActionButton(so.orderStatus || so.status || {}, tranId, so);
+    console.log("🧭 Action buttons set");
+
+    // === Enable Add Deposit Popup ===
+    setTimeout(() => {
+      const addDepositBtn = document.getElementById("addDepositBtn");
+      if (!addDepositBtn) {
+        console.warn("⚠️ Add Deposit button not found");
+        return;
+      }
+      addDepositBtn.disabled = false;
+      addDepositBtn.classList.remove("locked-input");
+      addDepositBtn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        console.log("🟦 Add Deposit clicked — opening popup");
+        const popup = window.open(
+          window.location.origin + "/deposit.html",
+          "AddDeposit",
+          "width=420,height=520,resizable=yes,scrollbars=no"
+        );
+        if (!popup) {
+          alert("⚠️ Please allow popups for this site to add deposits.");
+          console.warn("🚫 Popup blocked");
+        } else {
+          popup.focus();
+          console.log("✅ Deposit popup opened");
+        }
+      });
+    }, 500);
+
+  } catch (err) {
+    console.error("❌ Load failure:", err);
+    alert("Failed to load Sales Order details. " + err.message);
+  } finally {
+    // Always hide the spinner
+    console.log("🏁 finally{} reached — hiding spinner");
+    try {
+      setTimeout(() => {
+        overlay?.classList.add("hidden");
+        console.log("🟢 Spinner hidden");
+      }, 300);
+    } catch (e) {
+      console.warn("⚠️ Failed to hide spinner:", e.message);
+    }
+  }
 });
 
 
 
 document.addEventListener("DOMContentLoaded", () => {
-    const auth = storageGet();
-    const token = auth?.token || null;
+  const auth = storageGet();
+  const token = auth?.token || null;
 
-    const memoPanel = document.getElementById("memoPanel");
-    const memoHeader = document.querySelector(".memo-header");
-    const memoTableBody = document.querySelector("#memoTable tbody");
-    const noMemosMsg = document.getElementById("noMemosMsg");
+  const memoPanel = document.getElementById("memoPanel");
+  const memoHeader = document.querySelector(".memo-header");
+  const memoTableBody = document.querySelector("#memoTable tbody");
+  const noMemosMsg = document.getElementById("noMemosMsg");
 
-    let orderId = null;
+  let orderId = null;
 
-    // Extract order ID from URL
-    const parts = window.location.pathname.split("/");
-    orderId = parts.pop() || parts.pop();
+  // Extract order ID from URL
+  const parts = window.location.pathname.split("/");
+  orderId = parts.pop() || parts.pop();
 
-    /* === Toggle Expand Panel === */
-    memoHeader.addEventListener("click", () => {
-        memoPanel.classList.toggle("expanded");
+  /* === Toggle Expand Panel === */
+  memoHeader.addEventListener("click", () => {
+    memoPanel.classList.toggle("expanded");
+  });
+
+  /* === Open Popup === */
+  document.getElementById("newMemoBtn").addEventListener("click", () => {
+    if (!token) return alert("Missing session token");
+    const url = `/memo.html?orderId=${orderId}&token=${token}`;
+    const w = window.open(url, "MemoPopup",
+      "width=550,height=600,resizable=yes,scrollbars=yes"
+    );
+    if (!w) alert("Please allow popups.");
+  });
+
+  /* === Load memos === */
+  async function loadMemos() {
+    const res = await fetch(`/api/sales/memo/${orderId}`, {
+      headers: { Authorization: `Bearer ${token}` }
     });
+    const data = await res.json();
 
-    /* === Open Popup === */
-    document.getElementById("newMemoBtn").addEventListener("click", () => {
-        if (!token) return alert("Missing session token");
-       const url = `/memo.html?orderId=${orderId}&token=${token}`;
-        const w = window.open(url, "MemoPopup",
-            "width=550,height=600,resizable=yes,scrollbars=yes"
-        );
-        if (!w) alert("Please allow popups.");
-    });
+    memoTableBody.innerHTML = "";
 
-    /* === Load memos === */
-    async function loadMemos() {
-        const res = await fetch(`/api/sales/memo/${orderId}`, {
-            headers: { Authorization: `Bearer ${token}` }
-        });
-        const data = await res.json();
+    updateMemoHeader(data.memos.length);
 
-        memoTableBody.innerHTML = "";
+    if (!data.ok || !data.memos.length) {
+      noMemosMsg.style.display = "block";
+      return;
+    }
 
-        if (!data.ok || !data.memos.length) {
-            noMemosMsg.style.display = "block";
-            return;
-        }
 
-        noMemosMsg.style.display = "none";
+    noMemosMsg.style.display = "none";
 
-        data.memos.forEach(m => {
-            const tr = document.createElement("tr");
-tr.innerHTML = `
+    data.memos.forEach(m => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `
     <td>${m["Date"] || ""}</td>
     <td>${m["Author"] || ""}</td>
     <td>${m["Title"] || ""}</td>
@@ -814,20 +816,32 @@ tr.innerHTML = `
 `;
 
 
-            memoTableBody.appendChild(tr);
-        });
-    }
-
-    /* === Listen for popup refresh === */
-    window.addEventListener("message", (event) => {
-        if (event.data?.action === "refresh-memos") {
-            loadMemos();
-        }
+      memoTableBody.appendChild(tr);
     });
+  }
 
-    // Initial load
-    loadMemos();
+  /* === Listen for popup refresh === */
+  window.addEventListener("message", (event) => {
+    if (event.data?.action === "refresh-memos") {
+      loadMemos();
+    }
+  });
+
+  // Initial load
+  loadMemos();
 });
+
+
+function updateMemoHeader(count) {
+  const header = document.getElementById("memoHeaderTitle");
+  if (!header) return;
+
+  if (!count || count === 0) {
+    header.textContent = "Memos";
+  } else {
+    header.textContent = `Memos (${count})`;
+  }
+}
 
 
 /* =====================================================

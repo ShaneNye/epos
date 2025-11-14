@@ -184,16 +184,20 @@ document.addEventListener("DOMContentLoaded", () => {
       <div id="questionResults"></div>
       <div class="detailed-responses">
         <h3>Detailed Responses</h3>
-        ${detailed.map(r => `
-          <details>
-            <summary>${r.first_name} ${r.last_name} — ${new Date(r.submitted_at).toLocaleString()}</summary>
-            <ul>
-              ${r.answers.map(a => `
-                <li><strong>Q${a.question_id}:</strong> ${a.answer_text || a.answer_number || "—"}</li>
-              `).join("")}
-            </ul>
-          </details>
-        `).join("")}
+       ${detailed.map(r => `
+  <details>
+    <summary>${r.user_name} — ${new Date(r.submitted_at).toLocaleString()}</summary>
+    <ul>
+      ${r.answers.map(a => `
+        <li>
+          <strong>${a.question_text}:</strong> 
+          ${a.answer_text || a.answer_number || "—"}
+        </li>
+      `).join("")}
+    </ul>
+  </details>
+`).join("")}
+
       </div>
     `;
 

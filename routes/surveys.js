@@ -193,33 +193,11 @@ router.get("/surveys", async (req, res) => {
   }
 });
 
-/* =====================================================
-   === GET SINGLE SURVEY + QUESTIONS ===================
-   ===================================================== */
-router.get("/survey/:id", async (req, res) => {
-  try {
-    const { id } = req.params;
-    const surveyRes = await pool.query(
-      "SELECT * FROM engagement_surveys WHERE id = $1 LIMIT 1;",
-      [id]
-    );
-    if (!surveyRes.rows.length)
-      return res.status(404).json({ ok: false, error: "Survey not found" });
 
-    const questionsRes = await pool.query(
-      "SELECT * FROM engagement_survey_questions WHERE survey_id = $1 ORDER BY sort_order ASC;",
-      [id]
-    );
 
-    res.json({ ok: true, survey: surveyRes.rows[0], questions: questionsRes.rows });
-  } catch (err) {
-    console.error("❌ Error fetching survey:", err);
-    res.status(500).json({ ok: false, error: "Failed to fetch survey" });
-  }
-});
 
 /* =====================================================
-   === UPDATE SURVEY + QUESTIONS =======================
+   === UPDATE SURVEY (questions remain locked) ==========
    ===================================================== */
 router.put("/survey/:id", async (req, res) => {
   try {
@@ -232,11 +210,11 @@ router.put("/survey/:id", async (req, res) => {
       deadlineDate = null,
       audience = [],
       visibility = "private",
-      sharedWith = [],
-      questions = [],
+      sharedWith = []
+      // ❌ questions removed – questions are NOT updated in edit mode
     } = req.body;
 
-    // Update main survey
+    // Update ONLY the survey meta — NOT the questions
     const updateSql = `
       UPDATE engagement_surveys
       SET title=$1, summary=$2, start_date=$3, immediate=$4, deadline_date=$5,
@@ -253,34 +231,16 @@ router.put("/survey/:id", async (req, res) => {
       audience,
       visibility,
       sharedWith,
-      id,
+      id
     ];
+
     const updateRes = await pool.query(updateSql, updateVals);
+
     if (!updateRes.rowCount)
       return res.status(404).json({ ok: false, error: "Survey not found" });
 
-    // Replace questions (simple approach)
-    await pool.query("DELETE FROM engagement_survey_questions WHERE survey_id = $1;", [id]);
-    const qSql = `
-      INSERT INTO engagement_survey_questions
-        (survey_id, question_text, response_type, response_options,
-         numeric_min, numeric_max, required, sort_order)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
-    `;
-    for (const [i, q] of questions.entries()) {
-      await pool.query(qSql, [
-        id,
-        q.question_text,
-        q.response_type,
-        q.response_options || null,
-        q.numeric_min || null,
-        q.numeric_max || null,
-        q.required || false,
-        i,
-      ]);
-    }
-
     res.json({ ok: true, id });
+
   } catch (err) {
     console.error("❌ Error updating survey:", err);
     res.status(500).json({ ok: false, error: "Failed to update survey" });
@@ -303,69 +263,108 @@ router.delete("/survey/:id", async (req, res) => {
   }
 });
 
-/* =====================================================
-   === GET ACTIVE SURVEYS FOR CURRENT USER ==============
-   ===================================================== */
-router.get("/active-surveys", async (req, res) => {
+/* =============================================================
+   === GET A SINGLE SURVEY (correct creator + multi-role check) ===
+   ============================================================= */
+router.get("/survey/:id", async (req, res) => {
   try {
+    const { id } = req.params;
+
+    console.log("\n--------------------------");
+    console.log("📥 GET /survey/:id", id);
+
+    // --- Auth ---
     const auth = req.headers.authorization || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
-    if (!token) return res.status(401).json({ ok: false, error: "Unauthorized" });
+    if (!token) {
+      console.log("❌ No token");
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+    }
 
     const session = await getSession(token);
-    const userEmail = session?.email?.trim().toLowerCase();
-    const activeRoleName = session?.activeRole?.name;
+    const userEmail = session?.email?.toLowerCase().trim();
+    console.log("👤 Session email:", userEmail);
 
-    if (!userEmail)
+    if (!userEmail) {
+      console.log("❌ Invalid session, no email");
       return res.status(401).json({ ok: false, error: "Invalid session" });
+    }
 
-    // === Get user and role IDs ===
+    // --- Lookup user ID ---
     const userRes = await pool.query(
       "SELECT id FROM users WHERE LOWER(TRIM(email)) = $1 LIMIT 1",
       [userEmail]
     );
-    if (!userRes.rows.length)
+    if (!userRes.rows.length) {
+      console.log("❌ User not found in DB");
       return res.status(404).json({ ok: false, error: "User not found" });
+    }
 
     const userId = userRes.rows[0].id;
+    console.log("🆔 User ID:", userId);
 
-    const roleRes = await pool.query(
-      "SELECT id FROM roles WHERE name = $1 LIMIT 1",
-      [activeRoleName]
+    // --- Get ALL roles for user ---
+    const rolesRes = await pool.query(
+      "SELECT role_id FROM user_roles WHERE user_id = $1",
+      [userId]
     );
-    const roleId = roleRes.rows.length ? roleRes.rows[0].id : null;
+    const userRoleIds = rolesRes.rows.map(r => r.role_id);
+    console.log("🎭 User roles:", userRoleIds);
 
-    // === Fetch active surveys ===
-    const sql = `
-      SELECT s.*, u.email AS created_by_email
-      FROM engagement_surveys s
-      LEFT JOIN users u ON s.created_by = u.id
-      WHERE s.is_active = TRUE
-        AND (
-          s.analytics_visibility = 'public'
-          OR $2 = ANY(s.audience_roles)
-        )
-        AND s.start_date <= NOW()
-        AND (s.deadline_date IS NULL OR s.deadline_date >= NOW())
-        AND s.id NOT IN (
-          SELECT survey_id
-          FROM engagement_survey_responses
-          WHERE user_id = $1
-        )
-      ORDER BY s.start_date DESC;
-    `;
-    const surveys = (await pool.query(sql, [userId, roleId])).rows;
+    // --- Load survey ---
+    const surveyRes = await pool.query(
+      "SELECT * FROM engagement_surveys WHERE id = $1",
+      [id]
+    );
+    if (!surveyRes.rows.length) {
+      console.log("❌ Survey not found");
+      return res.status(404).json({ ok: false, error: "Survey not found" });
+    }
 
-    console.log(
-      `📋 Active surveys fetched for ${userEmail} (${activeRoleName || "No Role"}): ${surveys.length} found`
+    const survey = surveyRes.rows[0];
+
+    console.log("📄 Survey audience:", survey.audience_roles);
+    console.log("📄 Survey shared_with_users:", survey.shared_with_users);
+    console.log("📄 Survey created_by:", survey.created_by, "(current user:", userId, ")");
+
+    // === FINAL ACCESS CHECK ================================
+    // Creator always has access
+    const allowed =
+      survey.created_by === userId ||
+      survey.analytics_visibility === "public" ||
+      survey.shared_with_users.includes(userId) ||
+      survey.audience_roles.some(roleId => userRoleIds.includes(roleId));
+
+    console.log("🔍 ACCESS ALLOWED?", allowed);
+
+    if (!allowed) {
+      return res.status(403).json({
+        ok: false,
+        error: "You do not have permission to access this survey.",
+      });
+    }
+
+    // --- Fetch questions ---
+    const qRes = await pool.query(
+      "SELECT * FROM engagement_survey_questions WHERE survey_id = $1 ORDER BY sort_order",
+      [id]
     );
 
-    res.json({ ok: true, surveys });
+    console.log(`📝 Questions loaded: ${qRes.rows.length}`);
+
+    return res.json({
+      ok: true,
+      survey,
+      questions: qRes.rows
+    });
+
   } catch (err) {
-    console.error("❌ Error fetching active surveys:", err);
-    res.status(500).json({ ok: false, error: "Failed to fetch active surveys" });
+    console.error("❌ Server error in GET /survey/:id", err);
+    return res.status(500).json({ ok: false, error: "Server error" });
   }
 });
+
+
 
 /* =====================================================
    === SUBMIT SURVEY RESPONSES ==========================
@@ -425,132 +424,180 @@ router.post("/survey/:id/response", async (req, res) => {
 });
 
 /* =====================================================
-   === SURVEY ANALYTICS ================================
+   === SURVEY ANALYTICS (FINAL, CLEANED, FIXED) =========
    ===================================================== */
 router.get("/analytics/:id", async (req, res) => {
   try {
     const { id } = req.params;
 
-    // 1️⃣ Basic survey + target audience
+    // 1️⃣ Load survey
     const surveyRes = await pool.query(
       "SELECT * FROM engagement_surveys WHERE id = $1",
       [id]
     );
     if (!surveyRes.rows.length)
       return res.status(404).json({ ok: false, error: "Survey not found" });
-    const survey = surveyRes.rows[0];
 
-    // 2️⃣ Response summary
-    const totalRes = await pool.query(
-      "SELECT COUNT(*) FROM engagement_survey_responses WHERE survey_id = $1",
+    const survey = surveyRes.rows[0];
+    const audienceRoles = survey.audience_roles || [];
+    const sharedUsers = survey.shared_with_users || [];
+
+    // 2️⃣ Get all users who belong to ANY audience role
+    let audienceUserIds = [];
+    if (audienceRoles.length > 0) {
+      const usersByRole = await pool.query(
+        `SELECT DISTINCT ur.user_id AS id
+         FROM user_roles ur
+         WHERE ur.role_id = ANY($1::int[])`,
+        [audienceRoles]
+      );
+      audienceUserIds = usersByRole.rows.map(r => r.id);
+    }
+
+    // 3️⃣ Merge audience + shared users
+    const targetedUserIds = Array.from(new Set([
+      ...audienceUserIds,
+      ...sharedUsers
+    ]));
+
+    const totalTargeted = targetedUserIds.length;
+
+    // 4️⃣ Count responses
+    const respondedRes = await pool.query(
+      `SELECT DISTINCT user_id 
+       FROM engagement_survey_responses 
+       WHERE survey_id = $1`,
       [id]
     );
-    const totalResponded = parseInt(totalRes.rows[0].count);
-    const totalTargeted =
-      (survey.audience_roles?.length || 0) + (survey.shared_with_users?.length || 0) || 0;
+    const totalResponded = respondedRes.rows.length;
+
     const completionRate = totalTargeted
       ? ((totalResponded / totalTargeted) * 100).toFixed(1)
       : 0;
 
-// 3️⃣ Questions + answer breakdown
-const qRes = await pool.query(
-  "SELECT * FROM engagement_survey_questions WHERE survey_id = $1 ORDER BY sort_order",
-  [id]
-);
-const questions = [];
+    // 5️⃣ Question breakdown
+    const qRes = await pool.query(
+      "SELECT * FROM engagement_survey_questions WHERE survey_id = $1 ORDER BY sort_order",
+      [id]
+    );
 
-for (const q of qRes.rows) {
-  if (q.response_type === "number") {
-    const distRes = await pool.query(
-      `SELECT answer_number, COUNT(*) 
-       FROM engagement_survey_answers
-       WHERE question_id = $1 
-       GROUP BY answer_number 
-       ORDER BY answer_number`,
-      [q.id]
-    );
-    const dist = Object.fromEntries(distRes.rows.map(r => [r.answer_number, parseInt(r.count)]));
-    const avgRes = await pool.query(
-      `SELECT AVG(answer_number)::numeric(10,2) AS avg 
-       FROM engagement_survey_answers 
-       WHERE question_id = $1`,
-      [q.id]
-    );
-    const average = parseFloat(avgRes.rows[0].avg || 0);
-    questions.push({
-      ...q,
-      responses: { distribution: dist, average, total: totalResponded }
-    });
-  } else if (q.response_type === "dropdown") {
-    const optRes = await pool.query(
-      `SELECT answer_text, COUNT(*) 
-       FROM engagement_survey_answers
-       WHERE question_id = $1 
-       GROUP BY answer_text 
-       ORDER BY COUNT(*) DESC`,
-      [q.id]
-    );
-    questions.push({
-      ...q,
-      responses: {
-        options: Object.fromEntries(optRes.rows.map(r => [r.answer_text, parseInt(r.count)])),
-        total: totalResponded
+    const questions = [];
+    for (const q of qRes.rows) {
+      if (q.response_type === "number") {
+        const distRes = await pool.query(
+          `SELECT answer_number, COUNT(*) 
+           FROM engagement_survey_answers
+           WHERE question_id = $1 
+           GROUP BY answer_number 
+           ORDER BY answer_number`,
+          [q.id]
+        );
+        const dist = Object.fromEntries(
+          distRes.rows.map(r => [r.answer_number, parseInt(r.count)])
+        );
+        const avgRes = await pool.query(
+          `SELECT AVG(answer_number)::numeric(10,2) AS avg 
+           FROM engagement_survey_answers 
+           WHERE question_id = $1`,
+          [q.id]
+        );
+
+        const average = parseFloat(avgRes.rows[0].avg || 0);
+
+        questions.push({
+          ...q,
+          responses: { distribution: dist, average, total: totalResponded }
+        });
+
+      } else if (q.response_type === "dropdown") {
+        const optRes = await pool.query(
+          `SELECT answer_text, COUNT(*) 
+           FROM engagement_survey_answers
+           WHERE question_id = $1 
+           GROUP BY answer_text 
+           ORDER BY COUNT(*) DESC`,
+          [q.id]
+        );
+
+        questions.push({
+          ...q,
+          responses: {
+            options: Object.fromEntries(
+              optRes.rows.map(r => [r.answer_text, parseInt(r.count)])
+            ),
+            total: totalResponded
+          }
+        });
+
+      } else {
+        const textRes = await pool.query(
+          `SELECT 
+              a.answer_text, 
+              u.firstname || ' ' || u.lastname AS user
+           FROM engagement_survey_answers a
+           LEFT JOIN engagement_survey_responses r ON a.response_id = r.id
+           LEFT JOIN users u ON r.user_id = u.id
+           WHERE a.question_id = $1`,
+          [q.id]
+        );
+
+        questions.push({ ...q, responses: textRes.rows });
       }
-    });
-  } else {
-    const textRes = await pool.query(
+    }
+
+    // 6️⃣ Detailed responses (with proper names + question text)
+    const detailedRaw = await pool.query(
       `SELECT 
-          a.answer_text, 
-          u.firstname || ' ' || u.lastname AS user
-       FROM engagement_survey_answers a
-       LEFT JOIN engagement_survey_responses r ON a.response_id = r.id
+          r.id AS response_id,
+          r.submitted_at,
+          u.id AS user_id,
+          COALESCE(NULLIF(u.firstname, ''), '') AS firstname,
+          COALESCE(NULLIF(u.lastname, ''), '') AS lastname,
+          u.email AS email,
+          json_agg(
+            json_build_object(
+              'question_text', q.question_text,
+              'response_type', q.response_type,
+              'answer_text', a.answer_text,
+              'answer_number', a.answer_number
+            )
+          ) AS answers
+       FROM engagement_survey_responses r
        LEFT JOIN users u ON r.user_id = u.id
-       WHERE a.question_id = $1`,
-      [q.id]
+       LEFT JOIN engagement_survey_answers a ON r.id = a.response_id
+       LEFT JOIN engagement_survey_questions q ON a.question_id = q.id
+       WHERE r.survey_id = $1
+       GROUP BY r.id, u.id, firstname, lastname, email
+       ORDER BY r.submitted_at DESC`,
+      [id]
     );
-    questions.push({ ...q, responses: textRes.rows });
-  }
-}
 
-// 4️⃣ Detailed responses by user
-const detailed = await pool.query(
-  `SELECT 
-      r.id AS response_id, 
-      r.submitted_at, 
-      u.id AS user_id, 
-      u.firstname, 
-      u.lastname,
-      json_agg(
-        json_build_object(
-          'question_id', a.question_id,
-          'answer_text', a.answer_text,
-          'answer_number', a.answer_number
-        )
-      ) AS answers
-   FROM engagement_survey_responses r
-   LEFT JOIN users u ON r.user_id = u.id
-   LEFT JOIN engagement_survey_answers a ON r.id = a.response_id
-   WHERE r.survey_id = $1
-   GROUP BY r.id, u.id, u.firstname, u.lastname
-   ORDER BY r.submitted_at DESC`,
-  [id]
-);
+    const detailed = detailedRaw.rows.map(row => {
+      const name = `${row.firstname} ${row.lastname}`.trim();
+      return {
+        response_id: row.response_id,
+        submitted_at: row.submitted_at,
+        user_id: row.user_id,
+        user_name: name || row.email || "Unknown User",
+        answers: row.answers
+      };
+    });
 
-// ✅ Console summary for visibility
-console.log(
-  `📊 Survey ${id} analytics: ${totalResponded}/${totalTargeted} responded (${completionRate}%)`
-);
-
-res.json({
-  ok: true,
-  summary: { totalTargeted, totalResponded, completionRate },
-  questions,
-  detailed: detailed.rows
-});
+    // FINAL RESPONSE (only once)
+    return res.json({
+      ok: true,
+      summary: {
+        totalTargeted,
+        totalResponded,
+        completionRate
+      },
+      questions,
+      detailed
+    });
 
   } catch (err) {
     console.error("❌ Error loading survey analytics:", err);
-    res.status(500).json({ ok: false, error: "Failed to load analytics" });
+    return res.status(500).json({ ok: false, error: "Failed to load analytics" });
   }
 });
 

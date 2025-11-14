@@ -6,10 +6,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Create / Edit Survey</title>
 
-  <!-- Styles -->
-  <link rel="stylesheet" href="/css/engagementPopup.css" />
+  <link rel="stylesheet" href="/css/surveyPopup.css" />
 
-  <!-- Scripts -->
   <script src="/js/storage.js"></script>
   <script defer src="/js/engagement/surveyPopup.js"></script>
 </head>
@@ -22,58 +20,102 @@
       </div>
 
       <div class="popup-body">
-        <form id="surveyForm" class="survey-form">
+        <form id="surveyForm">
+
           <h3 id="formTitle">Create Survey</h3>
-          <p class="muted">Complete the survey details below. Once saved, questions cannot be modified after users start
-            responding.</p>
+          <p class="muted">
+            Complete the survey details below. Once saved, questions cannot be modified after users start responding.
+          </p>
 
-          <!-- === Survey Main Fields === -->
+          <!-- ==========================================
+               SECTION: BASIC INFO
+          =========================================== -->
+          <h4 class="section-title">Basic Information</h4>
+
           <div class="form-grid">
-            <label>Title</label>
-            <input type="text" name="title" placeholder="Survey title" required />
+            <div>
+              <label>Title <span class="required">*</span></label>
+              <input type="text" name="title" placeholder="Survey title" required />
+            </div>
 
-            <label>Summary</label>
-            <textarea name="summary" placeholder="Brief description" rows="3"></textarea>
+            <div>
+              <label>Summary</label>
+              <textarea name="summary" rows="3" placeholder="Brief description"></textarea>
+            </div>
+          </div>
 
-            <label>Start Date</label>
-            <input type="date" name="startDate" />
+          <!-- ==========================================
+               SECTION: SCHEDULE
+          =========================================== -->
+          <h4 class="section-title">Schedule</h4>
 
-            <label>
-              <input type="checkbox" name="immediate" /> Immediate start
+          <div class="date-row">
+
+            <div>
+              <label>Start Date</label>
+              <input type="date" name="startDate">
+            </div>
+
+            <label class="checkbox-inline">
+              <input type="checkbox" name="immediate">
+              <span>Immediate start</span>
             </label>
 
-            <label>Deadline</label>
-            <input type="date" name="deadlineDate" />
+            <div>
+              <label>Deadline</label>
+              <input type="date" name="deadlineDate">
+            </div>
+
           </div>
+<!-- ==========================================
+     SECTION: AUDIENCE
+=========================================== -->
+<h4 class="section-title">Audience</h4>
 
-          <!-- === Audience + Visibility === -->
-          <div class="form-grid">
-            <label>Audience (Roles)</label>
-            <select id="audience" name="audience" multiple></select>
+<!-- Full-width Visibility -->
+<div class="form-grid full-width-dropdown">
+  <div>
+    <label>Visibility</label>
+    <select name="visibility">
+      <option value="private">Private</option>
+      <option value="public">Public</option>
+    </select>
+  </div>
 
-            <label>Visibility</label>
-            <select name="visibility">
-              <option value="private">Private</option>
-              <option value="public">Public</option>
-            </select>
+<!-- Row: Roles + Shared With -->
+<div class="form-grid audience-row">
+  <div>
+    <label>Audience (Roles)</label>
+    <select id="audience" name="audience" multiple></select>
+  </div>
 
-            <label>Shared With (Specific Users)</label>
-            <select id="sharedWith" name="sharedWith" multiple></select>
-          </div>
+  <div>
+    <label>Shared With (Specific Users)</label>
+    <select id="sharedWith" name="sharedWith" multiple></select>
+  </div>
+</div>
 
-          <!-- === Question Builder (create mode only) === -->
-          <div id="questionSection">
-            <h4>Questions</h4>
-            <div id="questionList" class="question-list"></div>
-            <button type="button" id="addQuestionBtn" class="btn-secondary">+ Add Question</button>
-          </div>
+</div>
 
-          <!-- === Actions === -->
+
+          <!-- ==========================================
+               SECTION: QUESTIONS
+          =========================================== -->
+          <h4 class="section-title">Questions</h4>
+
+          <div id="questionList"></div>
+
+          <button type="button" id="addQuestionBtn" class="btn-secondary">+ Add Question</button>
+
+          <!-- ==========================================
+               ACTION BUTTONS
+          =========================================== -->
           <div class="form-actions">
             <button type="submit" class="btn-primary" id="saveBtn">Save Survey</button>
-            <button type="button" id="cancelBtn" class="btn-secondary">Cancel</button>
-            <button type="button" id="deleteBtn" class="btn-secondary" style="display:none;">Delete</button>
+            <button type="button" class="btn-secondary" id="cancelBtn">Cancel</button>
+            <button type="button" class="danger" id="deleteBtn" style="display:none;">Delete</button>
           </div>
+
         </form>
       </div>
     </div>

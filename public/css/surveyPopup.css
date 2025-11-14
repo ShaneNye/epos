@@ -1,235 +1,240 @@
-/* === ENGAGEMENT POPUP — Unified Styling (Surveys & Announcements) === */
+/* =====================================================
+   SURVEY POPUP — REFINED STYLING
+   Matches Engagement visual theme
+   ===================================================== */
 
-/* --- Base Layout --- */
 html, body {
   font-family: "ProximaNova", "Segoe UI", sans-serif;
   background: #f5f7fa;
-  color: #1a1f24;
   margin: 0;
   padding: 0;
-  height: 100%;
+  min-height: 100vh;
   display: flex;
   justify-content: center;
   align-items: flex-start;
-  overflow-y: auto;
 }
 
-/* --- Center Wrapper --- */
+/* Wrapper + Card */
 .popup-wrapper {
   width: 100%;
-  max-width: 720px;
-  padding: 1.25rem 1rem;
-  margin-top: 1.5rem;
-  margin-bottom: 1.5rem;
+  max-width: 760px;
+  padding: 1.5rem;
   box-sizing: border-box;
-  display: flex;
-  justify-content: center;
 }
 
-/* --- Card --- */
 .popup-card {
-  background: #ffffff;
+  background: #fff;
   border-radius: 10px;
   border: 1px solid #e6eef3;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
-  width: 100%;
-  max-width: 680px;
-  min-width: 500px;
-  display: flex;
-  flex-direction: column;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
   overflow: hidden;
-  transition: box-shadow 0.25s ease;
 }
 
-.popup-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 129, 171, 0.12);
-}
-
-/* --- Header --- */
+/* Header */
 .popup-header {
   background: linear-gradient(90deg, #007ea8, #0092c7);
-  color: white;
   padding: 1rem 1.25rem;
-  border-top-left-radius: 10px;
-  border-top-right-radius: 10px;
+  color: white;
 }
 
 .popup-header h2 {
-  font-size: 1.1rem;
-  font-weight: 600;
   margin: 0;
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
+  font-size: 1.15rem;
+  font-weight: 600;
 }
 
-/* --- Body --- */
+/* Body */
 .popup-body {
-  padding: 1.25rem 1.5rem;
-  flex: 1;
+  padding: 1.5rem;
   box-sizing: border-box;
 }
 
 .popup-body h3 {
-  font-size: 1.1rem;
   color: #0081ab;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.4rem;
 }
 
-.popup-body p.muted {
-  color: #7f8a91;
+.popup-body .muted {
+  color: #6f7a81;
   font-size: 0.9rem;
   margin-bottom: 1.25rem;
 }
 
-/* --- Question Block --- */
-.question-block {
-  background: #f9fbfd;
-  border: 1px solid #e0e6ed;
-  border-radius: 8px;
-  padding: 1rem 1.25rem;
-  margin-bottom: 1.25rem;
-  transition: background 0.25s ease;
-}
-
-.question-block:hover {
-  background: #f3f7fa;
-}
-
-.question-block label {
+/* =====================================================
+   SECTION DIVIDERS
+   ===================================================== */
+.section-title {
+  margin: 2rem 0 1rem;
+  padding-top: 1rem;
+  border-top: 1px dashed #d6dde3;
   font-weight: 600;
-  color: #1a1f24;
-  display: block;
-  margin-bottom: 0.5rem;
+  color: #273036;
+  font-size: 0.95rem;
 }
 
-.question-input input[type="text"],
-.question-input input[type="number"],
-.question-input select,
-.question-input textarea {
-  width: 100%;
-  font-family: inherit;
+/* =====================================================
+   FORM GRID
+   ===================================================== */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+}
+
+label {
+  font-weight: 600;
   font-size: 0.9rem;
+  color: #273036;
+  margin-bottom: 0.35rem;
+  display: block;
+}
+
+.required {
+  color: #d93025;
+}
+
+/* Inputs */
+input[type="text"],
+input[type="date"],
+textarea,
+select {
+  width: 100%;
   padding: 0.55rem 0.65rem;
+  font-size: 0.9rem;
   border-radius: 6px;
   border: 1px solid #ccd8df;
   background: #fff;
-  transition: all 0.2s ease;
   box-sizing: border-box;
-}
-
-.question-input input:focus,
-.question-input textarea:focus,
-.question-input select:focus {
-  outline: none;
-  border-color: #0081ab;
-  box-shadow: 0 0 0 2px rgba(0, 129, 171, 0.2);
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
 }
 
 textarea {
   resize: vertical;
-  min-height: 90px;
+  min-height: 85px;
 }
 
-/* --- Question Progress --- */
-.question-progress {
-  text-align: right;
-  font-size: 0.85rem;
-  color: #7f8a91;
-  font-style: italic;
-  margin-top: -0.25rem;
+input:focus,
+textarea:focus,
+select:focus {
+  outline: none;
+  border-color: #0081ab;
+  box-shadow: 0 0 0 3px rgba(0,129,171,0.15);
 }
 
-/* --- Form Actions --- */
-.form-actions {
+/* Multi-selects */
+select[multiple] {
+  min-height: 110px;
+  padding: 0.55rem;
+}
+
+/* Checkbox inline */
+.checkbox-inline {
   display: flex;
-  justify-content: flex-end;
-  gap: 0.6rem;
-  padding: 1rem 1.25rem;
-  border-top: 1px solid #e6eef3;
-  background: #fafbfc;
-  box-sizing: border-box;
-}
-
-button {
-  font-family: inherit;
+  align-items: center;
+  gap: 0.45rem;
   font-size: 0.9rem;
-  font-weight: 600;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  padding: 0.55rem 1.2rem;
-  transition: all 0.2s ease;
+  margin-top: 1.3rem;
 }
 
-/* --- Primary Button --- */
+/* =====================================================
+   DATE ROW
+   ===================================================== */
+.date-row {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 1.5rem;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+/* =====================================================
+   QUESTION BLOCKS
+   ===================================================== */
+#questionList .question-block {
+  background: #f9fbfd;
+  border: 1px solid #e1e6ec;
+  padding: 1rem 1.25rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+  transition: background 0.2s ease;
+}
+
+#questionList .question-block:hover {
+  background: #f3f7fa;
+}
+
+.question-block h5 {
+  margin: 0 0 0.5rem;
+  font-size: 0.95rem;
+  color: #273036;
+  font-weight: 600;
+}
+
+/* =====================================================
+   BUTTONS
+   ===================================================== */
+button {
+  padding: 0.55rem 1.2rem;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
 .btn-primary {
   background: linear-gradient(90deg, #007ea8, #0092c7);
-  color: #fff;
-  box-shadow: 0 2px 4px rgba(0, 129, 171, 0.2);
-}
-.btn-primary:hover {
-  background: linear-gradient(90deg, #008cb8, #00a4d6);
-  box-shadow: 0 3px 6px rgba(0, 129, 171, 0.25);
+  color: white;
 }
 
-/* --- Secondary Button --- */
+.btn-primary:hover {
+  background: linear-gradient(90deg, #008cb8, #00a4d6);
+}
+
 .btn-secondary {
   background: #eef3f6;
   color: #333;
 }
+
 .btn-secondary:hover {
   background: #e1ebf0;
 }
 
-/* --- Muted Text --- */
-.muted {
-  color: #7f8a91;
-  font-size: 0.85rem;
-}
-
-/* --- Error Message --- */
-.error {
-  color: #d62828;
-  font-weight: 600;
-  background: #fde8e8;
-  border: 1px solid #f6b5b5;
-  border-radius: 6px;
-  padding: 0.6rem 0.8rem;
-  margin-top: 1rem;
-}
-
-/* --- Delete Button --- */
 button.danger {
   background: #e63946;
   color: white;
 }
+
 button.danger:hover {
   background: #d62828;
 }
 
-/* --- Responsive --- */
-@media (max-width: 700px) {
-  .popup-wrapper {
-    padding: 1.25rem;
-    margin: 0;
-  }
+/* Footer actions */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 2rem;
+  border-top: 1px solid #e6eef3;
+  padding-top: 1.25rem;
+}
+/* ==========================================
+   AUDIENCE LAYOUT IMPROVEMENTS
+========================================== */
 
-  .popup-card {
-    border-radius: 8px;
-    max-width: 95%;
-  }
+/* Two-column layout for audience + shared with */
+.audience-row {
+  grid-template-columns: 1fr 1fr;
+}
 
-  .popup-body {
-    padding: 1.25rem;
-  }
+/* Full-width visibility row aligned under them */
+.full-width-dropdown {
+  grid-template-columns: 1fr !important;
+}
 
-  .form-actions {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  button {
-    width: 100%;
-  }
+/* Consistent height for multi-selects */
+.audience-row select[multiple] {
+  min-height: 140px;
 }
