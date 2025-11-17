@@ -212,8 +212,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* ==========================================================
-     📦 Fetch + Merge Inventory
+     📦 Fetch + Merge Inventory (updated to match main stock search)
      ========================================================== */
+
+  function clean(str) {
+    return (str || "").trim().toLowerCase();
+  }
+
+  function idStr(val) {
+    return val == null ? "" : String(val).trim();
+  }
+
   async function fetchInventoryData() {
     try {
       const [balanceRes, numbersRes] = await Promise.all([
@@ -223,23 +232,93 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (!balanceRes.ok || !numbersRes.ok) throw new Error("Fetch failed");
 
-      const balance = balanceRes.results || [];
-      const numbers = numbersRes.results || [];
+      const balance = balanceRes.results || balanceRes.data || [];
+      const numbers = numbersRes.results || numbersRes.data || [];
 
-      return balance.map((b) => {
-        const balNum = (b["Inventory Number"] || "").trim().toLowerCase();
-        const match = numbers.find(
-          (num) => (num["Number"] || "").trim().toLowerCase() === balNum
+      console.log(
+        `🤖 VSA merge: ${balance.length} balance rows, ${numbers.length} number rows`
+      );
+
+      // 1️⃣ Aggregate invoice-number quantities per (itemId + number + location)
+      const numberAgg = {};
+
+      for (const row of numbers) {
+        const itemId = idStr(row["Item Id"] || row["Item ID"] || row["itemid"]);
+        const inv = clean(row["Number"]);
+        const loc = clean(row["Location"]);
+        if (!inv || !loc) continue;
+
+        const key = `${itemId}||${inv}||${loc}`;
+
+        if (!numberAgg[key]) {
+          numberAgg[key] = {
+            available: 0,
+            onHand: 0,
+            itemId,
+            itemName: row["Item"] || "",
+            invNumberId: row["inv number id"] || "",
+          };
+        }
+
+        numberAgg[key].available += parseInt(row["Available"] || 0, 10) || 0;
+        numberAgg[key].onHand += parseInt(row["On Hand"] || 0, 10) || 0;
+      }
+
+      // 2️⃣ Collapse duplicate balance rows (1 per item + inventory number + location)
+      const collapsed = {};
+
+      for (const b of balance) {
+        const itemId = idStr(
+          b["Item ID"] || b["Item Id"] || b["itemid"] || b["Item"]
         );
+        const inv = clean(b["Inventory Number"]);
+        const loc = clean(b["Location"]);
+        const key = `${itemId}||${inv}||${loc}`;
+
+        if (!collapsed[key]) {
+          collapsed[key] = b;
+        }
+      }
+
+      const balanceFinal = Object.values(collapsed);
+
+      // 3️⃣ Merge: status/bin from balance, qty from aggregated numbers
+      const merged = balanceFinal.map((b) => {
+        const itemId = idStr(
+          b["Item ID"] || b["Item Id"] || b["itemid"] || b["Item"]
+        );
+        const inv = clean(b["Inventory Number"]);
+        const loc = clean(b["Location"]);
+        const rawLoc = b["Location"] || "-";
+
+        const key = `${itemId}||${inv}||${loc}`;
+        const agg = numberAgg[key] || {
+          available: 0,
+          onHand: 0,
+          itemId,
+          itemName: "",
+          invNumberId: "",
+        };
+
         return {
-          itemName: b["Name"] || b["Item"] || "-",
-          location: b["Location"] || "-",
+          itemId: agg.itemId || itemId,
+          itemName: agg.itemName || b["Name"] || b["Item"] || "-",
+          location: rawLoc,
           bin: b["Bin Number"] || "-",
           status: b["Status"] || "-",
           inventoryNumber: b["Inventory Number"] || "-",
-          available: match ? parseInt(match["Available"] || 0, 10) : 0,
+          available: agg.available,
+          onHand: agg.onHand,
         };
       });
+
+      // 4️⃣ Only keep rows where available > 0
+      const filtered = merged.filter(
+        (r) => (parseInt(r.available, 10) || 0) > 0
+      );
+
+      console.log(`🤖 VSA merged stock rows (available > 0): ${filtered.length}`);
+      return filtered;
     } catch (err) {
       console.error("❌ Stock fetch error:", err);
       return [];

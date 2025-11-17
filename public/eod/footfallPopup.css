@@ -1,0 +1,95 @@
+.popup-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 30px;
+}
+
+.popup-card {
+  width: 600px;
+  background: white;
+  padding: 20px 25px;
+  border-radius: 10px;
+  box-shadow: 0 3px 10px rgba(0,0,0,0.15);
+  font-family: system-ui, sans-serif;
+}
+
+.popup-card h1 {
+  margin-top: 0;
+  font-size: 1.5rem;
+  color: #0081ab;
+  margin-bottom: 20px;
+}
+
+.store-row {
+  display: block;
+  margin-bottom: 20px;
+  font-weight: 600;
+}
+
+.store-row select {
+  width: 100%;
+  padding: 8px;
+  margin-top: 4px;
+}
+
+#footfallTable {
+  width: 100%;
+  border-collapse: collapse;
+  margin-bottom: 20px;
+}
+
+#footfallTable th,
+#footfallTable td {
+  border: 1px solid #ddd;
+  padding: 10px;
+  text-align: left;
+}
+
+.user-select,
+#footfallCount {
+  width: 100%;
+  padding: 6px;
+}
+
+.action-row {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+}
+
+.btn-primary {
+  background: #0081ab;
+  color: #fff;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.btn-secondary {
+  background: #ccc;
+  color: #333;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+.readonly-cell {
+  background: #f0f0f0;
+  border: 1px solid #ddd;
+  padding: 6px;
+  width: 100px;
+}
+
+.num-input {
+  width: 120px;
+  padding: 5px;
+  margin-top: 4px;
+}
+
+.field-label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.85rem;
+  color: #555;
+}

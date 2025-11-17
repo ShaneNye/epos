@@ -158,12 +158,12 @@
         <button type="button" id="saveBtn">Save</button>
         <button type="button" id="cancelBtn" onclick="window.close()">Cancel</button>
     </div>
-    <script>
 
+    <script>
 
         /* ============================================================
            Inventory Detail Popup Script
-           ============================================================ */
+        ============================================================ */
 
         async function getInventoryNumbers(itemId) {
             try {
@@ -204,32 +204,20 @@
            Setup and Initialization
         ------------------------------------------------------------ */
         const rawQuery = window.location.search;
-        console.log("📜 Raw query string:", rawQuery);
-
-        const params = {};
-        new URLSearchParams(rawQuery).forEach((v, k) => {
-            params[k] = decodeURIComponent(v);
-        });
-        console.log("📦 Parsed query params:", params);
+        const params = getQueryParams();
 
         const itemId = params.itemId || "";
         const detail = params.detail || "";
         let lineQty = parseInt(params.qty || "0", 10) || 0;
         const lineIndex = params.line || "0";
 
-        // 🛠 Self-heal if qty is zero but opener has cached value
-        if (lineQty === 0 && window.opener) {
-            const cachedQty = window.opener.document.querySelector(
-                `.item-qty-cache[data-line="${lineIndex}"]`
-            )?.value;
-            if (cachedQty && !isNaN(cachedQty)) {
-                console.warn("⚠️ Query param qty=0, overriding with opener cache:", cachedQty);
-                lineQty = parseInt(cachedQty, 10);
-            }
-        }
+        const qtyCache = window.opener?.document.querySelector(
+            `.item-qty-cache[data-line="${lineIndex}"]`
+        )?.value;
 
-        console.log("🔎 Popup opened for itemId:", itemId, " line qty:", lineQty);
-        console.log("🔎 Detail string passed in:", detail);
+        if (lineQty === 0 && qtyCache) {
+            lineQty = parseInt(qtyCache, 10);
+        }
 
         const tbody = document.querySelector("#invTable tbody");
         const addRowBtn = document.getElementById("addRow");
@@ -237,10 +225,9 @@
 
         const inventoryCache = window.opener?.inventoryCache || {};
         let stock = inventoryCache[itemId] || [];
+
         const selectedWarehouseId = window.opener?.selectedWarehouseId || "";
         const selectedWarehouseName = window.opener?.selectedWarehouseName || "";
-        console.log("🏭 Selected warehouse:", selectedWarehouseId, selectedWarehouseName);
-
 
         /* ============================================================
            🔁 Merge live availability feed + load statuses
@@ -254,7 +241,6 @@
             const inventoryStatusList = statuses || [];
 
             if (Array.isArray(liveFeed) && liveFeed.length) {
-                console.log(`📦 Merging ${liveFeed.length} live records into stock cache`);
                 stock = stock.map((s) => {
                     const sNum = (s.inventoryNumber || "").trim().toLowerCase();
                     const match = liveFeed.find(
@@ -275,16 +261,21 @@
                     }
                     return s;
                 });
-                console.log("🧩 Example merged stock:", stock.slice(0, 3));
             }
+
+            /* ============================================================
+               🚫 NEW: Filter out rows where Available = 0
+            ============================================================ */
+            stock = stock.filter(s => (parseInt(s.qty, 10) || 0) > 0);
 
             initInventoryPopup(inventoryStatusList);
         })();
 
         /* ============================================================
-           🧩 Main Popup Logic (no Bin field)
+           🧩 Main Popup Logic
         ============================================================ */
         function initInventoryPopup(inventoryStatusList = []) {
+
             function getAllocatedTotal() {
                 return [...tbody.querySelectorAll(".qtyInput")].reduce((sum, inp) => {
                     const v = parseInt(inp.value || "0", 10);
@@ -392,7 +383,7 @@
                     if (uniqueStatuses.length === 1) statusSel.value = uniqueStatuses[0].name;
                 }
 
-                // 3️⃣ Inventory Numbers (filtered by Location + Status)
+                // 3️⃣ Inventory Numbers (filtered)
                 function populateInventoryNumbers() {
                     const locVal = locSel.value;
                     const statusVal = statusSel.value;
@@ -429,7 +420,7 @@
                     }
                 }
 
-                // 4️⃣ Available display (“3 out of 11”)
+                // 4️⃣ Available display
                 function updateAvailable() {
                     const match = stock.find(
                         (s) =>
@@ -452,13 +443,14 @@
                 }
 
                 function updateNotice() {
-                    if (!locSel.value) {
+                    const locSelVal = locSel.value;
+                    if (!locSelVal) {
                         noticeCell.textContent = "";
                         noticeCell.className = "noticeCell";
                         return;
                     }
 
-                    // 🧭 Determine fulfilment method
+                    // Fulfilment method
                     let fulfilmentMethod = "";
                     try {
                         const lineIdx = parseInt(params.line || "0", 10);
@@ -467,46 +459,32 @@
 
                         fulfilmentMethod =
                             fulfilSelect?.selectedOptions?.[0]?.textContent?.trim()?.toLowerCase() || "";
-                        console.log(`🧾 Fulfilment method (text) for line ${lineIdx}:`, fulfilmentMethod);
-                    } catch (e) {
-                        console.warn("⚠️ Could not determine fulfilment method:", e);
-                    }
+                    } catch { }
 
-                    // 🏪 Get store / warehouse names
                     const storeSelect = window.opener?.document.getElementById("store");
                     const storeName = storeSelect?.selectedOptions?.[0]?.textContent?.trim() || "";
-                    const storeNameLower = storeName.toLowerCase();
-                    const warehouseNameLower = selectedWarehouseName.toLowerCase();
-                    const locLower = locSel.value.toLowerCase();
+                    const storeLower = storeName.toLowerCase();
+                    const warehouseLower = selectedWarehouseName.toLowerCase();
+                    const locLower = locSelVal.toLowerCase();
 
-                    // ✅ Determine target destination
                     let destinationName = selectedWarehouseName;
-                    if (fulfilmentMethod.includes("store")) {
-                        destinationName = storeName || selectedWarehouseName;
-                        console.log(`🏪 Using store as transfer destination: ${destinationName}`);
-                    } else {
-                        console.log(`🏭 Using warehouse as transfer destination: ${destinationName}`);
-                    }
+                    if (fulfilmentMethod.includes("store")) destinationName = storeName;
 
-                    // ✅ Match logic (fuzzy for store)
-                    const isWarehouseMatch = locLower === warehouseNameLower;
+                    const isWarehouseMatch = locLower === warehouseLower;
                     const isStoreMatch =
                         fulfilmentMethod.includes("store") &&
-                        (locLower === storeNameLower ||
-                            locLower.includes(storeNameLower) ||
-                            storeNameLower.includes(locLower));
+                        (locLower === storeLower ||
+                            locLower.includes(storeLower) ||
+                            storeLower.includes(locLower));
 
-                    // 🧾 Notice output
                     if (isWarehouseMatch || isStoreMatch) {
-                        noticeCell.textContent = isStoreMatch ? "✅ OK" : "✅ OK";
+                        noticeCell.textContent = "✅ OK";
                         noticeCell.className = "noticeCell notice-ok";
                     } else {
                         noticeCell.textContent = `⚠️ Goods from ${locSel.value} will trigger a transfer to ${destinationName}`;
                         noticeCell.className = "noticeCell notice-transfer";
                     }
                 }
-
-
 
                 /* ------------------------------------------
                    Events
@@ -543,11 +521,12 @@
                 tdInv.appendChild(invNumSel);
                 const tdQty = document.createElement("td");
                 tdQty.appendChild(qtyInput);
+
                 tr.append(tdLoc, tdStatus, tdInv, availCell, tdQty, noticeCell);
                 tbody.appendChild(tr);
 
                 /* ------------------------------------------
-                   Init and focus
+                   Init dropdowns
                 ------------------------------------------ */
                 populateLocations();
                 if (lockedLocation && tbody.querySelectorAll("tr").length > 1) {
@@ -558,11 +537,12 @@
                 populateInventoryNumbers();
                 updateAvailable();
                 updateNotice();
+
                 if (tbody.querySelectorAll("tr").length === 1) locSel.focus();
             }
 
             /* ---------------------------------------------------------
-               Preload existing detail (edit mode)
+               Load existing detail (edit mode)
             --------------------------------------------------------- */
             if (detail) {
                 detail.split(";").forEach((part) => {
@@ -580,16 +560,13 @@
             }
 
             addRowBtn.addEventListener("click", () => {
-                if (remainingToAllocate() <= 0) {
-                    updateAddRowState();
-                    return;
-                }
+                if (remainingToAllocate() <= 0) return;
                 addRow();
                 updateAddRowState();
             });
 
             /* ---------------------------------------------------------
-               Save Handler (includes IDs, validates not empty)
+               Save Handler
             --------------------------------------------------------- */
             saveBtn.addEventListener("click", () => {
                 const parts = [];
@@ -607,8 +584,6 @@
                     const invName = invSel?.value || "";
                     const invId = invSel?.selectedOptions[0]?.dataset.internalid || "";
 
-                    console.log("💾 Selected inventory:", invSel.value, "→ internal ID:", invId);
-
                     if (q && locName) {
                         parts.push(
                             [q, locName, locId, statusName, statusId, invName, invId].join("|")
@@ -617,19 +592,15 @@
                 });
 
                 const detailString = parts.join("; ");
-                if (!detailString || detailString.trim() === "") {
-                    alert(
-                        "❌ No inventory line selected — please choose a location, status, and inventory number before saving."
-                    );
-                    console.warn("⚠️ Attempted to save empty inventory detail for", itemId);
+                if (!detailString.trim()) {
+                    alert("❌ Please select inventory before saving.");
                     return;
                 }
 
-                console.log("✅ Saving inventory detail with IDs:", detailString, "for itemId:", itemId);
-                const { line } = getQueryParams();
+                const line = getQueryParams().line;
                 const lineIndex = parseInt(line || "-1", 10);
 
-                if (window.opener && typeof window.opener.onInventorySaved === "function") {
+                if (window.opener?.onInventorySaved) {
                     window.opener.onInventorySaved(itemId, detailString, lineIndex);
                 }
                 window.close();
@@ -639,13 +610,6 @@
         }
 
     </script>
-
-
-
-
-
-
-
 
 </body>
 

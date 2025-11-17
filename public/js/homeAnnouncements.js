@@ -173,32 +173,27 @@ async function loadActiveSurveys() {
 
     let surveys = data.surveys || [];
 
-    /* -------------------------------
-       3) Filter by audience_roles
-       ------------------------------- */
-    if (activeRoleId) {
-      surveys = surveys.filter((s) => {
-        const audience = Array.isArray(s.audience_roles)
-          ? s.audience_roles.map((v) => Number(v))
-          : [];
-        return audience.includes(activeRoleId);
-      });
-    } else {
-      // If we *cannot* resolve a role id, safest is to hide surveys
-      console.warn(
-        "⚠️ activeRoleId could not be resolved — hiding surveys for safety."
-      );
-      surveys = [];
-    }
+/* -------------------------------
+   3) Audience role filtering
+   ------------------------------- */
 
-    if (!surveys.length) {
-      console.log(
-        "ℹ️ No surveys visible for current active role; hiding survey widget."
-      );
-      surveyContainer.style.display = "none";
-      surveyContainer.innerHTML = "";
-      return;
-    }
+/*
+  If activeRoleId is NOT known yet (first login load),
+  DO NOT hide all surveys.
+  Instead show ALL results — the backend already filtered
+  by user roles, so it's safe.
+*/
+if (activeRoleId) {
+  surveys = surveys.filter((s) => {
+    const audience = Array.isArray(s.audience_roles)
+      ? s.audience_roles.map(Number)
+      : [];
+    return audience.includes(activeRoleId);
+  });
+} else {
+  console.warn("ℹ️ activeRoleId not yet ready — showing all active surveys.");
+}
+
 
     /* -------------------------------
        4) Render filtered surveys

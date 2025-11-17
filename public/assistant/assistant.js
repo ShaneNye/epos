@@ -55,6 +55,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (path.includes("/admin")) return "Admin Dashboard";
       if (path.includes("/home")) return "Home Dashboard";
       if (path.includes("/forgot")) return "Password Recovery";
+      if (path.includes("/reports")) return "Reports"
       return "an unknown page";
     }
 

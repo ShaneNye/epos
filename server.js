@@ -29,6 +29,8 @@ app.use((req, res, next) => {
   }
   next();
 });
+const eodRoutes = require("./routes/eod");
+
 
 // --- Serve static files ---
 app.use(express.static(path.join(__dirname, "public")));
@@ -93,7 +95,7 @@ const surveysRoutes = require("./routes/surveys");
 app.use("/api/engagement/surveys", surveysRoutes);
 
 app.use("/api/sales", require("./routes/salesMemos"));
-
+app.use("/api/eod", eodRoutes);
 
 
 
@@ -549,6 +551,8 @@ app.get("/reset", (req, res) => res.sendFile(path.join(__dirname, "public", "res
 app.get("/sales/new", (req, res) => res.sendFile(path.join(__dirname, "public", "newSalesOrder.html")));
 app.get("/quote/new", (req, res) => res.sendFile(path.join(__dirname, "public", "quoteNew.html")));
 app.get("/reports", (req, res) => res.sendFile(path.join(__dirname, "public", "reports.html")))
+app.get("/eod", (req, res) => res.sendFile(path.join(__dirname, "public", "endOfDay.html")))
+
 app.get("/quote/view/:id", (req, res) =>
   res.sendFile(path.join(__dirname, "public", "quoteView.html"))
 );

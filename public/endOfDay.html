@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPOS End Of Day</title>
+
+    <link rel="stylesheet" href="/assistant/assistant.css" />
+    <link rel="stylesheet" href="/css/home.css">
+    <script src="/js/storage.js"></script>
+    <script src="/js/menu.js"></script>
+
+    <!-- Virtual Sales Assistant -->
+    <script src="/assistant/assistant.js"></script>
+    <script type="module" src="/assistant/assistantHooks.js"></script>
+
+    <style>
+        .eod-wrapper {
+            max-width: 900px;
+            margin: 2rem auto;
+        }
+
+        .eod-step {
+            background: #fff;
+            border: 1px solid #e3e6ea;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        .eod-step h2 {
+            margin-top: 0;
+            color: var(--brand);
+            font-size: 1.3rem;
+        }
+
+        .eod-step p {
+            color: #555;
+            margin-bottom: 16px;
+        }
+
+        .eod-btn {
+            background: var(--brand);
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: background 0.2s ease, transform 0.1s ease;
+            margin-right: 10px;
+        }
+
+        .eod-btn:hover {
+            background: var(--brand-600);
+            transform: translateY(-1px);
+        }
+
+        /* Secondary button */
+        .eod-btn-secondary {
+            background: #6a7480;
+        }
+
+        .eod-btn-secondary:hover {
+            background: #555;
+        }
+
+        /* Coming soon placeholder */
+        .coming-soon {
+            background: #f5f5f5;
+            border: 1px dashed #bbb;
+            padding: 18px;
+            border-radius: 6px;
+            text-align: center;
+            color: #777;
+            font-style: italic;
+            font-size: 1rem;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div id="menu"></div>
+
+    <main class="content">
+        <h1>End Of Day</h1>
+
+        <div class="eod-wrapper">
+
+            <!-- STEP 1 -->
+            <div class="eod-step">
+                <h2>Step 1 — Footfall</h2>
+                <p>Record the total customer footfall for today before completing end-of-day balancing.</p>
+
+                <button class="eod-btn" id="openFootfallBtn">Enter Footfall</button>
+                <button class="eod-btn eod-btn-secondary" id="completeFootfallBtn">Complete Today’s Footfall</button>
+            </div>
+
+            <!-- STEP 2 -->
+            <div class="eod-step">
+                <h2>Step 2 — Daily Balancing</h2>
+                <div class="coming-soon">
+                    Daily balancing tools will appear here soon.
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <script>
+        document.getElementById("openFootfallBtn").addEventListener("click", () => {
+            const w = window.open(
+                "/eod/footfallPopup.html",
+                "FootfallPopup",
+                "width=750,height=650,scrollbars=yes,resizable=yes"
+            );
+            if (w) w.focus();
+        });
+
+
+        document.getElementById("completeFootfallBtn").addEventListener("click", () => {
+            const w = window.open(
+                "/eod/footfallPopup.html",
+                "FootfallPopup",
+                "width=750,height=650,scrollbars=yes,resizable=yes"
+            );
+            if (w) w.focus();
+        });
+
+    </script>
+
+</body>
+
+</html>

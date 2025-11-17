@@ -372,68 +372,105 @@ try {
       } catch (err) {
         console.error("❌ Source location remapping failed:", err.message);
       }
+// ======================================================
+//  🎯 DETERMINE DESTINATION BASED ON FULFILMENT METHOD
+// ======================================================
 
-      // ======================================================
-      //  🎯 DETERMINE DESTINATION BASED ON FULFILMENT METHOD
-      // ======================================================
-      const fulfilmentMethod = (line.fulfilmentMethod || "").toLowerCase();
+// Fulfilment ID sent from EPOS
+const fulfilmentMethodId =
+  line.fulfilmentMethod ||
+  line.custcol_sb_fulfilmentlocation ||
+  line.custcol_sb_fulfilmentlocation?.id ||
+  null;
 
-      // Load warehouse distribution ID
-      let warehouseDistId = null;
-      try {
-        const wh = await pool.query(
-          `SELECT distribution_location_id 
-           FROM locations 
-           WHERE id = $1 
-           LIMIT 1`,
-          [order.warehouse]
-        );
-        if (wh.rows.length && wh.rows[0].distribution_location_id) {
-          warehouseDistId = String(wh.rows[0].distribution_location_id).trim();
-        }
-      } catch (err) {}
+console.log(`🔎 Fulfilment debug: ID=${fulfilmentMethodId}`);
 
-      // Select final destination
-      let destinationLocId = null;
+// 📌 Your confirmed IDs:
+const INSTORE_METHOD_ID   = "1";   // In-Store
+const WAREHOUSE_METHOD_ID = "2";   // Warehouse
 
-      if (fulfilmentMethod.includes("warehouse")) {
-        destinationLocId = warehouseDistId;
-      } else {
-        destinationLocId = storeDistributionLocId;
-      }
+// Load warehouse distribution location
+let warehouseDistId = null;
+try {
+  const wh = await pool.query(
+    `SELECT distribution_location_id 
+     FROM locations 
+     WHERE id = $1 
+     LIMIT 1`,
+    [order.warehouse]
+  );
+  if (wh.rows.length && wh.rows[0].distribution_location_id) {
+    warehouseDistId = String(wh.rows[0].distribution_location_id).trim();
+  }
+} catch (err) {
+  console.error("❌ Failed to load warehouse distribution location:", err.message);
+}
 
-      if (!destinationLocId) {
-        console.error("❌ Missing destination location for fulfilment:", fulfilmentMethod);
-        continue;
-      }
+let destinationLocId = null;
 
-      destinationLocId = String(destinationLocId).trim();
+// 🎯 Map based purely on fulfilment ID
+if (String(fulfilmentMethodId) === WAREHOUSE_METHOD_ID) {
+  console.log("🏭 Fulfilment = Warehouse → using warehouse distribution location");
+  destinationLocId = warehouseDistId;
+} else if (String(fulfilmentMethodId) === INSTORE_METHOD_ID) {
+  console.log("🏪 Fulfilment = In Store → using store distribution location");
+  destinationLocId = storeDistributionLocId;
+} else {
+  console.warn(`⚠️ Unknown fulfilment ID ${fulfilmentMethodId}, defaulting to store distribution`);
+  destinationLocId = storeDistributionLocId;
+}
 
-      console.log(
-        `🧭 [Line ${idx + 1}] SOURCE=${sourceLocFinal} DEST=${destinationLocId}`
-      );
+// Fallback
+if (!destinationLocId) {
+  console.warn("⚠️ No destination resolved — fallback to warehouse");
+  destinationLocId = String(order.warehouse);
+}
 
-      // ======================================================
-      //  🛑 RULE: SOURCE === DESTINATION → NO TRANSFER ORDER
-      //     Apply lot number directly to SO line instead
-      // ======================================================
-      if (sourceLocFinal === destinationLocId) {
-        console.log(
-          `⭕ No TO needed (source == dest). Applying lot ${invIdRaw} to line item ${line.item}`
-        );
+destinationLocId = String(destinationLocId).trim();
 
-        lotAssignments[line.item] = invIdRaw; // store lot number to apply later
+console.log(
+  `🧭 [Line ${idx + 1}] SOURCE=${sourceLocFinal} DEST=${destinationLocId} (FulfilmentID=${fulfilmentMethodId})`
+);
 
-        createdTransfers.push({
-          itemId: line.item,
-          transferOrderId: null,
-          sourceLocation: sourceLocFinal,
-          destinationWarehouse: destinationLocId,
-          appliedLotNumber: invIdRaw,
-        });
+// ======================================================
+// NEW SAME-LOCATION LOGIC (store vs warehouse corrected)
+// ======================================================
+const isStoreFulfil = fulfilmentMethod.includes("store");
+const isWarehouseFulfil = fulfilmentMethod.includes("warehouse");
 
-        continue; // MOVE TO NEXT ITEM → NO TRANSFER ORDER CREATED
-      }
+// ----------------------
+// Same-Warehouse
+// ----------------------
+if (isWarehouseFulfil && sourceLocFinal === warehouseDistId) {
+    console.log(`⭕ Same Warehouse fulfilment → applying lotnumber ${invIdRaw}`);
+
+    lotAssignments[line.item] = invIdRaw;
+
+    createdTransfers.push({
+        itemId: line.item,
+        transferOrderId: null,
+        sourceLocation: sourceLocFinal,
+        destinationWarehouse: destinationLocId,
+        appliedLotNumber: invIdRaw,
+    });
+
+    continue;
+}
+
+// ----------------------
+// Same-Store
+// ----------------------
+if (isStoreFulfil && sourceLocFinal === storeDistributionLocId) {
+    console.log(`⭕ Same Store fulfilment → no lotnumber, no TO, leaving allocationStrategy DEFAULT`);
+
+    // IMPORTANT:
+    // No lotnumber field should be applied
+    // inventoryMeta should be ignored
+
+    lotAssignments[line.item] = null; // explicit
+    continue;
+}
+
 
       // ======================================================
       //  🛠 BUILD TRANSFER ORDER BODY

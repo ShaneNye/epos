@@ -247,6 +247,7 @@ router.put("/survey/:id", async (req, res) => {
   }
 });
 
+
 /* =====================================================
    === DELETE SURVEY ==================================
    ===================================================== */
@@ -422,6 +423,74 @@ router.post("/survey/:id/response", async (req, res) => {
     res.status(500).json({ ok: false, error: "Failed to submit response" });
   }
 });
+
+/* =====================================================
+   === GET ACTIVE SURVEYS FOR CURRENT USER ==============
+   ===================================================== */
+router.get("/active-surveys", async (req, res) => {
+  try {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    if (!token)
+      return res.status(401).json({ ok: false, error: "Unauthorized" });
+
+    const session = await getSession(token);
+    const userEmail = session?.email?.trim().toLowerCase();
+    if (!userEmail)
+      return res.status(401).json({ ok: false, error: "Invalid session" });
+
+    // 1️⃣ Lookup user ID
+    const userRes = await pool.query(
+      "SELECT id FROM users WHERE LOWER(TRIM(email)) = $1 LIMIT 1",
+      [userEmail]
+    );
+    if (!userRes.rows.length)
+      return res.status(404).json({ ok: false, error: "User not found" });
+
+    const userId = userRes.rows[0].id;
+
+    // 2️⃣ Get ALL roles for this user from user_roles
+    const roleRes = await pool.query(
+      "SELECT role_id FROM user_roles WHERE user_id = $1",
+      [userId]
+    );
+    const userRoleIds = roleRes.rows.map(r => r.role_id);
+    console.log("🎭 Active-survey user role IDs:", userRoleIds);
+
+    // 3️⃣ Fetch surveys where user is in audience OR shared OR public
+    const sql = `
+      SELECT s.*, u.email AS created_by_email
+      FROM engagement_surveys s
+      LEFT JOIN users u ON s.created_by = u.id
+      WHERE s.is_active = TRUE
+        AND s.start_date <= NOW()
+        AND (s.deadline_date IS NULL OR s.deadline_date >= NOW())
+        AND (
+             s.analytics_visibility = 'public'
+          OR (array_length(s.audience_roles,1) > 0 AND s.audience_roles && $2::int[])
+          OR $1 = ANY(s.shared_with_users)
+        )
+        AND s.id NOT IN (
+          SELECT survey_id
+          FROM engagement_survey_responses
+          WHERE user_id = $1
+        )
+      ORDER BY s.start_date DESC;
+    `;
+
+    const surveys = (await pool.query(sql, [userId, userRoleIds])).rows;
+
+    console.log(
+      `📋 Active surveys for ${userEmail} (user ${userId}): ${surveys.length} found`
+    );
+
+    return res.json({ ok: true, surveys });
+  } catch (err) {
+    console.error("❌ Error fetching active surveys:", err);
+    return res.status(500).json({ ok: false, error: "Failed to fetch active surveys" });
+  }
+});
+
 
 /* =====================================================
    === SURVEY ANALYTICS (FINAL, CLEANED, FIXED) =========

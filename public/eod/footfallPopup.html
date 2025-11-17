@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>End Of Day – Footfall</title>
+
+    <!-- Correct absolute path to CSS -->
+    <link rel="stylesheet" href="/eod/footfallPopup.css" />
+
+    <script src="/js/storage.js"></script>
+    <script src="/eod/footfallPopup.js" defer></script>
+</head>
+
+<body>
+    <div class="popup-wrapper">
+        <div class="popup-card">
+
+            <h1>Footfall – Today</h1>
+
+            <!-- STORE SELECTOR -->
+            <label class="store-row">
+                Store
+                <select id="storeSelect">
+                    <option value="">Select Store...</option>
+                </select>
+            </label>
+
+            <!-- MAIN TABLE -->
+            <table id="footfallTable">
+                <thead>
+                    <tr id="footfallHeaderRow">
+                        <!-- JS will inject column headers -->
+                    </tr>
+                </thead>
+
+                <tbody id="footfallTableBody">
+                    <!-- JS will inject the dynamic row -->
+                </tbody>
+            </table>
+
+            <div class="action-row">
+                <button id="saveFootfallBtn" class="btn-primary">Save Footfall</button>
+                <button id="closeBtn" class="btn-secondary" onclick="window.close()">Close</button>
+            </div>
+
+        </div>
+    </div>
+</body>
+
+</html>

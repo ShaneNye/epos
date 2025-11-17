@@ -9,174 +9,263 @@ document.addEventListener("DOMContentLoaded", async () => {
   const scrollWrap = document.querySelector(".stock-table-scroll");
 
   /* =====================================================
+     Normalisation helpers
+  ===================================================== */
+  function clean(str) {
+    return (str || "").trim().toLowerCase();
+  }
+
+  function idStr(val) {
+    return val == null ? "" : String(val).trim();
+  }
+
+  /* =====================================================
      FETCH INVENTORY DATA
   ===================================================== */
   async function fetchInventoryData() {
     try {
       const [balanceRes, numbersRes] = await Promise.all([
-        fetch("/api/netsuite/inventorybalance").then(r => r.json()),
-        fetch("/api/netsuite/invoice-numbers").then(r => r.json())
+        fetch("/api/netsuite/inventorybalance").then((r) => r.json()),
+        fetch("/api/netsuite/invoice-numbers").then((r) => r.json()),
       ]);
 
       if (!balanceRes.ok) throw new Error("Inventory balance fetch failed");
-      if (!numbersRes.ok) throw new Error("Invoice numbers fetch failed");
+      if (!numbersRes.ok) throw new Error("Inventory numbers fetch failed");
 
-      const balance = balanceRes.results || [];
-      const numbers = numbersRes.results || [];
+      const balance = balanceRes.results || balanceRes.data || [];
+      const numbers = numbersRes.results || numbersRes.data || [];
 
-      console.log(`📊 Loaded ${balance.length} inventory balance records`);
-      console.log(`📦 Loaded ${numbers.length} live number records`);
+      console.log(`📊 Loaded ${balance.length} balance rows`);
+      console.log(`📦 Loaded ${numbers.length} inventory number rows`);
 
-      // --- Merge them on Inventory Number ---
-      const merged = balance.map(bal => {
-        const balNum = (bal["Inventory Number"] || "").trim().toLowerCase();
-        const match = numbers.find(num =>
-          (num["Number"] || "").trim().toLowerCase() === balNum
+      /* ------------------------------------------------------------------
+         1️⃣ Aggregate invoice-number quantities per (itemId + number + location)
+      ------------------------------------------------------------------- */
+      const numberAgg = {};
+
+      for (const row of numbers) {
+        const itemId = idStr(row["Item Id"] || row["Item ID"] || row["itemid"]);
+        const inv = clean(row["Number"]);
+        const loc = clean(row["Location"]);
+        if (!inv || !loc) continue;
+
+        const key = `${itemId}||${inv}||${loc}`;
+
+        if (!numberAgg[key]) {
+          numberAgg[key] = {
+            available: 0,
+            onHand: 0,
+            itemId,
+            itemName: row["Item"] || "",
+            invNumberId: row["inv number id"] || "",
+          };
+        }
+
+        numberAgg[key].available += parseInt(row["Available"] || 0, 10) || 0;
+        numberAgg[key].onHand += parseInt(row["On Hand"] || 0, 10) || 0;
+      }
+
+      /* ------------------------------------------------------------------
+         2️⃣ Collapse duplicate inventorybalance rows
+         NetSuite gives 1 row per BIN; we want 1 per (item + inventory number + location)
+      ------------------------------------------------------------------- */
+      const collapsed = {};
+
+      for (const bal of balance) {
+        const itemId = idStr(
+          bal["Item ID"] ||
+            bal["Item Id"] ||
+            bal["itemid"] ||
+            bal["Item"] // fallback, just in case
         );
+        const inv = clean(bal["Inventory Number"]);
+        const loc = clean(bal["Location"]);
+        const key = `${itemId}||${inv}||${loc}`;
 
-        const available = match ? parseInt(match["Available"] || 0, 10) : 0;
-        const onHand = match ? parseInt(match["On Hand"] || 0, 10) : 0;
+        // keep first matching row only (bin/status come from here)
+        if (!collapsed[key]) {
+          collapsed[key] = bal;
+        }
+      }
+
+      const balanceFinal = Object.values(collapsed);
+
+      /* ------------------------------------------------------------------
+         3️⃣ Merge: status/bin from balanceFinal, qty from numberAgg
+      ------------------------------------------------------------------- */
+      const merged = balanceFinal.map((bal) => {
+        const itemId = idStr(
+          bal["Item ID"] ||
+            bal["Item Id"] ||
+            bal["itemid"] ||
+            bal["Item"]
+        );
+        const inv = clean(bal["Inventory Number"]);
+        const loc = clean(bal["Location"]);
+        const rawLoc = bal["Location"] || "-";
+
+        const key = `${itemId}||${inv}||${loc}`;
+        const agg = numberAgg[key] || {
+          available: 0,
+          onHand: 0,
+          itemId,
+          itemName: "",
+          invNumberId: "",
+        };
 
         return {
-          itemId: bal["Item ID"] || "",
-          itemName: bal["Name"] || bal["Item"] || "-",
-          bin: bal["Bin Number"] || "-",
-          location: bal["Location"] || "-",
+          itemId: agg.itemId || itemId,
+          itemName: agg.itemName || bal["Name"] || bal["Item"] || "-",
+
           inventoryNumber: bal["Inventory Number"] || "-",
+          invNumberId: agg.invNumberId || "",
+
+          location: rawLoc,
+          bin: bal["Bin Number"] || "-",
           status: bal["Status"] || "-",
-          available,
-          onHand
+
+          available: agg.available,
+          onHand: agg.onHand,
         };
       });
 
       console.log("🧩 Example merged record:", merged[0]);
+
       return merged;
     } catch (err) {
-      console.error("❌ Failed to fetch or merge inventory data:", err);
+      console.error("❌ Inventory data load/merge failed:", err);
       return [];
     }
   }
 
-/* =====================================================
-   LOAD + PREPARE DATA
-===================================================== */
-const mergedData = await fetchInventoryData();
+  /* =====================================================
+     LOAD + PREPARE DATA
+  ===================================================== */
+  const mergedData = await fetchInventoryData();
 
-// --- Group by location name ---
-const grouped = {};
-mergedData.forEach(item => {
-  const locName = item.location || "Unknown";
-  if (!grouped[locName]) grouped[locName] = [];
-  grouped[locName].push(item);
-});
+  // --- Group by actual location name ---
+  const grouped = {};
+  mergedData.forEach((item) => {
+    const loc = item.location || "Unknown";
+    if (!grouped[loc]) grouped[loc] = [];
+    grouped[loc].push(item);
+  });
 
-// --- Map location names to IDs (if you have IDs from session) ---
-const locations = Object.keys(grouped).sort();
+  const locations = Object.keys(grouped).sort();
 
-// 🔐 Get user’s primary store (ID) from session
-const session = storageGet();
-const primaryStoreId =
-  session?.user?.location?.id ||
-  session?.location_id ||
-  session?.user?.location_id ||
-  null;
+  // --- Auto-select user's primary store ---
+  const session = storageGet();
+  const primaryStoreId =
+    session?.user?.location?.id ||
+    session?.location_id ||
+    session?.user?.location_id ||
+    null;
 
-// 🧩 Attempt to map location ID → name using your /api/meta/locations endpoint
-let defaultLocName = locations[0] || "";
+  let defaultLocName = locations[0] || "";
 
-try {
-  if (primaryStoreId) {
-    const res = await fetch("/api/meta/locations");
-    const data = await res.json();
+  try {
+    if (primaryStoreId) {
+      const locRes = await fetch("/api/meta/locations");
+      const locJson = await locRes.json();
 
-    if (data.ok && Array.isArray(data.locations)) {
-      const match = data.locations.find(l => String(l.id) === String(primaryStoreId));
-      if (match && locations.includes(match.name)) {
-        defaultLocName = match.name;
+      if (locJson.ok) {
+        const match = locJson.locations.find(
+          (l) => String(l.id) === String(primaryStoreId)
+        );
+        if (match && locations.includes(match.name)) {
+          defaultLocName = match.name;
+        }
       }
     }
+  } catch (err) {
+    console.warn("⚠️ Failed to map primary store name:", err);
   }
-} catch (err) {
-  console.warn("⚠️ Could not match primary store ID to location name:", err);
-}
 
-// === Populate dropdown ===
-locSelect.innerHTML = locations.map(l => `<option value="${l}">${l}</option>`).join("");
+  // Populate the dropdown
+  locSelect.innerHTML = locations
+    .map((l) => `<option value="${l}">${l}</option>`)
+    .join("");
+  locSelect.value = defaultLocName;
+  titleEl.textContent = defaultLocName;
 
-// === Apply default ===
-locSelect.value = defaultLocName;
-titleEl.textContent = defaultLocName;
+  // Populate status dropdown
+  const allStatuses = [
+    ...new Set(mergedData.map((r) => r.status).filter(Boolean)),
+  ].sort();
+  statusSelect.innerHTML = `<option value="">All Statuses</option>`;
+  allStatuses.forEach((s) => {
+    const opt = document.createElement("option");
+    opt.value = s;
+    opt.textContent = s;
+    statusSelect.appendChild(opt);
+  });
 
-// === Populate status dropdown ===
-const allStatuses = [...new Set(mergedData.map(r => r.status).filter(Boolean))].sort();
-statusSelect.innerHTML = `<option value="">All Statuses</option>`;
-allStatuses.forEach(s => {
-  const opt = document.createElement("option");
-  opt.value = s;
-  opt.textContent = s;
-  statusSelect.appendChild(opt);
-});
-
-// === Render default table ===
-renderTable(grouped[defaultLocName] || []);
-
+  renderTable(grouped[defaultLocName] || []);
 
   /* =====================================================
      EVENT HANDLERS
   ===================================================== */
   locSelect.addEventListener("change", () => {
-    const selectedLoc = locSelect.value;
-    titleEl.textContent = selectedLoc;
+    const loc = locSelect.value;
+    titleEl.textContent = loc;
     filterInput.value = "";
     statusSelect.value = "";
-    renderTable(grouped[selectedLoc] || []);
+    renderTable(grouped[loc] || []);
   });
 
   filterInput.addEventListener("input", applyFilters);
   statusSelect.addEventListener("change", applyFilters);
 
   function applyFilters() {
-    const selectedLoc = locSelect.value;
-    const records = grouped[selectedLoc] || [];
-    const textFilter = filterInput.value.trim().toLowerCase();
-    const statusFilter = statusSelect.value;
-    renderTable(records, textFilter, statusFilter);
+    const loc = locSelect.value;
+    let data = grouped[loc] || [];
+
+    const text = filterInput.value.trim().toLowerCase();
+    const status = statusSelect.value;
+
+    if (text) {
+      data = data.filter((r) =>
+        Object.values(r).join(" ").toLowerCase().includes(text)
+      );
+    }
+
+    if (status) {
+      data = data.filter((r) => clean(r.status) === clean(status));
+    }
+
+    renderTable(data);
   }
 
   /* =====================================================
      TABLE RENDERER
   ===================================================== */
-  function renderTable(records, textFilter = "", statusFilter = "") {
-    tbody.innerHTML = "";
+ function renderTable(records) {
+  tbody.innerHTML = "";
 
-    let filtered = records;
-    if (textFilter) {
-      filtered = filtered.filter(r =>
-        Object.values(r).join(" ").toLowerCase().includes(textFilter)
-      );
-    }
+  // ⬅️ NEW: Only show rows where available > 0
+  const visible = records.filter(r => (parseInt(r.available, 10) || 0) > 0);
 
-    if (statusFilter) {
-      filtered = filtered.filter(r => (r.status || "").trim() === statusFilter);
-    }
-
-    if (!filtered.length) {
-      tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:#999;">No items found</td></tr>`;
-      return;
-    }
-
-    filtered.forEach(r => {
-      const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${r.itemName}</td>
-        <td>${r.inventoryNumber}</td>
-        <td>${r.bin}</td>
-        <td>${r.status}</td>
-        <td style="text-align:right;">${r.available || 0}</td>
-      `;
-      tbody.appendChild(tr);
-    });
+  if (!visible.length) {
+    tbody.innerHTML =
+      `<tr><td colspan="6" style="text-align:center;color:#999;">No items found</td></tr>`;
+    return;
   }
+
+  visible.forEach((r) => {
+    const tr = document.createElement("tr");
+
+    tr.innerHTML = `
+      <td>${r.itemName}</td>
+      <td>${r.inventoryNumber}</td>
+      <td>${r.bin}</td>
+      <td>${r.status}</td>
+      <td style="text-align:right;">${r.available}</td>
+    `;
+
+    tbody.appendChild(tr);
+  });
+}
+
 
   /* =====================================================
      SCROLL HEADER SHADOW
