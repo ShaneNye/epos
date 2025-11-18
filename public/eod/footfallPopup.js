@@ -1,60 +1,142 @@
 // public/eod/footfallPopup.js
 document.addEventListener("DOMContentLoaded", async () => {
+  console.log("🟢 Footfall popup loaded");
+
+  /* ============================================================================
+      NORMALISE LABEL
+     ============================================================================ */
+  function normalizeLabel(label) {
+    return String(label || "")
+      .replace(/\u00A0/g, " ")
+      .replace(/[\s\r\n]+/g, " ")
+      .trim()
+      .toLowerCase();
+  }
+
+  /* ============================================================================
+      RAW FIELD MAP (FULL & EXACT)
+     ============================================================================ */
+  const RAW_FIELD_MAP = {
+    "Date": "custrecord_ff_date",
+    "Day": "custrecord_ff_day",
+    "Footfall Count": "custrecord_ff_footfallcount",
+    "Store Manager": "custrecord_ff_storemanager",
+    "Team Footfall Count": "custrecord_sb_team_ff_count",
+
+    // Personnel
+    "Bed Specialist": "custrecord_sb_bed_specialist_1",
+    "Bed Specialist 2": "custrecord_sb_bed_specialist_2",
+    "Team Leader": "custrecord_sb_team_leader",
+
+    "Email Trigger": "custrecord1425",
+    "What was not available?": "custrecord1512",
+    "What Was Too Expensive?": "custrecord1513",
+    "Cold Call Web": "custrecord_sb_ff_cold_call",
+    "Transfer to Store Web": "custrecord1694",
+    "Product Enquiry Web": "custrecord1695",
+    "Customer Service Web": "custrecord1696",
+    "Ring and Arrange Web": "custrecord1697",
+    "Other Web": "custrecord1698",
+    "Other Web Reason": "custrecord1699",
+    "Sales Order Count": "custrecord_ff_salesordercount",
+    "Sales Order Amount": "custrecord_ff_salesorderamount",
+    "Total Sales Order Count": "custrecord_ff_totalsalesordercount",
+    "Total Sales Order Amount": "custrecord_ff_totalsalesorderamount",
+    "Average Sales Order Value": "custrecord_ff_averagesalesordervalue",
+    "Sales Order Pillows": "custrecord_ff_salesorderpillows",
+    "Sales Order Matt Pros": "custrecord_ff_salesordermattpros",
+    "Average Gross Profit": "custrecord_ff_averagegrossprofit",
+    "Average Gross Profit %": "custrecord_ff_averagegrossprofitpercent",
+    "Quote Count": "custrecord_ff_quotecount",
+    "Quote Amount": "custrecord_ff_quoteamount",
+    "Total Quote Count": "custrecord_ff_totalquotecount",
+    "Total Quote Amount": "custrecord_ff_totalquoteamount",
+    "Needs to Measure Up": "custrecord_ff_needstomeasureup",
+    "Needs to Choose Colour": "custrecord_sb_needstochoosecolour",
+    "Needs to Ask Partner": "custrecord_ff_needstoaskpartner",
+    "Wants to Visit Competitor": "custrecord_ff_wantstovisitcompetitor",
+    "Product not Available": "custrecord_ff_productnotavailable",
+    "Couldn't get to, Busy Serving": "custrecord_ff_couldntgettobusyserving",
+    "Couldn't Connect with Customer": "custrecord_ff_coudlntconnectwithcustomer",
+    "Lead Time Too Long": "custrecord_ff_leadtimetoolong",
+    "Running out of Time": "custrecord_ff_runningoutoftime",
+    "Too Expensive": "custrecord_ff_tooexpensive",
+    "Finance Declined": "custrecord_ff_financedeclined",
+    "Couldn't Decide on Product": "custrecord_ff_couldntdecideonproduct",
+    "What was not Available? - old": "custrecord_ff_whatwasnotavailable",
+    "What was Too Expensive? - Old": "custrecord_ff_whatwastooexpensive"
+  };
+
+  /* ============================================================================
+      NORMALISED FIELD MAP (lowercased)
+     ============================================================================ */
+  const FIELD_MAP = {};
+  Object.entries(RAW_FIELD_MAP).forEach(([k, v]) => {
+    FIELD_MAP[normalizeLabel(k)] = v;
+  });
+
+  /* ============================================================================
+      AUTH
+     ============================================================================ */
   const auth = storageGet?.();
   const token = auth?.token;
-
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-  /* =====================================================
-     LOAD USERS (Bed Specialists)
-  ===================================================== */
+  /* ============================================================================
+      DOM ELEMENTS
+     ============================================================================ */
+  const storeSelect = document.getElementById("storeSelect");
+  const theadRow = document.getElementById("footfallHeaderRow");
+  const tbody = document.getElementById("footfallTableBody");
+
+  /* ============================================================================
+      STATE
+     ============================================================================ */
   let users = [];
+  let footfallResults = [];
+  let locations = [];
+  let currentRow = null;
+
+  /* ============================================================================
+      LOAD USERS
+     ============================================================================ */
   try {
     const res = await fetch("/api/users", { headers });
     const data = await res.json();
-    if (!data.ok) throw new Error(data.error || "Failed to load users");
     users = data.users || [];
+    console.log("👤 Loaded users:", users);
   } catch (err) {
-    console.error("❌ Failed to load users:", err);
-    users = [];
+    console.error("❌ Load users failed:", err);
   }
 
   function populateUserOptions() {
-    const selects = document.querySelectorAll(".user-select");
-    selects.forEach((sel) => {
+    document.querySelectorAll(".user-select").forEach(sel => {
       sel.innerHTML = `<option value="">Select...</option>`;
-      users.forEach((u) => {
+      users.forEach(u => {
         const opt = document.createElement("option");
         opt.value = u.id;
-        opt.textContent = `${u.firstName || ""} ${u.lastName || ""}`.trim();
+        opt.textContent = `${u.firstName} ${u.lastName}`;
         sel.appendChild(opt);
       });
     });
   }
 
-  /* =====================================================
-     LOAD STORES
-  ===================================================== */
-  const storeSelect = document.getElementById("storeSelect");
-  const tbody = document.getElementById("footfallTableBody");
-  const theadRow = document.getElementById("footfallHeaderRow");
-
-  let locations = [];
-
+  /* ============================================================================
+      LOAD LOCATIONS
+     ============================================================================ */
   try {
-    const locRes = await fetch("/api/meta/locations", { headers });
-    const locData = await locRes.json();
-    if (!locData.ok) throw new Error(locData.error || "Failed to load locations");
-    locations = locData.locations || [];
+    const res = await fetch("/api/meta/locations", { headers });
+    const data = await res.json();
+    locations = data.locations || [];
   } catch (err) {
     console.error("❌ Failed to load locations:", err);
   }
 
   storeSelect.innerHTML = `<option value="">Select Store...</option>`;
-
-  locations.forEach((loc) => {
-    const raw = loc.name || "";
-    const clean = raw.includes(":") ? raw.split(":")[1].trim() : raw;
+  locations.forEach(loc => {
+    const clean = loc.name.includes(":")
+      ? loc.name.split(":")[1].trim()
+      : loc.name.trim();
 
     const opt = document.createElement("option");
     opt.value = clean;
@@ -62,173 +144,221 @@ document.addEventListener("DOMContentLoaded", async () => {
     storeSelect.appendChild(opt);
   });
 
-  /* =====================================================
-     LOAD TODAY'S FOOTFALL DATA
-  ===================================================== */
-  let footfallResults = [];
-
-  async function fetchFootfall() {
-    try {
-      const res = await fetch("/api/eod/footfall", { headers });
-      const data = await res.json();
-      if (!data.ok) return [];
-      return Array.isArray(data.results) ? data.results : [];
-    } catch (err) {
-      console.error("❌ Error fetching footfall:", err);
-      return [];
-    }
+  /* ============================================================================
+      LOAD FOOTFALL RESULTS
+     ============================================================================ */
+  try {
+    const res = await fetch("/api/eod/footfall", { headers });
+    const data = await res.json();
+    footfallResults = data.results || [];
+  } catch (err) {
+    console.error("❌ Footfall fetch failed:", err);
   }
 
-  footfallResults = await fetchFootfall();
-
-  /* =====================================================
-     SKIP FIELDS — only show numeric-style fields
-  ===================================================== */
+  /* ============================================================================
+      FIELDS TO SKIP (NOT SHOWN AS COLUMNS)
+     ============================================================================ */
   const skipFields = new Set([
-    "Internal ID",
-    "Store",
-    "Date",
-    "Day",
-    "Name",
-    "Script ID",
-    "Store Manager",
-    "Email Trigger",
-    "Other Web Reason",
-    "What Was Too Expensive?",
-    "What was Too Expensive? - Old",
-    "What was not Available? - old",
-    "What was not available?",
-    "Bed Specialist",
-    "Bed Specialist 2",
+    "store", "date", "day", "name", "script id", "store manager",
+    "email trigger", "other web reason", "what was too expensive?",
+    "what was too expensive? - old", "what was not available? - old",
+    "what was not available?", "inactive",
+    "footfall count", // replaced by team footfall count
+    "team footfall count",
+    "bed specialist", "bed specialist 2", "team leader",
+    "internal id"
   ]);
 
-  /* =====================================================
-     BUILD TABLE HEADERS
-  ===================================================== */
-  function buildHeaderRow(todayRow) {
-    theadRow.innerHTML = "";
-
-    // Always first three headers
-    theadRow.innerHTML += `<th>Internal ID</th>`;
-    theadRow.innerHTML += `<th>Bed Specialist</th>`;
-    theadRow.innerHTML += `<th>Bed Specialist 2</th>`;
-
-    Object.entries(todayRow).forEach(([key, value]) => {
-      if (skipFields.has(key)) return;
-
-      // Numeric-like fields become columns
-      const raw = value == null || value === "" ? "0" : String(value).replace(/,/g, "");
-      if (isNaN(Number(raw))) return;
-
-      theadRow.innerHTML += `<th>${key}</th>`;
-    });
-  }
-
-  /* =====================================================
-     BUILD TABLE ROW FOR SELECTED STORE
-  ===================================================== */
-  storeSelect.addEventListener("change", () => {
-    const storeName = storeSelect.value;
+  /* ============================================================================
+      BUILD FULL NON-PAGINATED TABLE
+     ============================================================================ */
+  function buildFullTable() {
     tbody.innerHTML = "";
     theadRow.innerHTML = "";
 
-    if (!storeName) return;
+    // ---- FIXED FIRST COLUMNS ----
+    const fixedCols = [
+      "Internal ID",
+      "Team Leader",
+      "Bed Specialist",
+      "Bed Specialist 2",
+      "Team Footfall Count"
+    ];
 
-    const todayRow = footfallResults.find((r) => {
-      const raw = r["Store"] || "";
-      const clean = raw.includes(":") ? raw.split(":")[1].trim() : raw;
-      return clean === storeName;
+    fixedCols.forEach(c => theadRow.innerHTML += `<th>${c}</th>`);
+
+    // ---- DYNAMIC COLUMNS ----
+    const dynamicFields = Object.keys(currentRow).filter(k => {
+      const normalized = normalizeLabel(k);
+      if (skipFields.has(normalized)) return false;
+      return !isNaN(Number(String(currentRow[k] || "0").replace(/,/g, "")));
     });
 
-    if (!todayRow) return;
+    dynamicFields.forEach(f => theadRow.innerHTML += `<th>${f}</th>`);
 
-    buildHeaderRow(todayRow);
-
+    // ---- BUILD ROW ----
     const tr = document.createElement("tr");
 
-    // 1️⃣ Internal ID (readonly)
-    const internalId = todayRow["Internal ID"] || "";
+    tr.innerHTML += `<td><input readonly value="${currentRow["Internal ID"]}" /></td>`;
+
+    tr.innerHTML += `<td><select id="storeLeader" class="user-select"></select></td>`;
+    tr.innerHTML += `<td><select id="bedSpecialist" class="user-select"></select></td>`;
+    tr.innerHTML += `<td><select id="bedSpecialist2" class="user-select"></select></td>`;
+
     tr.innerHTML += `
       <td>
-        <input 
-          type="text" 
-          value="${internalId}" 
-          readonly 
-          class="readonly-cell"
-          data-field="Internal ID"
-        />
+        <input type="number" 
+               data-field="team footfall count"
+               value="${Number(currentRow["Team Footfall Count"] || 0)}"
+               min="0"/>
       </td>
     `;
 
-    // 2️⃣ Bed Specialist (select)
-    tr.innerHTML += `
-      <td>
-        <select id="bedSpecialist" class="user-select"></select>
-      </td>
-    `;
-
-    // 3️⃣ Bed Specialist 2 (select)
-    tr.innerHTML += `
-      <td>
-        <select id="bedSpecialist2" class="user-select"></select>
-      </td>
-    `;
-
-    // 4️⃣ Add numeric input fields
-    Object.entries(todayRow).forEach(([key, value]) => {
-      if (skipFields.has(key)) return;
-
-      const raw =
-        value === null || value === "" ? "0" : String(value).replace(/,/g, "");
-      const num = Number(raw);
-      if (isNaN(num)) return;
-
+    dynamicFields.forEach(label => {
+      const val = Number(String(currentRow[label] || "0").replace(/,/g, ""));
       tr.innerHTML += `
         <td>
-          <input 
-            type="number"
-            class="num-input"
-            data-field="${key}"
-            min="0"
-            value="${num}"
-          />
+          <input type="number"
+                 class="num-input"
+                 data-field="${normalizeLabel(label)}"
+                 value="${val}"
+                 min="0"/>
         </td>
       `;
     });
 
     tbody.appendChild(tr);
 
-    // Populate user dropdowns
     populateUserOptions();
 
-    // Preselect BS1 + BS2
-    const bs1Name = todayRow["Bed Specialist"];
-    const bs2Name = todayRow["Bed Specialist 2"];
-
-    const bs1Select = document.getElementById("bedSpecialist");
-    const bs2Select = document.getElementById("bedSpecialist2");
-
-    if (bs1Name && bs1Select) {
-      [...bs1Select.options].forEach((o) => {
-        if (o.textContent.trim() === bs1Name.trim()) {
-          bs1Select.value = o.value;
-        }
+    // ----- PRESELECT STORE LEADER -----
+    const sl = document.getElementById("storeLeader");
+    const slName = currentRow["Team Leader"];
+    if (slName) {
+      [...sl.options].forEach(o => {
+        if (o.textContent.trim() === slName.trim()) sl.value = o.value;
       });
     }
 
-    if (bs2Name && bs2Select) {
-      [...bs2Select.options].forEach((o) => {
-        if (o.textContent.trim() === bs2Name.trim()) {
-          bs2Select.value = o.value;
-        }
+    // ----- PRESELECT BS1 -----
+    const bs1 = document.getElementById("bedSpecialist");
+    const bs1Name = currentRow["Bed Specialist"];
+    if (bs1Name) {
+      [...bs1.options].forEach(o => {
+        if (o.textContent.trim() === bs1Name.trim()) bs1.value = o.value;
       });
     }
+
+    // ----- PRESELECT BS2 -----
+    const bs2 = document.getElementById("bedSpecialist2");
+    const bs2Name = currentRow["Bed Specialist 2"];
+    if (bs2Name) {
+      [...bs2.options].forEach(o => {
+        if (o.textContent.trim() === bs2Name.trim()) bs2.value = o.value;
+      });
+    }
+  }
+
+  /* ============================================================================
+      STORE SELECTION
+     ============================================================================ */
+  storeSelect.addEventListener("change", () => {
+    const selected = storeSelect.value.trim().toLowerCase();
+
+    currentRow = footfallResults.find(r => {
+      let raw = r["Store"] || "";
+      raw = raw.replace(/\u00A0/g, " ");
+      let clean = raw.includes(":") ? raw.split(":")[1].trim() : raw.trim();
+      return clean.toLowerCase() === selected;
+    });
+
+    if (!currentRow) return;
+
+    buildFullTable();
   });
 
-  /* =====================================================
-     SAVE HANDLER (placeholder)
-  ===================================================== */
-  document.getElementById("saveFootfallBtn").addEventListener("click", () => {
-    alert("Saving Footfall coming soon (RESTlet / customrecord update).");
+  /* ============================================================================
+      SAVE FOOTFALL
+     ============================================================================ */
+document.getElementById("saveFootfallBtn").addEventListener("click", async () => {
+  if (!currentRow) return alert("No store selected.");
+
+  const internalId = currentRow["Internal ID"];
+  const payload = {};
+
+  const overlay = document.getElementById("savingOverlay");
+
+  // 🔵 SHOW SPINNER
+  overlay.classList.remove("hidden");
+
+  /* ---- TEAM FOOTFALL COUNT ---- */
+  const teamFF = document.querySelector(`input[data-field="team footfall count"]`);
+  if (teamFF) payload[FIELD_MAP["team footfall count"]] = Number(teamFF.value);
+
+  /* ---- STORE LEADER ---- */
+  const sl = document.getElementById("storeLeader");
+  if (sl?.value) {
+    const user = users.find(u => String(u.id) === String(sl.value));
+    const nsId = user?.netsuiteId || user?.netsuiteid;
+    if (nsId) payload[FIELD_MAP["team leader"]] = String(nsId);
+  }
+
+  /* ---- BED SPECIALISTS ---- */
+  const bs1 = document.getElementById("bedSpecialist");
+  if (bs1?.value) {
+    const user = users.find(u => String(u.id) === String(bs1.value));
+    const nsId = user?.netsuiteId || user?.netsuiteid;
+    if (nsId) payload[FIELD_MAP["bed specialist"]] = String(nsId);
+  }
+
+  const bs2 = document.getElementById("bedSpecialist2");
+  if (bs2?.value) {
+    const user = users.find(u => String(u.id) === String(bs2.value));
+    const nsId = user?.netsuiteId || user?.netsuiteid;
+    if (nsId) payload[FIELD_MAP["bed specialist 2"]] = String(nsId);
+  }
+
+  /* ---- ALL DYNAMIC NUMBER FIELDS ---- */
+  document.querySelectorAll(".num-input[data-field]").forEach(input => {
+    const norm = normalizeLabel(input.dataset.field);
+    const mapped = FIELD_MAP[norm];
+    if (mapped) payload[mapped] = Number(input.value);
   });
+
+  console.log("📤 Final PATCH Payload:", payload);
+
+  // ---- SEND PATCH ----
+  const res = await fetch("/api/eod/footfall/update", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json",
+      ...headers
+    },
+    body: JSON.stringify({ internalId, values: payload })
+  });
+
+  const json = await res.json();
+  console.log("📥 Patch response:", json);
+
+  if (!json.ok) {
+    overlay.classList.add("hidden"); // hide overlay before showing error
+    return alert("❌ Update failed: " + json.error);
+  }
+
+  // 🌟 SUCCESS
+  setTimeout(() => {
+    // reload parent page
+    try {
+      if (window.opener && !window.opener.closed) {
+        window.opener.location.reload();
+      }
+    } catch (e) {
+      console.warn("⚠ Could not refresh opener:", e);
+    }
+
+    // close popup
+    window.close();
+  }, 400); // small delay feels smoother
+});
+
 });

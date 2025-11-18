@@ -677,28 +677,33 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     });
 
-    // === Lock View (with exceptions for pending approval) ===
-    if (so.orderStatus?.id === "A") {
-      console.log("🔓 Pending approval — fulfilment + inventory remain editable");
-      document.querySelectorAll("input, select, textarea, button").forEach(el => {
-        if (el.classList.contains("fulfilmentSelect") ||
-          el.classList.contains("open-inventory") ||
-          el.classList.contains("item-inv-detail")) {
-          return; // keep these editable
-        }
-        el.disabled = true;
-        el.classList.add("locked-input");
-      });
-    } else {
-      document.querySelectorAll("input, select, textarea, button").forEach(el => {
-        // 🔓 ALLOW MEMO BUTTON EVEN WHEN VIEW IS LOCKED
-        if (el.id === "newMemoBtn") return;
-
-        el.disabled = true;
-        el.classList.add("locked-input");
-      });
-      console.log("🔒 Form locked (read-only, memo remains enabled)");
+// === Lock View (with exceptions for pending approval) ===
+if (so.orderStatus?.id === "A") {
+  console.log("🔓 Pending approval — fulfilment + inventory remain editable");
+  document.querySelectorAll("input, select, textarea, button").forEach(el => {
+    // ✅ Keep fulfilment, inventory + memo button enabled
+    if (
+      el.classList.contains("fulfilmentSelect") ||
+      el.classList.contains("open-inventory") ||
+      el.classList.contains("item-inv-detail") ||
+      el.id === "newMemoBtn"
+    ) {
+      return;
     }
+    el.disabled = true;
+    el.classList.add("locked-input");
+  });
+} else {
+  document.querySelectorAll("input, select, textarea, button").forEach(el => {
+    // ✅ Allow memo button even when view is locked
+    if (el.id === "newMemoBtn") return;
+
+    el.disabled = true;
+    el.classList.add("locked-input");
+  });
+  console.log("🔒 Form locked (read-only, memo remains enabled)");
+}
+
 
 
     setTimeout(() => {
@@ -842,6 +847,8 @@ function updateMemoHeader(count) {
     header.textContent = `Memos (${count})`;
   }
 }
+
+
 
 
 /* =====================================================

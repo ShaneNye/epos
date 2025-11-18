@@ -79,6 +79,50 @@
             font-style: italic;
             font-size: 1rem;
         }
+
+        .eod-btn-complete {
+            background: #2ecc71 !important;
+            /* Green */
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .eod-btn-complete::before {
+            content: "✔";
+            font-weight: bold;
+        }
+      .eod-btn-loading {
+    position: relative;
+    pointer-events: none;
+    opacity: 0.85;
+}
+
+.eod-btn-loading .btn-text {
+    opacity: 0.7;
+}
+
+/* Spinner container */
+.eod-btn-loading::after {
+    content: "";
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.6);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+
     </style>
 </head>
 
@@ -97,7 +141,9 @@
                 <p>Record the total customer footfall for today before completing end-of-day balancing.</p>
 
                 <button class="eod-btn" id="openFootfallBtn">Enter Footfall</button>
-                <button class="eod-btn eod-btn-secondary" id="completeFootfallBtn">Complete Today’s Footfall</button>
+                <button class="eod-btn eod-btn-secondary" id="completeFootfallBtn">
+    <span class="btn-text">Complete Today’s Footfall</span>
+</button>
             </div>
 
             <!-- STEP 2 -->
@@ -110,28 +156,202 @@
 
         </div>
     </main>
+<script>
+document.addEventListener("DOMContentLoaded", async () => {
 
-    <script>
-        document.getElementById("openFootfallBtn").addEventListener("click", () => {
-            const w = window.open(
-                "/eod/footfallPopup.html",
-                "FootfallPopup",
-                "width=750,height=650,scrollbars=yes,resizable=yes"
-            );
-            if (w) w.focus();
+    const authRaw = storageGet?.();
+    const token = authRaw?.token || authRaw?.accessToken || null;
+
+    const completeBtn = document.getElementById("completeFootfallBtn");
+
+function setLoading(btn, text) {
+    btn.classList.add("eod-btn-loading");
+    btn.querySelector(".btn-text").textContent = text;
+}
+
+function clearLoading(btn, text) {
+    btn.classList.remove("eod-btn-loading");
+    btn.querySelector(".btn-text").textContent = text;
+}
+
+function openPopup(event) {
+    const btn = event.currentTarget;
+
+    setLoading(btn, "Opening…");
+
+    const w = window.open(
+        "/eod/footfallPopup.html",
+        "FootfallPopup",
+        "width=750,height=650,scrollbars=yes,resizable=yes"
+    );
+
+    if (w) {
+        w.focus();
+
+        const timer = setInterval(() => {
+            if (w.closed) {
+                clearInterval(timer);
+
+                // Reset text — UI will override if already completed
+                if (btn.id === "completeFootfallBtn") {
+                    clearLoading(btn, "Complete Today’s Footfall");
+                } else {
+                    clearLoading(btn, "Enter Footfall");
+                }
+
+                window.location.reload();
+            }
+        }, 500);
+    } else {
+        // Popup blocked
+        clearLoading(btn, "Complete Today’s Footfall");
+    }
+}
+
+
+// Attach handlers
+document.getElementById("openFootfallBtn").addEventListener("click", openPopup);
+completeBtn.addEventListener("click", openPopup);
+
+
+    /* -------------------------------------------------
+       1️⃣ GET USER FROM /api/me OR FALLBACK
+    ------------------------------------------------- */
+    let user = null;
+
+    if (token) {
+        try {
+            const res = await fetch("/api/me", {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data?.ok && data.user) user = data.user;
+        } catch (err) {
+            console.warn("⚠️ Failed /api/me:", err);
+        }
+    }
+
+    if (!user) {
+        user = authRaw?.user || {};
+    }
+
+    const fullName = `${user.firstName || ""} ${user.lastName || ""}`.trim();
+    console.log("👤 User:", fullName, user);
+
+    /* -------------------------------------------------
+       2️⃣ GET USER STORE NAME
+    ------------------------------------------------- */
+
+    // User store may be: ID, name, or null
+    const userStoreRaw =
+        user.primaryStore ||
+        user.primarystore ||
+        user.store ||
+        user.storeName ||
+        null;
+
+    console.log("🏪 raw user store:", userStoreRaw);
+
+    // If store is numeric → lookup location record
+    let userStoreName = "";
+
+    if (typeof userStoreRaw === "number") {
+        console.log("🔍 Store is numeric, fetching locations...");
+
+        try {
+            const locRes = await fetch("/api/meta/locations", {
+                headers: token ? { Authorization: `Bearer ${token}` } : {}
+            });
+            const locData = await locRes.json();
+            const locations = locData.locations || [];
+
+            const match = locations.find(l => Number(l.id) === Number(userStoreRaw));
+            if (match) {
+                userStoreName = match.name.includes(":")
+                    ? match.name.split(":")[1].trim()
+                    : match.name.trim();
+
+                console.log("🏪 Resolved store name:", userStoreName);
+            }
+        } catch (err) {
+            console.error("❌ Failed to fetch location names:", err);
+        }
+    }
+    else if (typeof userStoreRaw === "string") {
+        userStoreName = userStoreRaw.includes(":")
+            ? userStoreRaw.split(":")[1].trim()
+            : userStoreRaw.trim();
+    }
+
+    if (!userStoreName) {
+        console.warn("⚠️ Could not resolve user’s store name.");
+        return;
+    }
+
+    /* -------------------------------------------------
+       3️⃣ LOAD FOOTFALL DATA
+    ------------------------------------------------- */
+    let footfall = [];
+    try {
+        const res = await fetch("/api/eod/footfall", {
+            headers: token ? { Authorization: `Bearer ${token}` } : {}
         });
+        const data = await res.json();
+        footfall = data.results || [];
+    } catch (err) {
+        console.error("❌ Failed to load footfall:", err);
+        return;
+    }
+
+    /* -------------------------------------------------
+       4️⃣ MATCH FOOTFALL ROW
+    ------------------------------------------------- */
+    const todayRow = footfall.find(r => {
+        const raw = (r["Store"] || "").replace(/\u00A0/g, " ");
+        const clean = raw.includes(":")
+            ? raw.split(":")[1].trim()
+            : raw.trim();
+
+        return clean.toLowerCase() === userStoreName.toLowerCase();
+    });
+
+    if (!todayRow) {
+        console.warn("⚠️ No footfall row found for store", userStoreName);
+        return;
+    }
+
+    console.log("🟢 Today’s row:", todayRow);
+
+    /* -------------------------------------------------
+       5️⃣ CHECK IF USER IS ASSIGNED
+    ------------------------------------------------- */
+    const responsibleFields = [
+        "Team Leader",
+        "Bed Specialist",
+        "Bed Specialist 2"
+    ];
+
+    const isResponsible = responsibleFields.some(field => {
+        const val = todayRow[field];
+        return val && val.trim().toLowerCase() === fullName.toLowerCase();
+    });
+
+    console.log("🔍 User responsible?", isResponsible);
+
+    /* -------------------------------------------------
+       6️⃣ UPDATE BUTTON IF RESPONSIBLE
+    ------------------------------------------------- */
+    if (isResponsible) {
+        completeBtn.classList.add("eod-btn-complete");
+        completeBtn.textContent = "✓ Completed Today’s Footfall";
+    }
+
+});
+</script>
 
 
-        document.getElementById("completeFootfallBtn").addEventListener("click", () => {
-            const w = window.open(
-                "/eod/footfallPopup.html",
-                "FootfallPopup",
-                "width=750,height=650,scrollbars=yes,resizable=yes"
-            );
-            if (w) w.focus();
-        });
 
-    </script>
+
 
 </body>
 

@@ -1,95 +1,322 @@
-.popup-wrapper {
+/* =====================================================
+   FOOTFALL POPUP — MATCH SURVEY STYLE
+   ===================================================== */
+
+html,
+body {
+  font-family: "ProximaNova", "Segoe UI", sans-serif;
+  background: #f5f7fa;
+  margin: 0;
+  padding: 0;
+  min-height: 100vh;
   display: flex;
   justify-content: center;
-  margin-top: 30px;
+  align-items: flex-start;
+}
+
+/* Wrapper + Card */
+.popup-wrapper {
+  width: 100%;
+  max-width: 760px;
+  padding: 1.5rem;
+  box-sizing: border-box;
 }
 
 .popup-card {
-  width: 600px;
-  background: white;
-  padding: 20px 25px;
+  background: #fff;
   border-radius: 10px;
-  box-shadow: 0 3px 10px rgba(0,0,0,0.15);
-  font-family: system-ui, sans-serif;
+  border: 1px solid #e6eef3;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  overflow: hidden;
 }
 
-.popup-card h1 {
-  margin-top: 0;
-  font-size: 1.5rem;
-  color: #0081ab;
-  margin-bottom: 20px;
+/* Header */
+.popup-header {
+  background: linear-gradient(90deg, #007ea8, #0092c7);
+  padding: 1rem 1.25rem;
+  color: white;
 }
 
-.store-row {
-  display: block;
-  margin-bottom: 20px;
+.popup-header h2 {
+  margin: 0;
+  font-size: 1.15rem;
   font-weight: 600;
 }
 
-.store-row select {
+/* Body */
+.popup-body {
+  padding: 1.5rem;
+  box-sizing: border-box;
+}
+
+.popup-body h3 {
+  color: #0081ab;
+  margin: 0 0 0.4rem;
+}
+
+.popup-body .muted {
+  color: #6f7a81;
+  font-size: 0.9rem;
+  margin: 0 0 1.25rem;
+}
+
+/* Section divider */
+.section-title {
+  margin: 1.75rem 0 0.75rem;
+  padding-top: 1rem;
+  border-top: 1px dashed #d6dde3;
+  font-weight: 600;
+  color: #273036;
+  font-size: 0.95rem;
+}
+
+/* Form grid */
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+  gap: 1.25rem 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+label {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: #273036;
+  margin-bottom: 0.35rem;
+  display: block;
+}
+
+/* Inputs */
+input[type="text"],
+input[type="number"],
+select {
   width: 100%;
-  padding: 8px;
-  margin-top: 4px;
+  padding: 0.55rem 0.65rem;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  border: 1px solid #ccd8df;
+  background: #fff;
+  box-sizing: border-box;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: #0081ab;
+  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.15);
+}
+
+.readonly-cell {
+  background: #f3f6f9;
+  color: #555;
+}
+
+/* =====================================================
+   TABLE STYLING
+   ===================================================== */
+
+.table-wrapper {
+  width: 100%;
+  overflow-x: auto;
 }
 
 #footfallTable {
   width: 100%;
   border-collapse: collapse;
-  margin-bottom: 20px;
+  margin-top: 0.5rem;
+  font-size: 0.9rem;
+}
+
+#footfallTable thead th {
+  background: #f3f7fb;
+  border-bottom: 1px solid #d8e2eb;
+  padding: 0.6rem 0.5rem;
+  text-align: left;
+  font-weight: 600;
+  color: #273036;
+  white-space: nowrap;
+}
+
+#footfallTable tbody td {
+  border-bottom: 1px solid #eef2f6;
+  padding: 0.4rem 0.5rem;
+  vertical-align: middle;
+}
+
+/* Make inputs fill cell nicely */
+#footfallTable input[type="number"],
+#footfallTable input[type="text"],
+#footfallTable select {
+  width: 100%;
+}
+
+/* =====================================================
+   BUTTONS (reusing survey style)
+   ===================================================== */
+
+button {
+  padding: 0.55rem 1.2rem;
+  font-size: 0.9rem;
+  border-radius: 6px;
+  border: none;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-primary {
+  background: linear-gradient(90deg, #007ea8, #0092c7);
+  color: white;
+}
+
+.btn-primary:hover {
+  background: linear-gradient(90deg, #008cb8, #00a4d6);
+}
+
+.btn-secondary {
+  background: #eef3f6;
+  color: #333;
+}
+
+.btn-secondary:hover {
+  background: #e1ebf0;
+}
+
+/* Footer actions */
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 1.75rem;
+  border-top: 1px solid #e6eef3;
+  padding-top: 1.25rem;
+}
+
+/* =====================================================
+   (Optional) Pagination controls styling
+   If/when you add next/back page buttons
+   ===================================================== */
+.nav-cell {
+  text-align: right;
+  white-space: nowrap;
+}
+
+.pager-btn {
+  padding: 0.4rem 0.85rem;
+  font-size: 0.85rem;
+  border-radius: 6px;
+  border: none;
+  background: #eef3f6;
+  color: #333;
+  cursor: pointer;
+  margin: 0 0.15rem;
+}
+
+.pager-btn:hover:not(:disabled) {
+  background: #e1ebf0;
+}
+
+.pager-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+/* Existing survey-based theme retained… */
+
+.wizard-nav {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 1.25rem;
+    margin-top: 1.25rem;
+}
+
+.pager-btn {
+    padding: 0.5rem 1rem;
+    font-size: 0.9rem;
+    border-radius: 6px;
+    background: #eef3f6;
+    border: 1px solid #d3dbe2;
+    cursor: pointer;
+    transition: background 0.2s ease;
+}
+
+.pager-btn:hover:not(:disabled) {
+    background: #e1ebf0;
+}
+
+.pager-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+}
+
+.page-indicator {
+    font-size: 0.9rem;
+    color: #4b565d;
+    font-weight: 600;
+}
+
+/* Keep table styling consistent */
+.table-wrapper {
+    margin-top: 0.5rem;
+    overflow-x: auto;
 }
 
 #footfallTable th,
 #footfallTable td {
-  border: 1px solid #ddd;
-  padding: 10px;
-  text-align: left;
+    padding: 0.55rem 0.45rem;
+    font-size: 0.9rem;
 }
-
-.user-select,
-#footfallCount {
+/* =======================
+   Saving Overlay
+======================= */
+.saving-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
   width: 100%;
-  padding: 6px;
-}
-
-.action-row {
+  height: 100%;
+  background: rgba(255,255,255,0.80);
+  backdrop-filter: blur(3px);
   display: flex;
-  justify-content: flex-end;
-  gap: 10px;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
 }
 
-.btn-primary {
-  background: #0081ab;
-  color: #fff;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
+.saving-overlay.hidden {
+  display: none;
 }
 
-.btn-secondary {
-  background: #ccc;
-  color: #333;
-  border: none;
-  padding: 8px 16px;
-  border-radius: 6px;
-  cursor: pointer;
-}
-.readonly-cell {
-  background: #f0f0f0;
-  border: 1px solid #ddd;
-  padding: 6px;
-  width: 100px;
+.saving-box {
+  background: #fff;
+  padding: 1.5rem 2rem;
+  border-radius: 12px;
+  border: 1px solid #dce6ec;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  text-align: center;
 }
 
-.num-input {
-  width: 120px;
-  padding: 5px;
-  margin-top: 4px;
+.saving-box p {
+  margin-top: 1rem;
+  color: #007ea8;
+  font-weight: 600;
+  font-size: 1rem;
 }
 
-.field-label {
-  display: flex;
-  flex-direction: column;
-  font-size: 0.85rem;
-  color: #555;
+/* Spinner */
+.loader {
+  width: 38px;
+  height: 38px;
+  border: 4px solid #cbe4ee;
+  border-top-color: #0092c7;
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  margin: 0 auto;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }

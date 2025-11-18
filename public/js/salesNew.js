@@ -106,13 +106,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("🧾 Prefilling customer from lookup:", c);
 
       document.querySelector('input[name="firstName"]').value = c["First Name"] || "";
-      document.querySelector('input[name="lastName"]').value  = c["Last Name"] || "";
-      document.querySelector('input[name="email"]').value     = c["Email"] || "";
+      document.querySelector('input[name="lastName"]').value = c["Last Name"] || "";
+      document.querySelector('input[name="email"]').value = c["Email"] || "";
       document.querySelector('input[name="contactNumber"]').value = c["Phone"] || "";
-      document.querySelector('input[name="postcode"]').value  = c["Postal Code"] || "";
-      document.querySelector('input[name="address1"]').value  = c["Address 1"] || "";
-      document.querySelector('input[name="address2"]').value  = c["Address 2"] || "";
-      document.querySelector('input[name="address3"]').value  = c["Address 3"] || "";
+      document.querySelector('input[name="postcode"]').value = c["Postal Code"] || "";
+      document.querySelector('input[name="address1"]').value = c["Address 1"] || "";
+      document.querySelector('input[name="address2"]').value = c["Address 2"] || "";
+      document.querySelector('input[name="address3"]').value = c["Address 3"] || "";
 
       window.currentCustomerId = c["Internal ID"];
     } catch (err) {
@@ -136,18 +136,28 @@ document.addEventListener("DOMContentLoaded", async () => {
       const discountPct = parseFloat(tr.querySelector(".item-discount")?.value || 0);
       const salePriceGross = parseFloat(tr.querySelector(".item-saleprice")?.value || 0);
 
-      if (qty > 0 && (salePriceGross > 0 || base > 0)) {
-        const grossLineTotal = salePriceGross > 0
-          ? salePriceGross * qty
-          : base * qty * 1.2;
+      if (qty > 0) {
+        const retailGross = base * qty * 1.2;
+
+        // NEW: correct logic
+        let grossLineTotal;
+        if (discountPct === 100) {
+          grossLineTotal = 0;
+        } else if (salePriceGross > 0) {
+          grossLineTotal = salePriceGross * qty;
+        } else {
+          grossLineTotal = retailGross;
+        }
+
         const netLineTotal = grossLineTotal / 1.2;
-        const retailGrossTotal = base * qty * 1.2;
-        const discountValue = retailGrossTotal * (discountPct / 100);
+
+        const discountValue = retailGross * (discountPct / 100);
 
         discountTotal += discountValue;
         netTotal += netLineTotal;
         grossTotal += grossLineTotal;
       }
+
     });
 
     const taxTotal = grossTotal - netTotal;
@@ -236,41 +246,41 @@ document.addEventListener("click", async (e) => {
       warehouse: document.getElementById("warehouse").value,
     };
 
-const items = [...document.querySelectorAll("#orderItemsBody .order-line")].map((tr) => {
-  const item = tr.querySelector(".item-internal-id").value;
-  const quantity = parseFloat(tr.querySelector(".item-qty").value || 0);
-  const amount = parseFloat(tr.querySelector(".item-saleprice").value || 0);
-  const options = tr.querySelector(".options-summary")?.innerText || "";
-  const fulfilmentMethod = tr.querySelector(".item-fulfilment").value;
+    const items = [...document.querySelectorAll("#orderItemsBody .order-line")].map((tr) => {
+      const item = tr.querySelector(".item-internal-id").value;
+      const quantity = parseFloat(tr.querySelector(".item-qty").value || 0);
+      const amount = parseFloat(tr.querySelector(".item-saleprice").value || 0);
+      const options = tr.querySelector(".options-summary")?.innerText || "";
+      const fulfilmentMethod = tr.querySelector(".item-fulfilment").value;
 
-  // ✅ Pull data attributes from modal logic
-  const lotnumber = tr.dataset.lotnumber || "";
-  const inventoryMeta = tr.dataset.inventoryMeta || "";
+      // ✅ Pull data attributes from modal logic
+      const lotnumber = tr.dataset.lotnumber || "";
+      const inventoryMeta = tr.dataset.inventoryMeta || "";
 
-  console.log("🧩 Building line for NetSuite:", {
-    item,
-    quantity,
-    amount,
-    lotnumber,
-    hasMeta: !!inventoryMeta,
-  });
+      console.log("🧩 Building line for NetSuite:", {
+        item,
+        quantity,
+        amount,
+        lotnumber,
+        hasMeta: !!inventoryMeta,
+      });
 
-  return {
-    item,
-    quantity,
-    amount,
-    options,
-    fulfilmentMethod,
-    lotnumber,
-    inventoryMeta,
-  };
-});
+      return {
+        item,
+        quantity,
+        amount,
+        options,
+        fulfilmentMethod,
+        lotnumber,
+        inventoryMeta,
+      };
+    });
 
 
 
-const body = { customer, order, items, deposits };
-console.log("💰 Including deposits in payload:", deposits);
-await submitOrder(body);
+    const body = { customer, order, items, deposits };
+    console.log("💰 Including deposits in payload:", deposits);
+    await submitOrder(body);
 
   }
 });
@@ -311,24 +321,24 @@ async function submitOrder(orderPayload) {
 
     // Small delay for UI polish
     await new Promise((resolve) => setTimeout(resolve, 50));
-// 🧩 Include session token for authenticated NetSuite calls
-const saved = storageGet();
-const headers = {
-  "Content-Type": "application/json",
-  ...(saved?.token ? { Authorization: `Bearer ${saved.token}` } : {}),
-};
+    // 🧩 Include session token for authenticated NetSuite calls
+    const saved = storageGet();
+    const headers = {
+      "Content-Type": "application/json",
+      ...(saved?.token ? { Authorization: `Bearer ${saved.token}` } : {}),
+    };
 
-if (!saved?.token) {
-  console.warn("⚠️ No session token found — request may fail with 401");
-}
+    if (!saved?.token) {
+      console.warn("⚠️ No session token found — request may fail with 401");
+    }
 
-console.log("📡 Sending order request with headers:", headers);
+    console.log("📡 Sending order request with headers:", headers);
 
-const res = await fetch("/api/netsuite/salesorder/create", {
-  method: "POST",
-  headers,
-  body: JSON.stringify(orderPayload),
-});
+    const res = await fetch("/api/netsuite/salesorder/create", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(orderPayload),
+    });
 
 
     const data = await res.json();

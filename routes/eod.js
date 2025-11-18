@@ -1,282 +1,170 @@
-// public/eod/footfallPopup.js
-document.addEventListener("DOMContentLoaded", async () => {
+// routes/eod.js
+require("dotenv").config();
+const express = require("express");
+const fetch = require("node-fetch");
+const { getSession } = require("../sessions");
+const nsClient = require("../netsuiteClient");
 
-  console.log("🟢 Footfall popup script loaded.");
+const router = express.Router();
 
-  /* =====================================================
-     AUTH HEADERS
-  ===================================================== */
-  const auth = storageGet?.();
-  const token = auth?.token;
-  const headers = token ? { Authorization: `Bearer ${token}` } : {};
-
-  console.log("🔐 Auth headers:", headers);
-
-
-  /* =====================================================
-     LOAD USERS
-  ===================================================== */
-  console.log("📡 Fetching users…");
-
-  let users = [];
+/* ============================================================
+   GET FOOTFALL DATA — via NetSuite Scriptlet
+   ============================================================ */
+router.get("/footfall", async (req, res) => {
   try {
-    const res = await fetch("/api/users", { headers });
-    const data = await res.json();
-    console.log("📥 Users response:", data);
+    const baseUrl = process.env.EOD_FOOTFALL_URL;
+    const token = process.env.EOD_FOOTFALL;
 
-    if (!data.ok) throw new Error("User load failed");
-
-    users = data.users || [];
-    console.log(`👤 Loaded ${users.length} users`);
-  } catch (err) {
-    console.error("❌ Failed to load users:", err);
-  }
-
-  function populateUserDropdowns() {
-    console.log("🔄 Populating user dropdowns…");
-    const selects = document.querySelectorAll(".user-select");
-    selects.forEach((sel) => {
-      sel.innerHTML = `<option value="">Select...</option>`;
-      users.forEach((u) => {
-        const opt = document.createElement("option");
-        opt.value = u.id;
-        opt.textContent = `${u.firstName} ${u.lastName}`;
-        sel.appendChild(opt);
+    if (!baseUrl || !token) {
+      return res.status(500).json({
+        ok: false,
+        error: "Missing EOD_FOOTFALL_URL or EOD_FOOTFALL in .env",
       });
-    });
-  }
+    }
 
+    const url = `${baseUrl}&token=${encodeURIComponent(token)}`;
+    console.log("📡 Fetching footfall from NetSuite:", url);
 
-  /* =====================================================
-     LOAD STORES
-  ===================================================== */
-  console.log("📡 Fetching locations…");
+    const nsRes = await fetch(url);
+    const text = await nsRes.text();
 
-  const storeSelect = document.getElementById("storeSelect");
-  const headerRow = document.getElementById("footfallHeaderRow");
-  const tbody = document.getElementById("footfallTableBody");
+    if (!nsRes.ok) {
+      console.error("❌ NetSuite footfall scriptlet error:", text);
+      return res.status(500).json({
+        ok: false,
+        error: "NetSuite footfall scriptlet returned an error.",
+        raw: text,
+      });
+    }
 
-  let locations = [];
-
-  try {
-    const locRes = await fetch("/api/meta/locations", { headers });
-    const locData = await locRes.json();
-    console.log("📥 Locations response:", locData);
-
-    if (!locData.ok) throw new Error("Location load failed");
-
-    locations = locData.locations || [];
-    console.log(`📍 Loaded ${locations.length} locations`);
-  } catch (err) {
-    console.error("❌ Failed to load locations:", err);
-  }
-
-  // Populate dropdown
-  storeSelect.innerHTML = `<option value="">Select Store...</option>`;
-  locations.forEach((loc) => {
-    const raw = loc.name || "";
-    const clean = raw.includes(":") ? raw.split(":")[1].trim() : raw.trim();
-    const opt = document.createElement("option");
-    opt.value = clean;
-    opt.textContent = clean;
-    storeSelect.appendChild(opt);
-  });
-  console.log("🏪 Store dropdown populated.");
-
-
-  /* =====================================================
-     LOAD FOOTFALL RESULTS
-  ===================================================== */
-  console.log("📡 Fetching footfall results…");
-
-  let footfallResults = [];
-
-  async function loadFootfall() {
+    let json;
     try {
-      const res = await fetch("/api/eod/footfall", { headers });
-      const text = await res.text();
-
-      console.log("📥 Raw /api/eod/footfall response:", text);
-
-      let json;
-      try { json = JSON.parse(text); }
-      catch { 
-        console.error("❌ Could not parse JSON from footfall API:", text);
-        return [];
-      }
-
-      if (!json.ok) {
-        console.warn("⚠️ Footfall API not ok:", json);
-        return [];
-      }
-
-      return json.results || [];
-
+      json = JSON.parse(text);
     } catch (err) {
-      console.error("❌ Footfall fetch error:", err);
-      return [];
-    }
-  }
-
-  footfallResults = await loadFootfall();
-  console.log("📊 Final footfall results array:", footfallResults);
-
-
-  /* =====================================================
-     FIELDS TO SKIP
-  ===================================================== */
-  const skipFields = new Set([
-    "Internal ID",
-    "Store",
-    "Date",
-    "Day",
-    "Name",
-    "Script ID",
-    "Store Manager",
-    "Email Trigger",
-    "Other Web Reason",
-    "What Was Too Expensive?",
-    "What was Too Expensive? - Old",
-    "What was not Available? - old",
-    "What was not available?",
-    "Bed Specialist",
-    "Bed Specialist 2",
-  ]);
-
-
-  /* =====================================================
-     BUILD HEADER
-  ===================================================== */
-  function buildHeaderRow(row) {
-    console.log("🧱 Building header row for:", row);
-
-    headerRow.innerHTML = "";
-
-    headerRow.innerHTML += `<th>Internal ID</th>`;
-    headerRow.innerHTML += `<th>Bed Specialist</th>`;
-    headerRow.innerHTML += `<th>Bed Specialist 2</th>`;
-
-    Object.entries(row).forEach(([key, value]) => {
-      if (skipFields.has(key)) return;
-
-      const raw = value == null || value === "" ? "0" : String(value).replace(/,/g, "");
-      const num = Number(raw);
-
-      if (!isNaN(num)) {
-        headerRow.innerHTML += `<th>${key}</th>`;
-      }
-    });
-
-    console.log("🧱 Header row complete:", headerRow.innerHTML);
-  }
-
-
-  /* =====================================================
-     STORE SELECTION → BUILD ROW
-  ===================================================== */
-  storeSelect.addEventListener("change", () => {
-    const storeName = storeSelect.value.trim().toLowerCase();
-    console.log("🏪 Store selected:", storeName);
-
-    tbody.innerHTML = "";
-    headerRow.innerHTML = "";
-
-    if (!storeName) {
-      console.log("⚠️ No store selected.");
-      return;
-    }
-
-    console.log("🔍 Searching for matching footfall row…");
-
-    const todayRow = footfallResults.find((r) => {
-      const raw = (r["Store"] || "").toLowerCase();
-      const clean = raw.includes(":")
-        ? raw.split(":")[1].trim().toLowerCase()
-        : raw.trim();
-
-      console.log(`Comparing: clean="${clean}" vs selected="${storeName}"`);
-      return clean.includes(storeName);
-    });
-
-    console.log("➡️ Matched row:", todayRow);
-
-    if (!todayRow) {
-      console.warn("⚠️ No matching footfall row found for store:", storeName);
-      return;
-    }
-
-    buildHeaderRow(todayRow);
-
-    console.log("🧱 Building table row…");
-
-    const tr = document.createElement("tr");
-
-    // Internal ID
-    tr.innerHTML += `
-      <td><input type="text" readonly class="readonly-cell" value="${todayRow["Internal ID"] || ""}" /></td>
-    `;
-
-    // Bed Specialist
-    tr.innerHTML += `<td><select id="bedSpecialist" class="user-select"></select></td>`;
-
-    // Bed Specialist 2
-    tr.innerHTML += `<td><select id="bedSpecialist2" class="user-select"></select></td>`;
-
-    // Numeric fields
-    Object.entries(todayRow).forEach(([key, val]) => {
-      if (skipFields.has(key)) return;
-
-      const raw = val == null || val === "" ? "0" : String(val).replace(/,/g, "");
-      const num = Number(raw);
-      if (isNaN(num)) return;
-
-      tr.innerHTML += `
-        <td><input type="number" class="num-input" min="0" value="${num}" data-field="${key}" /></td>
-      `;
-    });
-
-    tbody.appendChild(tr);
-
-    console.log("🧱 Row created:", tr);
-
-    // Populate specialists
-    populateUserDropdowns();
-
-    // Preselect
-    const bs1 = document.getElementById("bedSpecialist");
-    const bs2 = document.getElementById("bedSpecialist2");
-
-    console.log("🧩 Preselecting bed specialists…");
-
-    const bs1Name = todayRow["Bed Specialist"];
-    const bs2Name = todayRow["Bed Specialist 2"];
-
-    if (bs1Name) {
-      [...bs1.options].forEach((o) => {
-        if (o.textContent.trim().toLowerCase() === bs1Name.trim().toLowerCase()) {
-          bs1.value = o.value;
-        }
+      console.error("❌ Failed to parse NetSuite JSON:", err.message);
+      return res.status(500).json({
+        ok: false,
+        error: "NetSuite scriptlet returned invalid JSON.",
+        raw: text,
       });
     }
 
-    if (bs2Name) {
-      [...bs2.options].forEach((o) => {
-        if (o.textContent.trim().toLowerCase() === bs2Name.trim().toLowerCase()) {
-          bs2.value = o.value;
-        }
-      });
-    }
+    return res.json(json);
 
-    console.log("✅ Finished populating UI for store:", storeName);
-  });
-
-
-  /* =====================================================
-     SAVE HANDLER
-  ===================================================== */
-  document.getElementById("saveFootfallBtn").addEventListener("click", () => {
-    console.log("💾 Save button clicked");
-    alert("Saving coming soon…");
-  });
-
+  } catch (err) {
+    console.error("❌ /api/eod/footfall error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
 });
+
+
+
+/* ============================================================
+   PATCH FOOTFALL RECORD — Update customrecord_sb_footfall
+   ============================================================ */
+router.patch("/footfall/update", async (req, res) => {
+  try {
+    const { internalId, values } = req.body;
+
+    if (!internalId) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing internalId",
+      });
+    }
+
+    if (!values || typeof values !== "object") {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing values object",
+      });
+    }
+
+    console.log("📝 Incoming Footfall PATCH →", { internalId, values });
+
+    /* ------------------------------------------------------------
+       Resolve EPOS session → retrieve DB-stored NetSuite tokens
+       ------------------------------------------------------------ */
+    const auth = req.headers.authorization || "";
+    const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+
+    if (!bearer) {
+      return res.status(401).json({ ok: false, error: "No Bearer token" });
+    }
+
+    let userId = null;
+    try {
+      const session = await getSession(bearer);
+      console.log("🧠 Footfall Session:", session);
+
+      userId = session?.id || null;
+      if (!userId) {
+        return res.status(401).json({ ok: false, error: "Invalid session" });
+      }
+    } catch (err) {
+      console.error("❌ Failed to load session:", err.message);
+      return res.status(401).json({ ok: false, error: "Invalid session" });
+    }
+
+    console.log("🔐 Using NetSuite token of user:", userId);
+
+    /* ------------------------------------------------------------
+       Transform VALUES into NetSuite REST structure
+       (Frontend already provides correct field map and NS IDs)
+       ------------------------------------------------------------ */
+
+    const body = {};
+
+    for (const [label, rawVal] of Object.entries(values)) {
+      if (rawVal === "" || rawVal === null) continue;
+
+      const nsFieldId = label; // 🚨 IMPORTANT:
+                               // We do NOT map here — the frontend uses FIELD_MAP
+                               // and directly sends NetSuite field IDs.
+                               // Example coming from frontend:
+                               // { "custrecord_sb_bed_specialist_1": "39391" }
+
+      // If value is numeric, send number; otherwise string
+      const val =
+        typeof rawVal === "string" && rawVal.match(/^\d+(\.\d+)?$/)
+          ? Number(rawVal)
+          : rawVal;
+
+      // If field is a person (netsuite id), wrap correctly
+      if (String(nsFieldId).includes("bed_specialist")) {
+        body[nsFieldId] = { id: String(val) }; // ⭐ correct structure
+      } else if (String(nsFieldId).includes("team_leader")) {
+        body[nsFieldId] = { id: String(val) };
+      } else if (typeof val === "number") {
+        body[nsFieldId] = val;
+      } else {
+        body[nsFieldId] = val;
+      }
+    }
+
+    console.log("📦 Final PATCH body to NetSuite:", body);
+
+    /* ------------------------------------------------------------
+       SEND PATCH → NetSuite (per-user TBA)
+       ------------------------------------------------------------ */
+    const endpoint = `/customrecord_sb_footfall/${internalId}`;
+
+    console.log(`🔧 [PATCH] NetSuite ${endpoint}`);
+
+    const result = await nsClient.nsPatch(endpoint, body, userId, "sb");
+
+    console.log("✅ NetSuite Footfall PATCH result:", result);
+
+    return res.json({ ok: true, result });
+
+  } catch (err) {
+    console.error("❌ Footfall PATCH error:", err.responseBody || err.message);
+
+    return res.status(500).json({
+      ok: false,
+      error: err.responseBody || err.message,
+    });
+  }
+});
+
+module.exports = router;

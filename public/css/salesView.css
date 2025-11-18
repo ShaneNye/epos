@@ -722,14 +722,49 @@ textarea:focus {
   padding: 10px 15px;
 }
 
+/* ============================
+   MEMO TABLE – FIXED + NARROWER
+   ============================ */
+
 .memo-content table {
   width: 100%;
   border-collapse: collapse;
+  table-layout: fixed; /* lock column widths */
+}
+
+/* Column Widths */
+.memo-content th:nth-child(1),
+.memo-content td:nth-child(1) {
+  width: 90px;       /* Date */
+}
+
+.memo-content th:nth-child(2),
+.memo-content td:nth-child(2) {
+  width: 120px;      /* Author */
+}
+
+.memo-content th:nth-child(3),
+.memo-content td:nth-child(3) {
+  width: 150px;      /* Title */
+}
+
+.memo-content th:nth-child(4),
+.memo-content td:nth-child(4) {
+  width: 100px;      /* Type */
+}
+
+/* Memo column = flexible */
+.memo-content th:nth-child(5),
+.memo-content td:nth-child(5) {
+  width: auto;
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
 }
 
 .memo-content th {
   text-align: left;
-  background: #006d83;
+  background: #0081ab;
   color: white;
   font-weight: 600;
   padding: 6px 8px;
@@ -738,6 +773,14 @@ textarea:focus {
 .memo-content td {
   padding: 6px 8px;
   border-bottom: 1px solid #e8eef3;
+
+  /* Allow wrapping in all columns */
+  white-space: normal;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+
+  vertical-align: top;
+  line-height: 1.4em;
 }
 
 .no-memos {

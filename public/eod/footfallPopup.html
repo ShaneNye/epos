@@ -5,9 +5,7 @@
     <meta charset="UTF-8" />
     <title>End Of Day – Footfall</title>
 
-    <!-- Correct absolute path to CSS -->
     <link rel="stylesheet" href="/eod/footfallPopup.css" />
-
     <script src="/js/storage.js"></script>
     <script src="/eod/footfallPopup.js" defer></script>
 </head>
@@ -16,36 +14,59 @@
     <div class="popup-wrapper">
         <div class="popup-card">
 
-            <h1>Footfall – Today</h1>
+            <div class="popup-header">
+                <h2>Footfall – Today</h2>
+            </div>
 
-            <!-- STORE SELECTOR -->
-            <label class="store-row">
-                Store
-                <select id="storeSelect">
-                    <option value="">Select Store...</option>
-                </select>
-            </label>
+            <div class="popup-body">
 
-            <!-- MAIN TABLE -->
-            <table id="footfallTable">
-                <thead>
-                    <tr id="footfallHeaderRow">
-                        <!-- JS will inject column headers -->
-                    </tr>
-                </thead>
+                <h3>End of Day Footfall</h3>
+                <p class="muted">Select your store and complete today’s footfall records.</p>
 
-                <tbody id="footfallTableBody">
-                    <!-- JS will inject the dynamic row -->
-                </tbody>
-            </table>
+                <div class="form-grid">
+                    <div>
+                        <label for="storeSelect">Store</label>
+                        <select id="storeSelect">
+                            <option value="">Select Store...</option>
+                        </select>
+                    </div>
+                </div>
 
-            <div class="action-row">
-                <button id="saveFootfallBtn" class="btn-primary">Save Footfall</button>
-                <button id="closeBtn" class="btn-secondary" onclick="window.close()">Close</button>
+                <div class="section-title">Footfall Details</div>
+
+                <div class="table-wrapper">
+                    <table id="footfallTable">
+                        <thead>
+                            <tr id="footfallHeaderRow"></tr>
+                        </thead>
+                        <tbody id="footfallTableBody"></tbody>
+                    </table>
+                </div>
+
+                <!-- PAGE NAVIGATION (Option A) -->
+                <div id="wizardNav" class="wizard-nav">
+                    <button id="backBtn" class="pager-btn">Back</button>
+                    <span id="pageIndicator" class="page-indicator">Page 1</span>
+                    <button id="nextBtn" class="pager-btn">Next</button>
+                </div>
+
+                <div class="form-actions">
+                    <button id="closeBtn" class="btn-secondary" onclick="window.close()">Close</button>
+                    <button id="saveFootfallBtn" class="btn-primary">Save Footfall</button>
+                </div>
+
             </div>
 
         </div>
     </div>
+    <!-- Saving Spinner Overlay -->
+<div id="savingOverlay" class="saving-overlay hidden">
+  <div class="saving-box">
+    <div class="loader"></div>
+    <p>Saving...</p>
+  </div>
+</div>
+
 </body>
 
 </html>
