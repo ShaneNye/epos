@@ -12,7 +12,6 @@
     <script src="/js/storage.js"></script>
     <script src="/js/menu.js"></script>
 
-
     <!-- Virtual Sales Assistant -->
     <script src="/assistant/assistant.js"></script>
     <script type="module" src="/assistant/assistantHooks.js"></script>
@@ -20,157 +19,170 @@
 
 <body>
 
+    <!-- Menu -->
     <div id="menu"></div>
+
+    <!-- ============================
+         EOD LOCKED MESSAGE (Hidden)
+    ============================= -->
+    <div id="eodLockedMessage" class="hidden eod-locked">
+        <h2 id="eodLockedTitle"></h2>
+        <p>End of Day has already been completed for this store.</p>
+    </div>
 
     <main class="content">
         <h1>End Of Day</h1>
 
-        <div class="eod-wrapper">
-            <div class="eod-columns">
+        <!-- ============================
+             ALL PANELS NOW WRAPPED
+        ============================= -->
+        <div id="eodPanels">
 
-                <!-- LEFT COLUMN -->
-                <div class="eod-left">
+            <div class="eod-wrapper">
+                <div class="eod-columns">
 
-                    <!-- STEP 1 -->
-                    <div class="eod-step">
-                        <h2>Step 1 — Footfall</h2>
-                        <p>Record the total customer footfall for today before completing end-of-day balancing.</p>
+                    <!-- LEFT COLUMN -->
+                    <div class="eod-left">
 
-                        <button class="eod-btn" id="openFootfallBtn">Enter Footfall</button>
-                        <button class="eod-btn eod-btn-secondary" id="completeFootfallBtn">
-                            <span class="btn-text">Complete Today’s Footfall</span>
-                        </button>
-                    </div>
+                        <!-- STEP 1 -->
+                        <div class="eod-step">
+                            <h2>Step 1 — Footfall</h2>
+                            <p>Record the total customer footfall for today before completing end-of-day balancing.</p>
 
-                    <!-- STEP 2 -->
-                    <div class="eod-step" id="dailyBalancingStep">
-
-                        <h2>Step 2 — Daily Balancing</h2>
-                        <p>Review today's customer deposits grouped by payment method.</p>
-
-                        <div class="eod-form-row">
-                            <label for="dailyBalanceStoreSelect">Store</label>
-                            <select id="dailyBalanceStoreSelect">
-                                <option value="">Select Store...</option>
-                            </select>
+                            <button class="eod-btn" id="openFootfallBtn">Enter Footfall</button>
+                            <button class="eod-btn eod-btn-secondary" id="completeFootfallBtn">
+                                <span class="btn-text">Complete Today’s Footfall</span>
+                            </button>
                         </div>
 
-                        <div id="dailyBalanceSummaryPill" class="daily-balance-summary-pill hidden">
-                            <span id="dailyBalanceSummaryText"></span>
-                        </div>
+                        <!-- STEP 2 -->
+                        <div class="eod-step" id="dailyBalancingStep">
 
-                        <div class="daily-balance-table-wrapper">
-                            <table id="dailyBalanceTable" class="daily-balance-table">
-                                <thead>
-                                    <tr>
-                                        <th>Payment Method</th>
-                                        <th style="width:120px;">Count</th>
-                                        <th style="width:160px; text-align:right;">Total Amount</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="dailyBalanceTableBody">
-                                    <tr>
-                                        <td colspan="3" class="daily-balance-empty">
-                                            Select a store to view customer deposits.
-                                        </td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                        </div>
+                            <h2>Step 2 — Daily Balancing</h2>
+                            <p>Review today's customer deposits grouped by payment method.</p>
 
-                    </div>
-
-                </div>
-
-                <!-- RIGHT COLUMN -->
-                <div class="eod-right">
-
-                    <!-- STEP 3 — Cashflow -->
-                    <div class="eod-step" id="cashflowPanel">
-
-                        <h2>Step 3 — Cashflow</h2>
-                        <p>Allocate today’s cash deposits into Safe / Float.</p>
-                        <!-- Adjustment Button -->
-                        <button class="eod-btn eod-btn-secondary" id="openAdjustmentBtn">
-                            Adjustment
-                        </button>
-
-                        <div class="cashflow-table-wrapper">
-                            <table class="cashflow-table">
-                                <thead>
-                                    <tr>
-                                        <th>Deposit</th>
-                                        <th style="width:140px;">Safe</th>
-                                        <th style="width:140px;">Float</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="cashflowTableBody">
-                                    <tr>
-                                        <td colspan="3" class="cashflow-empty">Waiting for store selection...</td>
-                                    </tr>
-                                </tbody>
-                                <!-- Adjustment rows -->
-                                <tbody id="cashflowAdjustmentRows"></tbody>
-                            </table>
-                        </div>
-
-                        <div class="cashflow-totals">
-                            <div>
-                                <strong>Total Safe:</strong>
-                                <span id="totalSafe">£0.00</span>
-                            </div>
-                            <div>
-                                <strong>Total Float:</strong>
-                                <span id="totalFloat">£0.00</span>
-                            </div>
-                        </div>
-
-                    </div>
-                    <!-- STEP 4 — End Of Day Sign-Off -->
-                    <div class="eod-step" id="signoffPanel">
-
-                        <h2>Step 4 — Sign Off</h2>
-                        <p>Please review all End Of Day details before submitting.</p>
-
-                        <div class="signoff-row">
-                            <div class="signoff-field">
-                                <label for="signoffUserSelect">Completed by</label>
-                                <select id="signoffUserSelect">
-                                    <option value="">Select user...</option>
+                            <div class="eod-form-row">
+                                <label for="dailyBalanceStoreSelect">Store</label>
+                                <select id="dailyBalanceStoreSelect">
+                                    <option value="">Select Store...</option>
                                 </select>
                             </div>
-                        </div>
 
-                        <div class="signoff-row signoff-confirm">
-                            <label>
-                                <input type="checkbox" id="signoffConfirm" />
-                                I confirm I have completed the End Of Day process correctly to the best of my knowledge.
-                            </label>
-                        </div>
+                            <div id="dailyBalanceSummaryPill" class="daily-balance-summary-pill hidden">
+                                <span id="dailyBalanceSummaryText"></span>
+                            </div>
 
-                        <div class="signoff-actions">
-                            <button id="signoffSubmitBtn" class="eod-btn eod-btn-secondary" disabled>
-                                Submit End Of Day
-                            </button>
-                            <span id="signoffStatus" class="signoff-status"></span>
+                            <div class="daily-balance-table-wrapper">
+                                <table id="dailyBalanceTable" class="daily-balance-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Payment Method</th>
+                                            <th style="width:120px;">Count</th>
+                                            <th style="width:160px; text-align:right;">Total Amount</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dailyBalanceTableBody">
+                                        <tr>
+                                            <td colspan="3" class="daily-balance-empty">
+                                                Select a store to view customer deposits.
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+
                         </div>
 
                     </div>
 
+                    <!-- RIGHT COLUMN -->
+                    <div class="eod-right">
+
+                        <!-- STEP 3 — Cashflow -->
+                        <div class="eod-step" id="cashflowPanel">
+
+                            <h2>Step 3 — Cashflow</h2>
+                            <p>Allocate today’s cash deposits into Safe / Float.</p>
+
+                            <!-- Adjustment Button -->
+                            <button class="eod-btn eod-btn-secondary" id="openAdjustmentBtn">
+                                Adjustment
+                            </button>
+
+                            <div class="cashflow-table-wrapper">
+                                <table class="cashflow-table">
+                                    <thead>
+                                        <tr>
+                                            <th>Deposit</th>
+                                            <th style="width:140px;">Safe</th>
+                                            <th style="width:140px;">Float</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="cashflowTableBody">
+                                        <tr>
+                                            <td colspan="3" class="cashflow-empty">Waiting for store selection...</td>
+                                        </tr>
+                                    </tbody>
+
+                                    <!-- Adjustment rows -->
+                                    <tbody id="cashflowAdjustmentRows"></tbody>
+                                </table>
+                            </div>
+
+                            <div class="cashflow-totals">
+                                <div>
+                                    <strong>Total Safe:</strong>
+                                    <span id="totalSafe">£0.00</span>
+                                </div>
+                                <div>
+                                    <strong>Total Float:</strong>
+                                    <span id="totalFloat">£0.00</span>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <!-- STEP 4 — Sign-Off -->
+                        <div class="eod-step" id="signoffPanel">
+
+                            <h2>Step 4 — Sign Off</h2>
+                            <p>Please review all End Of Day details before submitting.</p>
+
+                            <div class="signoff-row">
+                                <div class="signoff-field">
+                                    <label for="signoffUserSelect">Completed by</label>
+                                    <select id="signoffUserSelect">
+                                        <option value="">Select user...</option>
+                                    </select>
+                                </div>
+                            </div>
+
+                            <div class="signoff-row signoff-confirm">
+                                <label>
+                                    <input type="checkbox" id="signoffConfirm" />
+                                    I confirm I have completed the End Of Day process correctly to the best of my
+                                    knowledge.
+                                </label>
+                            </div>
+
+                            <div class="signoff-actions">
+                                <button id="signoffSubmitBtn" class="eod-btn eod-btn-secondary" disabled>
+                                    Submit End Of Day
+                                </button>
+                                <span id="signoffStatus" class="signoff-status"></span>
+                            </div>
+
+                        </div>
+
+                    </div>
 
                 </div>
-
             </div>
 
-
-        </div>
+        </div> <!-- end #eodPanels -->
     </main>
+
     <script type="module" src="/js/eodMain.js"></script>
-
-
-
-
-
 
 </body>
 

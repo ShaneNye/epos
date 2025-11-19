@@ -1,112 +1,154 @@
-        .eod-wrapper {
-            max-width: 900px;
-            margin: 2rem auto;
-        }
+/* ============================================================
+   GLOBAL LAYOUT WRAPPERS
+============================================================ */
 
-        .eod-step {
-            background: #fff;
-            border: 1px solid #e3e6ea;
-            padding: 20px;
-            border-radius: 8px;
-            margin-bottom: 20px;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-        }
+.eod-wrapper {
+    max-width: 1100px;
+    margin: 2rem auto;
+}
 
-        .eod-step h2 {
-            margin-top: 0;
-            color: var(--brand);
-            font-size: 1.3rem;
-        }
+.eod-columns {
+    display: grid;
+    grid-template-columns: 1fr 380px;
+    gap: 22px;
+    align-items: start;
+}
 
-        .eod-step p {
-            color: #555;
-            margin-bottom: 16px;
-        }
+/* Stack on mobile */
+@media (max-width: 1100px) {
+    .eod-columns {
+        grid-template-columns: 1fr;
+    }
+}
 
-        .eod-btn {
-            background: var(--brand);
-            color: #fff;
-            border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 1rem;
-            font-weight: 600;
-            transition: background 0.2s ease, transform 0.1s ease;
-            margin-right: 10px;
-        }
+/* Hide panels when locked */
+.hidden {
+    display: none !important;
+}
 
-        .eod-btn:hover {
-            background: var(--brand-600);
-            transform: translateY(-1px);
-        }
+/* ============================================================
+   LOCKED MESSAGE
+============================================================ */
 
-        /* Secondary button */
-        .eod-btn-secondary {
-            background: #6a7480;
-        }
+.eod-locked {
+    background: #fff6da;
+    border: 1px solid #f2d28c;
+    border-radius: 10px;
+    padding: 28px;
+    margin: 2rem auto;
+    max-width: 900px;
+    color: #5b4b24;
+    font-size: 1.1rem;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
 
-        .eod-btn-secondary:hover {
-            background: #555;
-        }
+.eod-locked h2 {
+    margin-top: 0;
+    margin-bottom: 10px;
+    font-size: 1.4rem;
+    color: #3e3a25;
+}
 
-        /* Coming soon placeholder */
-        .coming-soon {
-            background: #f5f5f5;
-            border: 1px dashed #bbb;
-            padding: 18px;
-            border-radius: 6px;
-            text-align: center;
-            color: #777;
-            font-style: italic;
-            font-size: 1rem;
-        }
 
-        .eod-btn-complete {
-            background: #2ecc71 !important;
-            /* Green */
-            color: #fff;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
+/* ============================================================
+   EOD STEP BLOCKS
+============================================================ */
 
-        .eod-btn-complete::before {
-            content: "✔";
-            font-weight: bold;
-        }
+.eod-step {
+    background: #fff;
+    border: 1px solid #e3e6ea;
+    padding: 22px;
+    border-radius: 10px;
+    margin-bottom: 22px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
 
-        .eod-btn-loading {
-            position: relative;
-            pointer-events: none;
-            opacity: 0.85;
-        }
+.eod-step h2 {
+    margin-top: 0;
+    margin-bottom: 8px;
+    color: var(--brand);
+    font-size: 1.35rem;
+}
 
-        .eod-btn-loading .btn-text {
-            opacity: 0.7;
-        }
+.eod-step p {
+    color: #555;
+    margin-bottom: 18px;
+    line-height: 1.45;
+}
 
-        /* Spinner container */
-        .eod-btn-loading::after {
-            content: "";
-            width: 16px;
-            height: 16px;
-            border: 2px solid rgba(255, 255, 255, 0.6);
-            border-top-color: #fff;
-            border-radius: 50%;
-            animation: spin 0.7s linear infinite;
-            position: absolute;
-            right: 12px;
-            top: 50%;
-            transform: translateY(-50%);
-        }
+/* ============================================================
+   BUTTONS
+============================================================ */
 
-        @keyframes spin {
-            to {
-                transform: rotate(360deg);
-            }
-        }
-        /* STEP 2 — Daily Balancing */
+.eod-btn {
+    background: var(--brand);
+    color: #fff;
+    border: none;
+    padding: 10px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.98rem;
+    font-weight: 600;
+    transition: 0.15s ease;
+    margin-right: 8px;
+}
+
+.eod-btn:hover {
+    background: var(--brand-600);
+    transform: translateY(-1px);
+}
+
+.eod-btn-secondary {
+    background: #6a7480;
+}
+
+.eod-btn-secondary:hover {
+    background: #555e69;
+}
+
+.eod-btn-complete {
+    background: #2ecc71 !important;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.eod-btn-complete::before {
+    content: "✔";
+    font-weight: bold;
+}
+
+/* Loading Spinner */
+.eod-btn-loading {
+    pointer-events: none;
+    opacity: 0.85;
+    position: relative;
+}
+
+.eod-btn-loading .btn-text {
+    opacity: 0.7;
+}
+
+.eod-btn-loading::after {
+    content: "";
+    width: 16px;
+    height: 16px;
+    border: 2px solid rgba(255,255,255,0.6);
+    border-top-color: #fff;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    position: absolute;
+    right: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ============================================================
+   STEP 2 — DAILY BALANCING
+============================================================ */
 
 .eod-form-row {
     margin-bottom: 1rem;
@@ -124,18 +166,17 @@
     padding: 8px 10px;
     border: 1px solid #ccd3da;
     border-radius: 6px;
-    background: #fff;
     font-size: 0.95rem;
 }
 
 /* Summary pill */
 .daily-balance-summary-pill {
-    padding: 8px 12px;
     background: #eef7ff;
     border: 1px solid #cfe5ff;
+    padding: 10px 12px;
     border-radius: 6px;
-    font-size: 0.9rem;
-    color: #0b4f7f;
+    font-size: 0.95rem;
+    color: #064b72;
     margin-bottom: 1rem;
 }
 
@@ -143,7 +184,7 @@
     display: none;
 }
 
-/* Table */
+/* Daily Balancing Table */
 .daily-balance-table-wrapper {
     margin-top: 10px;
     overflow-x: auto;
@@ -152,29 +193,26 @@
 .daily-balance-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.95rem;
 }
 
 .daily-balance-table th {
     background: #f3f7fb;
     border-bottom: 1px solid #d8e2eb;
-    padding: 8px;
-    text-align: left;
+    padding: 9px;
     font-weight: 600;
 }
 
 .daily-balance-table td {
-    padding: 8px;
+    padding: 9px;
     border-bottom: 1px solid #eef2f6;
 }
 
 .daily-balance-empty {
     text-align: center;
+    padding: 14px;
     color: #888;
-    padding: 12px;
 }
 
-/* Clickable master rows */
 .method-row {
     cursor: pointer;
     transition: background 0.15s ease;
@@ -185,145 +223,86 @@
 }
 
 .method-row--expanded {
-    background: #eef7fb;
+    background: #ecf7ff;
 }
 
-/* Expandable details */
+/* Details rows */
 .details-row.hidden {
     display: none;
 }
 
 .details-inner {
-    padding: 10px 5px;
     background: #fbfdff;
-}
-
-.details-inner table {
-    width: 100%;
-    border-collapse: collapse;
+    padding: 8px 4px;
 }
 
 .details-inner th {
-    text-align: left;
     border-bottom: 1px solid #dde6ee;
     padding: 4px;
     font-size: 0.85rem;
-    color: #4b565d;
 }
 
 .details-inner td {
-    padding: 4px;
     border-bottom: 1px solid #eef2f6;
+    padding: 4px;
 }
 
-.details-inner td:last-child {
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-}
-/* ============================
-   STEP 3 — Cashflow Panel
-============================ */
+/* ============================================================
+   STEP 3 — CASHFLOW
+============================================================ */
 
-#cashflowPanel {
-    min-height: 300px;
-}
-
-/* Wrapper */
 .cashflow-table-wrapper {
     margin-top: 10px;
-    overflow-x: hidden; /* Prevent scrollbars */
+    overflow-x: hidden;
 }
 
-/* Table */
 .cashflow-table {
     width: 100%;
     border-collapse: collapse;
-    font-size: 0.95rem;
 }
 
-/* Headers */
 .cashflow-table th {
     background: #f3f7fb;
     border-bottom: 1px solid #d8e2eb;
-    padding: 10px 12px;
-    text-align: left;
+    padding: 10px;
     font-weight: 600;
-    white-space: nowrap;
 }
 
-/* Cells */
 .cashflow-table td {
-    padding: 10px 12px;
+    padding: 10px;
     border-bottom: 1px solid #eef2f6;
 }
 
-/* Input fields */
 .cashflow-table input {
     width: 100%;
-    padding: 8px 10px;
+    padding: 7px 9px;
     border: 1px solid #ccd3da;
     border-radius: 6px;
     font-size: 0.9rem;
-    box-sizing: border-box; /* Prevent clipping */
 }
 
 .cashflow-empty {
     text-align: center;
     color: #777;
-    padding: 14px;
+    padding: 16px;
 }
 
-/* Totals section */
 .cashflow-totals {
-    margin-top: 16px;
+    display: flex;
+    justify-content: space-between;
+    margin-top: 15px;
     padding-top: 12px;
     border-top: 1px solid #e3e6ea;
-    display: flex;
-    justify-content: space-between; /* Push totals apart */
     font-size: 1rem;
-    color: #333;
     font-weight: 600;
 }
 
-.cashflow-totals strong {
-    margin-right: 6px;
-}
-
 /* ============================================================
-   TWO-COLUMN EOD LAYOUT
+   STEP 4 — SIGN-OFF
 ============================================================ */
 
-.eod-columns {
-    display: grid;
-    grid-template-columns: 1fr 400px;  /* Left flexible, right fixed */
-    gap: 20px;
-    align-items: start;
-}
-
-/* Left column contains Step 1 + Step 2 */
-.eod-left {
-    display: flex;
-    flex-direction: column;
-    gap: 20px;
-}
-
-/* Right column contains Step 3 */
-.eod-right {
-    display: block;
-}
-
-/* Mobile — stack vertically */
-@media (max-width: 1100px) {
-    .eod-columns {
-        grid-template-columns: 1fr;
-    }
-}
-/* ============================
-   STEP 4 — Sign-Off Panel
-============================ */
-
 #signoffPanel {
-    margin-top: 20px;
+    margin-top: 22px;
 }
 
 .signoff-row {
@@ -331,45 +310,36 @@
 }
 
 .signoff-field label {
-    display: block;
     font-weight: 600;
+    display: block;
     margin-bottom: 4px;
-    color: #273036;
 }
 
 #signoffUserSelect {
     width: 100%;
-    max-width: 320px;
+    max-width: 300px;
+    border: 1px solid #ccd3da;
     padding: 8px 10px;
     border-radius: 6px;
-    border: 1px solid #ccd3da;
-    background: #fff;
-    font-size: 0.95rem;
 }
 
 .signoff-confirm label {
     font-size: 0.95rem;
-    color: #333;
 }
 
-.signoff-confirm input[type="checkbox"] {
+.signoff-confirm input {
     margin-right: 8px;
 }
 
 .signoff-actions {
     display: flex;
-    align-items: center;
     gap: 12px;
-    margin-top: 10px;
+    align-items: center;
 }
 
 #signoffSubmitBtn[disabled] {
     opacity: 0.6;
     cursor: not-allowed;
-}
-
-.signoff-status {
-    font-size: 0.9rem;
 }
 
 .signoff-status--ok {

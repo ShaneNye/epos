@@ -225,4 +225,27 @@
     cursor: not-allowed;
 }
 
-/* test
+.cashflow-wrapper {
+    display: flex;
+    gap: 20px;
+}
+
+/* LEFT PANEL — sticky and scrolls internally */
+.cashflow-panel.left {
+    width: 350px;
+    flex-shrink: 0;
+    position: sticky;
+    top: 90px; /* adjust depending on your menu height */
+    align-self: flex-start;
+    max-height: calc(92vh - 120px);
+    overflow-y: auto;
+    background: #fff;
+    border-right: 1px solid #e3e3e3;
+    padding-right: 10px;
+}
+
+/* RIGHT PANEL — fills remaining space */
+.cashflow-panel.right {
+    flex: 1;
+    min-width: 0; /* prevents overflow */
+}

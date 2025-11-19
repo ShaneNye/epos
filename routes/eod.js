@@ -5,6 +5,8 @@ const fetch = require("node-fetch");
 const { getSession } = require("../sessions");
 const nsClient = require("../netsuiteClient");
 const pool = require("../db");
+const db = require("../db");
+
 const router = express.Router();
 
 /* ============================================================
@@ -344,6 +346,52 @@ router.post("/submit", async (req, res) => {
         return res.status(500).json({ ok: false, error: err.message });
     }
 });
+
+router.get("/check-today", async (req, res) => {
+  try {
+    const rawId = req.query.storeId;
+    const storeId = Number(rawId);
+
+    console.log("🟢 /check-today called with:", { rawId, storeId });
+
+    if (!storeId) {
+      console.log("🔴 Invalid storeId");
+      return res.json({ ok: true, exists: false });
+    }
+
+    const sql = `
+      SELECT id, date, store_name
+      FROM end_of_day
+      WHERE location_id = $1
+      AND date = CURRENT_DATE
+      ORDER BY id DESC
+      LIMIT 1
+    `;
+
+    // ✅ FIXED — use pool.query
+    const result = await pool.query(sql, [storeId]);
+
+    console.log("🟢 Query result:", result.rows);
+
+    if (result.rows.length > 0) {
+      return res.json({
+        ok: true,
+        exists: true,
+        recordId: result.rows[0].id,
+        date: result.rows[0].date,
+        storeName: result.rows[0].store_name
+      });
+    }
+
+    return res.json({ ok: true, exists: false });
+
+  } catch (err) {
+    console.error("❌ EOD check error:", err);
+    res.status(500).json({ ok: false, error: "Check failed" });
+  }
+});
+
+
 
 
 module.exports = router;

@@ -600,17 +600,56 @@ async function initDailyBalancing() {
   /* -------------------------------------------------
      STORE CHANGE HANDLER
   ------------------------------------------------- */
-  storeSelect.addEventListener("change", () => {
+storeSelect.addEventListener("change", async () => {
     const selected = storeSelect.value;
 
     const matchLoc = locations.find(
-      (l) => cleanStore(l.name).toLowerCase() === selected.toLowerCase()
+        (l) => cleanStore(l.name).toLowerCase() === selected.toLowerCase()
     );
     selectedLocationId = matchLoc ? matchLoc.id : null;
 
+    // ---- LOCK CHECK -----------------------------------------------------
+    try {
+        const res = await fetch(`/api/eod/check-today?storeId=${selectedLocationId}`);
+        const data = await res.json();
+
+        const lockBox = document.getElementById("eodLockedMessage");
+        const lockTitle = document.getElementById("eodLockedTitle");
+        const leftCol = document.querySelector(".eod-left");
+        const rightCol = document.querySelector(".eod-right");
+
+        // SAFETY: Ensure elements exist before applying hide/show
+        if (!lockBox || !lockTitle) {
+            console.warn("⚠️ Lock UI elements missing in DOM");
+            return;
+        }
+
+        if (data.ok && data.exists) {
+            // Show lock message
+            lockTitle.textContent = `${data.storeName} end of day balances have already been completed`;
+            lockBox.classList.remove("hidden");
+
+            // SAFELY HIDE COLUMNS
+            if (leftCol) leftCol.classList.add("hidden");
+            if (rightCol) rightCol.classList.add("hidden");
+
+            return; // STOP — do NOT render daily balance or cashflow
+        }
+
+        // ---- NO LOCK - normal flow --------------------------------------
+        lockBox.classList.add("hidden");
+        if (leftCol) leftCol.classList.remove("hidden");
+        if (rightCol) rightCol.classList.remove("hidden");
+
+    } catch (err) {
+        console.error("🔴 Failed to check EOD lock:", err);
+    }
+
+    // Continue with the normal behaviour
     renderStore(selected);
     renderCashflow(selected);
-  });
+});
+
 
   /* -------------------------------------------------
      INITIAL RENDER (default user's store)
