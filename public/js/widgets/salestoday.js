@@ -36,15 +36,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     const grouped = {};
     todaysOrders.forEach((row) => {
       const docNum = row["Document Number"];
+      const internalId = row.InternalId;
       const amount = parseFloat(row.Amount) || 0;
 
       if (!grouped[docNum]) {
-        grouped[docNum] = {
-          docNum,
-          store: row.Store,
-          specialist: row["Bed Specialist"],
-          total: 0,
-        };
+      grouped[docNum] = {
+  docNum,
+  internalId,
+  store: row.Store,
+  specialist: row["Bed Specialist"],
+  total: 0,
+};
+
       }
       grouped[docNum].total += amount;
     });
@@ -67,10 +70,11 @@ document.addEventListener("DOMContentLoaded", async () => {
             (o) => `
           <tr>
             <td data-label="Document #">
-              <a href="https://7972741-sb1.app.netsuite.com/app/accounting/transactions/salesord.nl?tranid=${encodeURIComponent(
-                o.docNum
-              )}" target="_blank">${o.docNum}</a>
-            </td>
+  <a href="/sales/view/${encodeURIComponent(
+    o.internalId
+  )}" class="so-link">${o.docNum}</a>
+</td>
+
             <td data-label="Store">${o.store}</td>
             <td data-label="Bed Specialist">${o.specialist}</td>
             <td data-label="Total (£)" style="text-align:right;">${o.total.toFixed(2)}</td>
