@@ -43,6 +43,30 @@ async function loadItemCache() {
     return [];
   }
 }
+// ==========================================================
+// TOAST NOTIFICATION (Cloned from SalesNew.js)
+// ==========================================================
+(function () {
+  const toast = document.getElementById("orderToast");
+  if (!toast) return;
+
+  window.showToast = function (message, type = "success") {
+    toast.textContent = message;
+    toast.className = `order-toast ${type}`;
+    toast.classList.remove("hidden");
+
+    // Delay triggers CSS animation
+    requestAnimationFrame(() => toast.classList.add("show"));
+
+    // Auto-hide
+    setTimeout(() => {
+      toast.classList.remove("show");
+      setTimeout(() => toast.classList.add("hidden"), 300);
+    }, 3000);
+  };
+})();
+
+
 
 /* =====================================================
    Main Sales Order View Loader
@@ -950,7 +974,6 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
         showToast?.(`✅ Order ${tranId} approved!`, "success");
         hideCommitSpinner();
-        setTimeout(() => location.reload(), 2500);
       } catch (err) {
         hideCommitSpinner();
         console.error("❌ Commit error:", err.message || err);

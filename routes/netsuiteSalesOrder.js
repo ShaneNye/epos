@@ -293,292 +293,191 @@ router.post("/create", async (req, res) => {
       console.log("ℹ️ No customer deposits found in request — skipping deposit creation.");
     }
 
-// ==========================================================
-//  🔁 Create Transfer Orders for cross-location lines
-// ==========================================================
-const createdTransfers = [];
-const lotAssignments = {}; // ⭐ Track lots for lines that do NOT require a TO
+   // ==========================================================
+    //  🔁 Create Transfer Orders for cross-location lines
+    // ==========================================================
+    const createdTransfers = [];
+    try {
+      const salesOrderTranId = so.tranId || so.tranid || so.id || "";
 
-try {
-  const salesOrderTranId = so.tranId || so.tranid || so.id || "";
-
-  // 🔍 Fetch store distribution location (used when fulfilment = In Store)
-  let storeDistributionLocId = null;
-  try {
-    const storeRes = await pool.query(
-      `SELECT distribution_location_id 
+      // 🔍 Fetch full store record to get distribution location
+      let storeDistributionLocId = null;
+      try {
+        const storeRes = await pool.query(
+          `SELECT 
+         netsuite_internal_id, 
+         invoice_location_id, 
+         distribution_location_id 
        FROM locations 
        WHERE id = $1 
        LIMIT 1`,
-      [order.store]
-    );
+          [order.store]
+        );
 
-    if (storeRes.rows.length && storeRes.rows[0].distribution_location_id) {
-      storeDistributionLocId = String(storeRes.rows[0].distribution_location_id).trim();
-    }
-  } catch (err) {
-    console.error("❌ Failed to load store distribution location:", err.message);
-  }
+        if (storeRes.rows.length) {
+          const row = storeRes.rows[0];
 
-  for (const [idx, line] of items.entries()) {
-    if (!line.inventoryMeta) continue;
+          // ✅ Force-clean and prioritise non-empty strings
+          const dist = (row.distribution_location_id || "").toString().trim();
+          const inv = (row.invoice_location_id || "").toString().trim();
+          const main = (row.netsuite_internal_id || "").toString().trim();
 
-    const metaParts = line.inventoryMeta
-      .split(";")
-      .map((p) => p.trim())
-      .filter(Boolean);
+          storeDistributionLocId =
+            dist !== "" ? dist :
+              inv !== "" ? inv :
+                main !== "" ? main : null;
 
-    for (const part of metaParts) {
-      const [qty, locName, locIdRaw, , , , invIdRaw] = part.split("|");
-      const locId = (locIdRaw || "").trim();
-      const invId = (invIdRaw || "").trim();
-      const quantity = parseFloat(qty || 0) || 0;
+          console.log("🏬 Store location mapping →", {
+            storeNsId: main,
+            invoiceLocationId: inv,
+            distributionLocationId: dist,
+            usedTransferDest: storeDistributionLocId,
+          });
+        } else {
+          console.warn("⚠️ No store record found for store ID:", order.store);
+        }
+      } catch (err) {
+        console.error("❌ Failed to load store distribution location:", err.message);
+      }
 
-      if (!quantity) continue;
-      if (!invId) continue;
+      for (const [idx, line] of items.entries()) {
+        if (!line.inventoryMeta) continue;
 
-      let sourceLocId = locId;
+        const metaParts = line.inventoryMeta
+          .split(";")
+          .map((p) => p.trim())
+          .filter(Boolean);
 
-      // Map source location name → netsuite_internal_id (fallback)
-      if (!sourceLocId && locName) {
-        try {
-          const r = await pool.query(
-            "SELECT netsuite_internal_id FROM locations WHERE name ILIKE $1 LIMIT 1",
-            [locName]
+        for (const part of metaParts) {
+          const [qty, locName, locIdRaw, , , , invIdRaw] = part.split("|");
+          const locId = (locIdRaw || "").trim();
+          const invId = (invIdRaw || "").trim();
+          const quantity = parseFloat(qty || 0) || 0;
+
+          if (!quantity) {
+            console.log(`⚠️ [Line ${idx + 1}] Skipping — no quantity`);
+            continue;
+          }
+
+          // Try to map by location name if ID missing
+          let sourceLocId = locId;
+          if (!sourceLocId && locName) {
+            try {
+              const resultLocName = await pool.query(
+                "SELECT netsuite_internal_id FROM locations WHERE name ILIKE $1 LIMIT 1",
+                [locName]
+              );
+              if (resultLocName.rows.length && resultLocName.rows[0].netsuite_internal_id) {
+                sourceLocId = String(resultLocName.rows[0].netsuite_internal_id);
+                console.log(`📍 Mapped "${locName}" → netsuite_internal_id ${sourceLocId}`);
+              } else {
+                console.warn(`⚠️ No matching location found for name "${locName}"`);
+              }
+            } catch (err) {
+              console.error(`❌ Location lookup failed for "${locName}":`, err.message);
+            }
+          }
+
+          if (!sourceLocId) {
+            console.log(`⚠️ [Line ${idx + 1}] Skipping — missing locationId for "${locName}"`);
+            continue;
+          }
+
+          if (!invId) {
+            console.log(`⚠️ [Line ${idx + 1}] Skipping — missing inventoryNumberId`);
+            continue;
+          }
+
+          // Skip if same as main warehouse
+          if (String(sourceLocId) === String(order.warehouse)) {
+            console.log(`ℹ️ [Line ${idx + 1}] Same source/destination → no transfer`);
+            continue;
+          }
+
+          // ✅ Determine and validate destination location
+          let destinationLocId = storeDistributionLocId || order.warehouse;
+          if (!destinationLocId || isNaN(destinationLocId)) {
+            console.warn(
+              `⚠️ Destination location (${destinationLocId}) invalid — falling back to warehouse ${order.warehouse}`
+            );
+            destinationLocId = order.warehouse;
+          }
+          destinationLocId = String(destinationLocId).trim();
+          const sourceLocFinal = String(sourceLocId).trim();
+
+          console.log(
+            `🧭 [Line ${idx + 1}] SourceLoc: ${sourceLocFinal} | DestinationLoc: ${destinationLocId}`
           );
-          if (r.rows.length && r.rows[0].netsuite_internal_id) {
-            sourceLocId = String(r.rows[0].netsuite_internal_id);
-          }
-        } catch (err) {}
-      }
 
-      if (!sourceLocId) continue;
-
-      // 🛠 FIX: remap source (store internal ID → real NetSuite location ID)
-      let sourceLocFinal = String(sourceLocId).trim();
-      try {
-        const lookup = await pool.query(
-          `SELECT distribution_location_id 
-           FROM locations 
-           WHERE netsuite_internal_id::text = $1 
-              OR id::text = $1
-           LIMIT 1`,
-          [sourceLocFinal]
-        );
-
-        if (lookup.rows.length && lookup.rows[0].distribution_location_id) {
-          sourceLocFinal = String(lookup.rows[0].distribution_location_id).trim();
-        }
-      } catch (err) {
-        console.error("❌ Source location remapping failed:", err.message);
-      }
-// ======================================================
-//  🎯 DETERMINE DESTINATION BASED ON FULFILMENT METHOD
-// ======================================================
-
-// Fulfilment ID sent from EPOS
-const fulfilmentMethodId =
-  line.fulfilmentMethod ||
-  line.custcol_sb_fulfilmentlocation ||
-  line.custcol_sb_fulfilmentlocation?.id ||
-  null;
-
-console.log(`🔎 Fulfilment debug: ID=${fulfilmentMethodId}`);
-
-// 📌 Your confirmed IDs:
-const INSTORE_METHOD_ID   = "1";   // In-Store
-const WAREHOUSE_METHOD_ID = "2";   // Warehouse
-
-// Load warehouse distribution location
-let warehouseDistId = null;
-try {
-  const wh = await pool.query(
-    `SELECT distribution_location_id 
-     FROM locations 
-     WHERE id = $1 
-     LIMIT 1`,
-    [order.warehouse]
-  );
-  if (wh.rows.length && wh.rows[0].distribution_location_id) {
-    warehouseDistId = String(wh.rows[0].distribution_location_id).trim();
-  }
-} catch (err) {
-  console.error("❌ Failed to load warehouse distribution location:", err.message);
-}
-
-let destinationLocId = null;
-
-// 🎯 Map based purely on fulfilment ID
-if (String(fulfilmentMethodId) === WAREHOUSE_METHOD_ID) {
-  console.log("🏭 Fulfilment = Warehouse → using warehouse distribution location");
-  destinationLocId = warehouseDistId;
-} else if (String(fulfilmentMethodId) === INSTORE_METHOD_ID) {
-  console.log("🏪 Fulfilment = In Store → using store distribution location");
-  destinationLocId = storeDistributionLocId;
-} else {
-  console.warn(`⚠️ Unknown fulfilment ID ${fulfilmentMethodId}, defaulting to store distribution`);
-  destinationLocId = storeDistributionLocId;
-}
-
-// Fallback
-if (!destinationLocId) {
-  console.warn("⚠️ No destination resolved — fallback to warehouse");
-  destinationLocId = String(order.warehouse);
-}
-
-destinationLocId = String(destinationLocId).trim();
-
-console.log(
-  `🧭 [Line ${idx + 1}] SOURCE=${sourceLocFinal} DEST=${destinationLocId} (FulfilmentID=${fulfilmentMethodId})`
-);
-
-// ======================================================
-// NEW SAME-LOCATION LOGIC (store vs warehouse corrected)
-// ======================================================
-const isStoreFulfil = fulfilmentMethod.includes("store");
-const isWarehouseFulfil = fulfilmentMethod.includes("warehouse");
-
-// ----------------------
-// Same-Warehouse
-// ----------------------
-if (isWarehouseFulfil && sourceLocFinal === warehouseDistId) {
-    console.log(`⭕ Same Warehouse fulfilment → applying lotnumber ${invIdRaw}`);
-
-    lotAssignments[line.item] = invIdRaw;
-
-    createdTransfers.push({
-        itemId: line.item,
-        transferOrderId: null,
-        sourceLocation: sourceLocFinal,
-        destinationWarehouse: destinationLocId,
-        appliedLotNumber: invIdRaw,
-    });
-
-    continue;
-}
-
-// ----------------------
-// Same-Store
-// ----------------------
-if (isStoreFulfil && sourceLocFinal === storeDistributionLocId) {
-    console.log(`⭕ Same Store fulfilment → no lotnumber, no TO, leaving allocationStrategy DEFAULT`);
-
-    // IMPORTANT:
-    // No lotnumber field should be applied
-    // inventoryMeta should be ignored
-
-    lotAssignments[line.item] = null; // explicit
-    continue;
-}
-
-
-      // ======================================================
-      //  🛠 BUILD TRANSFER ORDER BODY
-      // ======================================================
-      const transferBody = {
-        subsidiary: { id: "6" },
-        custbody_sb_needed_by: new Date(Date.now() + 3 * 86400000)
-          .toISOString()
-          .split("T")[0],
-        transferlocation: { id: destinationLocId }, // DESTINATION
-        location: { id: sourceLocFinal }, // SOURCE
-        custbody_sb_transfer_order_type: { id: "2" },
-        custbody_sb_relatedsalesorder: salesOrderId
-          ? { id: String(salesOrderId) }
-          : undefined,
-        item: {
-          items: [
-            {
-              item: { id: line.item },
-              quantity,
-              inventorydetail: {
-                inventoryassignment: {
-                  items: [
-                    {
-                      issueinventorynumber: { id: invId },
-                      quantity,
+          // Build Transfer Order body
+          const transferBody = {
+            subsidiary: { id: "6" },
+            custbody_sb_needed_by: new Date(Date.now() + 3 * 86400000)
+              .toISOString()
+              .split("T")[0],
+            transferlocation: { id: destinationLocId }, // ✅ destination (store or its distribution)
+            location: { id: sourceLocFinal }, // ✅ source
+            custbody_sb_transfer_order_type: { id: "2" },
+            custbody_sb_relatedsalesorder: salesOrderId
+              ? { id: String(salesOrderId) }
+              : undefined,
+            item: {
+              items: [
+                {
+                  item: { id: line.item },
+                  quantity,
+                  inventorydetail: {
+                    inventoryassignment: {
+                      items: [
+                        {
+                          issueinventorynumber: { id: invId },
+                          quantity,
+                        },
+                      ],
                     },
-                  ],
+                  },
                 },
-              },
+              ],
             },
-          ],
-        },
-      };
+          };
 
-      console.log(`🔁 Creating Transfer Order for line ${idx + 1}…`);
-      console.dir(transferBody, { depth: null });
+          console.log(`🔁 Creating Transfer Order for line ${idx + 1}:`);
+          console.dir(transferBody, { depth: null });
 
-      try {
-        const transferResponse = await nsPost("/transferOrder", transferBody, userId, "sb");
-        let transferId = transferResponse?.id || null;
-
-        if (!transferId && transferResponse._location) {
-          const match = transferResponse._location.match(/transferorder\/(\d+)/i);
-          if (match) transferId = match[1];
-        }
-
-        console.log(
-          `✅ Transfer Order created for item ${line.item} → ID ${transferId}`
-        );
-
-        createdTransfers.push({
-          itemId: line.item,
-          transferOrderId: transferId,
-          sourceLocation: sourceLocFinal,
-          destinationWarehouse: destinationLocId,
-        });
-
-        // Email notification
-        const sendTransferEmail = require("../utils/sendTransferEmail");
-        await sendTransferEmail({
-          transferId,
-          itemId: line.item,
-          quantity,
-          sourceLocId: sourceLocFinal,
-          destinationLocId,
-        });
-
-      } catch (err) {
-        console.error(`❌ Failed to create TO for line ${idx + 1}:`, err.message);
-      }
-    }
-  }
-} catch (err) {
-  console.error("⚠️ Transfer Order creation block failed:", err.message);
-}
-
-// ==========================================================
-//  ⭐ APPLY LOT NUMBERS TO SO LINES THAT DID *NOT* NEED A TO
-// ==========================================================
-if (Object.keys(lotAssignments).length > 0) {
-  console.log("🎯 Applying lot numbers directly to Sales Order lines:", lotAssignments);
-
-  for (const [itemId, lotNumberId] of Object.entries(lotAssignments)) {
-    try {
-      await nsPatch(`/salesOrder/${salesOrderId}/item`, {
-        items: [
-          {
-            item: { id: itemId },
-            custcol_sb_lotnumber: { id: lotNumberId },
+          try {
+            const transferResponse = await nsPost("/transferOrder", transferBody, userId, "sb");
+            let transferId = transferResponse?.id || null;
+            if (!transferId && transferResponse._location) {
+              const match = transferResponse._location.match(/transferorder\/(\d+)/i);
+              if (match) transferId = match[1];
+            }
+            console.log(
+              `✅ Transfer Order created for item ${line.item} → ID ${transferId || "(unknown)"}`
+            );
+            createdTransfers.push({
+              itemId: line.item,
+              transferOrderId: transferId,
+              sourceLocation: sourceLocFinal,
+              destinationWarehouse: destinationLocId,
+            });
+          } catch (postErr) {
+            console.error(
+              `❌ Failed to create Transfer Order for line ${idx + 1}:`,
+              postErr.message
+            );
           }
-        ]
-      }, userId, "sb");
-
-      console.log(`✔ Applied lot ${lotNumberId} to SO item ${itemId}`);
-
+        }
+      }
     } catch (err) {
-      console.error(`❌ Failed to apply lot number for item ${itemId}:`, err.message);
+      console.error("⚠️ Transfer Order creation block failed:", err.message);
     }
-  }
-}
 
-return res.json({
-  ok: true,
-  salesOrderId,
-  createdTransfers,
-  response: so,
-});
+    return res.json({
+      ok: true,
+      salesOrderId,
+      createdTransfers,
+      response: so,
+    });
 
 
   } catch (err) {
@@ -587,6 +486,7 @@ return res.json({
     return res.status(500).json({ ok: false, error: err.message });
   }
 });
+
 
 /* =====================================================
    === GET SALES ORDER (for read-only view) =============

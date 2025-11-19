@@ -789,3 +789,37 @@ textarea:focus {
   color: #7a869a;
   font-style: italic;
 }
+/* =========================================================
+   ORDER VIEW — TOAST NOTIFICATION
+   Matches styling from New Sales Order
+   ========================================================= */
+.order-toast {
+  position: relative;
+  margin-top: 10px;
+  padding: 0.65rem 1rem;
+  border-radius: 6px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: all 0.25s ease;
+}
+
+.order-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.order-toast.success {
+  background: #008060;
+  color: #fff;
+}
+
+.order-toast.error {
+  background: #d00000;
+  color: #fff;
+}
+
+.order-toast.hidden {
+  display: none;
+}
