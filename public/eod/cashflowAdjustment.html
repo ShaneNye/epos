@@ -1,0 +1,57 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Cashflow Adjustment</title>
+
+    <link rel="stylesheet" href="/eod/eodAdjustment.css" />
+</head>
+
+<body>
+
+    <div class="popup-wrapper">
+        <div class="popup-card">
+
+            <h2>Cashflow Adjustment</h2>
+
+            <div class="form-row">
+                <label for="adjType">Type</label>
+                <select id="adjType">
+                    <option value="">Select...</option>
+                    <option value="petty">Petty Cash Spend</option>
+                    <option value="misc">Misc Deposit</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <label for="adjLocation">Location</label>
+                <select id="adjLocation" disabled>
+                    <option value="float">Float</option>
+                    <option value="safe">Safe</option>
+                </select>
+            </div>
+
+            <div class="form-row">
+                <label for="adjReason">Reason</label>
+                <input type="text" id="adjReason" placeholder="Enter reason..." />
+            </div>
+
+            <div class="form-row">
+                <label for="adjAmount">Amount</label>
+                <input type="number" id="adjAmount" step="0.01" />
+            </div>
+
+            <div class="popup-actions">
+                <button id="saveAdjBtn" class="primary">Save</button>
+                <button id="cancelAdjBtn" class="secondary">Cancel</button>
+            </div>
+
+        </div>
+    </div>
+
+    <script type="module" src="/eod/eodAdjustment.js"></script>
+</body>
+
+</html>

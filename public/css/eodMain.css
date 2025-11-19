@@ -1,0 +1,381 @@
+        .eod-wrapper {
+            max-width: 900px;
+            margin: 2rem auto;
+        }
+
+        .eod-step {
+            background: #fff;
+            border: 1px solid #e3e6ea;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        }
+
+        .eod-step h2 {
+            margin-top: 0;
+            color: var(--brand);
+            font-size: 1.3rem;
+        }
+
+        .eod-step p {
+            color: #555;
+            margin-bottom: 16px;
+        }
+
+        .eod-btn {
+            background: var(--brand);
+            color: #fff;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: background 0.2s ease, transform 0.1s ease;
+            margin-right: 10px;
+        }
+
+        .eod-btn:hover {
+            background: var(--brand-600);
+            transform: translateY(-1px);
+        }
+
+        /* Secondary button */
+        .eod-btn-secondary {
+            background: #6a7480;
+        }
+
+        .eod-btn-secondary:hover {
+            background: #555;
+        }
+
+        /* Coming soon placeholder */
+        .coming-soon {
+            background: #f5f5f5;
+            border: 1px dashed #bbb;
+            padding: 18px;
+            border-radius: 6px;
+            text-align: center;
+            color: #777;
+            font-style: italic;
+            font-size: 1rem;
+        }
+
+        .eod-btn-complete {
+            background: #2ecc71 !important;
+            /* Green */
+            color: #fff;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .eod-btn-complete::before {
+            content: "✔";
+            font-weight: bold;
+        }
+
+        .eod-btn-loading {
+            position: relative;
+            pointer-events: none;
+            opacity: 0.85;
+        }
+
+        .eod-btn-loading .btn-text {
+            opacity: 0.7;
+        }
+
+        /* Spinner container */
+        .eod-btn-loading::after {
+            content: "";
+            width: 16px;
+            height: 16px;
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            border-top-color: #fff;
+            border-radius: 50%;
+            animation: spin 0.7s linear infinite;
+            position: absolute;
+            right: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+        /* STEP 2 — Daily Balancing */
+
+.eod-form-row {
+    margin-bottom: 1rem;
+}
+
+.eod-form-row label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #273036;
+}
+
+#dailyBalanceStoreSelect {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ccd3da;
+    border-radius: 6px;
+    background: #fff;
+    font-size: 0.95rem;
+}
+
+/* Summary pill */
+.daily-balance-summary-pill {
+    padding: 8px 12px;
+    background: #eef7ff;
+    border: 1px solid #cfe5ff;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    color: #0b4f7f;
+    margin-bottom: 1rem;
+}
+
+.daily-balance-summary-pill.hidden {
+    display: none;
+}
+
+/* Table */
+.daily-balance-table-wrapper {
+    margin-top: 10px;
+    overflow-x: auto;
+}
+
+.daily-balance-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+
+.daily-balance-table th {
+    background: #f3f7fb;
+    border-bottom: 1px solid #d8e2eb;
+    padding: 8px;
+    text-align: left;
+    font-weight: 600;
+}
+
+.daily-balance-table td {
+    padding: 8px;
+    border-bottom: 1px solid #eef2f6;
+}
+
+.daily-balance-empty {
+    text-align: center;
+    color: #888;
+    padding: 12px;
+}
+
+/* Clickable master rows */
+.method-row {
+    cursor: pointer;
+    transition: background 0.15s ease;
+}
+
+.method-row:hover {
+    background: #f7fafc;
+}
+
+.method-row--expanded {
+    background: #eef7fb;
+}
+
+/* Expandable details */
+.details-row.hidden {
+    display: none;
+}
+
+.details-inner {
+    padding: 10px 5px;
+    background: #fbfdff;
+}
+
+.details-inner table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.details-inner th {
+    text-align: left;
+    border-bottom: 1px solid #dde6ee;
+    padding: 4px;
+    font-size: 0.85rem;
+    color: #4b565d;
+}
+
+.details-inner td {
+    padding: 4px;
+    border-bottom: 1px solid #eef2f6;
+}
+
+.details-inner td:last-child {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+/* ============================
+   STEP 3 — Cashflow Panel
+============================ */
+
+#cashflowPanel {
+    min-height: 300px;
+}
+
+/* Wrapper */
+.cashflow-table-wrapper {
+    margin-top: 10px;
+    overflow-x: hidden; /* Prevent scrollbars */
+}
+
+/* Table */
+.cashflow-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.95rem;
+}
+
+/* Headers */
+.cashflow-table th {
+    background: #f3f7fb;
+    border-bottom: 1px solid #d8e2eb;
+    padding: 10px 12px;
+    text-align: left;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+/* Cells */
+.cashflow-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eef2f6;
+}
+
+/* Input fields */
+.cashflow-table input {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid #ccd3da;
+    border-radius: 6px;
+    font-size: 0.9rem;
+    box-sizing: border-box; /* Prevent clipping */
+}
+
+.cashflow-empty {
+    text-align: center;
+    color: #777;
+    padding: 14px;
+}
+
+/* Totals section */
+.cashflow-totals {
+    margin-top: 16px;
+    padding-top: 12px;
+    border-top: 1px solid #e3e6ea;
+    display: flex;
+    justify-content: space-between; /* Push totals apart */
+    font-size: 1rem;
+    color: #333;
+    font-weight: 600;
+}
+
+.cashflow-totals strong {
+    margin-right: 6px;
+}
+
+/* ============================================================
+   TWO-COLUMN EOD LAYOUT
+============================================================ */
+
+.eod-columns {
+    display: grid;
+    grid-template-columns: 1fr 400px;  /* Left flexible, right fixed */
+    gap: 20px;
+    align-items: start;
+}
+
+/* Left column contains Step 1 + Step 2 */
+.eod-left {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+/* Right column contains Step 3 */
+.eod-right {
+    display: block;
+}
+
+/* Mobile — stack vertically */
+@media (max-width: 1100px) {
+    .eod-columns {
+        grid-template-columns: 1fr;
+    }
+}
+/* ============================
+   STEP 4 — Sign-Off Panel
+============================ */
+
+#signoffPanel {
+    margin-top: 20px;
+}
+
+.signoff-row {
+    margin-bottom: 14px;
+}
+
+.signoff-field label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: #273036;
+}
+
+#signoffUserSelect {
+    width: 100%;
+    max-width: 320px;
+    padding: 8px 10px;
+    border-radius: 6px;
+    border: 1px solid #ccd3da;
+    background: #fff;
+    font-size: 0.95rem;
+}
+
+.signoff-confirm label {
+    font-size: 0.95rem;
+    color: #333;
+}
+
+.signoff-confirm input[type="checkbox"] {
+    margin-right: 8px;
+}
+
+.signoff-actions {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+#signoffSubmitBtn[disabled] {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.signoff-status {
+    font-size: 0.9rem;
+}
+
+.signoff-status--ok {
+    color: #2ecc71;
+}
+
+.signoff-status--error {
+    color: #e74c3c;
+}

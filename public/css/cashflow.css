@@ -1,0 +1,226 @@
+.cashflow-wrapper {
+    max-width: 1100px;
+    margin: 2rem auto;
+}
+
+.cashflow-panel {
+    background: #fff;
+    border: 1px solid #e3e6ea;
+    padding: 20px;
+    border-radius: 8px;
+    margin-bottom: 25px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+}
+
+.cashflow-panel h2 {
+    margin-top: 0;
+    font-size: 1.35rem;
+    color: var(--brand);
+}
+
+.table-wrapper {
+    margin-top: 15px;
+    overflow-x: auto;
+}
+
+.cashflow-table,
+.eod-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.cashflow-table th,
+.cashflow-table td,
+.eod-table th,
+.eod-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #eee;
+}
+
+.cashflow-table th {
+    background: #f7f9fc;
+    text-align: left;
+}
+
+.eod-table th {
+    background: #f7f9fc;
+    text-align: left;
+}
+
+.empty-row {
+    text-align: center;
+    padding: 20px;
+    color: #777;
+}
+
+.filters-row {
+    display: flex;
+    gap: 15px;
+    align-items: flex-end;
+    margin: 15px 0;
+    flex-wrap: wrap;
+}
+
+.filter-group {
+    display: flex;
+    flex-direction: column;
+}
+
+.btn-primary {
+    background: var(--brand);
+    color: #fff;
+    border: none;
+    padding: 9px 18px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+.btn-primary:hover {
+    background: var(--brand-600);
+}
+
+.eod-details {
+    background: #fafafa;
+    padding: 12px 20px;
+    border-left: 3px solid var(--brand);
+}
+/* ================================
+   2-Column Layout for Cashflow Page
+   ================================ */
+.cashflow-wrapper {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 25px;
+    align-items: start;
+    margin-top: 20px;
+}
+
+/* Panels */
+.cashflow-panel {
+    background: #fff;
+    border: 1px solid #e3e8ee;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+}
+
+/* Ensure tables don't overflow */
+.cashflow-panel .table-wrapper {
+    margin-top: 15px;
+    overflow-x: auto;
+}
+
+.cashflow-panel table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+/* Table styling */
+.cashflow-panel th,
+.cashflow-panel td {
+    padding: 10px 8px;
+    border-bottom: 1px solid #eef2f7;
+}
+
+.cashflow-panel th {
+    background: #f7f9fc;
+    font-weight: 600;
+}
+
+.empty-row {
+    text-align: center;
+    padding: 14px;
+    color: #888;
+}
+
+/* Filters row */
+.filters-row {
+    display: flex;
+    align-items: flex-end;
+    gap: 15px;
+    margin-bottom: 15px;
+}
+
+.filter-group label {
+    display: block;
+    font-size: 13px;
+    margin-bottom: 4px;
+    color: #333;
+}
+
+.filter-group select,
+.filter-group input {
+    padding: 6px 8px;
+    border-radius: 5px;
+    border: 1px solid #d1d8e0;
+}
+
+/* Button */
+.btn-primary {
+    padding: 8px 16px;
+    background: #0066ff;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-primary:hover {
+    background: #0053d6;
+}
+
+/* Mobile responsive */
+@media (max-width: 900px) {
+    .cashflow-wrapper {
+        grid-template-columns: 1fr;
+    }
+}
+.eod-detail-row .eod-details {
+    background: #fafafa;
+    padding: 15px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+}
+
+.inner-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 15px;
+}
+
+.inner-table th,
+.inner-table td {
+    padding: 6px 8px;
+    border-bottom: 1px solid #e3e3e3;
+}
+
+.inner-table th {
+    background: #f5f5f5;
+}
+
+.submitted-info {
+    margin-top: 10px;
+    font-size: 13px;
+    color: #555;
+}
+.btn-empty-safe {
+    padding: 6px 10px;
+    background: #ff6666;
+    border: none;
+    color: white;
+    cursor: pointer;
+    border-radius: 6px;
+    font-size: 13px;
+    transition: 0.2s;
+}
+
+.btn-empty-safe:hover {
+    background: #e05555;
+}
+
+.btn-empty-safe:disabled {
+    background: #aaa;
+    cursor: not-allowed;
+}

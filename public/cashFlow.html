@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EPOS Home</title>
+    <link rel="stylesheet" href="/assistant/assistant.css" />
+    <link rel="stylesheet" href="/css/widgets/salestoday.css">
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/cashFlow.css">
+    <script src="/js/storage.js"></script>
+    <script src="/js/menu.js"></script>
+    <script src="/js/cashFlow.js"></script>
+
+    <!-- Virtual Sales Assistant -->
+    <script src="/assistant/assistant.js"></script>
+    <script type="module" src="/assistant/assistantHooks.js"></script>
+
+
+
+
+
+</head>
+
+<body>
+    <!-- Menu will be injected here -->
+    <div id="menu"></div>
+
+    <!-- Main content -->
+    <main class="content">
+        <h1>Cashflow</h1>
+
+        <div class="cashflow-wrapper">
+
+            <!-- ============================
+             PANEL 1 — Cashflow Overview
+        ============================== -->
+            <div class="cashflow-panel">
+                <h2>Store Cash Balances</h2>
+                <p>Live safe and float balances for all stores.</p>
+
+                <div class="table-wrapper">
+                    <table class="cashflow-table">
+                        <thead>
+                            <tr>
+                                <th>Store</th>
+                                <th style="width:150px;">Float Balance</th>
+                                <th style="width:150px;">Safe Balance</th>
+                                <th style="width:150px;">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="cashflowOverviewBody">
+                            <tr>
+                                <td colspan="3" class="empty-row">Loading...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- ============================
+             PANEL 2 — EOD Submissions Explorer
+        ============================== -->
+            <div class="cashflow-panel">
+                <h2>End Of Day Submissions</h2>
+                <p>Investigate historical EOD submissions by store and date range.</p>
+
+                <!-- Filters -->
+                <div class="filters-row">
+
+                    <div class="filter-group">
+                        <label for="filterStore">Store</label>
+                        <select id="filterStore">
+                            <option value="">All Stores</option>
+                        </select>
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="filterFrom">From</label>
+                        <input type="date" id="filterFrom">
+                    </div>
+
+                    <div class="filter-group">
+                        <label for="filterTo">To</label>
+                        <input type="date" id="filterTo">
+                    </div>
+
+                    <button id="filterBtn" class="btn-primary">Apply Filters</button>
+
+                </div>
+
+                <!-- Results Table -->
+                <div class="table-wrapper">
+                    <table class="eod-table">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Store</th>
+                                <th>Submitted By</th>
+                                <th style="width:160px; text-align:right;">Totals</th>
+                            </tr>
+                        </thead>
+
+                        <tbody id="eodResultsBody">
+                            <tr>
+                                <td colspan="4" class="empty-row">Select filters to begin.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+            </div>
+        </div>
+    </main>
+
+
+</body>
+
+</html>

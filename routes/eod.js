@@ -4,7 +4,7 @@ const express = require("express");
 const fetch = require("node-fetch");
 const { getSession } = require("../sessions");
 const nsClient = require("../netsuiteClient");
-
+const pool = require("../db");
 const router = express.Router();
 
 /* ============================================================
@@ -166,5 +166,184 @@ router.patch("/footfall/update", async (req, res) => {
     });
   }
 });
+
+/* ============================================================
+   GET DAILY BALANCING – CUSTOMER DEPOSITS
+   Via NetSuite Scriptlet from EOD_CUST_DEP_URL
+   ============================================================ */
+router.get("/daily-balance", async (req, res) => {
+  try {
+    const baseUrl = process.env.EOD_CUST_DEP_URL;
+    const token = process.env.EOD_CUST_DEP;
+
+    if (!baseUrl || !token) {
+      return res.status(500).json({
+        ok: false,
+        error: "Missing EOD_CUST_DEP_URL or EOD_CUST_DEP in .env",
+      });
+    }
+
+    const url = `${baseUrl}&token=${encodeURIComponent(token)}`;
+    console.log("📡 Fetching Daily Balance (Customer Deposits) from NetSuite:", url);
+
+    const nsRes = await fetch(url);
+    const text = await nsRes.text();
+
+    if (!nsRes.ok) {
+      console.error("❌ NetSuite daily balance scriptlet error:", text);
+      return res.status(500).json({
+        ok: false,
+        error: "NetSuite daily balance scriptlet returned an error.",
+        raw: text,
+      });
+    }
+
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (err) {
+      console.error("❌ Invalid JSON from NetSuite daily balance:", err.message);
+      return res.status(500).json({
+        ok: false,
+        error: "NetSuite scriptlet returned invalid JSON.",
+        raw: text,
+      });
+    }
+
+    /* ---------------------------------------------
+       Normalise shape — supports:
+       { results: [...] }
+       { data: [...] }
+       [ array ]
+       --------------------------------------------- */
+    let results = [];
+
+    if (Array.isArray(json)) {
+      results = json;
+    } else if (Array.isArray(json.results)) {
+      results = json.results;
+    } else if (Array.isArray(json.data)) {
+      results = json.data;
+    }
+
+    return res.json({
+      ok: true,
+      recordType: json.recordType || "customerdeposit",
+      searchId: json.searchId || "",
+      count: results.length,
+      results,
+    });
+
+  } catch (err) {
+    console.error("❌ /api/eod/daily-balance error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+
+/* ============================================================
+   POST /api/eod/submit  — Save End Of Day
+============================================================ */
+router.post("/submit", async (req, res) => {
+    try {
+        const auth = req.headers.authorization || "";
+        const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+
+        if (!bearer) {
+            return res.status(401).json({ ok: false, error: "Missing bearer token" });
+        }
+
+        const session = await getSession(bearer);
+        if (!session?.id) {
+            return res.status(401).json({ ok: false, error: "Invalid session" });
+        }
+
+        const {
+            store,
+            locationId,
+            date,
+            signoffUserId,
+            confirmation,
+            deposits,
+            cashflow,
+            adjustments,
+            totals
+        } = req.body;
+
+        if (!store || !locationId || !date) {
+            return res.status(400).json({ ok: false, error: "Missing required fields" });
+        }
+
+        const client = await pool.connect();
+        try {
+            await client.query("BEGIN");
+
+            /* ------------------------------------------
+               INSERT INTO end_of_day
+            ------------------------------------------ */
+            const insertEod = `
+                INSERT INTO end_of_day
+                (store_name, location_id, date, signoff_user_id, confirmation,
+                 deposits, cashflow, adjustments, total_safe, total_float)
+                VALUES
+                ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
+                RETURNING id;
+            `;
+
+            const eodResult = await client.query(insertEod, [
+                store,
+                locationId,
+                date,
+                signoffUserId,
+                confirmation,
+                JSON.stringify(deposits),
+                JSON.stringify(cashflow),
+                JSON.stringify(adjustments),
+                totals.safe,
+                totals.float
+            ]);
+
+            const eodId = eodResult.rows[0].id;
+
+
+            /* ------------------------------------------
+               UPDATE store safe/float balances
+            ------------------------------------------ */
+            const updateBalance = `
+                UPDATE locations
+                SET 
+                    safe_balance = safe_balance + $1,
+                    float_balance = float_balance + $2
+                WHERE id = $3;
+            `;
+
+            await client.query(updateBalance, [
+                totals.safe,
+                totals.float,
+                locationId
+            ]);
+
+            await client.query("COMMIT");
+
+            return res.json({
+                ok: true,
+                eodId,
+                message: "End of Day submitted successfully"
+            });
+
+        } catch (err) {
+            await client.query("ROLLBACK");
+            console.error("❌ DB error:", err);
+            return res.status(500).json({ ok: false, error: err.message });
+        } finally {
+            client.release();
+        }
+
+    } catch (err) {
+        console.error("❌ /api/eod/submit error:", err);
+        return res.status(500).json({ ok: false, error: err.message });
+    }
+});
+
 
 module.exports = router;

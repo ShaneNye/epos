@@ -1,0 +1,79 @@
+body {
+    background: #f5f8fc;
+    font-family: system-ui, sans-serif;
+    margin: 0;
+    padding: 20px;
+}
+
+.popup-wrapper {
+    display: flex;
+    justify-content: center;
+    padding-top: 20px;
+}
+
+.popup-card {
+    width: 420px;
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    border: 1px solid #dce3eb;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+}
+
+h2 {
+    margin-top: 0;
+    margin-bottom: 20px;
+}
+
+.form-row {
+    margin-bottom: 15px;
+}
+
+.form-row label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 5px;
+}
+
+.form-row input,
+.form-row select {
+    width: 100%;
+    padding: 10px;
+    border-radius: 6px;
+    border: 1px solid #cfd6df;
+    font-size: 1rem;
+}
+
+.popup-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 20px;
+}
+
+button.primary {
+      background: linear-gradient(90deg, #007ea8, #0092c7);
+    color: white;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    font-weight: 600;
+}
+
+button.secondary {
+    background: #ddd;
+    padding: 10px 18px;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+}
+/* Adjustment rows styling */
+.cashflow-adjustment-row td {
+    background: #fff8e6; /* light yellow */
+    font-weight: 500;
+}
+
+.cashflow-adjustment-row td:first-child {
+    color: #b7791f; /* darker amber */
+}

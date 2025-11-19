@@ -144,7 +144,9 @@ router.get("/locations", async (req, res) => {
         distribution_location_id,
         petty_cash_account,
         current_account,
-        email                       -- ⭐ NEW FIELD
+        email,
+        float_balance,
+        safe_balance                    
        FROM locations
        ORDER BY name`
     );
@@ -259,6 +261,31 @@ router.put("/locations/:id", async (req, res) => {
     res.status(500).json({ ok: false, error: "DB error updating location" });
   }
 });
+
+// ============================
+//   SAFE EMPTIED (SET TO ZERO)
+// ============================
+router.post("/locations/:id/safe-emptied", async (req, res) => {
+  try {
+    const id = req.params.id;
+
+    const result = await pool.query(
+      "UPDATE locations SET safe_balance = 0 WHERE id = $1 RETURNING *",
+      [id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: "Location not found" });
+    }
+
+    res.json({ ok: true, message: "Safe reset to £0.00", location: result.rows[0] });
+
+  } catch (err) {
+    console.error("❌ POST /locations/:id/safe-emptied error:", err.message);
+    res.status(500).json({ ok: false, error: "Failed to reset safe balance" });
+  }
+});
+
 
 
 
