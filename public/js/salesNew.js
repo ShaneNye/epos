@@ -2,6 +2,13 @@ console.log("✅ salesNew.js loaded and running");
 
 
 document.addEventListener("DOMContentLoaded", async () => {
+
+  // Stop salesNew summary logic from running on Sales View page
+if (window.location.pathname.includes("/sales/view/")) {
+  console.log("🔕 Skipping updateOrderSummary() — Sales View mode");
+  return;
+}
+
   const saved = storageGet(); // from main.js
   if (!saved || !saved.token) return (window.location.href = "/index.html");
 
@@ -189,6 +196,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   bodyObserver.observe(document.getElementById("orderItemsBody"), { childList: true });
 
   updateOrderSummary();
+  
 });
 
 /* === CUSTOMER DEPOSITS === */

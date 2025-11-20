@@ -293,7 +293,7 @@ router.post("/create", async (req, res) => {
       console.log("ℹ️ No customer deposits found in request — skipping deposit creation.");
     }
 
-   // ==========================================================
+    // ==========================================================
     //  🔁 Create Transfer Orders for cross-location lines
     // ==========================================================
     const createdTransfers = [];
@@ -317,7 +317,6 @@ router.post("/create", async (req, res) => {
         if (storeRes.rows.length) {
           const row = storeRes.rows[0];
 
-          // ✅ Force-clean and prioritise non-empty strings
           const dist = (row.distribution_location_id || "").toString().trim();
           const inv = (row.invoice_location_id || "").toString().trim();
           const main = (row.netsuite_internal_id || "").toString().trim();
@@ -340,8 +339,15 @@ router.post("/create", async (req, res) => {
         console.error("❌ Failed to load store distribution location:", err.message);
       }
 
+      // ==========================================================
+      // PROCESS EACH LINE
+      // ==========================================================
       for (const [idx, line] of items.entries()) {
         if (!line.inventoryMeta) continue;
+
+        // --- fulfilment method passed from frontend ---
+        const fulfilMethod = String(line.fulfilmentMethod || "").trim();
+        console.log(`📦 Line ${idx + 1} fulfilMethod =`, fulfilMethod);
 
         const metaParts = line.inventoryMeta
           .split(";")
@@ -359,17 +365,37 @@ router.post("/create", async (req, res) => {
             continue;
           }
 
-          // Try to map by location name if ID missing
-          let sourceLocId = locId;
+          // Map location by name if ID missing
+          // Always map locId → its distribution location
+          let sourceLocId = null;
+          if (locId) {
+            try {
+              const result = await pool.query(
+                `SELECT distribution_location_id 
+       FROM locations 
+       WHERE netsuite_internal_id = $1 
+       LIMIT 1`,
+                [locId]
+              );
+              sourceLocId = (result.rows[0]?.distribution_location_id || "").trim();
+            } catch (e) {
+              console.error("❌ source location dist lookup failed:", e.message);
+            }
+          }
+
           if (!sourceLocId && locName) {
             try {
               const resultLocName = await pool.query(
-                "SELECT netsuite_internal_id FROM locations WHERE name ILIKE $1 LIMIT 1",
+                `SELECT distribution_location_id 
+       FROM locations 
+       WHERE name ILIKE $1 
+       LIMIT 1`,
                 [locName]
               );
-              if (resultLocName.rows.length && resultLocName.rows[0].netsuite_internal_id) {
-                sourceLocId = String(resultLocName.rows[0].netsuite_internal_id);
-                console.log(`📍 Mapped "${locName}" → netsuite_internal_id ${sourceLocId}`);
+
+              if (resultLocName.rows.length && resultLocName.rows[0].distribution_location_id) {
+                sourceLocId = String(resultLocName.rows[0].distribution_location_id).trim();
+                console.log(`📍 Mapped "${locName}" → dist ${sourceLocId}`);
               } else {
                 console.warn(`⚠️ No matching location found for name "${locName}"`);
               }
@@ -377,6 +403,7 @@ router.post("/create", async (req, res) => {
               console.error(`❌ Location lookup failed for "${locName}":`, err.message);
             }
           }
+
 
           if (!sourceLocId) {
             console.log(`⚠️ [Line ${idx + 1}] Skipping — missing locationId for "${locName}"`);
@@ -388,35 +415,71 @@ router.post("/create", async (req, res) => {
             continue;
           }
 
-          // Skip if same as main warehouse
+          // Skip if same as selected warehouse
           if (String(sourceLocId) === String(order.warehouse)) {
             console.log(`ℹ️ [Line ${idx + 1}] Same source/destination → no transfer`);
             continue;
           }
 
-          // ✅ Determine and validate destination location
-          let destinationLocId = storeDistributionLocId || order.warehouse;
+          // ==========================================================
+          // DETERMINE DESTINATION
+          // ==========================================================
+          let destinationLocId = null;
+
+          // --- fulfilment → STORE ---
+          if (fulfilMethod === "1") {
+            destinationLocId = storeDistributionLocId;
+            console.log(`🏪 Fulfilment = STORE → dest = ${destinationLocId}`);
+          }
+
+          // --- fulfilment → WAREHOUSE ---
+          else if (fulfilMethod === "2") {
+            let warehouseRow = null;
+
+            try {
+              const wRes = await pool.query(
+                `SELECT distribution_location_id 
+             FROM locations 
+             WHERE netsuite_internal_id = $1 
+             LIMIT 1`,
+                [order.warehouse]
+              );
+              warehouseRow = wRes.rows[0] || null;
+            } catch (err) {
+              console.error("❌ Warehouse lookup failed:", err.message);
+            }
+
+            const warehouseDist = (warehouseRow?.distribution_location_id || "").toString().trim();
+            destinationLocId = warehouseDist || order.warehouse;
+
+            console.log(`🏭 Fulfilment = WAREHOUSE → dest = ${destinationLocId}`);
+          }
+
+          // fallback
           if (!destinationLocId || isNaN(destinationLocId)) {
             console.warn(
-              `⚠️ Destination location (${destinationLocId}) invalid — falling back to warehouse ${order.warehouse}`
+              `⚠️ Invalid destination (${destinationLocId}) → fallback to warehouse ${order.warehouse}`
             );
             destinationLocId = order.warehouse;
           }
-          destinationLocId = String(destinationLocId).trim();
+
           const sourceLocFinal = String(sourceLocId).trim();
+          destinationLocId = String(destinationLocId).trim();
 
           console.log(
             `🧭 [Line ${idx + 1}] SourceLoc: ${sourceLocFinal} | DestinationLoc: ${destinationLocId}`
           );
 
-          // Build Transfer Order body
+          // ==========================================================
+          // BUILD TRANSFER ORDER
+          // ==========================================================
           const transferBody = {
             subsidiary: { id: "6" },
             custbody_sb_needed_by: new Date(Date.now() + 3 * 86400000)
               .toISOString()
               .split("T")[0],
-            transferlocation: { id: destinationLocId }, // ✅ destination (store or its distribution)
-            location: { id: sourceLocFinal }, // ✅ source
+            transferlocation: { id: destinationLocId },
+            location: { id: sourceLocFinal },
             custbody_sb_transfer_order_type: { id: "2" },
             custbody_sb_relatedsalesorder: salesOrderId
               ? { id: String(salesOrderId) }
