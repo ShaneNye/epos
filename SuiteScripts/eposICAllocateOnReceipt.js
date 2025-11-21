@@ -41,12 +41,24 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
         return;
       }
 
+      // === 2️⃣ Resolve Subsidiary SO linked to the Transfer Order ===
       const relatedSO = safeId(toRec.getValue('custbody_sb_relatedsalesorder'));
+
       if (!relatedSO) {
         log.audit('⚠️ Skip', `TO ${createdFrom} has no custbody_sb_relatedsalesorder.`);
         return;
       }
-      log.audit('🔗 Related Subsidiary SO', relatedSO);
+
+      log.audit('🔗 Related Subsidiary SO found', relatedSO);
+
+      // === 🔒 SAFEGUARD: Only proceed if SO was created via REST Web Services ===
+      if (!wasCreatedByRestWebServices(relatedSO)) {
+        log.audit('⛔ Skip – Subsidiary SO not created via REST Web Services', relatedSO);
+        return;
+      }
+
+      log.audit('✅ REST Web Services source confirmed for SO', relatedSO);
+
 
       // === 3️⃣ Load Subsidiary SO ===
       let subSO;
@@ -146,6 +158,23 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
 
   // ---------------- helpers ----------------
 
+  function wasCreatedByRestWebServices(salesOrderId) {
+    const results = search.create({
+      type: search.Type.SALES_ORDER,
+      filters: [
+        ['internalid', 'is', salesOrderId],
+        'AND',
+        ['systemnotes.field', 'is', 'source'],
+        'AND',
+        ['systemnotes.newvalue', 'is', 'REST Web Services']
+      ],
+      columns: ['internalid']
+    }).run().getRange({ start: 0, end: 1 });
+
+    return results.length > 0;
+  }
+
+
   function extractReceiptAssignments(ir) {
     const count = ir.getLineCount({ sublistId: 'item' });
     const byItem = {};
@@ -213,7 +242,7 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
     }
 
     let nextIndex = existing;
-    for (let i = 0; i < itemAssignments.length && remaining > 0; ) {
+    for (let i = 0; i < itemAssignments.length && remaining > 0;) {
       const a = itemAssignments[i];
       if (!a || a.qty <= 0) { i++; continue; }
 

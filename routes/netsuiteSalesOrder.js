@@ -632,23 +632,30 @@ router.get("/:id", async (req, res) => {
     ----------------------------------------------------- */
     let fulfilmentMap = {};
     try {
-      const tokenFM = process.env.SALES_ORDER_FULFIL_METHOD;
-      const nsUrlFM = `https://7972741-sb1.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4178&deploy=7&compid=7972741_SB1&ns-at=AAEJ7tMQoVD4xXVi2aftvr1c5rNpwUNCW2YHfMu7NXrzI9r6id4&token=${encodeURIComponent(
-        tokenFM
-      )}`;
-      const fmRes = await fetch(nsUrlFM);
-      if (fmRes.ok) {
-        const fmJson = await fmRes.json();
-        const fmList = fmJson.results || [];
-        for (const f of fmList) {
-          const id = String(f["Internal ID"] || f.id || f.internalid);
-          const name = f["Name"] || f.name;
-          if (id && name) fulfilmentMap[id] = name;
+      const baseUrlFM = process.env.SALES_ORDER_FULFIL_METHOD_URL;   // full scriptlet URL without &token=
+      const tokenFM = process.env.SALES_ORDER_FULFIL_METHOD;         // token
+
+      if (!baseUrlFM || !tokenFM) {
+        console.warn("⚠️ Missing SALES_ORDER_FULFIL_METHOD environment variables.");
+      } else {
+        const nsUrlFM = `${baseUrlFM}&token=${encodeURIComponent(tokenFM)}`;
+        const fmRes = await fetch(nsUrlFM);
+
+        if (fmRes.ok) {
+          const fmJson = await fmRes.json();
+          const fmList = fmJson.results || [];
+
+          for (const f of fmList) {
+            const id = String(f["Internal ID"] || f.id || f.internalid);
+            const name = f["Name"] || f.name;
+            if (id && name) fulfilmentMap[id] = name;
+          }
         }
       }
     } catch (err) {
       console.warn("⚠️ Could not fetch fulfilment methods:", err.message);
     }
+
     /* -----------------------------------------------------
        3️⃣ Expand Item Lines via SuiteQL
     ----------------------------------------------------- */
@@ -1058,7 +1065,8 @@ router.post("/:id/add-deposit", async (req, res) => {
 
     if (!depositId) throw new Error("Deposit created but ID not returned");
 
-    const depositLink = `https://7972741-sb1.app.netsuite.com/app/accounting/transactions/custdep.nl?id=${depositId}`;
+    const accountDash = process.env.NS_ACCOUNT_DASH;
+    const depositLink = `https://${accountDash}.app.netsuite.com/app/accounting/transactions/custdep.nl?id=${depositId}`;
 
     return res.json({
       ok: true,

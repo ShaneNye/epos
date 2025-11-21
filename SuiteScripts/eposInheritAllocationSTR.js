@@ -40,12 +40,24 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
         return;
       }
 
+      log.audit('🔗 Paired Source SO found', pairedId);
+
+      // === 🔒 SAFEGUARD: Only continue if the paired SO was created via REST Web Services ===
+      if (!wasCreatedByRestWebServices(pairedId)) {
+        log.audit('⛔ Skip – Paired Source SO was NOT created via REST Web Services', pairedId);
+        return;
+      }
+
+      log.audit('✅ REST Web Services source confirmed for paired SO', pairedId);
+
+      // Safe to continue
       log.audit('Intercompany detected', {
         destSO: destId,
         entityId,
         entityName: entName,
         pairedSourceSO: pairedId,
       });
+
 
       // === 3️⃣ Load both source and destination SOs ===
       const sourceSO = record.load({ type: 'salesorder', id: pairedId });

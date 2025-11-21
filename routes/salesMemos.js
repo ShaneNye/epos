@@ -5,9 +5,12 @@ const { getSession } = require("../sessions");
 // Import correct NetSuite client helper
 const { nsRestlet } = require("../netsuiteClient");
 
-// Your RESTlet URL
-const MEMO_RESTLET_URL =
-    "https://7972741-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=4199&deploy=1";
+// Your RESTlet URL (now from .env)
+const MEMO_RESTLET_URL = process.env.MEMO_RESTLET_URL;
+
+if (!MEMO_RESTLET_URL) {
+    console.error("❌ MEMO_RESTLET_URL missing from environment variables");
+}
 
 /* ============================================================
    POST /api/sales/memo
