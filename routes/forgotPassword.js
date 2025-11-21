@@ -70,7 +70,7 @@ router.post("/", async (req, res) => {
     );
 
     // ✅ Build reset link (update domain if hosted)
-    const resetLink = `http://localhost:3000/reset?token=${token}`;
+    const resetLink = `https://sussex-beds-epos.onrender.com/reset?token=${token}`;
 
     // ✅ Build and send email
     const mailOptions = {
