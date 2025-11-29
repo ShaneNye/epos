@@ -79,6 +79,12 @@
                     d="M19.4 13a7.5 7.5 0 0 0 0-2l2-1.5-1.2-2.1-2.3.5a7.6 7.6 0 0 0-1.8-1.8l.5-2.3-2.1-1.2L13 4.6a7.5 7.5 0 0 0-2 0L9.5 2.6 7.4 3.8l.5 2.3a7.6 7.6 0 0 0-1.8 1.8l-2.3-.5-1.2 2.1L4.6 11a7.5 7.5 0 0 0 0 2l-2 1.5 1.2 2.1 2.3-.5a7.6 7.6 0 0 0 1.8 1.8l-.5 2.3 2.1 1.2L11 19.4a7.5 7.5 0 0 0 2 0l1.5 2 2.1-1.2-.5-2.3a7.6 7.6 0 0 0 1.8-1.8l2.3.5 1.2-2.1z" />
             </symbol>
 
+            <!-- Logistics (Map Pin) -->
+            <symbol id="icon-logistics" viewBox="0 0 24 24">
+                <path class="epos-icon"
+                    d="M12 3c-3.3 0-6 2.7-6 6 0 4.5 6 12 6 12s6-7.5 6-12c0-3.3-2.7-6-6-6zm0 8.2c-1.2 0-2.2-1-2.2-2.2S10.8 6.8 12 6.8s2.2 1 2.2 2.2S13.2 11.2 12 11.2z" />
+            </symbol>
+
             <!-- Cashflow (Safe icon) -->
             <symbol id="icon-cashflow" viewBox="0 0 24 24">
                 <rect class="epos-icon" x="3" y="3" width="18" height="18" rx="2" />
@@ -90,6 +96,9 @@
             </symbol>
         </defs>
     </svg>
+
+
+
 
     <!-- Sidebar -->
     <aside class="sidebar" id="sidebar">
@@ -160,6 +169,15 @@
                     <span class="menu-label">Engagement</span>
                     <span class="tooltip">Engagement</span>
                 </a>
+
+                <a href="/logistics" class="menu-item">
+                    <svg>
+                        <use href="#icon-logistics" />
+                    </svg>
+                    <span class="menu-label">Logistics</span>
+                    <span class="tooltip">Logistics</span>
+                </a>
+
 
                 <a href="/admin" class="menu-item">
                     <svg>

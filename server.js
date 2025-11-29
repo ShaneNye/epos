@@ -100,6 +100,9 @@ app.use("/api/eod", eodRoutes);
 const eodSubmissionsRoutes = require("./routes/eodSubmissions");
 app.use("/api/eod", eodSubmissionsRoutes);
 
+app.use("/api/logistics", require("./routes/logistics"));
+
+
 
 
 
@@ -560,6 +563,7 @@ app.get("/quote/new", (req, res) => res.sendFile(path.join(__dirname, "public", 
 app.get("/reports", (req, res) => res.sendFile(path.join(__dirname, "public", "reports.html")))
 app.get("/eod", (req, res) => res.sendFile(path.join(__dirname, "public", "endOfDay.html")))
 app.get("/cashflow", (req, res) => res.sendFile(path.join(__dirname, "public", "cashFlow.html")))
+app.get("/logistics", (req, res) => res.sendFile(path.join(__dirname, "public", "logistics.html")))
 
 app.get("/quote/view/:id", (req, res) =>
   res.sendFile(path.join(__dirname, "public", "quoteView.html"))

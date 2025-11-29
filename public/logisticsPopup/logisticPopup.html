@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Add Logistics Warehouse</title>
+
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/logisticsPopup/logisticsPopup.css">
+
+    <script src="/js/storage.js"></script>
+    <script defer src="/logisticsPopup/logisticsPopup.js"></script>
+</head>
+
+<body>
+    <div class="popup-wrapper">
+        <div class="popup-card">
+
+            <div class="popup-header">
+                <h2>Add Logistics Warehouse</h2>
+            </div>
+
+            <div class="popup-body">
+
+                <!-- Warehouse -->
+                <label for="warehouseSelect">Warehouse Location</label>
+                <select id="warehouseSelect"></select>
+
+                <!-- Postcode Chips -->
+                <label>Postcodes</label>
+                <div id="chipContainer" class="chip-container"></div>
+
+                <input type="text" id="chipInput" class="chip-input"
+                    placeholder="Type postcode prefix (e.g. BN2*) and press Enter">
+
+                <!-- FIXED: Colour picker MUST be here -->
+                <label for="colorPicker">Display Colour</label>
+                <input type="color" id="colorPicker" value="#0081ab">
+
+            </div> <!-- END popup-body -->
+
+            <div class="popup-footer">
+                <button class="btn-secondary" onclick="window.close()">Cancel</button>
+                <button class="btn-primary" id="saveBtn">Save</button>
+            </div>
+
+        </div>
+    </div>
+</body>
+
+</html>

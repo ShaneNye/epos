@@ -1,0 +1,109 @@
+html, body {
+    font-family: "ProximaNova", "Segoe UI", sans-serif;
+    background: #f5f7fa;
+    margin: 0;
+    padding: 0;
+    height: 100%;
+}
+
+.popup-wrapper {
+    width: 100%;
+    padding: 1.5rem;
+    box-sizing: border-box;
+}
+
+.popup-card {
+    background: #fff;
+    border-radius: 10px;
+    border: 1px solid #e6eef3;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+}
+
+.popup-header {
+    background: linear-gradient(90deg, #007ea8, #0092c7);
+    padding: 1rem 1.25rem;
+    color: white;
+}
+
+.popup-header h2 {
+    margin: 0;
+    font-size: 1.2rem;
+    font-weight: 600;
+}
+
+.popup-body {
+    padding: 1.5rem;
+}
+
+label {
+    font-weight: 600;
+    color: #273036;
+    font-size: 0.92rem;
+    display: block;
+    margin-bottom: 0.3rem;
+}
+
+select,
+input[type="text"] {
+    width: 100%;
+    padding: 0.55rem;
+    margin-bottom: 1rem;
+    border-radius: 6px;
+    border: 1px solid #ccd8df;
+    font-size: 0.92rem;
+}
+
+/* CHIP STYLING */
+.chip-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 6px 0;
+    min-height: 42px;
+}
+
+.chip {
+    background: #0081ab;
+    color: #fff;
+    padding: 6px 12px;
+    border-radius: 16px;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.chip-remove {
+    cursor: pointer;
+    opacity: 0.8;
+    padding-left: 4px;
+}
+
+/* Footer */
+.popup-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 1rem;
+    padding: 1rem 1.25rem;
+    border-top: 1px solid #e6eef3;
+}
+
+.btn-primary {
+    background: #007ea8;
+    color: white;
+    border: none;
+    padding: 0.55rem 1.1rem;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-secondary {
+    background: #eef3f6;
+    border: none;
+    padding: 0.55rem 1.1rem;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+}

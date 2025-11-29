@@ -17,7 +17,7 @@ const {
    ===================================================== */
 router.post("/create", async (req, res) => {
   try {
-    // 🔐 Get user session from Authorization header
+    // 🔐 Get user session
     const auth = req.headers.authorization || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
@@ -29,10 +29,14 @@ router.post("/create", async (req, res) => {
       console.log("🔐 Authenticated session for SO creation:", userId);
     }
 
-    const { customer, order, items, deposits = [] } = req.body;
+    
+
+    const { customer, order, items } = req.body;
     let customerId = customer?.id || null;
 
-    // === 1️⃣ Create Customer if needed ===
+    /* ======================================================
+       1️⃣ CREATE CUSTOMER IF NEEDED
+    ====================================================== */
     if (!customerId) {
       const custBody = {
         entityStatus: { id: "13" },
@@ -67,19 +71,18 @@ router.post("/create", async (req, res) => {
       let match;
       if (newCustomer._location && (match = newCustomer._location.match(/customer\/(\d+)/))) {
         customerId = match[1];
-      } else if (newCustomer.id) {
-        customerId = newCustomer.id;
-      }
+      } else if (newCustomer.id) customerId = newCustomer.id;
 
-      if (!customerId)
-        throw new Error("Failed to resolve new customer ID from NetSuite response");
+      if (!customerId) throw new Error("Failed to resolve new customer ID");
 
       console.log("✅ Created new customer, resolved ID:", customerId);
     }
 
-    console.log("🧩 Using Customer ID for Sales Order:", customerId);
+    console.log("🧩 Using Customer ID:", customerId);
 
-    // === 2️⃣ Lookup Sales Executive’s NetSuite ID ===
+    /* ======================================================
+       2️⃣ LOOKUP SALES EXEC NETSUITE ID
+    ====================================================== */
     let salesExecNsId = null;
     if (order.salesExec) {
       try {
@@ -87,39 +90,44 @@ router.post("/create", async (req, res) => {
           "SELECT netsuiteid FROM users WHERE id = $1",
           [order.salesExec]
         );
-        if (resultExec.rows.length && resultExec.rows[0].netsuiteid) {
-          salesExecNsId = resultExec.rows[0].netsuiteid;
-          console.log("👤 Found NetSuite ID for Sales Exec:", salesExecNsId);
-        }
+        salesExecNsId = resultExec.rows[0]?.netsuiteid || null;
+        console.log("👤 Sales Executive NS ID:", salesExecNsId);
       } catch (err) {
-        console.error("❌ Error looking up Sales Exec NetSuite ID:", err.message);
+        console.error("❌ Sales Exec lookup failed:", err.message);
       }
     }
 
-    // === 3️⃣ Lookup Store Info ===
+    /* ======================================================
+       3️⃣ LOOKUP STORE INFORMATION
+    ====================================================== */
     let invoiceLocationId = null;
     let storeNsId = null;
     let storeName = "";
+
     if (order.store) {
       try {
         const resultLoc = await pool.query(
-          `SELECT name, netsuite_internal_id, invoice_location_id 
+          `SELECT name, netsuite_internal_id, invoice_location_id
            FROM locations WHERE id = $1`,
           [order.store]
         );
         if (resultLoc.rows.length) {
           const row = resultLoc.rows[0];
-          storeNsId = row.netsuite_internal_id || null;
-          invoiceLocationId = row.invoice_location_id || null;
-          storeName = row.name || "";
+          storeNsId = row.netsuite_internal_id;
+          invoiceLocationId = row.invoice_location_id;
+          storeName = row.name;
           console.log("🏬 Store lookup →", { storeNsId, invoiceLocationId, storeName });
         }
       } catch (err) {
-        console.error("❌ Error looking up store info:", err.message);
+        console.error("❌ Store lookup failed:", err.message);
       }
     }
 
-    // === 4️⃣ Build Sales Order payload ===
+    
+
+    /* ======================================================
+       4️⃣ BUILD ORDER BODY (BEFORE INTERCOPO + WEB ORDER)
+    ====================================================== */
     const orderBody = {
       entity: { id: customerId },
       subsidiary: storeNsId ? { id: String(storeNsId) } : undefined,
@@ -131,61 +139,84 @@ router.post("/create", async (req, res) => {
       leadsource: { id: order.leadSource },
       custbody_sb_paymentinfo: { id: order.paymentInfo },
       custbody_sb_warehouse: { id: order.warehouse },
+
       item: {
         items: items.map((i, idx) => {
+          console.log(`🧪 RAW FRONTEND LINE ${idx + 1}:`, i);
+
           const line = {
             item: { id: i.item },
             quantity: i.quantity,
             amount: i.amount / 1.2,
-            custcol_sb_itemoptionsdisplay: i.options || "",
+            custcol_sb_itemoptionsdisplay: i.options || ""
           };
 
-          // === Fulfilment Location
-          if (i.fulfilmentMethod && String(i.fulfilmentMethod).trim() !== "" && i.class !== "service") {
+          // Fulfilment Method → custcol_sb_fulfilmentlocation
+          if (i.fulfilmentMethod && i.class !== "service") {
             line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
           }
 
-          // === Allocation Logic (lot vs meta)
-          if (i.lotnumber && i.lotnumber.trim() !== "") {
-            // ✅ Explicit lotnumber
+          
+/* ======================================================
+   createpo logic — confirmed from SuiteScript:
+   Special Order = 2
+   None = ""  (empty string)
+====================================================== */
+const fulfilId = String(i.fulfilmentMethod || "").trim();
+
+if (fulfilId === "3") {
+  // Special Order fulfilment → create PO
+  line.createpo = "SpecOrd";  
+  console.log(`🟦 Line ${idx + 1} createpo = 2 (Special Order)`);
+
+} else if (fulfilId === "2") {
+  // Warehouse → do NOT create PO
+  line.createpo = "";
+  console.log(`⬜ Line ${idx + 1} createpo = "" (warehouse)`);
+
+} else {
+  // Default → no PO
+  line.createpo = "";
+  console.log(`▫️ Line ${idx + 1} createpo = "" (default)`);
+}
+
+
+          /* ======================================================
+             LOT / META ALLOCATION
+          ====================================================== */
+          if (i.lotnumber) {
             line.custcol_sb_lotnumber = { id: i.lotnumber };
-          } else if (i.inventoryMeta && i.inventoryMeta.trim() !== "") {
-            // 🔍 Parse inventory meta to check for store match
-            const metaParts = i.inventoryMeta.split(";").map(p => p.trim()).filter(Boolean);
-            const firstPart = metaParts[0] || "";
-            const tokens = firstPart.split("|").map(v => (v || "").trim());
-            const locName = tokens[1] || "";
-            const invId = tokens[6] || "";
-            const fulfilName = (i.fulfilmentMethodName || "").toLowerCase();
-
-            const isStoreMatch =
-              fulfilName.includes("store") &&
-              (
-                locName.toLowerCase() === storeName.toLowerCase() ||
-                locName.toLowerCase().includes(storeName.toLowerCase()) ||
-                storeName.toLowerCase().includes(locName.toLowerCase())
-              );
-
-            if (isStoreMatch && invId) {
-              // ✅ In-Store match — treat like warehouse, allocate lotnumber
-              line.custcol_sb_lotnumber = { id: invId };
-              console.log(`🏪 Line ${idx + 1} (item ${i.item}) In-Store match — using lotnumber ${invId}`);
-            } else {
-              // 🚚 Cross-location or warehouse transfer — use EPOS meta
-              line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
-              line.orderallocationstrategy = null; // prevent early allocation
-              console.log(`🚚 Line ${idx + 1} (item ${i.item}) cross-location transfer required`);
-            }
+          } else if (i.inventoryMeta) {
+            line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
+            line.orderallocationstrategy = null;
           }
 
+          console.log(`🧾 Final Line ${idx + 1}:`, line);
           return line;
-        }),
-      },
+        })
+      }
     };
+    
 
-    console.log("🚀 Sales Order payload preview:", JSON.stringify(orderBody, null, 2));
+    /* ======================================================
+       5️⃣ WEB ORDER FLAG — MUST BE BEFORE PAYLOAD PREVIEW
+    ====================================================== */
+    if (String(storeNsId) === "6") {
+      orderBody.custbody_sb_is_web_order = { id: "1" };
+      console.log("🏷 Web Order FLAG SET: custbody_sb_is_web_order = 1");
+    }
 
-    // ✅ Create SO using per-user token
+    /* ======================================================
+       6️⃣ FINAL PAYLOAD PREVIEW (AFTER ALL MODIFICATIONS)
+    ====================================================== */
+    console.log(
+      "🚀 FINAL Sales Order payload:",
+      JSON.stringify(orderBody, null, 2)
+    );
+
+    /* ======================================================
+       7️⃣ CREATE SALES ORDER IN NETSUITE
+    ====================================================== */
     const so = await nsPost("/salesOrder", orderBody, userId, "sb");
 
     let salesOrderId = so.id || null;
@@ -195,7 +226,10 @@ router.post("/create", async (req, res) => {
     }
 
     if (!salesOrderId)
-      return res.status(500).json({ ok: false, error: "Failed to resolve Sales Order ID" });
+      return res.status(500).json({
+        ok: false,
+        error: "Failed to resolve Sales Order ID"
+      });
 
     console.log("✅ Sales Order created successfully with ID:", salesOrderId);
 

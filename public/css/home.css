@@ -335,6 +335,8 @@ select#activeRoleSelect::-internal-list-box {
   flex-direction: column;
   overflow: hidden;
   transition: all 0.2s ease;
+  min-height: 300px;
+
 }
 
 #dashboardGrid section:hover {
@@ -356,7 +358,8 @@ select#activeRoleSelect::-internal-list-box {
   justify-content: center;
   align-items: center;
   margin: 0px;
-  height: 100%;             /* ✅ fills bottom-row height */
+  height: 100%;   
+  min-height: 300px;          /* ✅ fills bottom-row height */
 }
 
 #topThreeWidget {
@@ -666,4 +669,39 @@ select#activeRoleSelect::-internal-list-box {
 .survey-area .muted {
   color: #7f8a91;
   font-size: 0.8rem;
+}
+/* === FIX: Compact Top 3 Widget === */
+#topThreeWidget {
+  display: block !important;      /* stop flex-centering */
+  padding: 8px 10px !important;   /* tighter padding */
+  height: auto !important;        /* allow natural height */
+  min-height: unset !important;   /* remove forced height */
+  max-height: unset !important;
+}
+
+/* Ensure the Top 3 title is aligned and compact */
+#topThreeWidget h3,
+#topThreeWidget .widget-header {
+  margin: 0 0 6px 0;
+  padding: 0;
+  font-size: 0.95rem;
+}
+
+/* Slim table formatting */
+#topThreeWidget table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0;
+  font-size: 0.78rem;
+}
+
+#topThreeWidget th,
+#topThreeWidget td {
+  padding: 3px 6px;
+  border-bottom: 1px solid #eef2f6;
+}
+
+#topThreeWidget th {
+  background: #0081ab;
+  color: #fff;
 }

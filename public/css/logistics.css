@@ -1,0 +1,306 @@
+/* =======================================================
+   LOGISTICS PAGE — MATCH ADMIN THEME
+   ======================================================= */
+
+:root {
+    --brand: #0081ab;
+    --brand-600: #006c8e;
+    --gold: #FFD700;
+    --ink: #1a1f24;
+    --muted: #6a7480;
+    --line: #e6e9ee;
+    --panel: #ffffff;
+    --bg: #f7fafc;
+}
+
+/* --- Headings --- */
+.content h1 {
+    margin-bottom: 1rem;
+    color: var(--brand);
+    font-weight: 700;
+}
+
+.tab-content h2 {
+    margin-bottom: 0.25rem;
+    color: var(--brand);
+    font-size: 1.35rem;
+    font-weight: 700;
+}
+
+.tab-content p.muted {
+    color: var(--muted);
+    margin-bottom: 1rem;
+    font-size: 0.9rem;
+}
+
+/* =======================================================
+   TABS
+   ======================================================= */
+.tabs {
+    display: flex;
+    border-bottom: 1px solid var(--line);
+    background: var(--panel);
+    margin-bottom: 1.5rem;
+}
+
+.tab {
+    padding: 0.75rem 1.25rem;
+    font-weight: 600;
+    cursor: pointer;
+    color: var(--ink);
+    border-bottom: 2px solid transparent;
+    transition: all 0.2s ease;
+    font-size: 0.9rem;
+}
+
+.tab:hover {
+    background: #f8fafc;
+    color: var(--brand);
+}
+
+.tab.active {
+    color: var(--brand);
+    border-bottom: 2px solid var(--brand);
+}
+
+/* Content container */
+.tab-content {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 1.5rem;
+    margin-top: -1px;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.tab-content.hidden {
+    display: none !important;
+}
+
+/* =======================================================
+   TABLES
+   ======================================================= */
+
+#logisticsTable,
+#scheduleTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+#logisticsTable th,
+#scheduleTable th {
+    background: var(--brand);
+    color: #fff;
+    font-weight: 600;
+    text-transform: uppercase;
+    font-size: 0.8rem;
+    letter-spacing: 0.3px;
+    padding: 0.6rem 0.8rem;
+    border-bottom: 2px solid var(--brand-600);
+}
+
+#logisticsTable td,
+#scheduleTable td {
+    padding: 0.65rem 0.8rem;
+    border-bottom: 1px solid var(--line);
+}
+
+#logisticsTable tr:nth-child(even),
+#scheduleTable tr:nth-child(even) {
+    background: #fafafa;
+}
+
+#logisticsTable td.actions,
+#scheduleTable td.actions {
+    white-space: nowrap;
+    text-align: right;
+}
+
+/* Scroll wrapper */
+.table-scroll-wrapper {
+    max-height: 420px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    box-shadow: inset 0 0 4px rgba(0, 0, 0, 0.04);
+    margin-top: 1rem;
+}
+
+.table-scroll-wrapper thead th {
+    position: sticky;
+    top: 0;
+    background: var(--brand);
+    z-index: 2;
+}
+
+/* =======================================================
+   TOOLBAR
+   ======================================================= */
+
+.user-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    margin-bottom: 1rem;
+}
+
+.btn-primary {
+    background: var(--brand);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 0.55rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.btn-primary:hover {
+    background: var(--brand-600);
+    transform: translateY(-1px);
+}
+
+/* Special gold button for + Add */
+#addWarehouseBtn,
+#addScheduleBtn {
+    background: var(--gold);
+    color: var(--ink);
+}
+
+#addWarehouseBtn:hover,
+#addScheduleBtn:hover {
+    background: #e6c200;
+}
+
+/* =======================================================
+   LAYOUT FOR TABLE + MAP
+   ======================================================= */
+
+.logistics-layout {
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+    gap: 1.5rem;
+    margin-top: 1rem;
+}
+
+@media (max-width: 900px) {
+    .logistics-layout {
+        grid-template-columns: 1fr;
+    }
+}
+
+/* =======================================================
+   MAP WRAPPERS (Shared between Postcodes & Schedule)
+   ======================================================= */
+
+.logistics-map-wrapper,
+.schedule-map-wrapper {
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: #fff;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.05);
+    overflow: hidden;
+    min-height: 320px;
+    height: 100%;
+}
+
+#logisticsMap,
+#scheduleMap {
+    width: 100%;
+    height: 100%;
+    min-height: 320px;
+}
+
+/* =======================================================
+   POSTCODE LABEL SCALING
+   ======================================================= */
+
+.district-label-zoom span {
+    display: inline-block;
+    font-weight: 700;
+    color: #000;
+    background: rgba(255, 255, 255, 0.75);
+    padding: 2px 4px;
+    border-radius: 4px;
+    border: 1px solid #333;
+    white-space: nowrap;
+    pointer-events: none;
+    transform-origin: center center;
+}
+
+.leaflet-zoom-7 .district-label-zoom span { transform: scale(0.4); opacity: 0; }
+.leaflet-zoom-8 .district-label-zoom span { transform: scale(0.6); opacity: 0.3; }
+.leaflet-zoom-9 .district-label-zoom span { transform: scale(0.8); opacity: 0.6; }
+.leaflet-zoom-10 .district-label-zoom span { transform: scale(1.0); opacity: 1; }
+.leaflet-zoom-11 .district-label-zoom span { transform: scale(1.3); }
+.leaflet-zoom-12 .district-label-zoom span { transform: scale(1.6); }
+.leaflet-zoom-13 .district-label-zoom span { transform: scale(2.0); }
+.leaflet-zoom-14 .district-label-zoom span { transform: scale(2.4); }
+
+
+/* SUB-TABS */
+.delivery-subtabs {
+    display: flex;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 1rem;
+}
+
+.delivery-subtab {
+    padding: 0.6rem 1rem;
+    cursor: pointer;
+    font-weight: 600;
+    border-bottom: 2px solid transparent;
+}
+
+.delivery-subtab.active {
+    color: var(--brand);
+    border-bottom: 2px solid var(--brand);
+}
+
+/* GRID */
+.delivery-grid-wrapper {
+    overflow-x: auto;
+    padding: 1rem 0;
+}
+
+.delivery-grid {
+    border-collapse: collapse;
+    min-width: 900px;
+    width: 100%;
+    text-align: center;
+}
+
+.delivery-grid th,
+.delivery-grid td {
+    border: 1px solid #ccc;
+    padding: 0.75rem;
+}
+
+.zone-header {
+    background: #f3f6f9;
+    font-weight: 700;
+}
+
+.day {
+    background: var(--brand);
+    color: #fff;
+    font-weight: 700;
+    width: 70px;
+}
+
+/* Clickable cells */
+.delivery-grid .cell {
+    background: #fffbe7;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.delivery-grid .cell:hover {
+    background: #ffe79a;
+}
