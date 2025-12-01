@@ -4,7 +4,8 @@ const csv = require("csv-parser");
 const turf = require("@turf/turf");
 
 // CHANGE TO YOUR REAL FILE NAME IF DIFFERENT
-const INPUT_CSV = path.join(__dirname, "../public/geo/raw/NSPL.csv");
+const INPUT_CSV = path.join(__dirname, "../public/geo/postcodes/raw/NSPL.csv");
+
 
 const OUTPUT_DIR = path.join(__dirname, "../public/geo/postcodes");
 
@@ -14,27 +15,46 @@ if (!fs.existsSync(OUTPUT_DIR)) {
 
 console.log("📍 Reading NSPL CSV...");
 
+/* ============================================================
+   SOUTH OF ENGLAND POSTCODE AREAS
+   ============================================================ */
+const SOUTH_AREAS = new Set([
+    "BN","BH","BR","CR","CT",
+    "DA","DT",
+    "E","EC",
+    "GU",
+    "HA","HP","KT",
+    "ME","MK",
+    "N",
+    "OX","PO","RG","RH","RM",
+    "SE","SM","SO","SW",
+    "TN","TW","WD"
+]);
+
 // Dictionary: { "BN2": [ [lon, lat], ... ] }
 const districts = {};
 
 fs.createReadStream(INPUT_CSV)
-    .pipe(csv({ separator: "," })) // <-- CORRECT FOR YOUR FILE
+    .pipe(csv({ separator: "," }))
     .on("data", (row) => {
         try {
-            // KEY FIELDS (from your sample)
-            const postcode = row.pcds?.replace(/"/g, "").trim(); // remove quotes
+            const postcode = row.pcds?.replace(/"/g, "").trim();
             const lat = parseFloat(row.lat);
             const lon = parseFloat(row.long);
 
             if (!postcode || isNaN(lat) || isNaN(lon)) return;
 
-            // District prefix = characters before the space
+            // Outward district: "BN2", "RG12", etc.
             const district = postcode.split(" ")[0].trim().toUpperCase();
-
             if (!district) return;
 
-            if (!districts[district]) districts[district] = [];
+            // Postcode area: letters only ("BN","RG","CT")
+            const area = district.replace(/[0-9].*/, "");
 
+            // 🎯 Only keep South-of-England postcode areas
+            if (!SOUTH_AREAS.has(area)) return;
+
+            if (!districts[district]) districts[district] = [];
             districts[district].push([lon, lat]);
 
         } catch (err) {
@@ -42,18 +62,17 @@ fs.createReadStream(INPUT_CSV)
         }
     })
     .on("end", async () => {
-        console.log(`📦 CSV parsed successfully. Districts found: ${Object.keys(districts).length}`);
+        const keys = Object.keys(districts);
+        console.log(`📦 CSV parsed. South districts found: ${keys.length}`);
 
-        for (const district of Object.keys(districts)) {
+        for (const district of keys) {
             const points = districts[district];
             if (points.length < 3) continue;
 
             const pts = turf.points(points);
-
             let hull = null;
 
             try {
-                // concave hull gives a realistic shape
                 hull = turf.concave(pts, { maxEdge: 3 });
             } catch (err) {
                 console.log(`⚠️ Concave hull failed for ${district}, using convex.`);
@@ -65,7 +84,6 @@ fs.createReadStream(INPUT_CSV)
                 continue;
             }
 
-            // Wrap in a FeatureCollection
             const out = {
                 type: "FeatureCollection",
                 features: [hull]
@@ -77,5 +95,5 @@ fs.createReadStream(INPUT_CSV)
             console.log(`✔ Saved ${district}.geojson`);
         }
 
-        console.log("🎉 All polygons generated!");
+        console.log("🎉 South of England polygons generated!");
     });

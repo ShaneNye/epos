@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <title>Edit Delivery Cell</title>
+
+    <link rel="stylesheet" href="/deliverySchedulePopup/popup.css" />
+    <script defer src="/deliverySchedulePopup/popup.js"></script>
+</head>
+
+<body>
+    <div class="popup-wrapper">
+        <div class="popup-card">
+
+            <div class="popup-header">
+                <h2>Delivery Slot</h2>
+            </div>
+
+            <div class="popup-body">
+
+                <!-- Info summary -->
+                <div class="popup-info">
+                    <p><strong>Warehouse:</strong> <span id="popup-warehouse"></span></p>
+                    <p><strong>Day:</strong> <span id="popup-day"></span></p>
+                    <p><strong>Zone:</strong> <span id="popup-zone"></span></p>
+                </div>
+
+                <!-- Editable fields -->
+                <label>Label</label>
+                <input type="text" id="label" placeholder="e.g. East Coast Route" />
+
+                <label>Time Slot</label>
+                <select id="ampm">
+                    <option value="">Select...</option>
+                    <option value="AM">AM</option>
+                    <option value="PM">PM</option>
+                    <option value="ALL">All Day</option>
+                </select>
+
+                <label>Postcodes (comma separated)</label>
+                <textarea id="postcodes" rows="3" placeholder="BN1, BN2, BN3"></textarea>
+
+                <label>Colour</label>
+                <input type="color" id="color" value="#0081ab" />
+
+            </div>
+
+            <div class="popup-footer">
+                <button class="btn-secondary" onclick="window.close()">Cancel</button>
+                <button class="btn-primary" id="saveBtn">Save</button>
+            </div>
+
+        </div>
+    </div>
+</body>
+
+</html>

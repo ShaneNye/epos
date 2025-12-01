@@ -29,21 +29,25 @@
 </head>
 
 <body>
+
     <div id="menu"></div>
 
     <main class="content" style="max-width: 1100px; margin: 2rem auto;">
         <h1 style="margin-bottom: 1rem; color: var(--brand);">Logistics</h1>
 
-        <!-- Main Tabs -->
+        <!-- ========================== -->
+        <!-- MAIN TABS -->
+        <!-- ========================== -->
         <div class="tabs">
             <div class="tab active" data-target="postcodes">Postcodes</div>
             <div class="tab" data-target="deliverySchedule">Delivery Schedule</div>
         </div>
 
-        <!-- ================================================================= -->
-        <!-- POSTCODES TAB -->
-        <!-- ================================================================= -->
+        <!-- ========================== -->
+        <!-- TAB: POSTCODES -->
+        <!-- ========================== -->
         <div id="postcodes" class="tab-content active">
+
             <h2>Warehouse Postcode Areas</h2>
             <p class="muted">Define which postcodes each warehouse services.</p>
 
@@ -56,7 +60,7 @@
             </div>
 
             <div class="logistics-layout">
-                <!-- LEFT TABLE -->
+
                 <div class="table-scroll-wrapper logistics-table-wrapper">
                     <table id="logisticsTable">
                         <thead>
@@ -71,16 +75,16 @@
                     </table>
                 </div>
 
-                <!-- RIGHT MAP -->
                 <div class="logistics-map-wrapper">
                     <div id="logisticsMap"></div>
                 </div>
+
             </div>
         </div>
 
-        <!-- ================================================================= -->
-        <!-- DELIVERY SCHEDULE TAB -->
-        <!-- ================================================================= -->
+        <!-- ========================== -->
+        <!-- TAB: DELIVERY SCHEDULE -->
+        <!-- ========================== -->
         <div id="deliverySchedule" class="tab-content hidden">
 
             <h2>Delivery Schedule</h2>
@@ -88,158 +92,190 @@
 
             <!-- SUB-TABS -->
             <div class="delivery-subtabs">
-                <div class="delivery-subtab active" data-target="schedule-sussex">Sussex Warehouse</div>
-                <div class="delivery-subtab" data-target="schedule-kent">Kent Warehouse</div>
+                <div class="delivery-subtab active" data-target="schedule-sussex" data-warehouse="7">
+                    Sussex Warehouse
+                </div>
+
+                <div class="delivery-subtab" data-target="schedule-kent" data-warehouse="6">
+                    Kent Warehouse
+                </div>
             </div>
 
-            <!-- ================= SUSSEX GRID ================= -->
-            <div id="schedule-sussex" class="delivery-subtab-content" style="display:block;">
-                <table class="delivery-grid">
-                    <thead>
-                        <tr>
-                            <th class="day-col"></th>
-                            <th contenteditable="true" class="zone-header">Zone 1</th>
-                            <th contenteditable="true" class="zone-header">Zone 2</th>
-                            <th contenteditable="true" class="zone-header">Zone 3</th>
-                            <th contenteditable="true" class="zone-header">Zone 4</th>
-                            <th contenteditable="true" class="zone-header">Zone 5</th>
-                            <th contenteditable="true" class="zone-header">Zone 6</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td class="day">MON</td>
-                            <td class="cell" data-day="MON" data-zone="1"></td>
-                            <td class="cell" data-day="MON" data-zone="2"></td>
-                            <td class="cell" data-day="MON" data-zone="3"></td>
-                            <td class="cell" data-day="MON" data-zone="4"></td>
-                            <td class="cell" data-day="MON" data-zone="5"></td>
-                            <td class="cell" data-day="MON" data-zone="6"></td>
-                        </tr>
-                        <tr>
-                            <td class="day">TUES</td>
-                            <td class="cell" data-day="TUES" data-zone="1"></td>
-                            <td class="cell" data-day="TUES" data-zone="2"></td>
-                            <td class="cell" data-day="TUES" data-zone="3"></td>
-                            <td class="cell" data-day="TUES" data-zone="4"></td>
-                            <td class="cell" data-day="TUES" data-zone="5"></td>
-                            <td class="cell" data-day="TUES" data-zone="6"></td>
-                        </tr>
-                        <tr>
-                            <td class="day">WEDS</td>
-                            <td class="cell" data-day="WEDS" data-zone="1"></td>
-                            <td class="cell" data-day="WEDS" data-zone="2"></td>
-                            <td class="cell" data-day="WEDS" data-zone="3"></td>
-                            <td class="cell" data-day="WEDS" data-zone="4"></td>
-                            <td class="cell" data-day="WEDS" data-zone="5"></td>
-                            <td class="cell" data-day="WEDS" data-zone="6"></td>
-                        </tr>
-                        <tr>
-                            <td class="day">THURS</td>
-                            <td class="cell" data-day="THURS" data-zone="1"></td>
-                            <td class="cell" data-day="THURS" data-zone="2"></td>
-                            <td class="cell" data-day="THURS" data-zone="3"></td>
-                            <td class="cell" data-day="THURS" data-zone="4"></td>
-                            <td class="cell" data-day="THURS" data-zone="5"></td>
-                            <td class="cell" data-day="THURS" data-zone="6"></td>
-                        </tr>
-                        <tr>
-                            <td class="day">FRI</td>
-                            <td class="cell" data-day="FRI" data-zone="1"></td>
-                            <td class="cell" data-day="FRI" data-zone="2"></td>
-                            <td class="cell" data-day="FRI" data-zone="3"></td>
-                            <td class="cell" data-day="FRI" data-zone="4"></td>
-                            <td class="cell" data-day="FRI" data-zone="5"></td>
-                            <td class="cell" data-day="FRI" data-zone="6"></td>
-                        </tr>
-                        <tr>
-                            <td class="day">SAT</td>
-                            <td class="cell" data-day="SAT" data-zone="1"></td>
-                            <td class="cell" data-day="SAT" data-zone="2"></td>
-                            <td class="cell" data-day="SAT" data-zone="3"></td>
-                            <td class="cell" data-day="SAT" data-zone="4"></td>
-                            <td class="cell" data-day="SAT" data-zone="5"></td>
-                            <td class="cell" data-day="SAT" data-zone="6"></td>
-                        </tr>
-                    </tbody>
-                </table>
+            <!-- ========================== -->
+            <!-- SUSSEX GRID -->
+            <!-- ========================== -->
+            <div id="schedule-sussex" class="delivery-subtab-content">
+
+                <div class="delivery-grid-wrapper">
+                    <table class="delivery-grid">
+                        <thead>
+                            <tr>
+                                <th class="day-col"></th>
+                                <th contenteditable="true" class="zone-header">Zone 1</th>
+                                <th contenteditable="true" class="zone-header">Zone 2</th>
+                                <th contenteditable="true" class="zone-header">Zone 3</th>
+                                <th contenteditable="true" class="zone-header">Zone 4</th>
+                                <th contenteditable="true" class="zone-header">Zone 5</th>
+                                <th contenteditable="true" class="zone-header">Zone 6</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            <tr>
+                                <td class="day">MON</td>
+                                <td class="cell" data-day="MON" data-zone="1"></td>
+                                <td class="cell" data-day="MON" data-zone="2"></td>
+                                <td class="cell" data-day="MON" data-zone="3"></td>
+                                <td class="cell" data-day="MON" data-zone="4"></td>
+                                <td class="cell" data-day="MON" data-zone="5"></td>
+                                <td class="cell" data-day="MON" data-zone="6"></td>
+                            </tr>
+
+                            <tr>
+                                <td class="day">TUES</td>
+                                <td class="cell" data-day="TUES" data-zone="1"></td>
+                                <td class="cell" data-day="TUES" data-zone="2"></td>
+                                <td class="cell" data-day="TUES" data-zone="3"></td>
+                                <td class="cell" data-day="TUES" data-zone="4"></td>
+                                <td class="cell" data-day="TUES" data-zone="5"></td>
+                                <td class="cell" data-day="TUES" data-zone="6"></td>
+                            </tr>
+
+                            <tr>
+                                <td class="day">WEDS</td>
+                                <td class="cell" data-day="WEDS" data-zone="1"></td>
+                                <td class="cell" data-day="WEDS" data-zone="2"></td>
+                                <td class="cell" data-day="WEDS" data-zone="3"></td>
+                                <td class="cell" data-day="WEDS" data-zone="4"></td>
+                                <td class="cell" data-day="WEDS" data-zone="5"></td>
+                                <td class="cell" data-day="WEDS" data-zone="6"></td>
+                            </tr>
+
+                            <tr>
+                                <td class="day">THURS</td>
+                                <td class="cell" data-day="THURS" data-zone="1"></td>
+                                <td class="cell" data-day="THURS" data-zone="2"></td>
+                                <td class="cell" data-day="THURS" data-zone="3"></td>
+                                <td class="cell" data-day="THURS" data-zone="4"></td>
+                                <td class="cell" data-day="THURS" data-zone="5"></td>
+                                <td class="cell" data-day="THURS" data-zone="6"></td>
+                            </tr>
+
+                            <tr>
+                                <td class="day">FRI</td>
+                                <td class="cell" data-day="FRI" data-zone="1"></td>
+                                <td class="cell" data-day="FRI" data-zone="2"></td>
+                                <td class="cell" data-day="FRI" data-zone="3"></td>
+                                <td class="cell" data-day="FRI" data-zone="4"></td>
+                                <td class="cell" data-day="FRI" data-zone="5"></td>
+                                <td class="cell" data-day="FRI" data-zone="6"></td>
+                            </tr>
+
+                            <tr>
+                                <td class="day">SAT</td>
+                                <td class="cell" data-day="SAT" data-zone="1"></td>
+                                <td class="cell" data-day="SAT" data-zone="2"></td>
+                                <td class="cell" data-day="SAT" data-zone="3"></td>
+                                <td class="cell" data-day="SAT" data-zone="4"></td>
+                                <td class="cell" data-day="SAT" data-zone="5"></td>
+                                <td class="cell" data-day="SAT" data-zone="6"></td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
             </div>
 
-            <!-- ================= KENT GRID ================= -->
-            <div id="schedule-kent" class="delivery-subtab-content" style="display:none;">
-                <table class="delivery-grid">
-                    <thead>
-                        <tr>
-                            <th class="day-col"></th>
-                            <th contenteditable="true" class="zone-header">Zone 1</th>
-                            <th contenteditable="true" class="zone-header">Zone 2</th>
-                            <th contenteditable="true" class="zone-header">Zone 3</th>
-                            <th contenteditable="true" class="zone-header">Zone 4</th>
-                            <th contenteditable="true" class="zone-header">Zone 5</th>
-                            <th contenteditable="true" class="zone-header">Zone 6</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr>
-                            <td class="day">MON</td>
-                            <td class="cell" data-day="MON" data-zone="1"></td>
-                            <td class="cell" data-day="MON" data-zone="2"></td>
-                            <td class="cell" data-day="MON" data-zone="3"></td>
-                            <td class="cell" data-day="MON" data-zone="4"></td>
-                            <td class="cell" data-day="MON" data-zone="5"></td>
-                            <td class="cell" data-day="MON" data-zone="6"></td>
-                        </tr>
-                        <tr>
-                            <td class="day">TUES</td>
-                            <td class="cell" data-day="TUES" data-zone="1"></td>
-                            <td class="cell" data-day="TUES" data-zone="2"></td>
-                            <td class="cell" data-day="TUES" data-zone="3"></td>
-                            <td class="cell" data-day="TUES" data-zone="4"></td>
-                            <td class="cell" data-day="TUES" data-zone="5"></td>
-                            <td class="cell" data-day="TUES" data-zone="6"></td>
-                        </tr>
-                        <tr>
-                            <td class="day">WEDS</td>
-                            <td class="cell" data-day="WEDS" data-zone="1"></td>
-                            <td class="cell" data-day="WEDS" data-zone="2"></td>
-                            <td class="cell" data-day="WEDS" data-zone="3"></td>
-                            <td class="cell" data-day="WEDS" data-zone="4"></td>
-                            <td class="cell" data-day="WEDS" data-zone="5"></td>
-                            <td class="cell" data-day="WEDS" data-zone="6"></td>
-                        </tr>
-                        <tr>
-                            <td class="day">THURS</td>
-                            <td class="cell" data-day="THURS" data-zone="1"></td>
-                            <td class="cell" data-day="THURS" data-zone="2"></td>
-                            <td class="cell" data-day="THURS" data-zone="3"></td>
-                            <td class="cell" data-day="THURS" data-zone="4"></td>
-                            <td class="cell" data-day="THURS" data-zone="5"></td>
-                            <td class="cell" data-day="THURS" data-zone="6"></td>
-                        </tr>
-                        <tr>
-                            <td class="day">FRI</td>
-                            <td class="cell" data-day="FRI" data-zone="1"></td>
-                            <td class="cell" data-day="FRI" data-zone="2"></td>
-                            <td class="cell" data-day="FRI" data-zone="3"></td>
-                            <td class="cell" data-day="FRI" data-zone="4"></td>
-                            <td class="cell" data-day="FRI" data-zone="5"></td>
-                            <td class="cell" data-day="FRI" data-zone="6"></td>
-                        </tr>
-                        <tr>
-                            <td class="day">SAT</td>
-                            <td class="cell" data-day="SAT" data-zone="1"></td>
-                            <td class="cell" data-day="SAT" data-zone="2"></td>
-                            <td class="cell" data-day="SAT" data-zone="3"></td>
-                            <td class="cell" data-day="SAT" data-zone="4"></td>
-                            <td class="cell" data-day="SAT" data-zone="5"></td>
-                            <td class="cell" data-day="SAT" data-zone="6"></td>
-                        </tr>
-                    </tbody>
-                </table>
+            <!-- ========================== -->
+            <!-- KENT GRID -->
+            <!-- ========================== -->
+            <div id="schedule-kent" class="delivery-subtab-content hidden">
+
+                <div class="delivery-grid-wrapper">
+                    <table class="delivery-grid">
+                        <thead>
+                            <tr>
+                                <th class="day-col"></th>
+                                <th contenteditable="true" class="zone-header">Zone 1</th>
+                                <th contenteditable="true" class="zone-header">Zone 2</th>
+                                <th contenteditable="true" class="zone-header">Zone 3</th>
+                                <th contenteditable="true" class="zone-header">Zone 4</th>
+                                <th contenteditable="true" class="zone-header">Zone 5</th>
+                                <th contenteditable="true" class="zone-header">Zone 6</th>
+                            </tr>
+                        </thead>
+
+                        <tbody>
+                            <tr>
+                                <td class="day">MON</td>
+                                <td class="cell" data-day="MON" data-zone="1"></td>
+                                <td class="cell" data-day="MON" data-zone="2"></td>
+                                <td class="cell" data-day="MON" data-zone="3"></td>
+                                <td class="cell" data-day="MON" data-zone="4"></td>
+                                <td class="cell" data-day="MON" data-zone="5"></td>
+                                <td class="cell" data-day="MON" data-zone="6"></td>
+                            </tr>
+
+                            <tr>
+                                <td class="day">TUES</td>
+                                <td class="cell" data-day="TUES" data-zone="1"></td>
+                                <td class="cell" data-day="TUES" data-zone="2"></td>
+                                <td class="cell" data-day="TUES" data-zone="3"></td>
+                                <td class="cell" data-day="TUES" data-zone="4"></td>
+                                <td class="cell" data-day="TUES" data-zone="5"></td>
+                                <td class="cell" data-day="TUES" data-zone="6"></td>
+                            </tr>
+
+                            <tr>
+                                <td class="day">WEDS</td>
+                                <td class="cell" data-day="WEDS" data-zone="1"></td>
+                                <td class="cell" data-day="WEDS" data-zone="2"></td>
+                                <td class="cell" data-day="WEDS" data-zone="3"></td>
+                                <td class="cell" data-day="WEDS" data-zone="4"></td>
+                                <td class="cell" data-day="WEDS" data-zone="5"></td>
+                                <td class="cell" data-day="WEDS" data-zone="6"></td>
+                            </tr>
+
+                            <tr>
+                                <td class="day">THURS</td>
+                                <td class="cell" data-day="THURS" data-zone="1"></td>
+                                <td class="cell" data-day="THURS" data-zone="2"></td>
+                                <td class="cell" data-day="THURS" data-zone="3"></td>
+                                <td class="cell" data-day="THURS" data-zone="4"></td>
+                                <td class="cell" data-day="THURS" data-zone="5"></td>
+                                <td class="cell" data-day="THURS" data-zone="6"></td>
+                            </tr>
+
+                            <tr>
+                                <td class="day">FRI</td>
+                                <td class="cell" data-day="FRI" data-zone="1"></td>
+                                <td class="cell" data-day="FRI" data-zone="2"></td>
+                                <td class="cell" data-day="FRI" data-zone="3"></td>
+                                <td class="cell" data-day="FRI" data-zone="4"></td>
+                                <td class="cell" data-day="FRI" data-zone="5"></td>
+                                <td class="cell" data-day="FRI" data-zone="6"></td>
+                            </tr>
+
+                            <tr>
+                                <td class="day">SAT</td>
+                                <td class="cell" data-day="SAT" data-zone="1"></td>
+                                <td class="cell" data-day="SAT" data-zone="2"></td>
+                                <td class="cell" data-day="SAT" data-zone="3"></td>
+                                <td class="cell" data-day="SAT" data-zone="4"></td>
+                                <td class="cell" data-day="SAT" data-zone="5"></td>
+                                <td class="cell" data-day="SAT" data-zone="6"></td>
+                            </tr>
+                        </tbody>
+
+                    </table>
+                </div>
+
             </div>
 
         </div>
+
     </main>
+
 </body>
 
 </html>

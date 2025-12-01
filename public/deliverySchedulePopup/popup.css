@@ -1,0 +1,188 @@
+:root {
+    --brand: #0081ab;
+    --ink: #1a1f24;
+    --muted: #6a7480;
+    --line: #e3e6ea;
+    --bg: #f5f7fa;
+}
+
+/* -------------------------------
+   Wrapper / Card Layout
+-------------------------------- */
+.popup-wrapper {
+    height: 100vh;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: var(--bg);
+    padding: 1rem;
+}
+
+.popup-card {
+    width: 100%;
+    max-width: 480px;
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 6px 20px rgba(0,0,0,0.12);
+    overflow: hidden;
+    animation: fadeIn 0.2s ease;
+}
+
+/* -------------------------------
+   Header
+-------------------------------- */
+.popup-header {
+    padding: 1.2rem 1.5rem;
+    background: #eef3f7;
+    border-bottom: 1px solid var(--line);
+}
+
+.popup-header h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--brand);
+}
+
+/* -------------------------------
+   Body Content
+-------------------------------- */
+.popup-body {
+    padding: 1.4rem 1.5rem;
+}
+
+.popup-body label {
+    display: block;
+    font-weight: 600;
+    color: var(--ink);
+    margin-bottom: 0.35rem;
+    font-size: 0.9rem;
+}
+
+/* Inputs */
+.popup-body input[type="text"],
+.popup-body input[type="color"],
+.popup-body select,
+.popup-body textarea {
+    width: 100%;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    font-size: 0.9rem;
+    background: #fff;
+    margin-bottom: 1rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.popup-body textarea {
+    resize: vertical;
+    min-height: 70px;
+}
+
+.popup-body input:focus,
+.popup-body select:focus,
+.popup-body textarea:focus {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: 0 0 0 3px rgba(0,129,171,0.15);
+}
+
+/* -------------------------------
+   Info Summary
+-------------------------------- */
+.popup-info {
+    margin-bottom: 1.2rem;
+    padding: 0.75rem 1rem;
+    background: #f7fafc;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+}
+
+.popup-info p {
+    margin: 0.25rem 0;
+    color: var(--muted);
+    font-size: 0.9rem;
+}
+
+/* -------------------------------
+   Chips
+-------------------------------- */
+.chip-container {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.4rem;
+    margin-bottom: 0.8rem;
+}
+
+.chip {
+    background: #e7f4fa;
+    color: var(--brand);
+    border: 1px solid #c9e6f0;
+    border-radius: 16px;
+    font-size: 0.85rem;
+    padding: 0.3rem 0.55rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.chip-remove {
+    cursor: pointer;
+    font-weight: bold;
+    font-size: 0.9rem;
+    color: var(--brand);
+}
+
+/* -------------------------------
+   Footer
+-------------------------------- */
+.popup-footer {
+    padding: 1rem 1.5rem;
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.8rem;
+    background: #f9fbfc;
+    border-top: 1px solid var(--line);
+}
+
+/* Buttons */
+.btn-primary {
+    background: var(--brand);
+    color: #fff;
+    padding: 0.55rem 1rem;
+    font-size: 0.9rem;
+    font-weight: 600;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.btn-primary:hover {
+    background: #006d8d;
+    transform: translateY(-1px);
+}
+
+.btn-secondary {
+    background: var(--muted);
+    color: #fff;
+    padding: 0.55rem 1rem;
+    font-size: 0.9rem;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: background 0.2s ease, transform 0.1s ease;
+}
+
+.btn-secondary:hover {
+    background: #555;
+    transform: translateY(-1px);
+}
+
+/* -------------------------------
+   Animation
+-------------------------------- */
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}

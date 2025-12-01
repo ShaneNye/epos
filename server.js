@@ -103,6 +103,8 @@ app.use("/api/eod", eodSubmissionsRoutes);
 app.use("/api/logistics", require("./routes/logistics"));
 
 
+const deliveryScheduleRoutes = require("./routes/deliverySchedule");
+app.use("/api/delivery-schedule", deliveryScheduleRoutes);
 
 
 
