@@ -9,8 +9,89 @@ let districtLabels = [];
 /**************************************************
  * GLOBAL VARS — DELIVERY SCHEDULE
  **************************************************/
-let currentScheduleWarehouse = 7; // default Sussex
+let currentScheduleWarehouse = 7; 
 let scheduleData = null;
+
+/**************************************************
+ * INSTANT CELL UPDATE
+ **************************************************/
+function applyInstantCellUpdate(update) {
+    const { warehouseId, day, zone, label, color } = update;
+
+    const tableId = warehouseId == 7 ? "sussex" : "kent";
+    const grid = document.querySelector(`#schedule-${tableId}`);
+    if (!grid) return;
+
+    const cell = grid.querySelector(`.cell[data-day="${day}"][data-zone="${zone}"]`);
+    if (!cell) return;
+
+    cell.textContent = label || "";
+    cell.style.background = color || "transparent";
+
+    console.log(`⚡ Instant update applied → day=${day}, zone=${zone}`);
+}
+
+/**************************************************
+ * CLEAR HIGHLIGHTS
+ **************************************************/
+function clearPulseHighlights() {
+    document.querySelectorAll(".cell-highlight-pulse")
+        .forEach(c => c.classList.remove("cell-highlight-pulse"));
+}
+
+/**************************************************
+ * POSTCODE SEARCH FEATURE
+ **************************************************/
+function searchScheduleByPostcode(prefix) {
+    if (!scheduleData) return;
+
+    prefix = prefix.trim().toUpperCase();
+    if (!prefix) return;
+
+    clearPulseHighlights();
+
+    const resultLabel = document.getElementById("postcodeSearchResult");
+    let matches = 0;
+    let firstMatch = null;
+
+    ["sussex", "kent"].forEach(gridName => {
+        const grid = document.querySelector(`#schedule-${gridName}`);
+        if (!grid) return;
+
+        grid.querySelectorAll(".cell").forEach(cell => {
+            const day = cell.dataset.day;
+            const zone = Number(cell.dataset.zone);
+
+            const cellData = scheduleData?.cells?.find(
+                c => c.day === day && Number(c.zone_number) === zone
+            );
+
+            if (!cellData || !cellData.postcodes) return;
+
+            const arr = cellData.postcodes.map(p => p.toUpperCase().trim());
+            const match = arr.some(pc => pc.startsWith(prefix));
+
+            if (match) {
+                matches++;
+                cell.classList.add("cell-highlight-pulse");
+
+                if (!firstMatch) firstMatch = cell;
+            }
+        });
+    });
+
+    if (resultLabel) {
+        resultLabel.textContent = matches
+            ? `Found ${matches} matching cells`
+            : `No matches found`;
+    }
+
+    if (firstMatch) {
+        setTimeout(() => {
+            firstMatch.scrollIntoView({ behavior: "smooth", block: "center" });
+        }, 200);
+    }
+}
 
 /**************************************************
  * INIT PAGE
@@ -20,13 +101,40 @@ document.addEventListener("DOMContentLoaded", () => {
 
     setupMainTabs();
     setupDeliverySubTabs();
-
     setupPostcodeLabelToggle();
-
     setupCellClickHandler();
 
-    // Load initial tab
+    // 📍 Postcode Search Support
+    const searchBtn = document.getElementById("postcodeSearchBtn");
+    const searchInput = document.getElementById("postcodeSearchInput");
+
+    if (searchBtn) {
+        searchBtn.addEventListener("click", () => {
+            searchScheduleByPostcode(searchInput.value);
+        });
+    }
+
+    if (searchInput) {
+        searchInput.addEventListener("keyup", (e) => {
+            if (e.key === "Enter") {
+                searchScheduleByPostcode(searchInput.value);
+            }
+        });
+    }
+
     loadLogisticsTable();
+
+    // LISTEN FOR POPUP SAVE EVENTS
+    window.addEventListener("message", (ev) => {
+        if (ev.data?.action === "schedule-updated") {
+
+            if (ev.data.update) {
+                applyInstantCellUpdate(ev.data.update);
+            }
+
+            loadScheduleForWarehouse(currentScheduleWarehouse);
+        }
+    });
 });
 
 /**************************************************
@@ -36,22 +144,20 @@ function setupMainTabs() {
     document.querySelectorAll(".tab").forEach(tab => {
         tab.addEventListener("click", () => {
 
-            document.querySelectorAll(".tab")
-                .forEach(t => t.classList.remove("active"));
-
-            document.querySelectorAll(".tab-content")
-                .forEach(c => c.classList.add("hidden"));
+            document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+            document.querySelectorAll(".tab-content").forEach(c => c.classList.add("hidden"));
 
             tab.classList.add("active");
-
             const target = document.getElementById(tab.dataset.target);
             if (target) target.classList.remove("hidden");
 
             if (tab.dataset.target === "postcodes") {
                 loadLogisticsTable();
-            } else if (tab.dataset.target === "deliverySchedule") {
-                console.log("📅 Switching to Delivery Schedule");
-                loadScheduleForWarehouse(currentScheduleWarehouse);
+            }
+
+            if (tab.dataset.target === "deliverySchedule") {
+                const sussex = document.querySelector('.delivery-subtab[data-warehouse="7"]');
+                if (sussex) sussex.click();
             }
         });
     });
@@ -61,8 +167,6 @@ function setupMainTabs() {
  * POSTCODE TABLE LOAD
  **************************************************/
 async function loadLogisticsTable() {
-    console.log("📦 Loading logistics table…");
-
     try {
         const res = await fetch("/api/logistics");
         const data = await res.json();
@@ -77,32 +181,28 @@ async function loadLogisticsTable() {
 
         data.logistics.forEach(row => {
             const tr = document.createElement("tr");
-
             tr.innerHTML = `
                 <td>${row.id}</td>
                 <td>${row.warehouse_name || "Unknown"}</td>
                 <td>
                     <div style="
-                        width: 22px; 
-                        height: 22px; 
-                        background: ${row.hex_color || "#0081ab"};
-                        border: 1px solid #ccc; 
-                        border-radius: 4px;">
+                        width:22px;height:22px;
+                        background:${row.hex_color || "#0081ab"};
+                        border:1px solid #ccc;border-radius:4px;">
                     </div>
                 </td>
                 <td class="actions">
-                    <button class="action-btn action-edit" onclick="editLogistics(${row.id})">Edit</button>
-                    <button class="action-btn action-delete" onclick="deleteLogistics(${row.id})">Delete</button>
+                    <button onclick="editLogistics(${row.id})" class="action-btn action-edit">Edit</button>
+                    <button onclick="deleteLogistics(${row.id})" class="action-btn action-delete">Delete</button>
                 </td>
             `;
-
             tbody.appendChild(tr);
         });
 
         await renderCoverageMap(data.logistics);
 
     } catch (err) {
-        console.error("❌ Failed to load logistics:", err);
+        console.error("❌ Failed loading logistics:", err);
     }
 }
 
@@ -129,7 +229,7 @@ async function deleteLogistics(id) {
 }
 
 /**************************************************
- * POSTCODES MAP INIT
+ * INIT MAP
  **************************************************/
 function ensureLogisticsMap() {
     if (logisticsMap) return;
@@ -150,8 +250,6 @@ function ensureLogisticsMap() {
  **************************************************/
 async function renderCoverageMap(rows) {
     ensureLogisticsMap();
-    if (!coverageLayer) return;
-
     coverageLayer.clearLayers();
     districtLabels = [];
 
@@ -159,7 +257,6 @@ async function renderCoverageMap(rows) {
 
     rows.forEach(row => {
         const colour = row.hex_color || "#0081ab";
-
         (row.postcodes || []).forEach(pc => {
             const district = pc.replace("*", "").trim().toUpperCase();
             if (district) tasks.push(addDistrictToMap(district, row.warehouse_name, colour));
@@ -170,7 +267,7 @@ async function renderCoverageMap(rows) {
 }
 
 /**************************************************
- * DRAW SINGLE POSTCODE DISTRICT
+ * SINGLE DISTRICT MAP RENDER
  **************************************************/
 async function addDistrictToMap(district, warehouseName, colour) {
     try {
@@ -206,7 +303,7 @@ async function addDistrictToMap(district, warehouseName, colour) {
         coverageLayer.addLayer(layer);
 
     } catch (err) {
-        console.error(`❌ Failed postal district ${district}`, err);
+        console.error(`❌ Failed district ${district}`, err);
     }
 }
 
@@ -219,6 +316,7 @@ function setupPostcodeLabelToggle() {
 
     toggle.addEventListener("change", e => {
         const show = e.target.checked;
+
         districtLabels.forEach(label => {
             if (show) coverageLayer.addLayer(label);
             else coverageLayer.removeLayer(label);
@@ -227,7 +325,7 @@ function setupPostcodeLabelToggle() {
 }
 
 /**************************************************
- * DELIVERY SUBTAB SWITCHING
+ * SUB-TAB SWITCHING
  **************************************************/
 function setupDeliverySubTabs() {
     document.querySelectorAll(".delivery-subtab").forEach(sub => {
@@ -245,18 +343,15 @@ function setupDeliverySubTabs() {
             target.style.display = "block";
 
             currentScheduleWarehouse = Number(sub.dataset.warehouse);
-
             loadScheduleForWarehouse(currentScheduleWarehouse);
         });
     });
 }
 
 /**************************************************
- * LOAD SCHEDULE DATA FROM SERVER
+ * LOAD SCHEDULE FOR WAREHOUSE
  **************************************************/
 async function loadScheduleForWarehouse(warehouseId) {
-    console.log("📥 Loading schedule for warehouse:", warehouseId);
-
     try {
         const res = await fetch(`/api/delivery-schedule/${warehouseId}`);
         const data = await res.json();
@@ -267,7 +362,6 @@ async function loadScheduleForWarehouse(warehouseId) {
         }
 
         scheduleData = data;
-
         populateScheduleGrid(warehouseId, data);
 
     } catch (err) {
@@ -276,32 +370,44 @@ async function loadScheduleForWarehouse(warehouseId) {
 }
 
 /**************************************************
- * POPULATE GRID WITH SCHEDULE DATA
+ * POPULATE GRID (HEADERS + CELLS)
+ * WITH FALLBACK-SAVE PROTECTION
  **************************************************/
 function populateScheduleGrid(warehouseId, data) {
     const grid = document.querySelector(`#schedule-${warehouseId === 7 ? "sussex" : "kent"}`);
-
     if (!grid) return;
 
-    // Headers
+    // ZONE HEADERS
     grid.querySelectorAll(".zone-header").forEach((header, i) => {
-        const h = data.headers.find(h => h.zone_number === i + 1);
-header.innerHTML = (h?.label || `Zone ${i + 1}`)
-    .replace(/\n/g, "<br>");
+        const zone = i + 1;
+        const record = data.headers.find(h => h.zone_number === zone);
 
+        // Only update if DB has real value
+        if (record?.label) {
+            header.innerHTML = record.label.replace(/\n/g, "<br>");
+        } else {
+            console.warn(`⚠ Missing header for zone ${zone} — NOT applying fallback.`);
+        }
 
-header.addEventListener("blur", () => {
-    const html = header.innerHTML;
-    saveZoneHeader(warehouseId, i + 1, html);
-});
+        header.contentEditable = "true";
 
+        header.addEventListener("blur", () => {
+            const html = header.innerHTML.trim();
+            const fallback = `Zone ${zone}`;
+
+            if (!html || html === fallback || html === `${fallback}<br>`) {
+                console.log(`⛔ Prevented fallback header save for zone ${zone}`);
+                return;
+            }
+
+            saveZoneHeader(warehouseId, zone, html);
+        });
     });
 
-    // Cells
+    // CELLS
     grid.querySelectorAll(".cell").forEach(cell => {
         const day = cell.dataset.day;
         const zone = Number(cell.dataset.zone);
-
         const match = data.cells.find(c => c.day === day && c.zone_number === zone);
 
         cell.textContent = match?.label || "";
@@ -314,8 +420,8 @@ header.addEventListener("blur", () => {
  **************************************************/
 async function saveZoneHeader(warehouseId, zone, rawText) {
     const cleaned = rawText
-        .replace(/<br\s*\/?>/gi, "\n")  // convert HTML <br> to newline
-        .replace(/\r/g, "");           // clean Windows line breaks
+        .replace(/<br\s*\/?>/gi, "\n")
+        .replace(/\r/g, "");
 
     await fetch(`/api/delivery-schedule/header/${warehouseId}/${zone}`, {
         method: "PATCH",
@@ -323,7 +429,6 @@ async function saveZoneHeader(warehouseId, zone, rawText) {
         body: JSON.stringify({ label: cleaned })
     });
 }
-
 
 /**************************************************
  * CELL CLICK → OPEN POPUP
@@ -338,7 +443,6 @@ function setupCellClickHandler() {
         const zone = cell.dataset.zone;
 
         const url = `/deliverySchedulePopup/popup.html?warehouseId=${warehouseId}&day=${day}&zone=${zone}`;
-
         window.open(url, "deliveryPopup", "width=520,height=620,left=350,top=150");
     });
 }

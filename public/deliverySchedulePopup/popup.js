@@ -69,9 +69,12 @@ document.addEventListener("DOMContentLoaded", async () => {
                 return;
             }
 
-            // Refresh parent grid
-            if (window.opener && window.opener.refreshDeliveryGrid) {
-                window.opener.refreshDeliveryGrid();
+            /* -----------------------------
+               NOTIFY PARENT & CLOSE POPUP
+            ----------------------------- */
+            if (window.opener && !window.opener.closed) {
+                // Tell parent to refresh the table
+                window.opener.postMessage({ action: "schedule-updated" }, "*");
             }
 
             window.close();
