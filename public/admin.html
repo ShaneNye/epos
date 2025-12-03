@@ -15,6 +15,7 @@
 
     <!-- Menu (uses storageGet + token) -->
     <script defer src="/js/menu.js"></script>
+    <script defer src="/js/widgets/adminWidgets.js"></script>
 
     <!-- Admin-only scripts after menu -->
     <script defer src="/js/adminMeta.js"></script>
@@ -23,10 +24,9 @@
     <script defer src="/js/adminUserSearch.js"></script>
     <script defer src="/js/adminRoles.js"></script>
     <script defer src="/js/adminLocations.js"></script>
-    <script src="/assistant/assistant.js"></script>
-    <script defer src="/js/widgets/adminWidgets.js"></script>
-    <link rel="stylesheet" href="/assistant/assistant.css" />
 
+    <script src="/assistant/assistant.js"></script>
+    <link rel="stylesheet" href="/assistant/assistant.css" />
 </head>
 
 <body>
@@ -41,8 +41,7 @@
             <div class="tab active" data-target="users">User Management</div>
             <div class="tab" data-target="permissions">Feature Permissions</div>
             <div class="tab" data-target="fields">Field Mapping</div>
-            <div class="tab" data-target="dashboard-widgets">Dashboard widgets</div>
-
+            <div class="tab" data-target="dashboard-widgets">Dashboard Widgets</div>
         </div>
 
         <!-- === USER MANAGEMENT MASTER TAB === -->
@@ -72,19 +71,21 @@
                         <button type="button" id="clearSearch" class="btn-secondary">Clear</button>
                     </div>
                 </div>
+                <div class="table-scroll-wrapper">
+                    <table id="userTable">
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Email</th>
+                                <th>Roles</th>
+                                <th>Primary Store</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
 
-                <table id="userTable">
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Email</th>
-                            <th>Roles</th>
-                            <th>Primary Store</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
 
                 <!-- User Modal -->
                 <div id="userModal" class="modal hidden">
@@ -142,7 +143,6 @@
                                     <input type="text" id="netsuiteId" name="netsuiteId" placeholder="e.g. 12345" />
                                 </label>
 
-
                                 <div class="form-group">
                                     <label for="sb_netsuite_token_secret">Sandbox Token Secret</label>
                                     <input type="password" id="sb_netsuite_token_secret" name="sb_netsuite_token_secret"
@@ -189,7 +189,6 @@
                     <tbody></tbody>
                 </table>
 
-                <!-- Role Modal -->
                 <div id="roleModal" class="modal hidden">
                     <div class="modal-content">
                         <h3 id="roleModalTitle">Add Role</h3>
@@ -237,8 +236,7 @@
                             <th>NetSuite Internal ID</th>
                             <th>Invoicing ID</th>
                             <th>Interco Customer ID</th>
-                            <!--<th>Intercompany Location</th> -->
-                            <th>Distribution Location ID</th> <!-- ✅ NEW COLUMN -->
+                            <th>Distribution Location ID</th>
                             <th>Petty Cash Account</th>
                             <th>Current Account</th>
                             <th>Actions</th>
@@ -270,13 +268,7 @@
                                     Intercompany Customer
                                     <input type="text" name="intercompany_customer" />
                                 </label>
-                                <!--
-                                <label>
-                                    Intercompany Location
-                                    <input type="text" name="intercompany_location" />
-                                </label>
-                            -->
-                                <!-- ✅ NEW FIELD -->
+
                                 <label>
                                     Distribution Location ID
                                     <input type="text" name="distribution_location_id" placeholder="e.g. 203" />
@@ -293,68 +285,64 @@
                                 </label>
                             </form>
                         </div>
+
                         <div class="modal-actions">
-                            <button type="submit" form="locationForm" class="btn-primary">
-                                Save
-                            </button>
-                            <button type="button" id="cancelLocationModal" class="btn-secondary">
-                                Cancel
-                            </button>
+                            <button type="submit" form="locationForm" class="btn-primary">Save</button>
+                            <button type="button" id="cancelLocationModal" class="btn-secondary">Cancel</button>
                         </div>
                     </div>
                 </div>
             </div>
 
+        </div> <!-- ✅ FIX: CLOSES USERS MASTER TAB -->
 
-            <!-- === Feature Permissions === -->
-            <div id="permissions" class="tab-content hidden">
-                <h2>Feature Permissions</h2>
-                <p>Configure which features are available to different roles.</p>
-            </div>
+        <!-- === Feature Permissions === -->
+        <div id="permissions" class="tab-content hidden">
+            <h2>Feature Permissions</h2>
+            <p>Configure which features are available to different roles.</p>
+        </div>
 
-            <!-- === Field Mapping === -->
-            <div id="fields" class="tab-content hidden">
-                <h2>Field Mapping</h2>
-                <p>Map external data fields to system fields.</p>
-            </div>
+        <!-- === Field Mapping === -->
+        <div id="fields" class="tab-content hidden">
+            <h2>Field Mapping</h2>
+            <p>Map external data fields to system fields.</p>
+        </div>
 
-            <!-- === Field Mapping === -->
-            <div id="dashboard-widgets" class="tab-content hidden">
-                <h2>Dashboard Widgets</h2>
-                <p>Control which roles can view each dashboard widget.</p>
+        <!-- === Dashboard Widgets === -->
+        <div id="dashboard-widgets" class="tab-content hidden">
+            <h2>Dashboard Widgets</h2>
+            <p>Control which roles can view each dashboard widget.</p>
 
-                <!-- Where the cards render -->
-                <div id="widgetList" class="widget-admin-grid"></div>
+            <div id="widgetList" class="widget-admin-grid"></div>
 
-                <!-- Widget Role Modal -->
-                <div id="widgetRoleModal" class="modal hidden">
-                    <div class="modal-content">
-                        <h3 id="widgetRoleModalTitle">Edit Widget Access</h3>
-                        <div class="modal-body">
-                            <form id="widgetRoleForm">
-                                <input type="hidden" id="widgetKey" name="widgetKey" />
-                                <label for="widgetRoleSelect">Select Roles</label>
-                                <select id="widgetRoleSelect" name="roles" multiple size="8"></select>
-                            </form>
-                        </div>
-                        <div class="modal-actions">
-                            <button type="submit" form="widgetRoleForm" class="btn-primary">Save</button>
-                            <button type="button" id="cancelWidgetRoleModal" class="btn-secondary">Cancel</button>
-                        </div>
+            <div id="widgetRoleModal" class="modal hidden">
+                <div class="modal-content">
+                    <h3 id="widgetRoleModalTitle">Edit Widget Access</h3>
+                    <div class="modal-body">
+                        <form id="widgetRoleForm">
+                            <input type="hidden" id="widgetKey" name="widgetKey" />
+                            <label for="widgetRoleSelect">Select Roles</label>
+                            <select id="widgetRoleSelect" name="roles" multiple size="8"></select>
+                        </form>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="submit" form="widgetRoleForm" class="btn-primary">Save</button>
+                        <button type="button" id="cancelWidgetRoleModal" class="btn-secondary">Cancel</button>
                     </div>
                 </div>
             </div>
-
+        </div>
 
     </main>
 
-    <!-- Subtab toggle logic -->
+    <!-- MAIN TAB SWITCHING LOGIC -->
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            document.querySelectorAll(".subtab").forEach(tab => {
+            document.querySelectorAll(".tab").forEach(tab => {
                 tab.addEventListener("click", () => {
-                    document.querySelectorAll(".subtab").forEach(t => t.classList.remove("active"));
-                    document.querySelectorAll(".subtab-content").forEach(c => c.classList.add("hidden"));
+                    document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
+                    document.querySelectorAll(".tab-content").forEach(c => c.classList.add("hidden"));
                     tab.classList.add("active");
                     const target = document.getElementById(tab.dataset.target);
                     if (target) target.classList.remove("hidden");
@@ -362,6 +350,7 @@
             });
         });
     </script>
+
 </body>
 
 </html>

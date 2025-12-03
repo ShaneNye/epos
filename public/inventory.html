@@ -441,7 +441,6 @@
 
                     updateAddRowState();
                 }
-
                 function updateNotice() {
                     const locSelVal = locSel.value;
                     if (!locSelVal) {
@@ -450,40 +449,78 @@
                         return;
                     }
 
-                    // Fulfilment method
+                    // --- Fetch fulfilment ID from the main page ---
                     let fulfilmentMethod = "";
                     try {
                         const lineIdx = parseInt(params.line || "0", 10);
                         const fulfilSelects = window.opener?.document.querySelectorAll(".item-fulfilment");
                         const fulfilSelect = fulfilSelects ? fulfilSelects[lineIdx] : null;
-
-                        fulfilmentMethod =
-                            fulfilSelect?.selectedOptions?.[0]?.textContent?.trim()?.toLowerCase() || "";
+                        fulfilmentMethod = fulfilSelect?.value || "";
                     } catch { }
 
+                    const fulfilId = String(fulfilmentMethod).trim();
+
+                    // --- Store & warehouse names from the main page ---
                     const storeSelect = window.opener?.document.getElementById("store");
                     const storeName = storeSelect?.selectedOptions?.[0]?.textContent?.trim() || "";
                     const storeLower = storeName.toLowerCase();
-                    const warehouseLower = selectedWarehouseName.toLowerCase();
+
+                    const warehouseName = selectedWarehouseName || "";
+                    const warehouseLower = warehouseName.toLowerCase();
+
                     const locLower = locSelVal.toLowerCase();
 
-                    let destinationName = selectedWarehouseName;
-                    if (fulfilmentMethod.includes("store")) destinationName = storeName;
+                    /*
+                    ============================================================
+                    IN-STORE FULFILMENT (fulfilId = 1)
+                    Only store inventory is OK
+                    Fuzzy matching:
+                      "Hailsham" <-> "Hailsham Store"
+                    ============================================================
+                    */
+                    if (fulfilId === "1") {
+                        const isStore =
+                            locLower === storeLower ||          // exact
+                            locLower.includes(storeLower) ||    // "Hailsham Store" contains "Hailsham"
+                            storeLower.includes(locLower);      // "Hailsham" contains "Hailsham Store" start
 
-                    const isWarehouseMatch = locLower === warehouseLower;
-                    const isStoreMatch =
-                        fulfilmentMethod.includes("store") &&
-                        (locLower === storeLower ||
-                            locLower.includes(storeLower) ||
-                            storeLower.includes(locLower));
-
-                    if (isWarehouseMatch || isStoreMatch) {
-                        noticeCell.textContent = "✅ OK";
-                        noticeCell.className = "noticeCell notice-ok";
-                    } else {
-                        noticeCell.textContent = `⚠️ Goods from ${locSel.value} will trigger a transfer to ${destinationName}`;
-                        noticeCell.className = "noticeCell notice-transfer";
+                        if (isStore) {
+                            noticeCell.textContent = "✅ OK";
+                            noticeCell.className = "noticeCell notice-ok";
+                        } else {
+                            noticeCell.textContent =
+                                `⚠️ Goods from ${locSel.value} will trigger a transfer to ${storeName}`;
+                            noticeCell.className = "noticeCell notice-transfer";
+                        }
+                        return;
                     }
+
+                    /*
+                    ============================================================
+                    WAREHOUSE FULFILMENT (fulfilId = 2)
+                    Only warehouse inventory is OK
+                    ============================================================
+                    */
+                    if (fulfilId === "2") {
+                        const isWarehouse =
+                            locLower === warehouseLower ||
+                            locLower.includes(warehouseLower) ||
+                            warehouseLower.includes(locLower);
+
+                        if (isWarehouse) {
+                            noticeCell.textContent = "✅ OK";
+                            noticeCell.className = "noticeCell notice-ok";
+                        } else {
+                            noticeCell.textContent =
+                                `⚠️ Goods from ${locSel.value} will trigger a transfer to ${warehouseName}`;
+                            noticeCell.className = "noticeCell notice-transfer";
+                        }
+                        return;
+                    }
+
+                    // --- Any other fulfilment type or blank ---
+                    noticeCell.textContent = "";
+                    noticeCell.className = "noticeCell";
                 }
 
                 /* ------------------------------------------
