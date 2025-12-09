@@ -383,21 +383,29 @@ window.onOptionsSaved = function(itemId, selections) {
   row.querySelector(".options-summary").innerHTML = selectionsToSummary(selections);
 };
 
-window.onInventorySaved = function(itemId, detail) {
-  const row = document.querySelector(`.order-line .item-internal-id[value="${itemId}"]`)?.closest(".order-line");
-  if (!row) {
-    console.warn("❌ Could not find row for itemId", itemId);
-    return;
-  }
+window.onInventorySaved = function (itemId, detailString, lineIndex) {
+  const rows = document.querySelectorAll("#orderItemsBody .order-line");
+  const row = rows[lineIndex];
+  if (!row) return;
 
-  const detailField = row.querySelector(".item-inv-detail");
-  const button = row.querySelector(".open-inventory");
-  const summary = row.querySelector(".inv-summary");
+  /*
+    Modal already sets:
+      row.dataset.lotnumber
+      row.dataset.inventoryMeta
+      row.dataset.invdetail
+    We ONLY refresh UI here, do NOT overwrite them.
+  */
 
-  detailField.value = detail;
-  button.textContent = detail ? "✅" : "📦";
-  summary.innerHTML = detail.replace(/;/g, "<br>");
+  // Refresh UI for new LOT or META
+  window.updateInventoryCellForRow(lineIndex);
+
+  // Re-evaluate fulfilment rule visibility etc.
+  validateInventoryForRow(row);
+
+  // Update totals
+  updateOrderSummary();
 };
+
 
 // === Add new row ===
 function addNewRow() {
@@ -524,3 +532,42 @@ document.addEventListener("DOMContentLoaded", async () => {
   const addBtn = document.getElementById("addItemBtn");
   if (addBtn) addBtn.addEventListener("click", addNewRow);
 });
+
+
+// =====================================================
+// NEW: Update inventory UI after modal save (LOT + META)
+// =====================================================
+window.updateInventoryCellForRow = function (lineIndex) {
+  const rows = document.querySelectorAll("#orderItemsBody .order-line");
+  const row = rows[lineIndex];
+  if (!row) return;
+
+  const lot = row.dataset.lotnumber || "";
+  const meta = row.dataset.inventoryMeta || "";
+
+  const cell = row.querySelector(".inventory-cell");
+  if (!cell) return;
+
+  // LOT flow (same-source)
+  if (lot) {
+    cell.innerHTML = `
+      <strong>Lot:</strong> ${lot}<br>
+      <small>ID: ${lot}</small>
+    `;
+    return;
+  }
+
+  // META flow (transfer needed)
+  if (meta) {
+    const display = meta.split(";").map(part => {
+      const [qty, locName, , , , invName] = part.split("|");
+      return `${qty}× ${invName || ""} @ ${locName || ""}`;
+    }).join("<br>");
+
+    cell.innerHTML = display;
+    return;
+  }
+
+  // Nothing allocated
+  cell.textContent = "—";
+};

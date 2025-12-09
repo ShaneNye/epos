@@ -1,3 +1,49 @@
+// public/js/salesInventoryModal.js
+console.log("✅ salesInventoryModal.js loaded");
+
+// 🧭 When user clicks the inventory cell or icon
+document.addEventListener("click", (e) => {
+  if (
+    e.target.classList.contains("open-inventory") ||
+    e.target.closest(".inventory-cell")
+  ) {
+    const row = e.target.closest(".order-line");
+
+    // 🔥 FIXED INDEX LOGIC — works for all rows
+    const rows = document.querySelectorAll("#orderItemsBody .order-line");
+    const lineIndex = Array.prototype.indexOf.call(rows, row);
+
+    if (lineIndex === -1) {
+      console.warn("⚠️ Could not determine lineIndex for inventory popup");
+      return;
+    }
+
+    const itemId = row.querySelector(".item-internal-id")?.value?.trim();
+    const qty = row.querySelector(".item-qty")?.value?.trim() || "0";
+    const detail = row.dataset.invdetail || "";
+
+    if (!itemId) {
+      alert("Please select an item before allocating inventory.");
+      return;
+    }
+
+    const url = `/inventory.html?itemId=${encodeURIComponent(
+      itemId
+    )}&qty=${encodeURIComponent(qty)}&detail=${encodeURIComponent(
+      detail
+    )}&line=${lineIndex}`;
+
+    console.log("📦 Opening Inventory Detail popup:", url);
+
+    const win = window.open(
+      url,
+      "InventoryDetail",
+      "width=900,height=700,resizable=yes,scrollbars=yes"
+    );
+    if (win) win.focus();
+  }
+});
+
 // 🧩 Called by popup after Save
 window.onInventorySaved = function (itemId, detailString, lineIndex) {
   console.log("──────────────────────────────────────────────");
@@ -46,8 +92,6 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
 
   // ============================================================
   // Decide if the selected inventory is already at the fulfilment location
-  //   fulfilMethod = "1"  → compare against STORE
-  //   fulfilMethod = "2"  → compare against WAREHOUSE
   // ============================================================
   const locLower = (locName || "").trim().toLowerCase();
   const whLower = mainWarehouseName.trim().toLowerCase();
@@ -65,9 +109,7 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
         (locId && storeId && String(locId) === String(storeId)));
 
     console.log(
-      `🎯 In-Store fulfilment → sameSource (location vs STORE) = ${
-        sameSource ? "✅ TRUE" : "❌ FALSE"
-      }`
+      `🎯 In-Store fulfilment → sameSource = ${sameSource ? "✅ TRUE" : "❌ FALSE"}`
     );
   } else if (fulfilMethod === "2") {
     // Warehouse fulfilment → source matches WAREHOUSE
@@ -79,35 +121,15 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
         (locId && mainWarehouseId && String(locId) === String(mainWarehouseId)));
 
     console.log(
-      `🎯 Warehouse fulfilment → sameSource (location vs WAREHOUSE) = ${
-        sameSource ? "✅ TRUE" : "❌ FALSE"
-      }`
-    );
-  } else {
-    // Fallback to old behaviour (compare with warehouse)
-    sameSource =
-      !!locName &&
-      (locLower === whLower ||
-        locLower.includes(whLower) ||
-        whLower.includes(locLower) ||
-        (locId && mainWarehouseId && String(locId) === String(mainWarehouseId)));
-
-    console.log(
-      `🎯 Unknown fulfilment → fallback sameSource (vs WAREHOUSE) = ${
-        sameSource ? "✅ TRUE" : "❌ FALSE"
-      }`
+      `🎯 Warehouse fulfilment → sameSource = ${sameSource ? "✅ TRUE" : "❌ FALSE"}`
     );
   }
 
   /* ----------------------------------------------------
-     🏭 / 🏪 CASE 1: Same source location
-     - In-Store: stock already in STORE
-     - Warehouse: stock already in WAREHOUSE
-     → Use LOTNUMBER flow (no transfer metadata)
+     CASE 1: Same location → LOTNUMBER (NO TRANSFER)
   ---------------------------------------------------- */
   if (sameSource) {
-    console.log("✅ Same fulfilment location detected — using custcol_sb_lotnumber flow");
-    console.log(`🎯 Storing Inventory Number ID = ${invId}`);
+    console.log("✅ Same fulfilment location — using LOTNUMBER flow");
 
     targetRow.dataset.lotnumber = invId || "";
     targetRow.dataset.inventoryMeta = "";
@@ -118,30 +140,19 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
     if (cell) {
       cell.innerHTML = `
         <strong>Lot:</strong> ${invName || "-"}<br>
-        <small>ID: ${invId || "-"}</small>
-      `;
+        <small>ID: ${invId || "-"}</small>`;
       cell.classList.add("flash-success");
       setTimeout(() => cell.classList.remove("flash-success"), 800);
     }
 
-    console.log("💾 Final dataset after SAME-SOURCE logic:", {
-      lotnumber: targetRow.dataset.lotnumber || "(empty)",
-      inventoryMeta: targetRow.dataset.inventoryMeta || "(empty)",
-    });
-
-    console.log("──────────────────────────────────────────────");
-    return; // ✅ exit here for same-location case
+    return;
   }
 
   /* ----------------------------------------------------
-     🚚 CASE 2: Different source location
-     - In-Store: source != store → NEED TRANSFER
-     - Warehouse: source != warehouse → NEED TRANSFER
-     → Use EPOS META flow
+     CASE 2: Different location → EPOS META (TRANSFER REQUIRED)
   ---------------------------------------------------- */
-  console.log("📦 Different source location detected — using custcol_sb_epos_inventory_meta flow");
+  console.log("📦 Different source location — using EPOS META flow");
 
-  // 🧹 Clean up the detail string to remove "Store" from location names
   const cleanedDetail = detailString
     .split(";")
     .map((part) => {
@@ -175,44 +186,19 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
     console.warn("⚠️ Failed to convert inventory meta to JSON:", err);
   }
 
-  // === Update the visible cell summary
   const cell = targetRow.querySelector(".inventory-cell");
   if (cell) {
-    if (cleanedDetail && cleanedDetail.trim() !== "") {
-      const display = cleanedDetail
-        .split(";")
-        .map((part) => {
-          const [qty, locName, , , , invName] = part.split("|");
-          return `${qty}× ${invName || ""} @ ${locName || ""}`;
-        })
-        .join("<br>");
-      cell.innerHTML = display;
-    } else {
-      cell.textContent = "—";
-    }
+    const display = cleanedDetail
+      .split(";")
+      .map((part) => {
+        const [qty, locName, , , , invName] = part.split("|");
+        return `${qty}× ${invName || ""} @ ${locName || ""}`;
+      })
+      .join("<br>");
+    cell.innerHTML = display;
     cell.classList.add("flash-success");
     setTimeout(() => cell.classList.remove("flash-success"), 800);
   }
 
-  // ✅ Log for validation
-  try {
-    const lastEntry = cleanedDetail.split(";").pop().split("|");
-    console.log("🧩 Parsed final saved fields:", {
-      qty: lastEntry[0],
-      locationName: lastEntry[1],
-      locationId: lastEntry[2],
-      statusName: lastEntry[3],
-      statusId: lastEntry[4],
-      inventoryName: lastEntry[5],
-      inventoryId: lastEntry[6],
-    });
-  } catch (e) {
-    console.warn("⚠️ Could not log parsed fields:", e);
-  }
-
-  console.log("💾 Final dataset after TRANSFER logic:", {
-    lotnumber: targetRow.dataset.lotnumber || "(empty)",
-    inventoryMeta: targetRow.dataset.inventoryMeta || "(empty)",
-  });
   console.log("──────────────────────────────────────────────");
 };
