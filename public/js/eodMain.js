@@ -156,10 +156,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     return clean.toLowerCase() === userStoreName.toLowerCase();
   });
 
-  if (!todayRow) {
-    console.warn("⚠️ No footfall row found for store", userStoreName);
-    return;
-  }
+if (!todayRow) {
+  console.warn("⚠️ No footfall row found for store", userStoreName);
+  // Still allow Step 2 to run
+  initDailyBalancing();
+  return;
+}
+
 
   console.log("🟢 Today’s row:", todayRow);
 

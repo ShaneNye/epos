@@ -1,5 +1,5 @@
 document.addEventListener("DOMContentLoaded", () => {
-    const postcodeField = document.getElementById("postcode");   // FIXED
+    const postcodeField = document.getElementById("postcode");
     const warehouseField = document.getElementById("warehouse");
 
     if (!postcodeField || !warehouseField) {
@@ -35,6 +35,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
         if (matchOption) {
             warehouseField.value = matchOption.value;
+
+            // 🔥 CRITICAL: ensure inventory system updates cached warehouse
+            warehouseField.dispatchEvent(new Event("change"));
 
             console.log(
                 `📦 Auto-assigned warehouse: ${data.warehouse_name} (select value=${matchOption.value})`
