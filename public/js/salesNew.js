@@ -131,72 +131,93 @@ if (window.location.pathname.includes("/sales/view/")) {
 
 
 
-  /* === ORDER SUMMARY CALCULATIONS === */
-  window.updateOrderSummary = function () {
-    let netTotal = 0;
-    let discountTotal = 0;
-    let grossTotal = 0;
+/* === ORDER SUMMARY CALCULATIONS === */
+window.updateOrderSummary = function () {
+  let grossTotal = 0;
+  let discountTotal = 0;
 
-    document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
-      const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
-      const base = parseFloat(tr.querySelector(".item-baseprice")?.value || 0);
-      const discountPct = parseFloat(tr.querySelector(".item-discount")?.value || 0);
-      const salePriceGross = parseFloat(tr.querySelector(".item-saleprice")?.value || 0);
+  document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
+    const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
+    const baseNet = parseFloat(tr.querySelector(".item-baseprice")?.value || 0); // base is NET
+    const salePriceGrossPerUnit = parseFloat(
+      tr.querySelector(".item-saleprice")?.value || 0
+    ); // sale price is GROSS (inc VAT)
+    const discountPct = parseFloat(
+      tr.querySelector(".item-discount")?.value || 0
+    );
 
-      if (qty > 0) {
-        const retailGross = base * qty * 1.2;
+    if (!qty) return;
 
-        // NEW: correct logic
-        let grossLineTotal;
-        if (discountPct === 100) {
-          grossLineTotal = 0;
-        } else if (salePriceGross > 0) {
-          grossLineTotal = salePriceGross * qty;
-        } else {
-          grossLineTotal = retailGross;
-        }
+    // --- Default (RRP) pricing ---
+    const defaultGrossPerUnit = baseNet ? baseNet * 1.2 : salePriceGrossPerUnit;
+    const defaultGrossTotal = defaultGrossPerUnit * qty;
 
-        const netLineTotal = grossLineTotal / 1.2;
+    // --- Actual gross charged ---
+    // If a discount % is applied, override using RRP
+    let actualGrossTotal;
 
-        const discountValue = retailGross * (discountPct / 100);
-
-        discountTotal += discountValue;
-        netTotal += netLineTotal;
-        grossTotal += grossLineTotal;
-      }
-
-    });
-
-    const taxTotal = grossTotal - netTotal;
-    const totalDeposits = deposits.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0);
-    const outstandingBalance = grossTotal - totalDeposits;
-
-    document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
-    document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
-    document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
-    document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
-
-    const depositsTotalCell = document.getElementById("depositsTotal");
-    const balanceCell = document.getElementById("outstandingBalance");
-    if (depositsTotalCell) depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
-    if (balanceCell) balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
-  };
-
-  document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
-    if (
-      e.target.classList.contains("item-qty") ||
-      e.target.classList.contains("item-discount") ||
-      e.target.classList.contains("item-saleprice")
-    ) {
-      updateOrderSummary();
+    if (discountPct > 0) {
+      const discountedGrossPerUnit =
+        defaultGrossPerUnit * (1 - discountPct / 100);
+      actualGrossTotal = discountedGrossPerUnit * qty;
+    } else if (salePriceGrossPerUnit > 0) {
+      // Manual override sale price (gross)
+      actualGrossTotal = salePriceGrossPerUnit * qty;
+    } else {
+      // No override → use RRP
+      actualGrossTotal = defaultGrossTotal;
     }
+
+    grossTotal += actualGrossTotal;
+
+    // --- Discount (for reporting) ---
+    const discountValue = Math.max(0, defaultGrossTotal - actualGrossTotal);
+    discountTotal += discountValue;
   });
 
-  const bodyObserver = new MutationObserver(updateOrderSummary);
-  bodyObserver.observe(document.getElementById("orderItemsBody"), { childList: true });
+  // --- VAT breakdown ---
+  const netTotal = grossTotal / 1.2;
+  const taxTotal = grossTotal - netTotal;
 
-  updateOrderSummary();
-  
+  // --- Deposits ---
+  const totalDeposits = deposits.reduce(
+    (sum, d) => sum + (parseFloat(d.amount) || 0),
+    0
+  );
+
+  const outstandingBalance = grossTotal - totalDeposits;
+
+  // --- Update UI ---
+  document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
+  document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(
+    2
+  )}`;
+  document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
+  document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
+
+  const depositsTotalCell = document.getElementById("depositsTotal");
+  const balanceCell = document.getElementById("outstandingBalance");
+  if (depositsTotalCell)
+    depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
+  if (balanceCell)
+    balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
+};
+
+// Recalc triggers
+document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
+  if (
+    e.target.classList.contains("item-qty") ||
+    e.target.classList.contains("item-discount") ||
+    e.target.classList.contains("item-saleprice")
+  ) {
+    updateOrderSummary();
+  }
+});
+
+const bodyObserver = new MutationObserver(updateOrderSummary);
+bodyObserver.observe(document.getElementById("orderItemsBody"), { childList: true });
+
+updateOrderSummary();
 });
 
 /* === CUSTOMER DEPOSITS === */

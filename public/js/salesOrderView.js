@@ -100,91 +100,91 @@ document.addEventListener("DOMContentLoaded", async () => {
    Populate Sales Executive & Store Dropdowns (extracted from salesNew.js)
    ===================================================== */
 
-async function populateSalesExecAndStore(headers) {
-  // Load Current User
-  let currentUser = null;
-  try {
-    const meRes = await fetch("/api/me", { headers });
-    const meData = await meRes.json();
-    if (meData.ok && meData.user) {
-      currentUser = meData.user;
-      console.log("🧑 Current user:", currentUser);
-    }
-  } catch (err) {
-    console.warn("⚠️ Failed to load current user:", err);
-  }
-
-  // Load Sales Executives
-  try {
-    const res = await fetch("/api/users", { headers });
-    const data = await res.json();
-
-    if (data.ok) {
-      const execSelect = document.getElementById("salesExec");
-      if (execSelect) {
-        execSelect.innerHTML = '<option value="">Select Sales Executive</option>';
-
-        const salesExecs = data.users.filter(
-          u => Array.isArray(u.roles) && u.roles.some(r => r.name === "Sales Executive")
-        );
-
-        salesExecs.forEach(u => {
-          const opt = document.createElement("option");
-          opt.value = u.id;
-          opt.textContent = `${u.firstName} ${u.lastName}`;
-          execSelect.appendChild(opt);
-        });
-
-        // Auto-assign if user is a Sales Exec
-        if (currentUser && salesExecs.some(u => u.id === currentUser.id)) {
-          execSelect.value = currentUser.id;
-          console.log("✔ Auto-set Sales Exec to current user");
-        }
+  async function populateSalesExecAndStore(headers) {
+    // Load Current User
+    let currentUser = null;
+    try {
+      const meRes = await fetch("/api/me", { headers });
+      const meData = await meRes.json();
+      if (meData.ok && meData.user) {
+        currentUser = meData.user;
+        console.log("🧑 Current user:", currentUser);
       }
+    } catch (err) {
+      console.warn("⚠️ Failed to load current user:", err);
     }
-  } catch (err) {
-    console.error("❌ Failed to load sales executives:", err);
-  }
 
-  // Load Stores
-  try {
-    const res = await fetch("/api/meta/locations", { headers });
-    const data = await res.json();
+    // Load Sales Executives
+    try {
+      const res = await fetch("/api/users", { headers });
+      const data = await res.json();
 
-    if (data.ok) {
-      const storeSelect = document.getElementById("store");
-      if (storeSelect) {
-        storeSelect.innerHTML = '<option value="">Select Store</option>';
+      if (data.ok) {
+        const execSelect = document.getElementById("salesExec");
+        if (execSelect) {
+          execSelect.innerHTML = '<option value="">Select Sales Executive</option>';
 
-        const filteredLocations = data.locations.filter(
-          loc => !/warehouse/i.test(loc.name)
-        );
-
-        filteredLocations.forEach(loc => {
-          const opt = document.createElement("option");
-          opt.value = String(loc.id);
-          opt.textContent = loc.name;
-          storeSelect.appendChild(opt);
-        });
-
-        // Default to user’s primary store
-        if (currentUser && currentUser.primaryStore) {
-          const match = filteredLocations.find(l =>
-            String(l.id) === String(currentUser.primaryStore) ||
-            l.name === currentUser.primaryStore
+          const salesExecs = data.users.filter(
+            u => Array.isArray(u.roles) && u.roles.some(r => r.name === "Sales Executive")
           );
 
-          if (match) {
-            storeSelect.value = String(match.id);
-            console.log("✔ Auto-set store to:", match.name);
+          salesExecs.forEach(u => {
+            const opt = document.createElement("option");
+            opt.value = u.id;
+            opt.textContent = `${u.firstName} ${u.lastName}`;
+            execSelect.appendChild(opt);
+          });
+
+          // Auto-assign if user is a Sales Exec
+          if (currentUser && salesExecs.some(u => u.id === currentUser.id)) {
+            execSelect.value = currentUser.id;
+            console.log("✔ Auto-set Sales Exec to current user");
           }
         }
       }
+    } catch (err) {
+      console.error("❌ Failed to load sales executives:", err);
     }
-  } catch (err) {
-    console.error("❌ Failed to load stores:", err);
+
+    // Load Stores
+    try {
+      const res = await fetch("/api/meta/locations", { headers });
+      const data = await res.json();
+
+      if (data.ok) {
+        const storeSelect = document.getElementById("store");
+        if (storeSelect) {
+          storeSelect.innerHTML = '<option value="">Select Store</option>';
+
+          const filteredLocations = data.locations.filter(
+            loc => !/warehouse/i.test(loc.name)
+          );
+
+          filteredLocations.forEach(loc => {
+            const opt = document.createElement("option");
+            opt.value = String(loc.id);
+            opt.textContent = loc.name;
+            storeSelect.appendChild(opt);
+          });
+
+          // Default to user’s primary store
+          if (currentUser && currentUser.primaryStore) {
+            const match = filteredLocations.find(l =>
+              String(l.id) === String(currentUser.primaryStore) ||
+              l.name === currentUser.primaryStore
+            );
+
+            if (match) {
+              storeSelect.value = String(match.id);
+              console.log("✔ Auto-set store to:", match.name);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("❌ Failed to load stores:", err);
+    }
   }
-}
 
 
   // ---- Sales Order ID from URL ----
@@ -374,12 +374,19 @@ async function populateSalesExecAndStore(headers) {
         const classFromCache = itemData?.["Class"];
         const className = (classFromCache || "").toLowerCase();
         const isService = className === "service";
-
         const quantity = Number(line.quantity || 0);
         const retailNet = Number(line.amount || 0);
         const gross = retailNet * quantity || 0;
-        const sale = Number(line.saleprice || 0);
-        const vat = line.vat ?? (sale ? sale - retailNet * quantity : retailNet * quantity * 0.2);
+
+        let sale = Number(line.saleprice || 0);
+        if (gross < 0 && sale > 0) {
+          sale = -sale;
+        }
+
+        const vat =
+          line.vat ??
+          (sale ? sale - retailNet * quantity : retailNet * quantity * 0.2);
+
 
         let fulfilCellHtml = "";
         let invCellHtml = "";
@@ -832,46 +839,45 @@ window.onDepositSaved = async (deposit) => {
 function updateOrderSummaryFromTable() {
   console.log("🧮 updateOrderSummaryFromTable()");
 
-  const rows = document.querySelectorAll("#orderItemsBody tr");
+  const rows = document.querySelectorAll("#orderItemsBody tr.order-line");
   if (!rows.length) return;
 
-  let subtotal = 0;
-  let discountTotal = 0;
-  let taxTotal = 0;
-  let grandTotal = 0;
+  let grossTotal = 0;      // sum of Sale Price (inc VAT)
+  let discountTotal = 0;   // RRP gross - actual gross
 
   rows.forEach(row => {
-    const amountEl = row.querySelector(".amount");
-    const discountEl = row.querySelector(".discount");
-    const vatEl = row.querySelector(".vat");
-    const saleEl = row.querySelector(".saleprice");
-    if (!amountEl || !saleEl || !vatEl) return;
+    const amountEl = row.querySelector(".amount");     // RRP / original gross
+    const saleEl = row.querySelector(".saleprice");  // actual charged gross
 
-    // Extract numbers safely
-    const amount = parseFloat(amountEl.textContent.replace(/[£,]/g, "")) || 0;
-    const vat = parseFloat(vatEl.textContent.replace(/[£,]/g, "")) || 0;
+    if (!saleEl) return;
+
     const sale = parseFloat(saleEl.textContent.replace(/[£,]/g, "")) || 0;
+    const amount = amountEl
+      ? parseFloat(amountEl.textContent.replace(/[£,]/g, "")) || 0
+      : sale;
 
-    // Discount extraction
-    let discountPct = 0;
-    if (discountEl && discountEl.textContent.includes("%")) {
-      discountPct = parseFloat(discountEl.textContent) || 0;
-    }
-    const discountValue = (amount * discountPct) / 100;
+    grossTotal += sale;
 
-    subtotal += amount;
-    discountTotal += discountValue;
-    taxTotal += vat;
-    grandTotal += sale;
+const lineDiscount = Math.max(0, amount - sale);
+discountTotal += lineDiscount;
+
+if (sale < 0) {
+  discountTotal += Math.abs(sale);
+}
+
   });
 
-  // Set UI values
-  document.getElementById("subTotal").textContent = `£${subtotal.toFixed(2)}`;
+  // 🔹 VAT breakdown from gross (20% VAT):
+  const netTotal = grossTotal / 1.2;
+  const taxTotal = grossTotal - netTotal;
+
+  // 🔹 Update UI labels
+  document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
   document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
   document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
-  document.getElementById("grandTotal").textContent = `£${grandTotal.toFixed(2)}`;
+  document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
 
-  // Recalculate deposits → outstanding balance
+  // 🔹 Recalculate deposits → outstanding balance (uses grandTotal text)
   if (window._currentDeposits?.length > 0) {
     const totalDeposits = window._currentDeposits.reduce(
       (sum, d) => sum + (parseFloat(d.amount) || 0),
@@ -880,8 +886,9 @@ function updateOrderSummaryFromTable() {
     updateDepositTotals(totalDeposits);
   }
 
-  console.log("📊 Summary recalculated — grand:", grandTotal.toFixed(2));
+  console.log("📊 Summary recalculated — grand:", grossTotal.toFixed(2));
 }
+
 
 
 /* =====================================================
