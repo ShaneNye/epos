@@ -164,31 +164,109 @@
 
         const form = document.getElementById("optionsForm");
 
-        Object.entries(opts).forEach(([field, values]) => {
-            if (!Array.isArray(values) || values.length === 0) return;
+Object.entries(opts).forEach(([field, values]) => {
+    if (!Array.isArray(values) || values.length === 0) return;
 
-            const group = document.createElement("div");
-            group.className = "opt-group";
+    // Detect if this field contains fabric|colour pairs
+    const isFabricColour =
+        field.toLowerCase().includes("fabric") &&
+        values.some(v => v.includes("|"));
 
-            const label = document.createElement("label");
-            label.textContent = field;
-            group.appendChild(label);
+    if (isFabricColour) {
+        console.log("🎨 Rendering fabric/colour dropdowns");
 
-            const select = document.createElement("select");
-            select.name = field;
-            select.innerHTML = `<option value="">Select...</option>`;
+        // Extract unique fabrics + map colours
+        const fabrics = [];
+        const coloursByFabric = {};
 
-            values.forEach(v => {
-                const opt = document.createElement("option");
-                opt.value = v;
-                opt.textContent = v;
-                if (existing[field] === v) opt.selected = true;
-                select.appendChild(opt);
-            });
+        values.forEach(v => {
+            const [fab, col] = v.split("|").map(s => s.trim());
+            if (!fab || !col) return;
 
-            group.appendChild(select);
-            form.appendChild(group);
+            if (!fabrics.includes(fab)) fabrics.push(fab);
+            if (!coloursByFabric[fab]) coloursByFabric[fab] = [];
+            coloursByFabric[fab].push(col);
         });
+
+        // --- Build Fabric + Colour UI ---
+        const group = document.createElement("div");
+        group.className = "opt-group";
+
+        // FABRIC LABEL + SELECT
+        const fabricLabel = document.createElement("label");
+        fabricLabel.textContent = "Fabric";
+        group.appendChild(fabricLabel);
+
+        const fabricSelect = document.createElement("select");
+        fabricSelect.name = "fabric";
+        fabricSelect.innerHTML = `<option value="">Select fabric...</option>`;
+        fabrics.forEach(f => {
+            const opt = document.createElement("option");
+            opt.value = f;
+            opt.textContent = f;
+            if (existing.fabric === f) opt.selected = true;
+            fabricSelect.appendChild(opt);
+        });
+        group.appendChild(fabricSelect);
+
+        // COLOUR LABEL + SELECT
+        const colourLabel = document.createElement("label");
+        colourLabel.textContent = "Colour";
+        group.appendChild(colourLabel);
+
+        const colourSelect = document.createElement("select");
+        colourSelect.name = "colour";
+        colourSelect.innerHTML = `<option value="">Select colour...</option>`;
+        group.appendChild(colourSelect);
+
+        function updateColours() {
+            const chosenFabric = fabricSelect.value;
+            const colours = coloursByFabric[chosenFabric] || [];
+            colourSelect.innerHTML = `<option value="">Select colour...</option>`;
+            colours.forEach(c => {
+                const opt = document.createElement("option");
+                opt.value = c;
+                opt.textContent = c;
+                if (existing.colour === c) opt.selected = true;
+                colourSelect.appendChild(opt);
+            });
+        }
+
+        fabricSelect.addEventListener("change", updateColours);
+
+        // Restore existing selection
+        if (existing.fabric) {
+            updateColours();
+        }
+
+        form.appendChild(group);
+        return; // ⛔ Skip normal renderer
+    }
+
+    // --- DEFAULT OPTION RENDERER (tension etc.) ---
+    const group = document.createElement("div");
+    group.className = "opt-group";
+
+    const label = document.createElement("label");
+    label.textContent = field;
+    group.appendChild(label);
+
+    const select = document.createElement("select");
+    select.name = field;
+    select.innerHTML = `<option value="">Select...</option>`;
+
+    values.forEach(v => {
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        if (existing[field] === v) opt.selected = true;
+        select.appendChild(opt);
+    });
+
+    group.appendChild(select);
+    form.appendChild(group);
+});
+
 
         document.getElementById("saveBtn").addEventListener("click", () => {
             const selections = {};
