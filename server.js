@@ -416,6 +416,16 @@ app.get("/api/netsuite/widget-sales", (req, res) =>
   fetchNetSuiteData("WIDGET_SALES_URL", "WIDGET_SALES", res, "Widget Sales data")
 );
 
+// == sales order item size ==
+app.get("/api/netsuite/sales-order-item-size", (req, res) =>
+fetchNetSuiteData("SALES_ORDER_ITEM_SIZE_URL", "SALES_ORDER_ITEM_SIZE", res, "sales Order item size")
+);
+
+// == Sales Order Base Option ==
+app.get("/api/netsuite/sales-order-item-base-option", (req, res) =>
+fetchNetSuiteData("SALES_ORDER_ITEM_BASE_OPTIONS_URL", "SALES_ORDER_ITEM_BASE_OPTION", res, "sales order item base option")
+);
+
 
 // === Purchase Order Management ===
 app.get("/api/netsuite/purchase-order-management", async (req, res) => {

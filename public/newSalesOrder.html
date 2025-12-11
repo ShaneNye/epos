@@ -189,7 +189,26 @@
             <section class="form-section order-items-section">
                 <div class="section-header-flex">
                     <h2>Order Items</h2>
-                    <button type="button" id="addItemBtn" class="btn-secondary small-btn">+ Add Item</button>
+                    <div style="display: flex;" class="item-line-filters">
+                        <label for="sizeFilter">Filter by Size:</label>
+                        <select id="sizeFilter">
+                            <option value="">All Sizes</option>
+                        </select>
+                        <label for="baseOptionFilter">Storage:</label>
+                        <select id="baseOptionFilter">
+                            <option value="">All Storage Options</option>
+                        </select>
+                        <label for="typeFilter">Type:</label>
+                        <select id="typeFilter">
+                            <option value="">All</option>
+                            <option value="services">Services</option>
+                            <option value="items">Items</option>
+                        </select>
+
+                    </div>
+
+
+                    <button style="display: none;" type="button" id="addItemBtn" class="btn-secondary small-btn">+ Add Item</button>
                 </div>
 
                 <table class="order-table" id="orderItemsTable">

@@ -275,35 +275,33 @@ document.addEventListener("click", async (e) => {
       warehouse: document.getElementById("warehouse").value,
     };
 
-    const items = [...document.querySelectorAll("#orderItemsBody .order-line")].map((tr) => {
-      const item = tr.querySelector(".item-internal-id").value;
-      const quantity = parseFloat(tr.querySelector(".item-qty").value || 0);
-      const amount = parseFloat(tr.querySelector(".item-saleprice").value || 0);
-      const options = tr.querySelector(".options-summary")?.innerText || "";
-      const fulfilmentMethod = tr.querySelector(".item-fulfilment").value;
+const items = [...document.querySelectorAll("#orderItemsBody .order-line")]
+  .map((tr) => {
+    const item = tr.querySelector(".item-internal-id")?.value.trim();
 
-      // ✅ Pull data attributes from modal logic
-      const lotnumber = tr.dataset.lotnumber || "";
-      const inventoryMeta = tr.dataset.inventoryMeta || "";
+    // ❌ Skip rows where no item has been selected
+    if (!item) return null;
 
-      console.log("🧩 Building line for NetSuite:", {
-        item,
-        quantity,
-        amount,
-        lotnumber,
-        hasMeta: !!inventoryMeta,
-      });
+    const quantity = parseFloat(tr.querySelector(".item-qty").value || 0);
+    const amount = parseFloat(tr.querySelector(".item-saleprice").value || 0);
+    const options = tr.querySelector(".options-summary")?.innerText || "";
+    const fulfilmentMethod = tr.querySelector(".item-fulfilment").value;
 
-      return {
-        item,
-        quantity,
-        amount,
-        options,
-        fulfilmentMethod,
-        lotnumber,
-        inventoryMeta,
-      };
-    });
+    const lotnumber = tr.dataset.lotnumber || "";
+    const inventoryMeta = tr.dataset.inventoryMeta || "";
+
+    return {
+      item,
+      quantity,
+      amount,
+      options,
+      fulfilmentMethod,
+      lotnumber,
+      inventoryMeta,
+    };
+  })
+  // Remove empty/null rows so NetSuite doesn't throw 400 INVALID_VALUE
+  .filter((line) => line !== null);
 
 
 

@@ -21,6 +21,73 @@ async function loadItems() {
   }
 }
 
+async function populateSizeFilter() {
+  const sizeSelect = document.getElementById("sizeFilter");
+  if (!sizeSelect) return;
+
+  // Reset dropdown
+  sizeSelect.innerHTML = `<option value="">All Sizes</option>`;
+
+  try {
+    const res = await fetch("/api/netsuite/sales-order-item-size");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    const results = data.results || [];
+
+    // Extract size values (excluding “- None -”)
+    const sizes = results
+      .map(r => r.size)
+      .filter(size => size && size.trim() !== "" && size !== "- None -");
+
+    console.log("▶ Size list loaded fast:", sizes);
+
+    sizes.forEach(size => {
+      const opt = document.createElement("option");
+      opt.value = size.toLowerCase();
+      opt.textContent = size;
+      sizeSelect.appendChild(opt);
+    });
+
+  } catch (err) {
+    console.error("❌ Failed loading size filter:", err);
+  }
+}
+
+async function populateBaseOptionFilter() {
+  const baseSelect = document.getElementById("baseOptionFilter");
+  if (!baseSelect) return;
+
+  // Default option
+  baseSelect.innerHTML = `<option value="">All Storage Options</option>`;
+
+  try {
+    const res = await fetch("/api/netsuite/sales-order-item-base-option");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+    const data = await res.json();
+    const results = data.results || [];
+
+    const options = results
+      .map(r => r["base options"])
+      .filter(o => o && o.trim() !== "" && o !== "- None -");
+
+    console.log("▶ Base options loaded fast:", options);
+
+    options.forEach(option => {
+      const opt = document.createElement("option");
+      opt.value = option.toLowerCase();
+      opt.textContent = option;
+      baseSelect.appendChild(opt);
+    });
+
+  } catch (err) {
+    console.error("❌ Failed loading base option filter:", err);
+  }
+}
+
+
+
 // === Load inventory balances (bulk) ===
 async function loadInventoryBalances() {
   try {
@@ -193,6 +260,11 @@ if (item["Class"] && item["Class"].toLowerCase() === "service") {
   // Re-validate inventory for visible lines
   validateInventoryForRow(line);
 }
+// ✅ Automatically add a new empty item row when user finishes selecting this item
+setTimeout(() => {
+  const addBtn = document.getElementById("addItemBtn");
+  if (addBtn) addBtn.click();
+}, 50);
 
 
   hideSuggestions();
@@ -278,17 +350,86 @@ function setupPriceSync(line) {
   };
 }
 
-// === Autocomplete attach ===
 function setupAutocomplete(lineIndex) {
   const input = document.getElementById(`itemSearch-${lineIndex}`);
   if (!input) return;
+
   input.addEventListener("input", () => {
     const query = input.value.trim().toLowerCase();
     if (!query) return hideSuggestions();
-    const matches = items.filter(it => it["Name"].toLowerCase().includes(query)).slice(0, 10);
+
+   // 🔥 NEW — unlimited results + contains() match
+const selectedSize = (document.getElementById("sizeFilter")?.value || "").toLowerCase();
+const selectedBaseOption = (document.getElementById("baseOptionFilter")?.value || "").toLowerCase();
+const selectedType = (document.getElementById("typeFilter")?.value || "").toLowerCase();
+
+const matches = items.filter(it => {
+  const name = it["Name"].toLowerCase();
+
+  // 🔍 Name search
+  const nameMatch = name.includes(query);
+
+
+  // 🔎 SIZE FILTER (exactly as your working version)
+  const sizeMatch = (() => {
+    if (selectedSize === "") return true;   // All sizes = match everything
+
+    if (selectedSize === "double") {
+      return name.includes("double") && !name.includes("small double");
+    }
+
+    if (selectedSize === "king") {
+      return (
+        (name.includes(" king") || name.startsWith("king") || name.includes("(king")) &&
+        !name.includes("super king") &&
+        !name.includes("zip and link") &&
+        !name.includes("zip & link")
+      );
+    }
+
+    if (selectedSize === "single") {
+      return (
+        (name.includes(" single") || name.startsWith("single") || name.includes("(single")) &&
+        !name.includes("small single") &&
+        !name.includes("euro single")
+      );
+    }
+
+    const pattern = new RegExp(`\\b${selectedSize}\\b`, "i");
+    return pattern.test(name);
+  })();
+
+
+  // 🔎 BASE OPTION / STORAGE FILTER
+  const baseMatch = (() => {
+    if (selectedBaseOption === "") return true; // All storage options
+
+    const cleanName = name.replace(/[^a-z0-9 ]/g, "");
+    return cleanName.includes(selectedBaseOption);
+  })();
+
+
+  // 🔎 TYPE FILTER (NEW)
+  const typeMatch = (() => {
+    const cls = (it["Class"] || "").toLowerCase();
+
+    if (selectedType === "") return true;       // All
+    if (selectedType === "services") return cls === "service";
+    if (selectedType === "items") return cls !== "service";
+
+    return true;
+  })();
+
+
+  // ✔ FINAL FILTER CHECK
+  return nameMatch && sizeMatch && baseMatch && typeMatch;
+});
+
+
     showSuggestions(input, matches, lineIndex);
   });
 }
+
 
 // === Fulfilment methods ===
 let fulfilmentMethodsCache = [];
@@ -487,6 +628,8 @@ function addNewRow() {
 // === Init ===
 document.addEventListener("DOMContentLoaded", async () => {
   await loadItems();
+  populateSizeFilter();
+  populateBaseOptionFilter();     // 🔥 NEW LINE
   await loadInventoryBalances();
   createGlobalSuggestions();
   setupAutocomplete(0);
