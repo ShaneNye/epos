@@ -1,0 +1,216 @@
+   @font-face {
+     font-family: 'ProximaNova';
+     src: url('/fonts/proximanova_regular.ttf') format('truetype');
+     font-weight: normal;
+     font-style: normal;
+   }
+
+   /* ==========================
+       A4 PRINT SETUP
+       ========================== */
+
+   @page {
+     size: A4;
+     margin: 20mm;
+   }
+
+   * {
+     box-sizing: border-box;
+   }
+
+   body {
+     margin: 0;
+     padding: 0;
+     font-family: "ProximaNova", "Segoe UI", sans-serif;
+     background: #fff;
+     color: #000;
+   }
+
+   /* ==========================
+       PAGE CONTAINER
+       ========================== */
+
+   .page {
+     width: 210mm;
+     min-height: 297mm;
+     margin: 0 auto;
+     background: #fff;
+     border: 2px solid black;
+     overflow: hidden;
+   }
+
+
+   /* =========================
+        HEADER
+        ======================= */
+
+   .header {
+     border-bottom: 3px solid #FFD700;
+     background-color: #006a9c;
+     line-height: 14px;
+     padding-bottom: 10px;
+     color: white;
+     max-height: 220px;
+   }
+
+   .logo {
+     display: flex;
+     margin: auto;
+     width: 500px;
+   }
+
+   .receipt-type {
+     position: relative;
+     background-color: #006a9c;
+     font-size: 42px;
+     color: white;
+     padding: 20px 40px 20px 40px;
+     border-radius: 100px 100px 500px 500px;
+     border-bottom: 4px solid #FFD700;
+     width: 179px;
+     top: -55px;
+     left: 450px;
+   }
+
+   /*===========================
+      ORDER DETAILS PANEL
+      =========================== */
+
+   .content {
+     background-color: lightgray;
+     border-bottom: 3px solid grey;
+
+   }
+
+
+   /* ==========================
+        CUSTOMER DETAILS TABLE
+       ========================== */
+
+   .customer-details {
+
+     margin: 20px;
+
+     td {
+       vertical-align: top;
+     }
+
+     p {
+       vertical-align: top;
+       line-height: 5px;
+     }
+   }
+
+   /* ==========================
+        ORDER DETAILS TABLE
+       ========================== */
+
+   .order-details {
+     margin-top: 46px;
+
+     td {
+       vertical-align: top;
+     }
+
+     p {
+       vertical-align: top;
+       line-height: 5px;
+     }
+   }
+
+
+   /* ==========================
+        PARENT TABLE
+       ========================== */
+
+   .details-parent {
+     width: 115%;
+
+     td {
+       vertical-align: top;
+     }
+
+     p {
+       vertical-align: top;
+       line-height: 5px;
+     }
+   }
+
+
+   /* ==========================
+          PRODUCT TABLE
+          ========================== */
+
+   .prod-table {
+     margin: 20px;
+
+     table {
+       width: 100%;
+     }
+
+     th {
+       text-align: center;
+       border: 2px solid black;
+       padding: 10px
+     }
+
+     td {
+       text-align: center;
+       padding: 5px;
+       font-size: 12px;
+     }
+   }
+
+
+   .order-breakdown {
+     text-align: left;
+     margin: 20px;
+
+     th {
+      color: #0081ab;
+     }
+          
+
+     tbody {
+       vertical-align: top;
+     }
+   }
+
+   .order-breakdown-child {
+
+     table,
+     td,
+     th {
+       border: 1px solid black;
+       text-align: left;
+       vertical-align: middle;
+       color: black;
+       
+     }
+
+     table {
+       border-collapse: collapse;
+       width: 100%;
+       
+     }
+
+     th,
+     td {
+       padding: 10px;
+     }
+   }
+
+   /* ==========================
+       PRINT CLEANUP
+       ========================== */
+   /* 
+    @media print {
+      body {
+        background: #fff;
+      }
+
+      .page {
+        margin: 0;
+        padding: 20mm;
+      }
+    } */

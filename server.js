@@ -149,6 +149,7 @@ app.use(async (req, res, next) => {
     // ==========================================================
     const alwaysAllowed = [
       "/sales/view",
+      "sales/reciept",
       "/sales/new",
       "/quote/view",
       "/quote/new",
@@ -576,6 +577,7 @@ app.get("/reports", (req, res) => res.sendFile(path.join(__dirname, "public", "r
 app.get("/eod", (req, res) => res.sendFile(path.join(__dirname, "public", "endOfDay.html")))
 app.get("/cashflow", (req, res) => res.sendFile(path.join(__dirname, "public", "cashFlow.html")))
 app.get("/logistics", (req, res) => res.sendFile(path.join(__dirname, "public", "logistics.html")))
+app.get("/sales/reciept/:id", (req, res) => res.sendFile(path.join(__dirname,"public", "salesOrdReceipt.html")));
 
 app.get("/quote/view/:id", (req, res) =>
   res.sendFile(path.join(__dirname, "public", "quoteView.html"))

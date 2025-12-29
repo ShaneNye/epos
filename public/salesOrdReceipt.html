@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <title>Receipt</title>
+  <link rel="stylesheet" href="/css/reciepts/salesOrdReciept.css">
+</head>
+
+<body>
+  <div class="page">
+
+    <!-- HEADER -->
+    <div class="header">
+      <img class="logo" src="/assets/ReceiptLogo.png">
+      <table style="width: 118%;">
+        <td>
+          <table>
+            <tr>
+              <td>Tel:</td>
+              <td> 000000000</td>
+            </tr>
+            <tr>
+              <td>Email:</td>
+              <td>store@sussexbeds.co.uk</td>
+            </tr>
+            <tr>
+              <td>Website:</td>
+              <td>www.sussexbeds.co.uk</td>
+            </tr>
+          </table>
+
+          <table>
+            <tr>
+              <td>Vat No :</td>
+              <td> 000000</td>
+              <td>Company No:</td>
+              <td>000000</td>
+            </tr>
+          </table>
+        </td>
+        <td>
+          <table style="text-align: right;">
+            <tr>
+              <td>Store Name </td>
+            </tr>
+            <tr>
+              <td>address line1</td>
+            </tr>
+            <tr>
+              <td>address line2</td>
+            </tr>
+            <tr>
+              <td>postcode</td>
+            </tr>
+          </table>
+        </td>
+      </table>
+      <p class="receipt-type">Order</p>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div class="content">
+      <table class="details-parent">
+        <td>
+
+
+          <table class="customer-details">
+            <tr>
+              <td>Name: </td>
+              <td id="customerName"></td>
+            </tr>
+            <tr>
+              <td>Address: </td>
+              <td>
+                <p id="custadd1"></p>
+                <p id="custadd2"></p>
+                <p id="custadd3"></p>
+                <p id="custzip"></p>
+              </td>
+            </tr>
+            <tr>
+              <td>Email:</td>
+              <td id="custEmail"></td>
+            </tr>
+            <tr>
+              <td>Tel:</td>
+              <td id="custTel"></td>
+            </tr>
+          </table>
+        </td>
+        <td>
+
+
+          <table class="order-details">
+            <tr>
+              <td>Order No:</td>
+              <td id="salesOrd"></td>
+            </tr>
+            <tr>
+              <td>Order Date:</td>
+              <td id="salesDate"></td>
+            </tr>
+            <tr>
+              <td>Payment <br> Method:</td>
+              <td id="pymtMthd"></td>
+            </tr>
+            <td>Sales Person</td>
+            <td id="salesRep"></td>
+          </table>
+        </td>
+      </table>
+    </div>
+
+    <div class="prod-table">
+      <table id="productTable">
+        <thead>
+          <tr>
+            <th>Item</th>
+            <th>Options</th>
+            <th>QTY</th>
+            <th>Price</th>
+            <th>Discount</th>
+            <th>Total</th>
+          </tr>
+        </thead>
+        <tbody id="productTableBody">
+          <!-- JS will insert rows here -->
+        </tbody>
+      </table>
+    </div>
+
+    <div class="order-breakdown">
+      <Table>
+        <tr class="order-breakdown-parent">
+          <th>Payment History</th>
+          <th>Discount Summary</th>
+          <th>Order Summary</th>
+        </tr>
+        <tr>
+          <td>
+            <div class="order-breakdown-child">
+              <table id="deposit-table">
+                <thead>
+                  <tr>
+                    <th>Dep No.</th>
+                    <th>Method</th>
+                    <th>Amount</th>
+                  </tr>
+                </thead>
+                <tbody id="depositTableBody">
+                  <!-- JS will insert rows here -->
+                </tbody>
+              </table>
+            </div>
+
+          </td>
+          <td>
+            <div class="order-breakdown-child">
+              <table>
+                <tr>
+                  <th>Original <br> Price</th>
+                  <th>Discount <br> Amount</th>
+                  <th>Percentage <br> Discount</th>
+                </tr>
+                <tr>
+                  <td id="originalPrice"></td>
+                  <td id="discAmount"></td>
+                  <td id="totalDiscPerc"></td>
+                </tr>
+              </table>
+            </div>
+          </td>
+          <td>
+            <div class="order-breakdown-child">
+              <table>
+                <tr>
+                  <th>VAT</th>
+                  <td id="vatTotal">£0.00</td>
+                </tr>
+                <tr>
+                  <th>Order Total</th>
+                  <td id="salesTotal">£0.00</td>
+                </tr>
+                <tr>
+                  <th>Remaining <br>Balance</th>
+                  <td id="balance"></td>
+                </tr>
+              </table>
+            </div>
+          </td>
+        </tr>
+      </Table>
+    </div>
+
+    <!-- FOOTER -->
+    <div class="footer">
+      <!-- Terms / VAT info / thank you message -->
+    </div>
+
+  </div>
+</body>
+<script src="/js/storage.js"></script>
+<script src="/js/salesOrdReceipt.js"></script>
+
+</html>
