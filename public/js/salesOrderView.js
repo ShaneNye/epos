@@ -580,7 +580,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     } else {
       document.querySelectorAll("input, select, textarea, button").forEach(el => {
-        if (el.id === "newMemoBtn") return;
+        if (el.id === "newMemoBtn" || "printBtn") return;
         el.disabled = true;
         el.classList.add("locked-input");
       });
@@ -888,6 +888,24 @@ if (sale < 0) {
 
   console.log("📊 Summary recalculated — grand:", grossTotal.toFixed(2));
 }
+
+
+document.getElementById("printBtn").addEventListener("click", () => {
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  const tranId = parts[parts.length - 1];
+
+  if (!tranId) {
+    console.error("❌ No tranId found in URL");
+    return;
+  }
+
+  const url = `/sales/reciept/${tranId}`;
+  window.open(url, "_blank");
+});
+
+
+
+
 
 
 

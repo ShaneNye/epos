@@ -11,6 +11,51 @@ const {
   getAuthHeader,
 } = require("../netsuiteClient");
 
+// =====================================================
+// ✅ In-memory cache for GET /:id sales order payloads
+// =====================================================
+const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const soCache = new Map(); // key -> { expiresAt, data, inFlight }
+
+// Use internal id (numeric) as cache key. We keep it simple.
+function cacheKey(id) {
+  return `so:${String(id).trim()}`;
+}
+
+function cacheGet(key) {
+  const e = soCache.get(key);
+  if (!e) return null;
+
+  // in-flight promise exists
+  if (e.inFlight) return e;
+
+  // expired
+  if (e.expiresAt && e.expiresAt < Date.now()) {
+    soCache.delete(key);
+    return null;
+  }
+  return e;
+}
+
+function cacheSet(key, data) {
+  soCache.set(key, {
+    data,
+    expiresAt: Date.now() + SO_CACHE_TTL_MS,
+    inFlight: null,
+  });
+}
+
+// optional: prevent memory creep
+function cachePrune(max = 300) {
+  if (soCache.size <= max) return;
+  const over = soCache.size - max;
+  for (let i = 0; i < over; i++) {
+    const first = soCache.keys().next().value;
+    soCache.delete(first);
+  }
+}
+
+
 
 /* =====================================================
    === CREATE NEW SALES ORDER ===========================
@@ -651,6 +696,38 @@ router.get("/:id", async (req, res) => {
     const { id } = req.params;
     console.log(`📦 Fetching Sales Order ${id} from NetSuite...`);
 
+        // ✅ Cache support
+    const refresh = String(req.query.refresh || "") === "1";
+    const key = cacheKey(id);
+
+    if (!refresh) {
+      const cached = cacheGet(key);
+
+      // 1) warm cache hit
+      if (cached?.data) {
+        return res.json({ ...cached.data, _cache: "HIT" });
+      }
+
+      // 2) another request already fetching this SO
+      if (cached?.inFlight) {
+        try {
+          const data = await cached.inFlight;
+          return res.json({ ...data, _cache: "HIT-INFLIGHT" });
+        } catch (e) {
+          // fall through and try fresh
+        }
+      }
+    }
+
+    // create in-flight promise so concurrent requests dedupe
+    let resolveInflight, rejectInflight;
+    const inFlight = new Promise((resolve, reject) => {
+      resolveInflight = resolve;
+      rejectInflight = reject;
+    });
+    soCache.set(key, { inFlight, expiresAt: Date.now() + SO_CACHE_TTL_MS, data: null });
+
+
     // 🔐 Resolve user session for per-user NetSuite token
     const auth = req.headers.authorization || "";
     const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : null;
@@ -855,17 +932,33 @@ router.get("/:id", async (req, res) => {
        ✅ Respond
     ----------------------------------------------------- */
     console.log("✅ Sales Order fetched successfully:", so.tranId || so.id);
-    return res.json({
+
+    const payload = {
       ok: true,
       salesOrderId: so.id,
       salesOrder: so,
       deposits,
-    });
-  } catch (err) {
+    };
+
+    cacheSet(key, payload);
+    cachePrune();
+    resolveInflight(payload);
+
+    return res.json({ ...payload, _cache: "MISS" });
+
+    } catch (err) {
     console.error("❌ GET /salesorder/:id error:", err.message);
+
+    // if we created an inflight promise above, reject + clear cache entry
+    try {
+      if (typeof rejectInflight === "function") rejectInflight(err);
+      if (typeof key !== "undefined") soCache.delete(key);
+    } catch {}
+
     return res.status(500).json({ ok: false, error: err.message });
   }
 });
+
 
 
 // =====================================================

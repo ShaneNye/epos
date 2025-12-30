@@ -25,6 +25,7 @@
     <script defer src="/js/adminUserSearch.js"></script>
     <script defer src="/js/adminRoles.js"></script>
     <script defer src="/js/adminLocations.js"></script>
+    <script defer src="/js/adminManagementRules.js"></script>
 
     <script src="/assistant/assistant.js"></script>
     <link rel="stylesheet" href="/assistant/assistant.css" />
@@ -54,6 +55,7 @@
                 <div class="subtab active" data-target="sub-users">Users</div>
                 <div class="subtab" data-target="sub-roles">Roles</div>
                 <div class="subtab" data-target="sub-locations">Locations</div>
+                <div class="subtab" data-target="sub-user-data">User Data Management</div>
             </div>
 
             <!-- === USERS Subtab === -->
@@ -294,6 +296,49 @@
                     </div>
                 </div>
             </div>
+            <!-- === USER DATA MANAGEMENT Subtab === -->
+            <div id="sub-user-data" class="subtab-content hidden">
+                <div class="user-toolbar">
+                    <p style="margin:0;">Control which profile fields each role can edit in <code>manage.html</code>.
+                    </p>
+                </div>
+
+                <table id="userDataRoleTable">
+                    <thead>
+                        <tr>
+                            <th>Role</th>
+                            <th>Editable Fields</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+
+                <!-- Modal -->
+                <div id="userDataModal" class="modal hidden">
+                    <div class="modal-content" style="max-width:720px;">
+                        <h3 id="userDataModalTitle">Edit Role Field Permissions</h3>
+
+                        <div class="modal-body">
+                            <div style="display:flex; gap:16px; align-items:center; margin-bottom:10px;">
+                                <input id="userDataSearch" type="text" placeholder="Search fields..." style="flex:1;" />
+                                <button type="button" id="userDataSelectAll" class="btn-secondary">Select all</button>
+                                <button type="button" id="userDataClearAll" class="btn-secondary">Clear</button>
+                            </div>
+
+                            <div id="userDataFieldList"
+                                style="max-height:380px; overflow:auto; border:1px solid #e6e9ee; border-radius:8px; padding:10px;">
+                            </div>
+                        </div>
+
+                        <div class="modal-actions">
+                            <button type="button" id="userDataSave" class="btn-primary">Save</button>
+                            <button type="button" id="userDataCancel" class="btn-secondary">Cancel</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
 
         </div> <!-- ✅ FIX: CLOSES USERS MASTER TAB -->
 
@@ -336,21 +381,52 @@
         </div>
 
     </main>
-
-    <!-- MAIN TAB SWITCHING LOGIC -->
+    <!-- MAIN + SUB TAB SWITCHING LOGIC -->
     <script>
         document.addEventListener("DOMContentLoaded", () => {
+
+            /* ===============================
+               MAIN TABS
+               =============================== */
             document.querySelectorAll(".tab").forEach(tab => {
                 tab.addEventListener("click", () => {
                     document.querySelectorAll(".tab").forEach(t => t.classList.remove("active"));
                     document.querySelectorAll(".tab-content").forEach(c => c.classList.add("hidden"));
+
                     tab.classList.add("active");
+
                     const target = document.getElementById(tab.dataset.target);
                     if (target) target.classList.remove("hidden");
                 });
             });
+
+            /* ===============================
+               USER MANAGEMENT SUBTABS
+               =============================== */
+            document.querySelectorAll("#users .subtab").forEach(subtab => {
+                subtab.addEventListener("click", () => {
+                    // Toggle subtab buttons
+                    document.querySelectorAll("#users .subtab").forEach(t => t.classList.remove("active"));
+                    subtab.classList.add("active");
+
+                    // Hide all subtab panels
+                    document.querySelectorAll("#users .subtab-content").forEach(c => {
+                        c.classList.add("hidden");
+                        c.classList.remove("active");
+                    });
+
+                    // Show selected panel
+                    const target = document.getElementById(subtab.dataset.target);
+                    if (target) {
+                        target.classList.remove("hidden");
+                        target.classList.add("active");
+                    }
+                });
+            });
+
         });
     </script>
+
 
 </body>
 

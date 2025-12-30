@@ -26,6 +26,7 @@ router.get("/", async (req, res) => {
           firstname,
           lastname,
           profileimage,
+          themehex,
           location_id AS "primaryStore"
        FROM users
        WHERE id = $1`,
@@ -60,6 +61,7 @@ router.get("/", async (req, res) => {
         profileImage: u.profileimage,
         roles,
         primaryStore: u.primaryStore || null,
+        themeHex: u.themehex || null,
       },
       activeRole: session.activeRole?.name || null,
     });

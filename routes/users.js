@@ -2,6 +2,8 @@ const express = require("express");
 const bcrypt = require("bcrypt");
 const pool = require("../db");
 const router = express.Router();
+const { getSession } = require("../sessions");
+
 
 /* -------------------- Helper -------------------- */
 function maskUser(u) {
@@ -27,7 +29,7 @@ function maskUser(u) {
 /* -------------------- GET all users -------------------- */
 router.get("/", async (req, res) => {
   try {
-const result = await pool.query(`
+    const result = await pool.query(`
   SELECT 
     u.id, u.email, u.firstname, u.lastname, u.netsuiteid, u.profileimage, u.createdat,
     u.location_id, l.name AS location_name, l.netsuite_internal_id,
@@ -49,9 +51,9 @@ const result = await pool.query(`
         ...u,
         roles: u.role_ids
           ? u.role_ids.split(",").map((id, i) => ({
-              id: parseInt(id),
-              name: u.role_names.split(",")[i],
-            }))
+            id: parseInt(id),
+            name: u.role_names.split(",")[i],
+          }))
           : [],
       })
     );
@@ -62,6 +64,134 @@ const result = await pool.query(`
     res.status(500).json({ ok: false, error: "DB error" });
   }
 });
+router.put("/self-update", async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (!token) return res.status(401).json({ ok: false, error: "Missing token" });
+
+    const session = await getSession(token);
+    if (!session) return res.status(401).json({ ok: false, error: "Invalid session" });
+
+    const userId = session.id;
+
+    // ✅ Prefer role sent from client (because your UI role switch is client-driven)
+    // Fallback to server session role if not sent
+    const requestedRole =
+      (req.body?.activeRole || "").trim() ||
+      (session.activeRole?.name || "").trim();
+
+    if (!requestedRole) {
+      return res.status(400).json({ ok: false, error: "Missing active role" });
+    }
+
+    // ✅ Validate the user actually has this role
+    const roleCheck = await pool.query(
+      `SELECT 1
+         FROM user_roles ur
+         JOIN roles r ON r.id = ur.role_id
+        WHERE ur.user_id = $1 AND r.name = $2
+        LIMIT 1`,
+      [userId, requestedRole]
+    );
+
+    if (roleCheck.rowCount === 0) {
+      return res.status(403).json({
+        ok: false,
+        error: "Active role is not assigned to this user",
+      });
+    }
+
+    // Allowed fields for that role
+    const rulesRes = await pool.query(
+      `SELECT field_name
+         FROM user_management_rules
+        WHERE TRIM(role_name) = $1 AND allowed = TRUE`,
+      [requestedRole]
+    );
+
+    const allowedRaw = rulesRes.rows.map(r => r.field_name);
+
+    // Normalize allowed fields (support camelCase or db cols)
+    const allowedDb = new Set();
+    for (const f of allowedRaw) {
+      if (f === "firstName") allowedDb.add("firstname");
+      else if (f === "lastName") allowedDb.add("lastname");
+      else if (f === "profileImage") allowedDb.add("profileimage");
+      else if (f === "primaryStore") allowedDb.add("location_id");
+      else if (f === "locationId") allowedDb.add("location_id");
+      else if (f === "netsuiteId") allowedDb.add("netsuiteid");
+      else if (f === "invoiceLocationId") allowedDb.add("invoicelocationid");
+      else allowedDb.add(f);
+    }
+
+    const body = req.body || {};
+
+    const candidateUpdates = {
+      email: body.email,
+      firstname: body.firstname ?? body.firstName,
+      lastname: body.lastname ?? body.lastName,
+      profileimage: body.profileimage ?? body.profileImage,
+      netsuiteid: body.netsuiteid ?? body.netsuiteId,
+      invoicelocationid: body.invoicelocationid ?? body.invoiceLocationId,
+      location_id: body.location_id ?? body.locationId ?? body.primaryStore,
+      themehex: body.themehex,
+    };
+
+    const updates = {};
+    for (const [k, v] of Object.entries(candidateUpdates)) {
+      if (!allowedDb.has(k)) continue;
+      if (v === undefined) continue;
+      updates[k] = (v === "" ? null : v);
+    }
+
+    const keys = Object.keys(updates);
+    if (keys.length === 0) {
+      return res.json({
+        ok: false,
+        error: "No allowed fields to update (check role rules / payload keys)",
+        debug: {
+          role: requestedRole,
+          allowedRaw,
+          allowedDb: Array.from(allowedDb),
+          receivedKeys: Object.keys(body),
+        },
+      });
+    }
+
+    const setClauses = keys.map((col, i) => `${col} = $${i + 1}`).join(", ");
+    const values = keys.map(k => updates[k]);
+
+    const result = await pool.query(
+      `UPDATE users
+          SET ${setClauses}
+        WHERE id = $${values.length + 1}
+      RETURNING id, email, firstname, lastname, profileimage, location_id, netsuiteid, invoicelocationid`,
+      [...values, userId]
+    );
+
+    const u = result.rows[0];
+
+    return res.json({
+      ok: true,
+      updated: keys,
+      user: {
+        id: u.id,
+        email: u.email,
+        firstName: u.firstname,
+        lastName: u.lastname,
+        profileImage: u.profileimage,
+        primaryStore: u.location_id || null,
+        netsuiteId: u.netsuiteid || null,
+        invoiceLocationId: u.invoicelocationid || null,
+      },
+    });
+  } catch (err) {
+    console.error("❌ PUT /api/users/self-update failed:", err);
+    res.status(500).json({ ok: false, error: "Server error" });
+  }
+});
+
 
 /* -------------------- GET single user -------------------- */
 router.get("/:id", async (req, res) => {

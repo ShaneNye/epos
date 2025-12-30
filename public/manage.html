@@ -53,7 +53,7 @@
         .form-field label {
             display: block;
             font-weight: 600;
-            margin-bottom: 4px;
+            margin-bottom: 6px;
         }
 
         .form-field input,
@@ -63,6 +63,20 @@
             border: 1px solid #d1d8e0;
             border-radius: 6px;
             font-size: 0.95rem;
+            box-sizing: border-box;
+        }
+
+        /* Make the color picker show as a real color picker even if global styles are aggressive */
+        .form-field input[type="color"] {
+            appearance: auto !important;
+            -webkit-appearance: auto !important;
+            width: 60px !important;
+            height: 38px !important;
+            padding: 0 !important;
+            border: 1px solid #d1d8e0;
+            border-radius: 6px;
+            cursor: pointer;
+            background: #fff;
         }
 
         .actions {
@@ -129,7 +143,7 @@
            Fetch allowed fields for role
         --------------------------------------------------------- */
         async function loadAllowedFields() {
-            const res = await fetch(`/api/meta/management-rules/${activeRoleName}`, {
+            const res = await fetch(`/api/meta/management-rules/${encodeURIComponent(activeRoleName)}`, {
                 headers: authHeaders
             });
             const data = await res.json();
@@ -141,7 +155,7 @@
            Fetch locations (for dropdown)
         --------------------------------------------------------- */
         async function loadLocations() {
-            const res = await fetch("/api/meta/locations");
+            const res = await fetch("/api/meta/locations", { headers: authHeaders });
             const data = await res.json();
             return data.ok ? data.locations : [];
         }
@@ -168,11 +182,43 @@
             "primary_store",
             "primarystore",
             "store_id",
-            "storeId"
+            "storeId",
+            "primaryStore"
         ];
 
         /* ---------------------------------------------------------
-           Create field element using Admin modal rules
+           Get user value (handles snake_case vs camelCase)
+        --------------------------------------------------------- */
+        function getUserValue(user, field) {
+            if (!user || !field) return "";
+
+            if (user[field] !== undefined && user[field] !== null) return user[field];
+
+            const map = {
+                firstname: "firstName",
+                lastname: "lastName",
+                profileimage: "profileImage",
+                primarystore: "primaryStore",
+                netsuiteid: "netsuiteId",
+                invoicelocationid: "invoiceLocationId",
+                themehex: "themeHex",
+                location_id: "primaryStore" // /api/me returns primaryStore
+            };
+
+            const alt = map[field.toLowerCase()];
+            if (alt && user[alt] !== undefined && user[alt] !== null) return user[alt];
+
+            const camel = field
+                .toLowerCase()
+                .replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+
+            if (user[camel] !== undefined && user[camel] !== null) return user[camel];
+
+            return "";
+        }
+
+        /* ---------------------------------------------------------
+           Create field element
         --------------------------------------------------------- */
         function createField(field, value, locations) {
             const wrapper = document.createElement("div");
@@ -188,17 +234,79 @@
             // ▸ LOCATION DROPDOWN
             if (LOCATION_FIELDS.includes(field)) {
                 wrapper.innerHTML += `
-                    <select name="${field}">
-                        <option value="">Select Store</option>
-                        ${locations.map(l => `
-                            <option value="${l.id}" ${l.id == value ? "selected" : ""}>
-                                ${l.name}
-                            </option>
-                        `).join("")}
-                    </select>
-                `;
+          <select name="${field}">
+            <option value="">Select Store</option>
+            ${locations.map(l => `
+              <option value="${l.id}" ${String(l.id) === String(value) ? "selected" : ""}>
+                ${l.name}
+              </option>
+            `).join("")}
+          </select>
+        `;
                 return wrapper;
             }
+
+            // ▸ THEME HEX COLOUR (must be BEFORE default return)
+            if (field === "themehex") {
+                const isHex = (v) => typeof v === "string" && /^#([0-9A-F]{3}){1,2}$/i.test(v);
+
+                // UI needs a valid color value; store "real" value in a hidden input that can be blank/null
+                const uiDefault = "#0f766e"; // your base/brand colour for display only
+                const current = isHex(value) ? value : "";
+
+                wrapper.innerHTML += `
+    <div style="display:flex; gap:10px; align-items:center;">
+      <input
+        type="color"
+        id="themehex_picker"
+        value="${isHex(current) ? current : uiDefault}"
+        style="width:60px; padding:0; height:38px; cursor:pointer;"
+      >
+
+      <input
+        type="hidden"
+        name="themehex"
+        id="themehex_value"
+        value="${isHex(current) ? current : ""}"
+      >
+
+      <button
+        type="button"
+        class="btn-secondary"
+        id="themehex_clear"
+        style="padding:8px 10px;"
+      >
+        Clear
+      </button>
+    </div>
+    <small style="display:block; margin-top:6px; opacity:.75;">
+      Clear will revert to the default colour scheme.
+    </small>
+  `;
+
+                // wire up events (after insertion)
+                setTimeout(() => {
+                    const picker = wrapper.querySelector("#themehex_picker");
+                    const hidden = wrapper.querySelector("#themehex_value");
+                    const clearBtn = wrapper.querySelector("#themehex_clear");
+
+                    if (!picker || !hidden || !clearBtn) return;
+
+                    // when user picks a colour, store it
+                    picker.addEventListener("input", () => {
+                        hidden.value = picker.value; // always #RRGGBB
+                    });
+
+                    // clear = send null to backend, but keep UI showing default colour
+                    clearBtn.addEventListener("click", () => {
+                        hidden.value = "";           // will become null in saveProfile()
+                        picker.value = uiDefault;    // keep UI valid
+                    });
+                }, 0);
+
+                return wrapper;
+            }
+
 
             // ▸ EMAIL
             if (field.toLowerCase().includes("email")) {
@@ -241,7 +349,7 @@
 
             for (const field of allowed) {
                 if (DISALLOWED_FIELDS.includes(field)) continue;
-                manageForm.appendChild(createField(field, user[field], locations));
+                manageForm.appendChild(createField(field, getUserValue(user, field), locations));
             }
         }
 
@@ -250,10 +358,12 @@
         --------------------------------------------------------- */
         async function saveProfile() {
             const formData = new FormData(manageForm);
-            const payload = {};
+
+            // Include UI active role so backend uses same role as the UI (validated server-side)
+            const payload = { activeRole: activeRoleName };
 
             for (const [key, val] of formData.entries()) {
-                payload[key] = val || null;
+                payload[key] = (val === "" ? null : val);
             }
 
             let res;
@@ -284,6 +394,7 @@
             console.log("SELF UPDATE RESPONSE:", data);
 
             if (!data.ok) {
+                if (data.debug) console.log("SELF UPDATE DEBUG:", data.debug);
                 alert("Failed to save changes: " + (data.error || "Unknown error"));
                 return;
             }

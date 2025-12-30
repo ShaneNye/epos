@@ -2,211 +2,327 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
-    <title>Edit Management Rules</title>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>Edit Management Rules</title>
 
-    <link rel="stylesheet" href="/css/home.css">
-    <link rel="stylesheet" href="/css/admin.css">
+  <link rel="stylesheet" href="/css/home.css">
+  <link rel="stylesheet" href="/css/admin.css">
 
-    <!-- Must be absolute path (popups cannot load ./js/...) -->
-    <script src="/js/storage.js"></script>
+  <!-- Must be absolute path (popups cannot load ./js/...) -->
+  <script src="/js/storage.js"></script>
 
-    <style>
-        body {
-            background: #f7fafc;
-            font-family: "Segoe UI", "Inter", sans-serif;
-            margin: 0;
-            padding: 0;
-        }
+  <style>
+    body {
+      background: #f7fafc;
+      font-family: "Segoe UI", "Inter", sans-serif;
+      margin: 0;
+      padding: 0;
+    }
 
-        .popup-wrapper {
-            width: 100%;
-            max-width: 520px;
-            margin: 30px auto;
-        }
+    .popup-wrapper {
+      width: 100%;
+      max-width: 620px;
+      margin: 30px auto;
+    }
 
-        .popup-card {
-            background: #fff;
-            border-radius: 10px;
-            border: 1px solid #e3e7ec;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            overflow: hidden;
-        }
+    .popup-card {
+      background: #fff;
+      border-radius: 10px;
+      border: 1px solid #e3e7ec;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+      overflow: hidden;
+    }
 
-        .popup-header {
-            background: var(--brand);
-            color: #fff;
-            padding: 14px 18px;
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
+    .popup-header {
+      background: var(--brand);
+      color: #fff;
+      padding: 14px 18px;
+      font-size: 1.1rem;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
 
-        .popup-body {
-            padding: 18px 22px;
-        }
+    .popup-body {
+      padding: 18px 22px;
+    }
 
-        .field-list {
-            background: #f9fbfd;
-            border: 1px solid #e0e6ed;
-            border-radius: 8px;
-            padding: 12px 14px;
-            margin-bottom: 20px;
-        }
+    .toolbar {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      margin: 10px 0 14px 0;
+    }
 
-        .field-list label {
-            display: block;
-            padding: 6px 0;
-        }
+    .toolbar input {
+      flex: 1;
+      padding: 8px 10px;
+      border: 1px solid #d1d8e0;
+      border-radius: 6px;
+      font-size: 0.95rem;
+    }
 
-        .actions {
-            display: flex;
-            justify-content: flex-end;
-            padding: 14px 18px;
-            border-top: 1px solid #e6e9ee;
-            background: #fafbfc;
-            gap: 10px;
-        }
-    </style>
+    .field-list {
+      background: #f9fbfd;
+      border: 1px solid #e0e6ed;
+      border-radius: 8px;
+      padding: 12px 14px;
+      margin-bottom: 20px;
+      max-height: 420px;
+      overflow: auto;
+    }
+
+    .field-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 6px 0;
+    }
+
+    .field-row label {
+      margin: 0;
+      cursor: pointer;
+    }
+
+    .field-code {
+      opacity: .6;
+      font-size: 0.85rem;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      padding: 14px 18px;
+      border-top: 1px solid #e6e9ee;
+      background: #fafbfc;
+      gap: 10px;
+    }
+  </style>
 </head>
 
 <body>
-    <div class="popup-wrapper">
-        <div class="popup-card">
-            <div class="popup-header">Management Rules</div>
+  <div class="popup-wrapper">
+    <div class="popup-card">
+      <div class="popup-header">
+        <div>Management Rules</div>
+        <div id="roleBadge" style="opacity:.95; font-weight:500;"></div>
+      </div>
 
-            <div class="popup-body">
-                <h3>Allowed Fields</h3>
-                <p>Tick the fields this role may edit using the "Manage" menu button.</p>
+      <div class="popup-body">
+        <h3 style="margin-top:0;">Allowed Fields</h3>
+        <p>Tick the fields this role may edit using the "Manage" menu button.</p>
 
-                <form id="rulesForm">
-                    <div id="fieldList" class="field-list">Loading fields...</div>
-
-                    <div class="actions">
-                        <button type="button" class="btn-secondary" onclick="window.close()">Close</button>
-                        <button type="submit" class="btn-primary">Save</button>
-                    </div>
-                </form>
-            </div>
-
+        <div class="toolbar">
+          <input id="fieldSearch" type="text" placeholder="Search fields..." />
+          <button type="button" id="selectAllBtn" class="btn-secondary">Select all</button>
+          <button type="button" id="clearBtn" class="btn-secondary">Clear</button>
         </div>
+
+        <form id="rulesForm">
+          <div id="fieldList" class="field-list">Loading fields...</div>
+
+          <div class="actions">
+            <button type="button" class="btn-secondary" onclick="window.close()">Close</button>
+            <button type="submit" class="btn-primary">Save</button>
+          </div>
+        </form>
+      </div>
+
     </div>
+  </div>
 
-    <script>
-        // ---------------------------------------------------------
-        // Read roleName from querystring
-        // ---------------------------------------------------------
-        const params = new URLSearchParams(window.location.search);
-        const roleName = params.get("roleName");
+  <script>
+    // ---------------------------------------------------------
+    // Read roleName from querystring
+    // ---------------------------------------------------------
+    const params = new URLSearchParams(window.location.search);
+    const roleName = params.get("roleName");
 
-        if (!roleName) {
-            alert("Missing role name");
-            window.close();
+    if (!roleName) {
+      alert("Missing role name");
+      window.close();
+    }
+
+    document.getElementById("roleBadge").textContent = roleName;
+
+    // ---------------------------------------------------------
+    // Auth headers (same as rest of admin)
+    // ---------------------------------------------------------
+    const session = storageGet();
+    const token = session?.token;
+
+    if (!token) {
+      alert("Missing session. Please log in again.");
+      window.close();
+    }
+
+    const authHeaders = { Authorization: `Bearer ${token}` };
+
+    // ---------------------------------------------------------
+    // Block fields that should never be editable (extra safety)
+    // ---------------------------------------------------------
+    const DISALLOWED_FIELDS = new Set([
+      "role_ids",
+      "roles",
+      "password_hash",
+      "reset_token",
+      "reset_expires",
+      "sb_netsuite_token_id",
+      "sb_netsuite_token_secret",
+      "prod_netsuite_token_id",
+      "prod_netsuite_token_secret"
+    ]);
+
+    // ---------------------------------------------------------
+    // Utilities
+    // ---------------------------------------------------------
+    function labelize(field) {
+      return field
+        .replace(/_/g, " ")
+        .replace(/([A-Z])/g, " $1")
+        .replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    function applySearchFilter() {
+      const q = document.getElementById("fieldSearch").value.trim().toLowerCase();
+      document.querySelectorAll("#fieldList .field-row").forEach(row => {
+        const f = (row.dataset.field || "").toLowerCase();
+        row.style.display = (!q || f.includes(q)) ? "flex" : "none";
+      });
+    }
+
+    // ---------------------------------------------------------
+    // Load available fields (uses NEW endpoint)
+    // ---------------------------------------------------------
+    async function loadFieldList() {
+      const list = document.getElementById("fieldList");
+
+      try {
+const res = await fetch("/api/meta/management-rules/management-fields", { headers: authHeaders });
+        const data = await res.json();
+
+        if (!data.ok) {
+          list.innerHTML = "<p style='color:red;'>Failed to load fields</p>";
+          return [];
         }
 
-        // ---------------------------------------------------------
-        // Load dynamic user table fields
-        // ---------------------------------------------------------
-        async function loadFieldList() {
-            try {
-                const res = await fetch("/api/meta/user-fields");
-                const data = await res.json();
+        const fields = (data.fields || []).filter(f => !DISALLOWED_FIELDS.has(f));
 
-                const list = document.getElementById("fieldList");
+        list.innerHTML = "";
+        for (const field of fields) {
+          const id = `field_${field}`;
 
-                if (!data.ok) {
-                    list.innerHTML = "<p style='color:red;'>Failed to load fields</p>";
-                    return;
-                }
+          const row = document.createElement("div");
+          row.className = "field-row";
+          row.dataset.field = field;
 
-                list.innerHTML = "";
-                data.fields.forEach(field => {
-                    const label = field
-                        .replace(/_/g, " ")
-                        .replace(/([A-Z])/g, " $1")
-                        .replace(/\b\w/g, c => c.toUpperCase());
+          row.innerHTML = `
+            <input type="checkbox" id="${id}" name="field" value="${field}">
+            <label for="${id}">
+              ${labelize(field)} <span class="field-code">(${field})</span>
+            </label>
+          `;
 
-                    list.innerHTML += `
-                        <label>
-                            <input type="checkbox" name="field" value="${field}">
-                            ${label}
-                        </label>
-                    `;
-                });
-
-            } catch (err) {
-                console.error("Field load error:", err);
-                document.getElementById("fieldList").innerHTML =
-                    "<p style='color:red;'>Error loading fields</p>";
-            }
+          list.appendChild(row);
         }
 
-        // ---------------------------------------------------------
-        // Load current saved rules for this role
-        // ---------------------------------------------------------
-        async function loadRules() {
-            try {
-                const res = await fetch(`/api/meta/management-rules/${roleName}`);
-                const data = await res.json();
+        return fields;
 
-                if (!data.ok) return;
+      } catch (err) {
+        console.error("Field load error:", err);
+        list.innerHTML = "<p style='color:red;'>Error loading fields</p>";
+        return [];
+      }
+    }
 
-                const allowed = data.fields;
+    // ---------------------------------------------------------
+    // Load current saved rules for this role
+    // ---------------------------------------------------------
+    async function loadRules() {
+      try {
+        const res = await fetch(
+          `/api/meta/management-rules/${encodeURIComponent(roleName)}`,
+          { headers: authHeaders }
+        );
+        const data = await res.json();
 
-                document.querySelectorAll("input[name='field']").forEach(cb => {
-                    cb.checked = allowed.includes(cb.value);
-                });
+        if (!data.ok) return;
 
-            } catch (err) {
-                console.error("Rules load error:", err);
-            }
-        }
+        const allowed = Array.isArray(data.fields) ? data.fields : [];
 
-        // ---------------------------------------------------------
-        // Save rules for this role
-        // ---------------------------------------------------------
-        document.getElementById("rulesForm").addEventListener("submit", async e => {
-            e.preventDefault();
-
-            const fields = Array.from(
-                document.querySelectorAll("input[name='field']:checked")
-            ).map(cb => cb.value);
-
-            try {
-                const res = await fetch(`/api/meta/management-rules/${roleName}`, {
-                    method: "PUT",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ fields })
-                });
-
-                const data = await res.json();
-
-                if (!data.ok) {
-                    alert("Failed to save rules");
-                    return;
-                }
-
-                // Refresh parent admin page
-                if (window.opener) {
-                    window.opener.postMessage({ action: "refresh-mgmt-rules" }, "*");
-                }
-
-                window.close();
-
-            } catch (err) {
-                console.error("Save error:", err);
-                alert("Error saving rules");
-            }
+        document.querySelectorAll("input[name='field']").forEach(cb => {
+          cb.checked = allowed.includes(cb.value);
         });
 
-        // ---------------------------------------------------------
-        // INIT
-        // ---------------------------------------------------------
-        (async () => {
-            await loadFieldList();
-            await loadRules();
-        })();
-    </script>
+      } catch (err) {
+        console.error("Rules load error:", err);
+      }
+    }
+
+    // ---------------------------------------------------------
+    // Save rules for this role
+    // ---------------------------------------------------------
+    document.getElementById("rulesForm").addEventListener("submit", async e => {
+      e.preventDefault();
+
+      const fields = Array.from(
+        document.querySelectorAll("input[name='field']:checked")
+      ).map(cb => cb.value);
+
+      try {
+        const res = await fetch(`/api/meta/management-rules/${encodeURIComponent(roleName)}`, {
+          method: "PUT",
+          headers: {
+            "Content-Type": "application/json",
+            ...authHeaders
+          },
+          body: JSON.stringify({ fields })
+        });
+
+        const data = await res.json();
+
+        if (!data.ok) {
+          alert("Failed to save rules" + (data.error ? `: ${data.error}` : ""));
+          return;
+        }
+
+        // Refresh parent admin page
+        if (window.opener) {
+          window.opener.postMessage({ action: "refresh-mgmt-rules" }, "*");
+        }
+
+        window.close();
+
+      } catch (err) {
+        console.error("Save error:", err);
+        alert("Error saving rules");
+      }
+    });
+
+    // ---------------------------------------------------------
+    // Toolbar controls
+    // ---------------------------------------------------------
+    document.getElementById("fieldSearch").addEventListener("input", applySearchFilter);
+
+    document.getElementById("selectAllBtn").addEventListener("click", () => {
+      document.querySelectorAll("input[name='field']").forEach(cb => cb.checked = true);
+    });
+
+    document.getElementById("clearBtn").addEventListener("click", () => {
+      document.querySelectorAll("input[name='field']").forEach(cb => cb.checked = false);
+    });
+
+    // ---------------------------------------------------------
+    // INIT
+    // ---------------------------------------------------------
+    (async () => {
+      await loadFieldList();
+      await loadRules();
+    })();
+  </script>
 
 </body>
 

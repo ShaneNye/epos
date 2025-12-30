@@ -72,6 +72,23 @@ function normalizePath(path) {
   return normalized;
 }
 
+function isHexColor(v) {
+  return typeof v === "string" && /^#([0-9A-F]{3}){1,2}$/i.test(v.trim());
+}
+
+function applyUserTheme(themeHex) {
+  const sidebar = document.getElementById("sidebar");
+  if (!sidebar) return;
+
+  if (isHexColor(themeHex)) {
+    sidebar.style.background = themeHex.trim();
+  } else {
+    // if null/blank/invalid => remove inline style so CSS default applies
+    sidebar.style.removeProperty("background");
+  }
+}
+
+
 async function loadUser() {
   const saved = storageGet(); // from storage.js
   if (!saved || !saved.token) {
@@ -86,6 +103,10 @@ async function loadUser() {
     if (!data.ok) throw new Error("Invalid session");
 
     const user = data.user;
+
+    // 🎨 Apply user theme (only if set)
+applyUserTheme(user.themeHex || user.themehex);
+
 
     // --- Display user info immediately
     const userNameEl = document.getElementById("userName");
