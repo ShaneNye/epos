@@ -1,0 +1,304 @@
+/* public/css/widgets/salesforecast.css */
+
+/* === Widget Container === */
+#salesForecastWidget {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
+  padding: 14px 18px;
+  margin: 24px 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #333;
+  transition: 0.3s ease all;
+  font-size: 0.88rem;
+  height: 344px; /* fixed widget height */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#salesForecastWidget:hover {
+  box-shadow: 0 4px 16px rgba(0, 129, 171, 0.2);
+}
+
+/* === Header / Tabs Row === */
+#salesForecastWidget .sf-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+#salesForecastWidget .sf-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0081ab;
+  display: flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+/* Tabs */
+#salesForecastWidget .sf-tabs {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* Add a little separation for the sub tab row */
+#salesForecastWidget .sf-tabs.sub {
+  margin-bottom: 10px;
+}
+
+#salesForecastWidget .sf-tab {
+  border: 1px solid #cfeef5;
+  background: #f4fdfd;
+  color: #0081ab;
+  font-weight: 600;
+  font-size: 0.82rem;
+  padding: 6px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.2s ease all;
+  line-height: 1;
+}
+
+#salesForecastWidget .sf-tab:hover {
+  background: #e6f5f8;
+}
+
+#salesForecastWidget .sf-tab.active {
+  background: #0081ab;
+  border-color: #0081ab;
+  color: #fff;
+}
+
+/* === Panels Area === */
+/* Old layout used .sf-panels / .sf-panel
+   New layout uses .sf-mains / .sf-main / .sf-subpanel
+   Keep compatibility with both. */
+#salesForecastWidget .sf-panels,
+#salesForecastWidget .sf-mains {
+  flex: 1;
+  overflow: hidden;
+  border-top: 1px solid #e6f5f8;
+  padding-top: 10px;
+}
+
+/* ===== Old single-panel behaviour (kept for backwards compatibility) ===== */
+#salesForecastWidget .sf-panel {
+  display: none;
+  height: 100%;
+}
+#salesForecastWidget .sf-panel.active {
+  display: block;
+  height: 100%;
+}
+
+/* ===== New main/sub-panel behaviour ===== */
+#salesForecastWidget .sf-main {
+  display: none;
+  height: 100%;
+}
+#salesForecastWidget .sf-main.active {
+  display: block;
+  height: 100%;
+}
+
+#salesForecastWidget .sf-subpanel {
+  display: none;
+  height: 100%;
+}
+#salesForecastWidget .sf-subpanel.active {
+  display: block;
+  height: 100%;
+}
+
+/* Inner block */
+#salesForecastWidget .sf-block {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  overflow: auto; /* keep content usable if it grows */
+  padding-right: 6px; /* room for scrollbar */
+}
+
+/* Smooth scrollbar styling (match your other widgets) */
+#salesForecastWidget .sf-block::-webkit-scrollbar {
+  width: 8px;
+}
+#salesForecastWidget .sf-block::-webkit-scrollbar-track {
+  background: #f4fdfd;
+  border-radius: 6px;
+}
+#salesForecastWidget .sf-block::-webkit-scrollbar-thumb {
+  background: #00a0c3;
+  border-radius: 6px;
+}
+
+/* === Metric Rows === */
+#salesForecastWidget .sf-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 10px;
+  border: 1px solid #e6f5f8;
+  border-radius: 10px;
+  background: #ffffff;
+}
+
+#salesForecastWidget .sf-label {
+  font-weight: 600;
+  color: #0081ab;
+  font-size: 0.85rem;
+  line-height: 1.2;
+  flex: 1;
+}
+
+#salesForecastWidget .sf-value {
+  font-weight: 600;
+  color: #333;
+  text-align: right;
+  white-space: nowrap;
+}
+
+/* Inputs */
+#salesForecastWidget .sf-value input[type="number"],
+#salesForecastWidget input[data-role="count"],
+#salesForecastWidget input[data-role="aov"] {
+  width: 120px;
+  max-width: 45vw;
+  padding: 6px 8px;
+  border-radius: 10px;
+  border: 1px solid #cfeef5;
+  background: #f7fbfc;
+  color: #333;
+  font-weight: 600;
+  text-align: right;
+  outline: none;
+  transition: 0.2s ease all;
+}
+
+#salesForecastWidget .sf-value input[type="number"]:focus,
+#salesForecastWidget input[data-role="count"]:focus,
+#salesForecastWidget input[data-role="aov"]:focus {
+  border-color: #0081ab;
+  background: #ffffff;
+  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.12);
+}
+
+/* === Actions / Reset Button === */
+#salesForecastWidget .sf-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2px;
+}
+
+#salesForecastWidget .sf-reset {
+  border: 1px solid #cfeef5;
+  background: #f4fdfd;
+  color: #0081ab;
+  font-weight: 700;
+  font-size: 0.82rem;
+  padding: 7px 10px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: 0.2s ease all;
+}
+
+#salesForecastWidget .sf-reset:hover {
+  background: #e6f5f8;
+}
+
+/* Forecast note (used in the Forecast main tab) */
+#salesForecastWidget .sf-forecast-note {
+  font-size: 0.82rem;
+  color: #555;
+  font-style: italic;
+  padding: 8px 10px;
+  border: 1px dashed #cfeef5;
+  border-radius: 10px;
+  background: #f7fbfc;
+  margin-bottom: 10px;
+}
+
+/* Store label (optional helper text) */
+#salesForecastWidget .sf-store-label {
+  font-size: 0.85rem;
+  color: #333;
+  padding: 2px 2px 0;
+}
+
+/* Footnote */
+#salesForecastWidget .sf-footnote {
+  margin-top: auto;
+  font-size: 0.8rem;
+  color: #555;
+  font-style: italic;
+  padding: 6px 2px 0;
+}
+
+/* === Loading, Empty, and Error States (match existing style) === */
+#salesForecastWidget .loading,
+#salesForecastWidget .no-data,
+#salesForecastWidget .error {
+  text-align: center;
+  padding: 15px;
+  color: #555;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+#salesForecastWidget .loading::before {
+  content: "⏳ ";
+}
+
+#salesForecastWidget .no-data::before {
+  content: "🕓 ";
+}
+
+#salesForecastWidget .error {
+  color: #d9534f;
+}
+
+/* === Responsive (small screens) === */
+@media (max-width: 600px) {
+  #salesForecastWidget {
+    height: auto;
+  }
+
+  #salesForecastWidget .sf-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  #salesForecastWidget .sf-tabs {
+    width: 100%;
+  }
+
+  #salesForecastWidget .sf-tab {
+    flex: 1;
+    text-align: center;
+  }
+
+  #salesForecastWidget .sf-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  #salesForecastWidget .sf-value {
+    width: 100%;
+    text-align: left;
+  }
+
+  #salesForecastWidget .sf-value input[type="number"],
+  #salesForecastWidget input[data-role="count"],
+  #salesForecastWidget input[data-role="aov"] {
+    width: 100%;
+    text-align: left;
+  }
+}

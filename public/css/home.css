@@ -337,7 +337,7 @@ select#activeRoleSelect::-internal-list-box {
   flex-direction: column;
   overflow: hidden;
   transition: all 0.2s ease;
-  min-height: 300px;
+  min-height: 350px;
 
 }
 
@@ -352,6 +352,15 @@ select#activeRoleSelect::-internal-list-box {
   min-height: 180px;
   max-height: 210px;
 }
+
+/* === Widget placement === */
+#salesThisMonthWidget {
+  grid-area: salesToday;
+  min-height: 180px;
+  max-height: 210px;
+}
+
+
 
 #salesByStoreWidget {
   grid-area: salesByStore;

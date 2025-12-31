@@ -9,7 +9,9 @@
     <link rel="stylesheet" href="/assistant/assistant.css" />
     <link rel="stylesheet" href="/css/widgets/salestoday.css">
     <link rel="stylesheet" href="/css/home.css">
-    <script src="/js/storage.js"></script>
+    <link rel="stylesheet" href="/css/widgets/salesThisMonth.css">
+    <link rel="stylesheet" href="/css/widgets/salesForecast.css">
+=    <script src="/js/storage.js"></script>
     <script src="/js/menu.js"></script>
     <script src="/js/widgets/visibility.js"></script>
 
@@ -35,9 +37,11 @@
   <div id="dashboardWrapper">
     <div id="dashboardGrid">
       <section id="salesTodayWidget" class="widget-card wide"></section>
+      <section id="salesThisMonthWidget" class="widget-card wide"></section>
       <section id="salesByStoreWidget" class="widget-card half"></section>
       <section id="topThreeWidget" class="widget-card half"></section>
     </div>
+      <section id="salesForecastWidget" class="widget-card wide"></section>
 
     <!-- 🔔 Announcement Column -->
     <section id="announcementContainer" class="announcement-area" style="display:none;"></section>
@@ -53,6 +57,8 @@
   <script src="/js/widgets/salesByStore.js"></script>
   <script src="/js/widgets/salestoday.js"></script>
   <script src="/js/widgets/topThree.js"></script>
+  <script src="/js/widgets/salesThisMonth.js"></script>
+  <script src="/js/widgets/salesForcast.js"></script>
   <script src="/js/homeAnnouncements.js"></script>
 </main>
 

@@ -1,0 +1,175 @@
+/* === Widget Container === */
+#salesThisMonthWidget {
+  background: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
+  padding: 14px 18px;
+  margin: 15px 0;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #333;
+  transition: 0.3s ease all;
+  font-size: 0.88rem;
+  height: 280px; /* fixed widget height */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+#salesThisMonthWidget:hover {
+  box-shadow: 0 4px 16px rgba(0, 129, 171, 0.2);
+}
+
+/* === Header === */
+#salesThisMonthWidget .widget-header {
+  font-size: 1rem;
+  font-weight: 600;
+  color: #0081ab;
+  margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+#salesThisMonthWidget .widget-header::before {
+  content: "🗓️";
+  margin-right: 8px;
+  font-size: 1.1rem;
+}
+
+/* === Scrollable Table Wrapper === */
+#salesThisMonthWidget .table-scroll {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  border-top: 1px solid #e6f5f8;
+  padding-top: 4px;
+}
+
+/* Smooth scrollbar styling */
+#salesThisMonthWidget .table-scroll::-webkit-scrollbar {
+  width: 8px;
+}
+#salesThisMonthWidget .table-scroll::-webkit-scrollbar-track {
+  background: #f4fdfd;
+  border-radius: 6px;
+}
+#salesThisMonthWidget .table-scroll::-webkit-scrollbar-thumb {
+  background: #00a0c3;
+  border-radius: 6px;
+}
+
+/* === Table Styling === */
+.sales-month-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.sales-month-table thead {
+  background: #0081ab;
+  color: #fff;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.sales-month-table th,
+.sales-month-table td {
+  padding: 8px 10px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.sales-month-table td a {
+  color: #0081ab;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.sales-month-table td a:hover {
+  text-decoration: underline;
+}
+
+.sales-month-table tbody tr:nth-child(even) {
+  background: #f7fbfc;
+}
+
+.sales-month-table tbody tr:nth-child(odd) {
+  background: #ffffff;
+}
+
+.sales-month-table tbody tr:hover {
+  background: #e6f5f8;
+  transition: background 0.2s ease;
+}
+
+.sales-month-table td:last-child {
+  text-align: right;
+  font-weight: 600;
+  color: #0081ab;
+}
+
+/* === Loading, Empty, and Error States === */
+#salesThisMonthWidget .loading,
+#salesThisMonthWidget .no-data,
+#salesThisMonthWidget .error {
+  text-align: center;
+  padding: 15px;
+  color: #555;
+  font-style: italic;
+  font-size: 0.9rem;
+}
+
+#salesThisMonthWidget .loading::before {
+  content: "⏳ ";
+}
+
+#salesThisMonthWidget .no-data::before {
+  content: "🕓 ";
+}
+
+#salesThisMonthWidget .error {
+  color: #d9534f;
+}
+
+/* === Responsive (small screens) === */
+@media (max-width: 600px) {
+  #salesThisMonthWidget {
+    height: auto;
+  }
+
+  .sales-month-table thead {
+    display: none;
+  }
+
+  .sales-month-table,
+  .sales-month-table tbody,
+  .sales-month-table tr,
+  .sales-month-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .sales-month-table tr {
+    margin-bottom: 10px;
+    border: 1px solid #e0f0f3;
+    border-radius: 8px;
+    padding: 8px;
+  }
+
+  .sales-month-table td {
+    padding: 6px 10px;
+    text-align: right;
+    position: relative;
+  }
+
+  .sales-month-table td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 10px;
+    color: #0081ab;
+    font-weight: 600;
+    text-align: left;
+  }
+}
