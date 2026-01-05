@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="stylesheet" href="https://7972741.app.netsuite.com/core/media/media.nl?id=380666&c=7972741&h=I2e8yHrLcIfic8CP9SUagU3IJnuFNyBkFAPJP9flAFpEonSH&_xt=.css">
+<title>Clearance Ticket</title>
+
+</head>
+<body>
+    <div class="a4-page">
+        <div class="ticket">
+            <h2>Mark Down!</h2>
+            <div class="discount">
+                <h1>${discountPercent}%</h1>
+                <h3>OFF</h3>
+            </div>
+            <div class="product">
+                <table>
+                    <th><strong>PRODUCT:</strong></th>
+                    <th>${itemName}</th>
+                </table>
+            </div>
+            <div class="product-data">
+                <table>
+                    <th class="header">Size:</th>
+                    <th class="content">${sizeValue}</th>
+                    <th class="header">Reason:</th>
+                    <th class="content">${conditionText}</th>
+                </table>
+                <h3>Sold As Seen</h3>
+            </div>
+            <div class="pricing">
+                <table class="was">
+                    <th class="label">WAS:</th>
+                    <th class="value">£${retailPrice.toFixed(2)}</th>
+                </table>
+                <table class="now">
+                    <th class="label">NOW: </th>
+                    <th class="value">£${clearancePrice.toFixed(2)}</th>
+                </table>
+            </div>
+        </div>
+    </div>
+
+
+</body>
+</html>

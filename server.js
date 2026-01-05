@@ -10,6 +10,7 @@ const crypto = require("crypto");
 const OAuth = require("oauth-1.0a");
 const { getSession } = require("./sessions");
 const pool = require("./db"); // for user token lookup if stored in DB
+const fetch = require("node-fetch");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -63,6 +64,121 @@ async function fetchNetSuiteData(envUrlKey, envTokenKey, res, label) {
     res.status(500).json({ ok: false, error: `Failed to fetch ${label} data` });
   }
 }
+
+// ==========================================================
+// 🔥 Prewarm Sales Order cache using existing SO endpoint
+// ==========================================================
+async function prewarmSalesOrders(
+  host,
+  ids,
+  prewarmHeaders,
+  { limit = 300, concurrency = 3, envType = "sb" } = {}
+) {
+  const queue = ids.filter(Boolean).slice(0, limit).map(String);
+
+  console.log("🔥 PREWARM QUEUE", {
+    limit,
+    concurrency,
+    envType,
+    queued: queue.length,
+    first: queue.slice(0, 5),
+    hasHeaders: !!prewarmHeaders && Object.keys(prewarmHeaders).length > 0,
+  });
+
+  // If we don't have the prewarm headers, this will just fall back to .env NS tokens
+  // (and in your case, that caused INVALID_LOGIN), so bail early.
+  const hasKey = prewarmHeaders?.["x-prewarm-key"];
+  const hasUser = prewarmHeaders?.["x-prewarm-user-id"];
+  if (!hasKey || !hasUser) {
+    console.warn("🔥 PREWARM SKIPPED: missing x-prewarm-key or x-prewarm-user-id");
+    return;
+  }
+
+  let running = 0;
+
+  return new Promise((resolve) => {
+    const next = () => {
+      if (queue.length === 0 && running === 0) {
+        console.log("🔥 PREWARM DONE");
+        return resolve();
+      }
+
+      while (running < concurrency && queue.length) {
+        const id = queue.shift();
+        running++;
+
+        const url = `${host}/api/netsuite/salesorder/${encodeURIComponent(id)}?env=${encodeURIComponent(envType)}`;
+
+        console.log("🔥 PREWARM FETCH", { id, url });
+
+        fetch(url, { headers: prewarmHeaders })
+          .then((r) => console.log("🔥 PREWARM RES", id, r.status))
+          .catch((e) => console.warn("🔥 PREWARM ERR", id, e.message))
+          .finally(() => {
+            running--;
+            next();
+          });
+      }
+    };
+
+    next();
+  });
+}
+
+
+function startPrewarmScheduler() {
+  const run = async () => {
+    try {
+      const host = `http://localhost:${PORT}`;
+      const envType = process.env.PREWARM_ENV || "sb";
+      const userId = process.env.DEFAULT_PREWARM_USER_ID;
+      const key = process.env.PREWARM_KEY;
+
+      if (!userId || !key) {
+        console.warn("🔥 Prewarm disabled: missing DEFAULT_PREWARM_USER_ID or PREWARM_KEY");
+        return;
+      }
+
+      console.log("🔥 System prewarm run starting...", { envType, userId });
+
+      const omRes = await fetch(`${host}/api/netsuite/order-management`, {
+        headers: {
+          "x-prewarm-key": key,
+          "x-prewarm-user-id": String(userId),
+        },
+      });
+
+      const payload = await omRes.json();
+      const results = payload?.results || payload || [];
+      const ids = results.map(r => r?.ID).filter(Boolean);
+
+      console.log("🔥 Prewarm list count:", ids.length);
+
+      const prewarmHeaders = {
+        "x-prewarm-key": key,
+        "x-prewarm-user-id": String(userId),
+      };
+
+      await prewarmSalesOrders(host, ids, prewarmHeaders, {
+        limit: 300,
+        concurrency: 3,
+        envType,
+      });
+
+      console.log("✅ System prewarm finished");
+    } catch (e) {
+      console.error("❌ System prewarm failed:", e.message || e);
+    }
+  };
+
+  // boot run
+  setTimeout(run, 3000);
+
+  // hourly run
+  setInterval(run, 60 * 60 * 1000);
+}
+
+
 
 
 /* ==========================================================
@@ -370,10 +486,46 @@ app.get("/api/netsuite/inventory-status", (req, res) =>
   fetchNetSuiteData("SALES_ORDER_INV_STATUS_URL", "SALES_ORDER_INV_STATUS", res, "inventory status")
 );
 
-// === Order Management ===
-app.get("/api/netsuite/order-management", (req, res) =>
-  fetchNetSuiteData("ORDER_MANAGEMENT_URL", "ORDER_MANAGEMENT", res, "order management")
-);
+app.get("/api/netsuite/order-management", (req, res) => {
+  const originalJson = res.json.bind(res);
+
+ res.json = (payload) => {
+  originalJson(payload);
+
+  const results = payload?.results || [];
+  const ids = results.map(r => r?.ID).filter(Boolean);
+
+  const authHeader = (req.headers.authorization || "").trim();
+
+  console.log("🔥 PREWARM CHECK", {
+    hasAuth: !!authHeader,
+    authStartsBearer: authHeader.startsWith("Bearer "),
+    resultsCount: results.length,
+    idsCount: ids.length,
+    sampleIds: ids.slice(0, 5),
+  });
+
+  if (!authHeader) {
+    console.warn("🔥 PREWARM SKIPPED: no Authorization header on /order-management request");
+    return;
+  }
+  if (!ids.length) {
+    console.warn("🔥 PREWARM SKIPPED: no IDs found in payload.results");
+    return;
+  }
+
+  const host = `${req.protocol}://${req.get("host")}`;
+  console.log("🔥 PREWARM START", { host });
+
+  setImmediate(() => {
+    prewarmSalesOrders(host, ids, authHeader, { limit: 50, concurrency: 3 });
+  });
+};
+
+  fetchNetSuiteData("ORDER_MANAGEMENT_URL", "ORDER_MANAGEMENT", res, "order management");
+});
+
+
 
 // === Quote Management ===
 app.get("/api/netsuite/quote-management", (req, res) =>
@@ -603,4 +755,7 @@ app.use((req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);
+
+    // 🔥 boot + hourly
+  startPrewarmScheduler();
 });

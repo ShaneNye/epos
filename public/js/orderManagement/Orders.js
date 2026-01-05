@@ -44,8 +44,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         primaryStoreName = String(storeId).trim().toLowerCase();
         console.log("👤 Primary store (string):", primaryStoreName);
       } else {
-        const storeRes = await fetch(`/api/meta/store/${storeId}`);
-        const storeData = await storeRes.json();
+const storeRes = await fetch(`/api/meta/store/${storeId}`, { headers });        const storeData = await storeRes.json();
         if (storeData.ok && storeData.name) {
           primaryStoreName = storeData.name.trim().toLowerCase();
           console.log("👤 Primary store resolved to:", primaryStoreName);
@@ -63,7 +62,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   /* === FETCH ORDER MANAGEMENT DATA === */
   let allOrders = [];
   try {
-    const res = await fetch("/api/netsuite/order-management");
+const res = await fetch("/api/netsuite/order-management", { headers });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 

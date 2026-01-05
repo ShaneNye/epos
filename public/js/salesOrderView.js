@@ -571,7 +571,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           el.classList.contains("fulfilmentSelect") ||
           el.classList.contains("open-inventory") ||
           el.classList.contains("item-inv-detail") ||
-          el.id === "newMemoBtn"
+          el.id === "newMemoBtn" ||
+          el.id === "printBtn"
         ) {
           return;
         }
@@ -580,7 +581,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
     } else {
       document.querySelectorAll("input, select, textarea, button").forEach(el => {
-        if (el.id === "newMemoBtn" || "printBtn") return;
+        if (el.id === 
+          "newMemoBtn" || 
+          "printBtn") 
+          
+          return;
         el.disabled = true;
         el.classList.add("locked-input");
       });

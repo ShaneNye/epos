@@ -74,7 +74,7 @@ router.post("/create", async (req, res) => {
       console.log("🔐 Authenticated session for SO creation:", userId);
     }
 
-    
+
 
     const { customer, order, items } = req.body;
     let customerId = customer?.id || null;
@@ -168,7 +168,7 @@ router.post("/create", async (req, res) => {
       }
     }
 
-    
+
 
     /* ======================================================
        4️⃣ BUILD ORDER BODY (BEFORE INTERCOPO + WEB ORDER)
@@ -201,32 +201,32 @@ router.post("/create", async (req, res) => {
             line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
           }
 
-          
-/* ======================================================
-   createpo logic — ONLY for subsidiary 6
-   Other subsidiaries → let NetSuite set defaults
-====================================================== */
-const fulfilId = String(i.fulfilmentMethod || "").trim();
 
-// Only apply PO logic for subsidiary 6
-if (String(storeNsId) === "6") {
-  if (fulfilId === "3") {
-    line.createpo = "SpecOrd";  // Special Order
-    console.log(`🟦 Line ${idx + 1} createpo = SpecOrd (Special Order)`);
-  } 
-  else if (fulfilId === "2") {
-    line.createpo = "";  // Warehouse
-    console.log(`⬜ Line ${idx + 1} createpo = "" (warehouse)`);
-  } 
-  else {
-    line.createpo = "";  // Default
-    console.log(`▫️ Line ${idx + 1} createpo = "" (default)`);
-  }
-} 
-else {
-  // ❌ For all other subsidiaries → DO NOT SEND createpo
-  console.log(`🚫 Subsidiary ${storeNsId} → createpo removed`);
-}
+          /* ======================================================
+             createpo logic — ONLY for subsidiary 6
+             Other subsidiaries → let NetSuite set defaults
+          ====================================================== */
+          const fulfilId = String(i.fulfilmentMethod || "").trim();
+
+          // Only apply PO logic for subsidiary 6
+          if (String(storeNsId) === "6") {
+            if (fulfilId === "3") {
+              line.createpo = "SpecOrd";  // Special Order
+              console.log(`🟦 Line ${idx + 1} createpo = SpecOrd (Special Order)`);
+            }
+            else if (fulfilId === "2") {
+              line.createpo = "";  // Warehouse
+              console.log(`⬜ Line ${idx + 1} createpo = "" (warehouse)`);
+            }
+            else {
+              line.createpo = "";  // Default
+              console.log(`▫️ Line ${idx + 1} createpo = "" (default)`);
+            }
+          }
+          else {
+            // ❌ For all other subsidiaries → DO NOT SEND createpo
+            console.log(`🚫 Subsidiary ${storeNsId} → createpo removed`);
+          }
 
 
 
@@ -245,7 +245,7 @@ else {
         })
       }
     };
-    
+
 
     /* ======================================================
        5️⃣ WEB ORDER FLAG — MUST BE BEFORE PAYLOAD PREVIEW
@@ -422,250 +422,250 @@ else {
         console.error("❌ Failed to load store distribution location:", err.message);
       }
 
-// ==========================================================
-// PROCESS EACH LINE (clean & fully safe version)
-// ==========================================================
-for (const [idx, line] of items.entries()) {
+      // ==========================================================
+      // PROCESS EACH LINE (clean & fully safe version)
+      // ==========================================================
+      for (const [idx, line] of items.entries()) {
 
-  const fulfilMethod = String(line.fulfilmentMethod || "").trim();
-  console.log(`📦 Line ${idx + 1} fulfilMethod =`, fulfilMethod);
+        const fulfilMethod = String(line.fulfilmentMethod || "").trim();
+        console.log(`📦 Line ${idx + 1} fulfilMethod =`, fulfilMethod);
 
-  let skipTransfer = false;
+        let skipTransfer = false;
 
-  // ==========================================================
-  // STEP 0 — LOT-only → Resolve source metadata if missing
-  // ==========================================================
-  if (line.lotnumber && !line.inventoryMeta) {
-    console.log(`🔍 Resolving LOT source for LOT ${line.lotnumber}`);
+        // ==========================================================
+        // STEP 0 — LOT-only → Resolve source metadata if missing
+        // ==========================================================
+        if (line.lotnumber && !line.inventoryMeta) {
+          console.log(`🔍 Resolving LOT source for LOT ${line.lotnumber}`);
 
-    try {
-      const lotRes = await pool.query(
-        `SELECT location_name, location_id, distribution_location_id
+          try {
+            const lotRes = await pool.query(
+              `SELECT location_name, location_id, distribution_location_id
          FROM epos_lots
          WHERE lot_id = $1
          LIMIT 1`,
-        [line.lotnumber]
-      );
+              [line.lotnumber]
+            );
 
-      if (lotRes.rows.length) {
-        const row = lotRes.rows[0];
-        const srcName = row.location_name || "";
-        const srcInv = row.location_id || "";
-        const srcDist = row.distribution_location_id || srcInv;
+            if (lotRes.rows.length) {
+              const row = lotRes.rows[0];
+              const srcName = row.location_name || "";
+              const srcInv = row.location_id || "";
+              const srcDist = row.distribution_location_id || srcInv;
 
-        console.log(`📦 LOT ${line.lotnumber} → ${srcName} (dist ${srcDist})`);
+              console.log(`📦 LOT ${line.lotnumber} → ${srcName} (dist ${srcDist})`);
 
-        // Create synthetic metadata
-        line.inventoryMeta = `1|${srcName}|${srcInv}|||LOT|${line.lotnumber}`;
-      } else {
-        console.warn(`⚠️ No LOT source found → cannot create transfer`);
-        skipTransfer = true;
-      }
-    } catch (err) {
-      console.error("❌ LOT lookup failed:", err.message);
-      skipTransfer = true;
-    }
-  }
+              // Create synthetic metadata
+              line.inventoryMeta = `1|${srcName}|${srcInv}|||LOT|${line.lotnumber}`;
+            } else {
+              console.warn(`⚠️ No LOT source found → cannot create transfer`);
+              skipTransfer = true;
+            }
+          } catch (err) {
+            console.error("❌ LOT lookup failed:", err.message);
+            skipTransfer = true;
+          }
+        }
 
-  // If still no metadata (item wasn't allocated)
-  if (!line.inventoryMeta) {
-    console.log(`⛔ [Line ${idx + 1}] No metadata → skip transfer`);
-    skipTransfer = true;
-  }
+        // If still no metadata (item wasn't allocated)
+        if (!line.inventoryMeta) {
+          console.log(`⛔ [Line ${idx + 1}] No metadata → skip transfer`);
+          skipTransfer = true;
+        }
 
-  // ==========================================================
-  // Parse metadata into parts
-  // ==========================================================
-  const metaParts = (line.inventoryMeta || "")
-    .split(";")
-    .map((p) => p.trim())
-    .filter(Boolean);
+        // ==========================================================
+        // Parse metadata into parts
+        // ==========================================================
+        const metaParts = (line.inventoryMeta || "")
+          .split(";")
+          .map((p) => p.trim())
+          .filter(Boolean);
 
-  if (metaParts.length === 0) {
-    console.log(`⛔ [Line ${idx + 1}] No valid meta parts → skip transfer`);
-    skipTransfer = true;
-  }
+        if (metaParts.length === 0) {
+          console.log(`⛔ [Line ${idx + 1}] No valid meta parts → skip transfer`);
+          skipTransfer = true;
+        }
 
-  // ==========================================================
-  // FULFILMENT RULES
-  // ==========================================================
+        // ==========================================================
+        // FULFILMENT RULES
+        // ==========================================================
 
-  // In-store fulfilment (1)
-  if (fulfilMethod === "1") {
-    console.log(`🛒 In-Store fulfilment for line ${idx + 1}`);
+        // In-store fulfilment (1)
+        if (fulfilMethod === "1") {
+          console.log(`🛒 In-Store fulfilment for line ${idx + 1}`);
 
-    try {
-      const [qty, locName] = metaParts[0].split("|");
-      const metaLoc = (locName || "").trim().toLowerCase();
-      const storeLower = storeName.toLowerCase();
+          try {
+            const [qty, locName] = metaParts[0].split("|");
+            const metaLoc = (locName || "").trim().toLowerCase();
+            const storeLower = storeName.toLowerCase();
 
-      const alreadyInStore =
-        metaLoc === storeLower ||
-        metaLoc.includes(storeLower) ||
-        storeLower.includes(metaLoc);
+            const alreadyInStore =
+              metaLoc === storeLower ||
+              metaLoc.includes(storeLower) ||
+              storeLower.includes(metaLoc);
 
-      if (alreadyInStore) {
-        console.log(`🟢 Already in store → skip transfer`);
-        skipTransfer = true;
-      }
-    } catch {}
-  }
+            if (alreadyInStore) {
+              console.log(`🟢 Already in store → skip transfer`);
+              skipTransfer = true;
+            }
+          } catch { }
+        }
 
-  // Warehouse fulfilment (2)
-  if (fulfilMethod === "2") {
-    console.log(`🏭 Warehouse fulfilment for line ${idx + 1}`);
+        // Warehouse fulfilment (2)
+        if (fulfilMethod === "2") {
+          console.log(`🏭 Warehouse fulfilment for line ${idx + 1}`);
 
-    // If item is already in warehouse — no transfer needed
-    try {
-      const [, , locIdRaw] = metaParts[0].split("|");
-      if (String(locIdRaw || "") === String(order.warehouse)) {
-        console.log(`🟢 Already in warehouse → skip transfer`);
-        skipTransfer = true;
-      }
-    } catch {}
-  }
+          // If item is already in warehouse — no transfer needed
+          try {
+            const [, , locIdRaw] = metaParts[0].split("|");
+            if (String(locIdRaw || "") === String(order.warehouse)) {
+              console.log(`🟢 Already in warehouse → skip transfer`);
+              skipTransfer = true;
+            }
+          } catch { }
+        }
 
-  // Early skip
-  if (skipTransfer) {
-    console.log(`🚫 [Line ${idx + 1}] Transfer skipped`);
-    continue;
-  }
+        // Early skip
+        if (skipTransfer) {
+          console.log(`🚫 [Line ${idx + 1}] Transfer skipped`);
+          continue;
+        }
 
-  // ==========================================================
-  // PROCESS EACH META PART
-  // ==========================================================
-  for (const part of metaParts) {
-    let sourceLocId = null;
+        // ==========================================================
+        // PROCESS EACH META PART
+        // ==========================================================
+        for (const part of metaParts) {
+          let sourceLocId = null;
 
-    const [qty, locName, locIdRaw, , , , invIdRaw] = part.split("|");
+          const [qty, locName, locIdRaw, , , , invIdRaw] = part.split("|");
 
-    const quantity = parseFloat(qty || 0) || 0;
-    const invId = (invIdRaw || "").trim();
-    const locId = (locIdRaw || "").trim();
+          const quantity = parseFloat(qty || 0) || 0;
+          const invId = (invIdRaw || "").trim();
+          const locId = (locIdRaw || "").trim();
 
-    if (!quantity || !invId) {
-      console.log(`⚠️ [Line ${idx + 1}] Invalid meta row → skip`);
-      continue;
-    }
+          if (!quantity || !invId) {
+            console.log(`⚠️ [Line ${idx + 1}] Invalid meta row → skip`);
+            continue;
+          }
 
-    // ==========================================================
-    // Resolve source location
-    // ==========================================================
-    try {
-      if (locId) {
-        const q = await pool.query(
-          `SELECT distribution_location_id
+          // ==========================================================
+          // Resolve source location
+          // ==========================================================
+          try {
+            if (locId) {
+              const q = await pool.query(
+                `SELECT distribution_location_id
            FROM locations
            WHERE netsuite_internal_id = $1
            LIMIT 1`,
-          [locId]
-        );
-        sourceLocId = (q.rows[0]?.distribution_location_id || "").trim();
-      }
+                [locId]
+              );
+              sourceLocId = (q.rows[0]?.distribution_location_id || "").trim();
+            }
 
-      if (!sourceLocId && locName) {
-        const q2 = await pool.query(
-          `SELECT distribution_location_id
+            if (!sourceLocId && locName) {
+              const q2 = await pool.query(
+                `SELECT distribution_location_id
            FROM locations
            WHERE name ILIKE $1
            LIMIT 1`,
-          [locName]
-        );
-        sourceLocId = (q2.rows[0]?.distribution_location_id || "").trim();
-      }
-    } catch (err) {
-      console.error("❌ Source lookup failed:", err.message);
-    }
+                [locName]
+              );
+              sourceLocId = (q2.rows[0]?.distribution_location_id || "").trim();
+            }
+          } catch (err) {
+            console.error("❌ Source lookup failed:", err.message);
+          }
 
-    if (!sourceLocId) {
-      console.log(`⚠️ No source location resolved → skip`);
-      continue;
-    }
+          if (!sourceLocId) {
+            console.log(`⚠️ No source location resolved → skip`);
+            continue;
+          }
 
-    // ==========================================================
-    // Determine destination
-    // ==========================================================
-    let destinationLocId = "";
+          // ==========================================================
+          // Determine destination
+          // ==========================================================
+          let destinationLocId = "";
 
-    if (fulfilMethod === "1") {
-      destinationLocId = storeDistributionLocId;
-      console.log(`🏪 STORE fulfilment → dest ${destinationLocId}`);
-    } else if (fulfilMethod === "2") {
-      try {
-        const w = await pool.query(
-          `SELECT distribution_location_id
+          if (fulfilMethod === "1") {
+            destinationLocId = storeDistributionLocId;
+            console.log(`🏪 STORE fulfilment → dest ${destinationLocId}`);
+          } else if (fulfilMethod === "2") {
+            try {
+              const w = await pool.query(
+                `SELECT distribution_location_id
            FROM locations
            WHERE netsuite_internal_id = $1
            LIMIT 1`,
-          [order.warehouse]
-        );
-        destinationLocId =
-          (w.rows[0]?.distribution_location_id ||
-            order.warehouse).toString();
-      } catch {
-        destinationLocId = order.warehouse;
-      }
-      console.log(`🏭 WAREHOUSE fulfilment → dest ${destinationLocId}`);
-    }
+                [order.warehouse]
+              );
+              destinationLocId =
+                (w.rows[0]?.distribution_location_id ||
+                  order.warehouse).toString();
+            } catch {
+              destinationLocId = order.warehouse;
+            }
+            console.log(`🏭 WAREHOUSE fulfilment → dest ${destinationLocId}`);
+          }
 
-    if (!destinationLocId) continue;
+          if (!destinationLocId) continue;
 
-    // ==========================================================
-    // BUILD TRANSFER ORDER
-    // ==========================================================
-    const transferBody = {
-      subsidiary: { id: "6" },
-      custbody_sb_needed_by: new Date(Date.now() + 3 * 86400000)
-        .toISOString()
-        .split("T")[0],
-      transferlocation: { id: destinationLocId },
-      location: { id: sourceLocId },
-      custbody_sb_transfer_order_type: { id: "2" },
-      custbody_sb_relatedsalesorder: { id: String(salesOrderId) },
-      item: {
-        items: [
-          {
-            item: { id: line.item },
-            quantity: quantity,
-            inventorydetail: {
-              inventoryassignment: {
-                items: [
-                  {
-                    issueinventorynumber: { id: invId },
-                    quantity: quantity,
+          // ==========================================================
+          // BUILD TRANSFER ORDER
+          // ==========================================================
+          const transferBody = {
+            subsidiary: { id: "6" },
+            custbody_sb_needed_by: new Date(Date.now() + 3 * 86400000)
+              .toISOString()
+              .split("T")[0],
+            transferlocation: { id: destinationLocId },
+            location: { id: sourceLocId },
+            custbody_sb_transfer_order_type: { id: "2" },
+            custbody_sb_relatedsalesorder: { id: String(salesOrderId) },
+            item: {
+              items: [
+                {
+                  item: { id: line.item },
+                  quantity: quantity,
+                  inventorydetail: {
+                    inventoryassignment: {
+                      items: [
+                        {
+                          issueinventorynumber: { id: invId },
+                          quantity: quantity,
+                        },
+                      ],
+                    },
                   },
-                ],
-              },
+                },
+              ],
             },
-          },
-        ],
-      },
-    };
+          };
 
-    console.log(`🔁 Creating Transfer Order for line ${idx + 1}:`);
-    console.dir(transferBody, { depth: null });
+          console.log(`🔁 Creating Transfer Order for line ${idx + 1}:`);
+          console.dir(transferBody, { depth: null });
 
-    try {
-      const tr = await nsPost("/transferOrder", transferBody, userId, "sb");
-      let transferId = tr?.id || null;
-      if (!transferId && tr?._location) {
-        const m = tr._location.match(/transferorder\/(\d+)/i);
-        if (m) transferId = m[1];
+          try {
+            const tr = await nsPost("/transferOrder", transferBody, userId, "sb");
+            let transferId = tr?.id || null;
+            if (!transferId && tr?._location) {
+              const m = tr._location.match(/transferorder\/(\d+)/i);
+              if (m) transferId = m[1];
+            }
+
+            console.log(`✅ Transfer Order created → ${transferId}`);
+
+            createdTransfers.push({
+              itemId: line.item,
+              transferOrderId: transferId,
+              sourceLocation: sourceLocId,
+              destinationWarehouse: destinationLocId,
+            });
+          } catch (err) {
+            console.error(`❌ Failed to create TO for line ${idx + 1}:`, err.message);
+          }
+        }
       }
-
-      console.log(`✅ Transfer Order created → ${transferId}`);
-
-      createdTransfers.push({
-        itemId: line.item,
-        transferOrderId: transferId,
-        sourceLocation: sourceLocId,
-        destinationWarehouse: destinationLocId,
-      });
-    } catch (err) {
-      console.error(`❌ Failed to create TO for line ${idx + 1}:`, err.message);
-    }
-  }
-}
 
 
     } catch (err) {
@@ -696,7 +696,7 @@ router.get("/:id", async (req, res) => {
     const { id } = req.params;
     console.log(`📦 Fetching Sales Order ${id} from NetSuite...`);
 
-        // ✅ Cache support
+    // ✅ Cache support
     const refresh = String(req.query.refresh || "") === "1";
     const key = cacheKey(id);
 
@@ -742,6 +742,22 @@ router.get("/:id", async (req, res) => {
         console.warn("⚠️ Could not resolve user session for SO view:", e.message);
       }
     }
+
+    // ✅ Server-side prewarm (no browser session needed)
+    const prewarmKey = req.headers["x-prewarm-key"];
+    const prewarmUserId = req.headers["x-prewarm-user-id"];
+
+    const allowPrewarm =
+      prewarmKey &&
+      process.env.PREWARM_KEY &&
+      String(prewarmKey) === String(process.env.PREWARM_KEY) &&
+      prewarmUserId;
+
+    if (!bearerToken && allowPrewarm) {
+      userId = Number(prewarmUserId) || null;
+      console.log("🔥 Prewarm auth accepted. Using userId:", userId);
+    }
+
 
     // ✅ Use per-user token when calling NetSuite
     const so = await nsGet(`/salesOrder/${id}`, userId, "sb");
@@ -946,14 +962,14 @@ router.get("/:id", async (req, res) => {
 
     return res.json({ ...payload, _cache: "MISS" });
 
-    } catch (err) {
+  } catch (err) {
     console.error("❌ GET /salesorder/:id error:", err.message);
 
     // if we created an inflight promise above, reject + clear cache entry
     try {
       if (typeof rejectInflight === "function") rejectInflight(err);
       if (typeof key !== "undefined") soCache.delete(key);
-    } catch {}
+    } catch { }
 
     return res.status(500).json({ ok: false, error: err.message });
   }
