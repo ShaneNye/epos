@@ -311,10 +311,8 @@
   overflow-y: auto;
 }
 
-
-
 /* =====================================================
-   STOCK SEARCH (Dropdown + Status Filter + Scrollable Table)
+   STOCK SEARCH (Dropdown + Status Filter + Class + Presets + Scrollable Table)
    ===================================================== */
 
 #stockSearch {
@@ -332,16 +330,20 @@
   color: #0081ab;
 }
 
-/* === Control Bar (Location + Status) === */
+/* === Control Bar (Presets + Location + Status + Class) === */
 .stock-controls {
   display: flex;
   flex-wrap: wrap;
   gap: 14px;
   margin-bottom: 12px;
+  align-items: center;
 }
 
+/* keep labels consistent */
 .location-select-label,
-.status-select-label {
+.status-select-label,
+.class-select-label,
+.preset-select-label {
   display: flex;
   align-items: center;
   gap: 8px;
@@ -349,8 +351,11 @@
   color: #1a1f24;
 }
 
+/* shared select styles */
 #stockLocationSelect,
-#stockStatusSelect {
+#stockStatusSelect,
+#stockClassSelect,
+#stockPresetSelect {
   padding: 6px 10px;
   border: 1px solid #cfd8df;
   border-radius: 6px;
@@ -358,13 +363,35 @@
   cursor: pointer;
   min-width: 220px;
   transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  background: #fff;
 }
 
+/* focus states */
 #stockLocationSelect:focus,
-#stockStatusSelect:focus {
+#stockStatusSelect:focus,
+#stockClassSelect:focus,
+#stockPresetSelect:focus {
   outline: none;
   border-color: #0081ab;
   box-shadow: 0 0 0 2px rgba(0, 129, 171, 0.2);
+}
+
+/* === Presets wrapper injected by JS === */
+.stock-preset-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* If presets is injected inside .stock-controls, make it align nicely */
+.stock-controls .stock-preset-wrap {
+  margin: 0;
+}
+
+/* Optional: make presets label match other labels visually */
+.stock-preset-wrap label {
+  font-weight: 600;
+  color: #1a1f24;
 }
 
 /* === Section Header + Filter === */
@@ -441,6 +468,22 @@
   font-style: italic;
   padding: 12px 0;
 }
+
+/* === Responsive tweak: smaller selects on narrow screens === */
+@media (max-width: 720px) {
+  #stockLocationSelect,
+  #stockStatusSelect,
+  #stockClassSelect,
+  #stockPresetSelect {
+    min-width: 160px;
+    width: 100%;
+  }
+
+  .stock-controls {
+    align-items: stretch;
+  }
+}
+
 
 /* === Scrollbar Styling === */
 .stock-table-scroll::-webkit-scrollbar {
