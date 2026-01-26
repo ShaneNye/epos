@@ -73,27 +73,36 @@
     <div id="stockSearch" class="tab-content hidden">
       <h2>Stock Search</h2>
 
-      <div class="stock-controls">
-        <label class="location-select-label">
-          Location:
-          <select id="stockLocationSelect"></select>
-        </label>
+     <div class="stock-controls">
+  <label class="location-select-label">
+    Location:
+    <select id="stockLocationSelect"></select>
+  </label>
 
-        <label class="status-select-label">
-          Status:
-          <select id="stockStatusSelect">
-            <option value="">All Statuses</option>
-          </select>
-        </label>
+  <label class="status-select-label">
+    Status:
+    <select id="stockStatusSelect">
+      <option value="">All Statuses</option>
+    </select>
+  </label>
 
-        <!-- ✅ NEW: Class filter -->
-        <label class="class-select-label">
-          Class:
-          <select id="stockClassSelect">
-            <option value="">All Classes</option>
-          </select>
-        </label>
-      </div>
+  <!-- Class filter -->
+  <label class="class-select-label">
+    Class:
+    <select id="stockClassSelect">
+      <option value="">All Classes</option>
+    </select>
+  </label>
+
+  <!-- ✅ NEW: Size filter -->
+  <label class="size-select-label">
+    Size:
+    <select id="stockSizeSelect">
+      <option value="">All Sizes</option>
+    </select>
+  </label>
+</div>
+
 
 
       <div id="stockTableWrapper" class="stock-table-container">
@@ -106,7 +115,7 @@
               <tr>
                 <th>Item</th>
                 <th></th>
-                <th>Available Qty</th>
+                <th style="text-align: right;">Available Qty</th>
               </tr>
             </thead>
             <tbody id="stockTableBody"></tbody>

@@ -312,7 +312,7 @@
 }
 
 /* =====================================================
-   STOCK SEARCH (Dropdown + Status Filter + Class + Presets + Scrollable Table)
+   STOCK SEARCH (Dropdown + Status Filter + Class + Size + Presets + Scrollable Table)
    ===================================================== */
 
 #stockSearch {
@@ -330,7 +330,7 @@
   color: #0081ab;
 }
 
-/* === Control Bar (Presets + Location + Status + Class) === */
+/* === Control Bar (Presets + Location + Status + Class + Size) === */
 .stock-controls {
   display: flex;
   flex-wrap: wrap;
@@ -343,6 +343,7 @@
 .location-select-label,
 .status-select-label,
 .class-select-label,
+.size-select-label,          /* ✅ NEW */
 .preset-select-label {
   display: flex;
   align-items: center;
@@ -355,6 +356,7 @@
 #stockLocationSelect,
 #stockStatusSelect,
 #stockClassSelect,
+#stockSizeSelect,           /* ✅ NEW */
 #stockPresetSelect {
   padding: 6px 10px;
   border: 1px solid #cfd8df;
@@ -370,6 +372,7 @@
 #stockLocationSelect:focus,
 #stockStatusSelect:focus,
 #stockClassSelect:focus,
+#stockSizeSelect:focus,     /* ✅ NEW */
 #stockPresetSelect:focus {
   outline: none;
   border-color: #0081ab;
@@ -474,6 +477,7 @@
   #stockLocationSelect,
   #stockStatusSelect,
   #stockClassSelect,
+  #stockSizeSelect,        /* ✅ NEW */
   #stockPresetSelect {
     min-width: 160px;
     width: 100%;

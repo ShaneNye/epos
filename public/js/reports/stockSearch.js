@@ -5,11 +5,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const locSelect = document.getElementById("stockLocationSelect");
   const statusSelect = document.getElementById("stockStatusSelect");
-  const classSelect = document.getElementById("stockClassSelect"); // ✅ existing
+  const classSelect = document.getElementById("stockClassSelect");
+  const sizeSelect = document.getElementById("stockSizeSelect");
   const titleEl = document.getElementById("stockLocationTitle");
   const filterInput = document.getElementById("stockFilter");
   const tbody = document.getElementById("stockTableBody");
   const scrollWrap = document.querySelector(".stock-table-scroll");
+
+  // ✅ We'll hide/show this wrapper while loading (best guess selectors)
+  const controlsWrap =
+    document.querySelector(".stock-controls") ||
+    document.querySelector(".stock-filters") ||
+    document.querySelector("#stockFiltersWrap");
 
   // ✅ Presets dropdown (we'll inject this)
   let presetSelect = null;
@@ -17,9 +24,71 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ✅ prevents "location change" handler from resetting values when we set them programmatically
   let isApplyingPreset = false;
 
+  /* =====================================================
+     LOADING UI (spinner)
+     - hides filters while loading
+     - shows spinner until data is ready + first render done
+  ===================================================== */
+  function setLoading(isLoading) {
+    // hide controls while loading
+    if (controlsWrap) controlsWrap.style.display = isLoading ? "none" : "";
+
+    // disable inputs to prevent weird interactions during fetch
+    if (locSelect) locSelect.disabled = !!isLoading;
+    if (statusSelect) statusSelect.disabled = !!isLoading;
+    if (classSelect) classSelect.disabled = !!isLoading;
+    if (sizeSelect) sizeSelect.disabled = !!isLoading;
+    if (filterInput) filterInput.disabled = !!isLoading;
+    if (presetSelect) presetSelect.disabled = !!isLoading;
+
+    // show a spinner row inside the table while loading
+    if (isLoading) {
+      if (tbody) {
+        tbody.innerHTML = `
+          <tr>
+            <td colspan="3" style="padding:24px 12px; text-align:center;">
+              <div style="display:inline-flex; align-items:center; gap:10px; color:#666; font-weight:600;">
+                <span
+                  aria-hidden="true"
+                  style="
+                    width:18px;
+                    height:18px;
+                    border:2px solid rgba(0,0,0,0.15);
+                    border-top-color:#0081ab;
+                    border-radius:50%;
+                    display:inline-block;
+                    animation: stockSpin 0.8s linear infinite;
+                  "
+                ></span>
+                Loading stock…
+              </div>
+            </td>
+          </tr>
+        `;
+      }
+
+      // inject keyframes once
+      if (!document.getElementById("stockSpinKeyframes")) {
+        const style = document.createElement("style");
+        style.id = "stockSpinKeyframes";
+        style.textContent = `
+          @keyframes stockSpin { to { transform: rotate(360deg); } }
+        `;
+        document.head.appendChild(style);
+      }
+    }
+  }
+
+  setLoading(true);
+
   if (!classSelect) {
     console.warn(
       "⚠️ #stockClassSelect not found. Add <select id='stockClassSelect'></select> to enable Class filtering."
+    );
+  }
+  if (!sizeSelect) {
+    console.warn(
+      "⚠️ #stockSizeSelect not found. Add <select id='stockSizeSelect'></select> to enable Size filtering."
     );
   }
 
@@ -48,15 +117,17 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function getClass(r) {
-    // class is stored as className in merged rows (see fetchInventoryData merge)
     return norm(r?.className || r?.Class || r?.class || r?.["Class"] || "");
+  }
+
+  function getSize(r) {
+    return norm(r?.sizeName || r?.Size || r?.size || r?.["Size"] || "");
   }
 
   /* =====================================================
      PRESETS UI + APPLY
   ===================================================== */
   function injectPresetDropdown() {
-    // Try to place near other filters; fallback to body
     const host =
       document.querySelector(".stock-filters") ||
       document.querySelector("#stockFiltersWrap") ||
@@ -74,20 +145,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       </label>
       <select id="stockPresetSelect" style="min-width:240px;">
         <option value="">-- Select preset --</option>
-        ${Array.isArray(stockSearchPresets)
-          ? stockSearchPresets
-              .map(
-                (p, i) =>
-                  `<option value="${i}">${escapeHtml(
-                    p.name || `Preset ${i + 1}`
-                  )}</option>`
-              )
-              .join("")
-          : ""}
+        ${
+          Array.isArray(stockSearchPresets)
+            ? stockSearchPresets
+                .map(
+                  (p, i) =>
+                    `<option value="${i}">${escapeHtml(
+                      p.name || `Preset ${i + 1}`
+                    )}</option>`
+                )
+                .join("")
+            : ""
+        }
       </select>
     `;
 
-    // Put it at the top of the host container if possible
     if (host && host.prepend) host.prepend(wrap);
     else document.body.prepend(wrap);
 
@@ -107,10 +179,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   function safeSetSelectValue(selectEl, wantedValue) {
     if (!selectEl) return;
 
-    // Try direct match first
     selectEl.value = wantedValue;
 
-    // If that didn't match an option, try a case-insensitive option match
     const hasDirect = Array.from(selectEl.options || []).some(
       (o) => String(o.value) === String(wantedValue)
     );
@@ -134,28 +204,23 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const m = presetToMap(preset);
 
-    // ✅ lock out "change" handlers from treating this like user input
     isApplyingPreset = true;
 
     try {
-      // Keep the preset selection visible
       if (presetSelect) presetSelect.value = String(idx);
 
-      // Apply Location / Status / Class + clear text filter
       if (m.location != null) safeSetSelectValue(locSelect, m.location);
       if (m.status != null) safeSetSelectValue(statusSelect, m.status);
-      if (classSelect && m.class != null) safeSetSelectValue(classSelect, m.class);
+      if (classSelect && m.class != null)
+        safeSetSelectValue(classSelect, m.class);
+      if (sizeSelect && m.size != null) safeSetSelectValue(sizeSelect, m.size);
 
       if (filterInput) filterInput.value = "";
 
-      // Update title
       if (titleEl && locSelect) titleEl.textContent = locSelect.value;
 
-      // ✅ DO NOT dispatch locSelect change (your loc change handler resets everything)
-      // We can just re-run the existing filter pipeline directly:
       applyFilters();
     } finally {
-      // release on next tick so any synchronous handlers don't see it as "user change"
       setTimeout(() => {
         isApplyingPreset = false;
       }, 0);
@@ -183,7 +248,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       /* ------------------------------------------------------------------
          1️⃣ Aggregate invoice-number quantities per (itemId + number + location)
-         ✅ Includes Class from invoice-numbers endpoint
+         ✅ Includes Class + Size from invoice-numbers endpoint
       ------------------------------------------------------------------- */
       const numberAgg = {};
 
@@ -202,7 +267,9 @@ document.addEventListener("DOMContentLoaded", async () => {
             itemId,
             itemName: row["Item"] || "",
             invNumberId: row["inv number id"] || "",
+
             className: norm(row["Class"] || row["class"] || row["CLASS"] || ""),
+            sizeName: norm(row["Size"] || row["size"] || row["SIZE"] || ""),
           };
         }
 
@@ -212,6 +279,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (!numberAgg[key].className) {
           numberAgg[key].className = norm(
             row["Class"] || row["class"] || row["CLASS"] || ""
+          );
+        }
+        if (!numberAgg[key].sizeName) {
+          numberAgg[key].sizeName = norm(
+            row["Size"] || row["size"] || row["SIZE"] || ""
           );
         }
       }
@@ -262,6 +334,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           itemName: "",
           invNumberId: "",
           className: "",
+          sizeName: "",
         };
 
         return {
@@ -276,6 +349,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           status: bal["Status"] || "-",
 
           className: agg.className || "",
+          sizeName: agg.sizeName || "",
 
           available: agg.available,
           onHand: agg.onHand,
@@ -285,10 +359,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("🧩 Example merged record:", merged[0]);
       console.log(
         "🏷️ Example classes:",
-        merged
-          .map((r) => r.className)
-          .filter((c) => c && c.trim())
-          .slice(0, 10)
+        merged.map((r) => r.className).filter((c) => c && c.trim()).slice(0, 10)
+      );
+      console.log(
+        "📏 Example sizes:",
+        merged.map((r) => r.sizeName).filter((s) => s && s.trim()).slice(0, 10)
       );
 
       return merged;
@@ -367,7 +442,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   /* =====================================================
-     LOAD + PREPARE DATA
+     LOAD + PREPARE DATA (with spinner)
   ===================================================== */
   const mergedData = await fetchInventoryData();
 
@@ -410,31 +485,33 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   // Populate location dropdown
-  locSelect.innerHTML = locations
-    .map((l) => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`)
-    .join("");
-  locSelect.value = defaultLocName;
-  titleEl.textContent = defaultLocName;
+  if (locSelect) {
+    locSelect.innerHTML = locations
+      .map((l) => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`)
+      .join("");
+    locSelect.value = defaultLocName;
+  }
+  if (titleEl) titleEl.textContent = defaultLocName;
 
   // Populate status dropdown
-  const allStatuses = [
-    ...new Set(mergedData.map((r) => r.status).filter(Boolean)),
-  ].sort();
-  statusSelect.innerHTML = `<option value="">All Statuses</option>`;
-  allStatuses.forEach((s) => {
-    const opt = document.createElement("option");
-    opt.value = s;
-    opt.textContent = s;
-    statusSelect.appendChild(opt);
-  });
+  if (statusSelect) {
+    const allStatuses = [
+      ...new Set(mergedData.map((r) => r.status).filter(Boolean)),
+    ].sort();
+    statusSelect.innerHTML = `<option value="">All Statuses</option>`;
+    allStatuses.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      statusSelect.appendChild(opt);
+    });
+  }
 
   // Populate class dropdown
   if (classSelect) {
     const allClasses = [
       ...new Set(
-        mergedData
-          .map((r) => getClass(r))
-          .filter((c) => c && c.trim())
+        mergedData.map((r) => getClass(r)).filter((c) => c && c.trim())
       ),
     ].sort((a, b) => a.localeCompare(b));
 
@@ -447,6 +524,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  // Populate size dropdown
+  if (sizeSelect) {
+    const allSizes = [
+      ...new Set(
+        mergedData.map((r) => getSize(r)).filter((s) => s && s.trim())
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+
+    sizeSelect.innerHTML = `<option value="">All Sizes</option>`;
+    allSizes.forEach((s) => {
+      const opt = document.createElement("option");
+      opt.value = s;
+      opt.textContent = s;
+      sizeSelect.appendChild(opt);
+    });
+  }
+
   // Inject presets dropdown
   injectPresetDropdown();
 
@@ -456,41 +550,48 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  // First render
   renderTable(groupedByLocation[defaultLocName] || []);
+
+  // ✅ Loading finished: show filters + enable inputs
+  setLoading(false);
 
   /* =====================================================
      EVENT HANDLERS
   ===================================================== */
-  locSelect.addEventListener("change", () => {
-    const loc = locSelect.value;
-    titleEl.textContent = loc;
+  if (locSelect) {
+    locSelect.addEventListener("change", () => {
+      const loc = locSelect.value;
+      if (titleEl) titleEl.textContent = loc;
 
-    // ✅ If this change came from a preset, do NOT reset anything
-    if (isApplyingPreset) {
-      applyFilters(); // will render using the new location + existing filters
-      return;
-    }
+      if (isApplyingPreset) {
+        applyFilters();
+        return;
+      }
 
-    // ✅ User-driven change: reset other filters + preset
-    filterInput.value = "";
-    statusSelect.value = "";
-    if (classSelect) classSelect.value = "";
-    if (presetSelect) presetSelect.value = ""; // reset preset on manual location change
+      filterInput.value = "";
+      if (statusSelect) statusSelect.value = "";
+      if (classSelect) classSelect.value = "";
+      if (sizeSelect) sizeSelect.value = "";
+      if (presetSelect) presetSelect.value = "";
 
-    renderTable(groupedByLocation[loc] || []);
-  });
+      renderTable(groupedByLocation[loc] || []);
+    });
+  }
 
-  filterInput.addEventListener("input", applyFilters);
-  statusSelect.addEventListener("change", applyFilters);
+  if (filterInput) filterInput.addEventListener("input", applyFilters);
+  if (statusSelect) statusSelect.addEventListener("change", applyFilters);
   if (classSelect) classSelect.addEventListener("change", applyFilters);
+  if (sizeSelect) sizeSelect.addEventListener("change", applyFilters);
 
   function applyFilters() {
-    const loc = locSelect.value;
+    const loc = locSelect?.value;
     let data = groupedByLocation[loc] || [];
 
-    const text = filterInput.value.trim().toLowerCase();
-    const status = statusSelect.value;
+    const text = filterInput?.value?.trim().toLowerCase() || "";
+    const status = statusSelect?.value || "";
     const cls = classSelect ? classSelect.value : "";
+    const size = sizeSelect ? sizeSelect.value : "";
 
     if (text) {
       data = data.filter((r) =>
@@ -504,6 +605,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (cls) {
       data = data.filter((r) => getClass(r) === norm(cls));
+    }
+
+    if (size) {
+      data = data.filter((r) => getSize(r) === norm(size));
     }
 
     renderTable(data);
