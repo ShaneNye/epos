@@ -579,6 +579,14 @@ app.get("/api/netsuite/sales-order-item-base-option", (req, res) =>
 fetchNetSuiteData("SALES_ORDER_ITEM_BASE_OPTIONS_URL", "SALES_ORDER_ITEM_BASE_OPTION", res, "sales order item base option")
 );
 
+// == Stock Replenishment ==
+app.get("/api/netsuite/stock-replenishment", (req, res) =>
+fetchNetSuiteData("STOCK_REPLENISHMENT_URL", "STOCK_REPLENISHMENT", res, "stock replenishment"));
+
+// == Quantity Backordered
+app.get("/api/netsuite/quantity-backordered", (req, res) =>
+fetchNetSuiteData("QUANTITY_BACKORDERED_URL", "QUANTITY_BACKORDERED", res, "quantity backordered"));
+
 
 // === Purchase Order Management ===
 app.get("/api/netsuite/purchase-order-management", async (req, res) => {
