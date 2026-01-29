@@ -1,216 +1,310 @@
-   @font-face {
-     font-family: 'ProximaNova';
-     src: url('/fonts/proximanova_regular.ttf') format('truetype');
-     font-weight: normal;
-     font-style: normal;
-   }
+@font-face {
+  font-family: "ProximaNova";
+  src: url("/fonts/proximanova_regular.ttf") format("truetype");
+  font-weight: 400;
+  font-style: normal;
+}
 
-   /* ==========================
-       A4 PRINT SETUP
-       ========================== */
+/* ==========================
+   A4 PRINT SETUP
+   ========================== */
+@page {
+  size: A4;
+  margin: 14mm;
+}
 
-   @page {
-     size: A4;
-     margin: 20mm;
-   }
+* { box-sizing: border-box; }
 
-   * {
-     box-sizing: border-box;
-   }
+:root{
+  --brand-blue: #006a9c;
+  --brand-gold: #FFD700;
+  --ink: #0f172a;
+  --muted: #475569;
+  --line: #e5e7eb;
+  --panel: #f6f7f9;
+  --panel-2: #ffffff;
+}
 
-   body {
-     margin: 0;
-     padding: 0;
-     font-family: "ProximaNova", "Segoe UI", sans-serif;
-     background: #fff;
-     color: #000;
-   }
+body{
+  margin: 0;
+  padding: 0;
+  font-family: "ProximaNova", "Segoe UI", sans-serif;
+  color: var(--ink);
+  background: #fff;
+  -webkit-print-color-adjust: exact;
+  print-color-adjust: exact;
+}
 
-   /* ==========================
-       PAGE CONTAINER
-       ========================== */
+/* ==========================
+   PAGE CONTAINER
+   ========================== */
+.page{
+  width: 210mm;
+  min-height: 297mm;
+  margin: 0 auto;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
 
-   .page {
-     width: 210mm;
-     min-height: 297mm;
-     margin: 0 auto;
-     background: #fff;
-     border: 2px solid black;
-     overflow: hidden;
-   }
+/* =========================
+   HEADER
+   ======================= */
+.header{
+  background: var(--brand-blue);
+  color: #fff;
+  padding: 18px 20px 14px;
+  border-bottom: 4px solid var(--brand-gold);
+  position: relative;
+}
 
+.logo{
+  display: block;
+  width: 230px;
+  max-width: 70%;
+  margin: 0 auto 10px;
+}
 
-   /* =========================
-        HEADER
-        ======================= */
+/* The big header table in your HTML */
+.header > table{
+  width: 100% !important;
+  border-collapse: collapse;
+  margin-top: 6px;
+  font-size: 12px;
+  line-height: 1.25;
+}
 
-   .header {
-     border-bottom: 3px solid #FFD700;
-     background-color: #006a9c;
-     line-height: 14px;
-     padding-bottom: 10px;
-     color: white;
-     max-height: 220px;
-   }
+.header > table td{
+  vertical-align: top;
+  padding: 2px 6px;
+}
 
-   .logo {
-     display: flex;
-     margin: auto;
-     width: 500px;
-   }
+.header table table{
+  width: 100%;
+  border-collapse: collapse;
+}
 
-   .receipt-type {
-     position: relative;
-     background-color: #006a9c;
-     font-size: 42px;
-     color: white;
-     padding: 20px 40px 20px 40px;
-     border-radius: 100px 100px 500px 500px;
-     border-bottom: 4px solid #FFD700;
-     width: 179px;
-     top: -55px;
-     left: 450px;
-   }
+.header table table td{
+  padding: 2px 4px;
+  color: rgba(255,255,255,0.92);
+}
 
-   /*===========================
-      ORDER DETAILS PANEL
-      =========================== */
+.header table table td:first-child{
+  color: rgba(255,255,255,0.70);
+  padding-right: 10px;
+  white-space: nowrap;
+}
 
-   .content {
-     background-color: lightgray;
-     border-bottom: 3px solid grey;
+/* Receipt pill */
+.receipt-type{
+  position: absolute;
+  right: 18px;
+  top: 16px;
+  margin: 0;
+  background: #ffffff;
+  color: var(--brand-blue);
+  border: 2px solid rgba(255,255,255,0.35);
+  border-left: 6px solid var(--brand-gold);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  box-shadow: 0 8px 20px rgba(0,0,0,0.18);
+}
 
-   }
+/* ============================
+   CONTENT / DETAILS SECTION
+   ============================ */
+.content{
+  background: var(--panel);
+  border-bottom: 1px solid var(--line);
+  padding: 14px 16px 6px;
+}
 
+.details-parent{
+  width: 100% !important;
+  border-collapse: collapse;
+}
 
-   /* ==========================
-        CUSTOMER DETAILS TABLE
-       ========================== */
+.details-parent > tbody > tr > td,
+.details-parent > tr > td{
+  width: 50%;
+  vertical-align: top;
+}
 
-   .customer-details {
+/* Two inner tables */
+.customer-details,
+.order-details{
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0 0 10px;
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
 
-     margin: 20px;
+.customer-details td,
+.order-details td{
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  font-size: 12.5px;
+}
 
-     td {
-       vertical-align: top;
-     }
+.customer-details tr:last-child td,
+.order-details tr:last-child td{
+  border-bottom: 0;
+}
 
-     p {
-       vertical-align: top;
-       line-height: 5px;
-     }
-   }
+.customer-details td:first-child,
+.order-details td:first-child{
+  width: 110px;
+  color: var(--muted);
+  font-weight: 700;
+  white-space: nowrap;
+}
 
-   /* ==========================
-        ORDER DETAILS TABLE
-       ========================== */
+.customer-details p,
+.order-details p{
+  margin: 0;
+  line-height: 1.35;
+}
 
-   .order-details {
-     margin-top: 46px;
+/* ==========================
+   PRODUCT TABLE
+   ========================== */
+.prod-table{
+  padding: 14px 16px 2px;
+  margin: 0;
+}
 
-     td {
-       vertical-align: top;
-     }
+.prod-table table{
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
 
-     p {
-       vertical-align: top;
-       line-height: 5px;
-     }
-   }
+.prod-table th{
+  background: #0b5d86;
+  color: #fff;
+  text-align: left;
+  padding: 10px 10px;
+  font-size: 12px;
+  letter-spacing: 0.2px;
+}
 
+.prod-table td{
+  padding: 9px 10px;
+  font-size: 12px;
+  border-top: 1px solid var(--line);
+  vertical-align: top;
+}
 
-   /* ==========================
-        PARENT TABLE
-       ========================== */
+.prod-table tbody tr:nth-child(even) td{
+  background: #fafafa;
+}
 
-   .details-parent {
-     width: 115%;
+.prod-table th:nth-child(1){ width: 34%; }
+.prod-table th:nth-child(2){ width: 26%; }
+.prod-table th:nth-child(3){ width: 8%;  text-align: center; }
+.prod-table th:nth-child(4){ width: 10%; text-align: right; }
+.prod-table th:nth-child(5){ width: 10%; text-align: right; }
+.prod-table th:nth-child(6){ width: 12%; text-align: right; }
 
-     td {
-       vertical-align: top;
-     }
+.prod-table td:nth-child(3){ text-align: center; }
+.prod-table td:nth-child(4),
+.prod-table td:nth-child(5),
+.prod-table td:nth-child(6){ text-align: right; }
 
-     p {
-       vertical-align: top;
-       line-height: 5px;
-     }
-   }
+/* ==========================
+   ORDER BREAKDOWN SECTION
+   ========================== */
+.order-breakdown{
+  padding: 10px 16px 16px;
+  margin: 0;
+}
 
+.order-breakdown > table{
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 10px;
+}
 
-   /* ==========================
-          PRODUCT TABLE
-          ========================== */
+.order-breakdown-parent th{
+  text-align: left;
+  color: var(--brand-blue);
+  font-size: 13px;
+  padding: 2px 2px 0;
+}
 
-   .prod-table {
-     margin: 20px;
+.order-breakdown-child{
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
 
-     table {
-       width: 100%;
-     }
+.order-breakdown-child table{
+  width: 100%;
+  border-collapse: collapse;
+}
 
-     th {
-       text-align: center;
-       border: 2px solid black;
-       padding: 10px
-     }
+.order-breakdown-child th{
+  text-align: left;
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 800;
+  padding: 8px 8px;
+  border-bottom: 1px solid var(--line);
+}
 
-     td {
-       text-align: center;
-       padding: 5px;
-       font-size: 12px;
-     }
-   }
+.order-breakdown-child td{
+  padding: 10px 8px;
+  font-size: 12.5px;
+  border-bottom: 1px solid var(--line);
+}
 
+.order-breakdown-child tr:last-child th,
+.order-breakdown-child tr:last-child td{
+  border-bottom: 0;
+}
 
-   .order-breakdown {
-     text-align: left;
-     margin: 20px;
+#vatTotal, #salesTotal, #balance{
+  font-weight: 800;
+}
 
-     th {
-      color: #0081ab;
-     }
-          
+#salesTotal{
+  font-size: 14px;
+}
 
-     tbody {
-       vertical-align: top;
-     }
-   }
+/* deposit table tight columns */
+#deposit-table th,
+#deposit-table td{
+  font-size: 12px;
+}
 
-   .order-breakdown-child {
+/* ==========================
+   FOOTER (optional)
+   ========================== */
+.footer{
+  padding: 10px 16px 18px;
+  color: var(--muted);
+  font-size: 11px;
+}
 
-     table,
-     td,
-     th {
-       border: 1px solid black;
-       text-align: left;
-       vertical-align: middle;
-       color: black;
-       
-     }
-
-     table {
-       border-collapse: collapse;
-       width: 100%;
-       
-     }
-
-     th,
-     td {
-       padding: 10px;
-     }
-   }
-
-   /* ==========================
-       PRINT CLEANUP
-       ========================== */
-   /* 
-    @media print {
-      body {
-        background: #fff;
-      }
-
-      .page {
-        margin: 0;
-        padding: 20mm;
-      }
-    } */
+/* ==========================
+   PRINT CLEANUP
+   ========================== */
+@media print{
+  body{ background: #fff; }
+  .page{
+    border: none;
+    border-radius: 0;
+    width: auto;
+    min-height: auto;
+  }
+}
