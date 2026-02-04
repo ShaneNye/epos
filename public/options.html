@@ -2,198 +2,193 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
-    <title>Item Options</title>
-    <style>
-        body {
-            font-family: "Segoe UI", Roboto, sans-serif;
-            padding: 20px;
-            background: #f9fafb;
-            color: #333;
-        }
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>Item Options</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Roboto, sans-serif;
+      padding: 20px;
+      background: #f9fafb;
+      color: #333;
+    }
 
-        h2 {
-            margin-top: 0;
-            font-size: 1.5rem;
-            color: #0081ab;
-            /* primary */
-        }
+    h2 {
+      margin-top: 0;
+      font-size: 1.5rem;
+      color: #0081ab;
+    }
 
-        /* Summary table */
-        h2+div table {
-            width: auto;
-            margin-bottom: 15px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            background: #ffffff;
-        }
+    select,
+    input[type=number] {
+      padding: 6px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      width: 100%;
+      box-sizing: border-box;
+    }
 
-        h2+div th {
-            background: #ffd700;
-            /* accent */
-            color: #000;
-            font-weight: 600;
-            padding: 6px 12px;
-            border-right: 1px solid #d1d5db;
-        }
+    select:focus,
+    input[type=number]:focus {
+      outline: none;
+      border-color: #0081ab;
+      box-shadow: 0 0 0 2px rgba(0, 129, 171, 0.2);
+    }
 
-        h2+div td {
-            padding: 6px 12px;
-            font-weight: 500;
-        }
+    .btns {
+      margin-top: 20px;
+    }
 
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 15px;
-            background: #ffffff;
-            border-radius: 6px;
-            overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: background 0.2s ease;
+    }
 
-        th {
-            background: #0081ab;
-            /* primary */
-            color: #fff;
-            text-align: left;
-            padding: 10px;
-            font-weight: 600;
-        }
+    #saveBtn {
+      background: #0081ab;
+      color: white;
+    }
 
-        td {
-            border-bottom: 1px solid #e5e7eb;
-            padding: 8px;
-            vertical-align: middle;
-        }
+    #saveBtn:hover {
+      background: #006d8f;
+    }
 
-        select,
-        input[type=number] {
-            padding: 6px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            font-size: 0.9rem;
-            width: 100%;
-            box-sizing: border-box;
-        }
+    .opt-group {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 6px;
+      margin: 12px 0;
+      padding: 12px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+    }
 
-        select:focus,
-        input[type=number]:focus {
-            outline: none;
-            border-color: #0081ab;
-            /* primary */
-            box-shadow: 0 0 0 2px rgba(0, 129, 171, 0.2);
-        }
-
-        input[type=number] {
-            width: 80px;
-            text-align: right;
-        }
-
-        .btns {
-            margin-top: 20px;
-        }
-
-        button {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 600;
-            transition: background 0.2s ease;
-        }
-
-        #addRow {
-            background: #ffd700;
-            /* accent */
-            color: #000;
-        }
-
-        #addRow:hover {
-            background: #e6c200;
-        }
-
-        #saveBtn {
-            background: #0081ab;
-            /* primary */
-            color: white;
-        }
-
-        #saveBtn:hover {
-            background: #006d8f;
-        }
-
-        #cancelBtn {
-            background: #f3f4f6;
-            color: #333;
-        }
-
-        #cancelBtn:hover {
-            background: #e5e7eb;
-        }
-    </style>
-
+    .opt-group label {
+      font-weight: 600;
+      color: #111827;
+    }
+  </style>
 </head>
 
 <body>
-    <h2>Configure Item Options</h2>
-    <form id="optionsForm"></form>
-    <div class="btns">
-        <button type="button" id="saveBtn">Save</button>
-        <button type="button" onclick="window.close()">Cancel</button>
-    </div>
+  <h2>Configure Item Options</h2>
+  <form id="optionsForm"></form>
+  <div class="btns">
+    <button type="button" id="saveBtn">Save</button>
+    <button type="button" onclick="window.close()">Cancel</button>
+  </div>
 
-    <script>
-        function getQueryParams() {
-            const params = {};
-            new URLSearchParams(window.location.search).forEach((v, k) => params[k] = decodeURIComponent(v));
-            return params;
+  <script>
+    function getQueryParams() {
+      const params = {};
+      new URLSearchParams(window.location.search).forEach((v, k) => params[k] = decodeURIComponent(v));
+      return params;
+    }
+
+    const { itemId, selections } = getQueryParams();
+    const existing = selections ? JSON.parse(selections) : {};
+
+    console.log("🔎 Popup opened for itemId:", itemId);
+    console.log("🔎 Parent cache snapshot:", window.opener?.optionsCache);
+
+    const optionsCache = window.opener?.optionsCache || {};
+    const opts = optionsCache[itemId] || {};
+    console.log("🔎 Options found:", opts);
+
+    const form = document.getElementById("optionsForm");
+
+    Object.entries(opts).forEach(([field, values]) => {
+      if (!Array.isArray(values) || values.length === 0) return;
+
+      const fieldLower = String(field).toLowerCase();
+
+      // We only treat it as a special fabric/colour field if the *field name* hints it
+      const isFabricColourField =
+        fieldLower.includes("fabric") || fieldLower.includes("colour") || fieldLower.includes("color");
+
+      if (isFabricColourField && values.some(v => String(v).includes("|"))) {
+        // Normalize strings
+        const norm = values.map(v => String(v).trim());
+
+        // Pattern checks:
+        // - Full pair: "Fabric|Colour" (something before AND after pipe)
+        // - Pipe-only: "|Colour" (pipe at start, colour after)
+        const hasFullPair = norm.some(v => /[^|]+\|[^|]+/.test(v));
+        const hasPipeOnly = norm.some(v => /^\s*\|[^|]+/.test(v));
+
+        console.log("🎨 Fabric/Colour detection:", {
+          field,
+          hasFullPair,
+          hasPipeOnly,
+          sample: norm.slice(0, 6)
+        });
+
+        // If no full pairs, but we do have pipe-only, render COLOUR ONLY
+        if (!hasFullPair && hasPipeOnly) {
+          console.log("🎨 Rendering COLOUR ONLY (values are like '|English Oak')");
+
+          const colours = [];
+          norm.forEach(v => {
+            // split at first pipe
+            const parts = v.split("|");
+            const col = (parts[1] || "").trim();
+            if (!col) return;
+            if (!colours.includes(col)) colours.push(col);
+          });
+
+          const group = document.createElement("div");
+          group.className = "opt-group";
+
+          const colourLabel = document.createElement("label");
+          colourLabel.textContent = "Colour";
+          group.appendChild(colourLabel);
+
+          const colourSelect = document.createElement("select");
+          colourSelect.name = "colour";
+          colourSelect.innerHTML = `<option value="">Select colour...</option>`;
+
+          colours.forEach(c => {
+            const opt = document.createElement("option");
+            opt.value = c;
+            opt.textContent = c;
+            if (existing.colour === c) opt.selected = true;
+            colourSelect.appendChild(opt);
+          });
+
+          group.appendChild(colourSelect);
+          form.appendChild(group);
+          return; // ⛔ done for this field
         }
 
-        const { itemId, selections } = getQueryParams();
-        const existing = selections ? JSON.parse(selections) : {};
+        // Otherwise, render FABRIC + COLOUR
+        console.log("🎨 Rendering FABRIC + COLOUR");
 
-        console.log("🔎 Popup opened for itemId:", itemId);
-        console.log("🔎 Parent cache snapshot:", window.opener?.optionsCache);
-
-        const optionsCache = window.opener?.optionsCache || {};
-        const opts = optionsCache[itemId] || {};
-        console.log("🔎 Options found:", opts);
-
-
-        const form = document.getElementById("optionsForm");
-
-Object.entries(opts).forEach(([field, values]) => {
-    if (!Array.isArray(values) || values.length === 0) return;
-
-    // Detect if this field contains fabric|colour pairs
-    const isFabricColour =
-        field.toLowerCase().includes("fabric") &&
-        values.some(v => v.includes("|"));
-
-    if (isFabricColour) {
-        console.log("🎨 Rendering fabric/colour dropdowns");
-
-        // Extract unique fabrics + map colours
         const fabrics = [];
         const coloursByFabric = {};
 
-        values.forEach(v => {
-            const [fab, col] = v.split("|").map(s => s.trim());
-            if (!fab || !col) return;
+        norm.forEach(v => {
+          const [fabRaw, colRaw] = v.split("|");
+          const fab = (fabRaw || "").trim();
+          const col = (colRaw || "").trim();
 
-            if (!fabrics.includes(fab)) fabrics.push(fab);
-            if (!coloursByFabric[fab]) coloursByFabric[fab] = [];
-            coloursByFabric[fab].push(col);
+          // Only accept complete pairs here
+          if (!fab || !col) return;
+
+          if (!fabrics.includes(fab)) fabrics.push(fab);
+          if (!coloursByFabric[fab]) coloursByFabric[fab] = [];
+          if (!coloursByFabric[fab].includes(col)) coloursByFabric[fab].push(col);
         });
 
-        // --- Build Fabric + Colour UI ---
         const group = document.createElement("div");
         group.className = "opt-group";
 
-        // FABRIC LABEL + SELECT
         const fabricLabel = document.createElement("label");
         fabricLabel.textContent = "Fabric";
         group.appendChild(fabricLabel);
@@ -202,15 +197,14 @@ Object.entries(opts).forEach(([field, values]) => {
         fabricSelect.name = "fabric";
         fabricSelect.innerHTML = `<option value="">Select fabric...</option>`;
         fabrics.forEach(f => {
-            const opt = document.createElement("option");
-            opt.value = f;
-            opt.textContent = f;
-            if (existing.fabric === f) opt.selected = true;
-            fabricSelect.appendChild(opt);
+          const opt = document.createElement("option");
+          opt.value = f;
+          opt.textContent = f;
+          if (existing.fabric === f) opt.selected = true;
+          fabricSelect.appendChild(opt);
         });
         group.appendChild(fabricSelect);
 
-        // COLOUR LABEL + SELECT
         const colourLabel = document.createElement("label");
         colourLabel.textContent = "Colour";
         group.appendChild(colourLabel);
@@ -221,66 +215,62 @@ Object.entries(opts).forEach(([field, values]) => {
         group.appendChild(colourSelect);
 
         function updateColours() {
-            const chosenFabric = fabricSelect.value;
-            const colours = coloursByFabric[chosenFabric] || [];
-            colourSelect.innerHTML = `<option value="">Select colour...</option>`;
-            colours.forEach(c => {
-                const opt = document.createElement("option");
-                opt.value = c;
-                opt.textContent = c;
-                if (existing.colour === c) opt.selected = true;
-                colourSelect.appendChild(opt);
-            });
+          const chosenFabric = fabricSelect.value;
+          const colours = coloursByFabric[chosenFabric] || [];
+          colourSelect.innerHTML = `<option value="">Select colour...</option>`;
+          colours.forEach(c => {
+            const opt = document.createElement("option");
+            opt.value = c;
+            opt.textContent = c;
+            if (existing.colour === c) opt.selected = true;
+            colourSelect.appendChild(opt);
+          });
         }
 
         fabricSelect.addEventListener("change", updateColours);
 
-        // Restore existing selection
-        if (existing.fabric) {
-            updateColours();
-        }
+        if (existing.fabric) updateColours();
 
         form.appendChild(group);
-        return; // ⛔ Skip normal renderer
-    }
+        return; // ⛔ skip default renderer
+      }
 
-    // --- DEFAULT OPTION RENDERER (tension etc.) ---
-    const group = document.createElement("div");
-    group.className = "opt-group";
+      // --- DEFAULT OPTION RENDERER ---
+      const group = document.createElement("div");
+      group.className = "opt-group";
 
-    const label = document.createElement("label");
-    label.textContent = field;
-    group.appendChild(label);
+      const label = document.createElement("label");
+      label.textContent = field;
+      group.appendChild(label);
 
-    const select = document.createElement("select");
-    select.name = field;
-    select.innerHTML = `<option value="">Select...</option>`;
+      const select = document.createElement("select");
+      select.name = field;
+      select.innerHTML = `<option value="">Select...</option>`;
 
-    values.forEach(v => {
+      values.forEach(v => {
         const opt = document.createElement("option");
         opt.value = v;
         opt.textContent = v;
         if (existing[field] === v) opt.selected = true;
         select.appendChild(opt);
+      });
+
+      group.appendChild(select);
+      form.appendChild(group);
     });
 
-    group.appendChild(select);
-    form.appendChild(group);
-});
+    document.getElementById("saveBtn").addEventListener("click", () => {
+      const selections = {};
+      form.querySelectorAll("select").forEach(sel => {
+        selections[sel.name] = sel.value || "";
+      });
 
-
-        document.getElementById("saveBtn").addEventListener("click", () => {
-            const selections = {};
-            form.querySelectorAll("select").forEach(sel => {
-                selections[sel.name] = sel.value || "";
-            });
-
-            if (window.opener && typeof window.opener.onOptionsSaved === "function") {
-                window.opener.onOptionsSaved(itemId, selections);
-            }
-            window.close();
-        });
-    </script>
+      if (window.opener && typeof window.opener.onOptionsSaved === "function") {
+        window.opener.onOptionsSaved(itemId, selections);
+      }
+      window.close();
+    });
+  </script>
 
 </body>
 

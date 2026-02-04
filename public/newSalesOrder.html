@@ -20,6 +20,7 @@
     <script src="/js/salesNewFetchify.js" defer></script>
     <script src="/js/salesCustomerLock.js" defer></script>
     <script src="/js/salesNewItemLine.js" defer></script>
+    <script src="/js/salesNew60Night.js"></script>
     <script src="/js/salesInventoryModal.js" defer></script>
     <script src="/js/logisticsPostcodeLookup.js" defer></script>
 
@@ -221,6 +222,7 @@
                             <th>Amount</th>
                             <th>Discount %</th>
                             <th>Sale Price</th>
+                            <th style="display: none;" id="60ntheader">60 Night Trial</th>
                             <th>Fulfilment Method</th>
                             <th>Inventory Detail</th>
                             <th></th>
@@ -243,6 +245,13 @@
                             <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" />
                             </td>
                             <td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
+                            <td style="display: none;" id="60ntSelect"><select>
+                                <option selected disabled hidden>Select</option>
+                                <option>Accepted</option>
+                                <option>Declined</option>
+                                <option>N/A</option>
+                                </select>
+                            </td>
                             <td>
                                 <select name="fulfilmentMethod" class="item-fulfilment">
                                     <option value="">Loading fulfilment methods...</option>

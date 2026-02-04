@@ -178,6 +178,26 @@ matches.forEach(it => {
   globalSuggestions.classList.remove("hidden");
 }
 
+function toggle60NightTrial(isMattress) {
+  const header = document.getElementById("60ntheader");
+  const cell = document.getElementById("60ntSelect");
+
+  if (!header || !cell) return;
+
+  if (isMattress) {
+    header.style.display = "table-cell";
+    cell.style.display = "table-cell";
+  } else {
+    header.style.display = "none";
+    cell.style.display = "none";
+
+    // optional reset to N/A when hiding
+    const sel = cell.querySelector("select");
+    if (sel) sel.value = "N/A";
+  }
+}
+
+
 // === Handle selection ===
 async function selectItem(item) {
   if (!activeInput) return;
@@ -234,6 +254,11 @@ async function selectItem(item) {
 const fulfilCell = line.querySelector(".fulfilment-cell");
 const fulfilSel = line.querySelector(".item-fulfilment");
 const invCell = line.querySelector(".inventory-cell");
+
+// ✅ 60 Night Trial toggle (Mattress only)
+const itemClass = (item["Class"] || "").toLowerCase();
+toggle60NightTrial(itemClass === "mattress");
+
 
 if (item["Class"] && item["Class"].toLowerCase() === "service") {
   console.log("🧾 Service item detected – hiding fulfilment and inventory");
