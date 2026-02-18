@@ -716,3 +716,6 @@ select#activeRoleSelect::-internal-list-box {
   background: #0081ab;
   color: #fff;
 }
+#button-container #help-button {
+  border: 2px solid black !important;
+}
