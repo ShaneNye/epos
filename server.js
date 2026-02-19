@@ -486,44 +486,10 @@ app.get("/api/netsuite/inventory-status", (req, res) =>
   fetchNetSuiteData("SALES_ORDER_INV_STATUS_URL", "SALES_ORDER_INV_STATUS", res, "inventory status")
 );
 
-app.get("/api/netsuite/order-management", (req, res) => {
-  const originalJson = res.json.bind(res);
+app.get("/api/netsuite/order-management", (req, res) =>
+  fetchNetSuiteData("ORDER_MANAGEMENT_URL", "ORDER_MANAGEMENT", res, "order management")
+);
 
- res.json = (payload) => {
-  originalJson(payload);
-
-  const results = payload?.results || [];
-  const ids = results.map(r => r?.ID).filter(Boolean);
-
-  const authHeader = (req.headers.authorization || "").trim();
-
-  console.log("🔥 PREWARM CHECK", {
-    hasAuth: !!authHeader,
-    authStartsBearer: authHeader.startsWith("Bearer "),
-    resultsCount: results.length,
-    idsCount: ids.length,
-    sampleIds: ids.slice(0, 5),
-  });
-
-  if (!authHeader) {
-    console.warn("🔥 PREWARM SKIPPED: no Authorization header on /order-management request");
-    return;
-  }
-  if (!ids.length) {
-    console.warn("🔥 PREWARM SKIPPED: no IDs found in payload.results");
-    return;
-  }
-
-  const host = `${req.protocol}://${req.get("host")}`;
-  console.log("🔥 PREWARM START", { host });
-
-  setImmediate(() => {
-    prewarmSalesOrders(host, ids, authHeader, { limit: 50, concurrency: 3 });
-  });
-};
-
-  fetchNetSuiteData("ORDER_MANAGEMENT_URL", "ORDER_MANAGEMENT", res, "order management");
-});
 
 
 
@@ -764,6 +730,4 @@ app.use((req, res, next) => {
 app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);
 
-    // 🔥 boot + hourly
-  startPrewarmScheduler();
 });

@@ -1,3 +1,4 @@
+// routes/netsuiteSalesOrder.js
 const express = require("express");
 const router = express.Router();
 const pool = require("../db");
@@ -17,7 +18,6 @@ const {
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
 
-// Use internal id (numeric) as cache key. We keep it simple.
 function cacheKey(id) {
   return `so:${String(id).trim()}`;
 }
@@ -55,7 +55,175 @@ function cachePrune(max = 300) {
   }
 }
 
+// =====================================================
+// ✅ Cached suitelet lookups (Item feed + Fulfilment map)
+// =====================================================
+const ITEM_FEED_TTL_MS = 60 * 60 * 1000; // 1 hour
+const FULFIL_TTL_MS = 60 * 60 * 1000; // 1 hour
 
+const itemFeedCache = {
+  expiresAt: 0,
+  data: null, // itemMap
+  inFlight: null,
+};
+
+const fulfilmentCache = {
+  expiresAt: 0,
+  data: null, // fulfilmentMap
+  inFlight: null,
+};
+
+function isFresh(expiresAt) {
+  return expiresAt && expiresAt > Date.now();
+}
+
+async function getItemMapCached() {
+  if (itemFeedCache.data && isFresh(itemFeedCache.expiresAt)) return itemFeedCache.data;
+  if (itemFeedCache.inFlight) return itemFeedCache.inFlight;
+
+  itemFeedCache.inFlight = (async () => {
+    const baseUrlItems = process.env.SALES_ORDER_ITEMS_URL;
+    const itemFeedToken = process.env.SALES_ORDER_ITEMS;
+
+    if (!baseUrlItems || !itemFeedToken) {
+      throw new Error("Missing SALES_ORDER_ITEMS_URL or SALES_ORDER_ITEMS in .env");
+    }
+
+    const nsUrlItems = `${baseUrlItems}&token=${encodeURIComponent(itemFeedToken)}`;
+    console.log(`📡 [Cache] Fetching item feed from: ${nsUrlItems}`);
+
+    const respItems = await fetch(nsUrlItems);
+    if (!respItems.ok) throw new Error(`NetSuite item feed returned ${respItems.status}`);
+    const rawItems = await respItems.json();
+
+    let itemList = [];
+    if (Array.isArray(rawItems)) itemList = rawItems;
+    else if (rawItems.results) itemList = rawItems.results;
+    else if (rawItems.data) itemList = rawItems.data;
+
+    const itemMap = {};
+    for (const i of itemList) {
+      const id = String(i.id || i.internalId || i.itemId || i["Internal ID"] || "").trim();
+      if (!id) continue;
+
+      const name = i.name || i.itemName || i["Name"] || i["Item Name"] || "";
+      const baseprice = parseFloat(
+        i.baseprice || i["Base Price"] || i["base price"] || i.price || 0
+      );
+
+      itemMap[id] = { name, baseprice: Number.isFinite(baseprice) ? baseprice : 0 };
+    }
+
+    itemFeedCache.data = itemMap;
+    itemFeedCache.expiresAt = Date.now() + ITEM_FEED_TTL_MS;
+    itemFeedCache.inFlight = null;
+
+    return itemMap;
+  })();
+
+  try {
+    return await itemFeedCache.inFlight;
+  } finally {
+    // if it threw, clear inFlight so next request can retry
+    if (itemFeedCache.inFlight && !itemFeedCache.data) itemFeedCache.inFlight = null;
+  }
+}
+
+async function getFulfilmentMapCached() {
+  if (fulfilmentCache.data && isFresh(fulfilmentCache.expiresAt)) return fulfilmentCache.data;
+  if (fulfilmentCache.inFlight) return fulfilmentCache.inFlight;
+
+  fulfilmentCache.inFlight = (async () => {
+    const baseUrlFM = process.env.SALES_ORDER_FULFIL_METHOD_URL;
+    const tokenFM = process.env.SALES_ORDER_FULFIL_METHOD;
+
+    if (!baseUrlFM || !tokenFM) {
+      console.warn("⚠️ Missing SALES_ORDER_FULFIL_METHOD environment variables.");
+      fulfilmentCache.data = {};
+      fulfilmentCache.expiresAt = Date.now() + FULFIL_TTL_MS;
+      fulfilmentCache.inFlight = null;
+      return {};
+    }
+
+    const nsUrlFM = `${baseUrlFM}&token=${encodeURIComponent(tokenFM)}`;
+    console.log(`📡 [Cache] Fetching fulfilment methods from: ${nsUrlFM}`);
+
+    const fmRes = await fetch(nsUrlFM);
+    if (!fmRes.ok) {
+      console.warn("⚠️ Fulfilment suitelet returned:", fmRes.status);
+      fulfilmentCache.data = {};
+      fulfilmentCache.expiresAt = Date.now() + FULFIL_TTL_MS;
+      fulfilmentCache.inFlight = null;
+      return {};
+    }
+
+    const fmJson = await fmRes.json();
+    const fmList = fmJson.results || fmJson.data || [];
+
+    const fulfilmentMap = {};
+    for (const f of fmList) {
+      const id = String(f["Internal ID"] || f.id || f.internalid || "").trim();
+      const name = (f["Name"] || f.name || "").trim();
+      if (id && name) fulfilmentMap[id] = name;
+    }
+
+    fulfilmentCache.data = fulfilmentMap;
+    fulfilmentCache.expiresAt = Date.now() + FULFIL_TTL_MS;
+    fulfilmentCache.inFlight = null;
+
+    return fulfilmentMap;
+  })();
+
+  try {
+    return await fulfilmentCache.inFlight;
+  } finally {
+    if (fulfilmentCache.inFlight && !fulfilmentCache.data) fulfilmentCache.inFlight = null;
+  }
+}
+
+// =====================================================
+// ✅ Helper: build “lite” fields lists for REST Record service
+// =====================================================
+function buildSalesOrderFields() {
+  // NOTE: these must match *your* REST field IDs. This list is intentionally “safe-ish”.
+  // If any field name is invalid, NetSuite can error. Remove/adjust using REST API Browser if needed.
+  return [
+    "id",
+    "tranId",
+    "trandate",
+    "orderstatus",
+    "entity",
+    "location",
+    "leadsource",
+    "custbody_sb_bedspecialist",
+    "custbody_sb_primarystore",
+    "custbody_sb_paymentinfo",
+    "custbody_sb_warehouse",
+    // totals (field IDs vary; keep what works in your account)
+    "subtotal",
+    "discountTotal",
+    "taxtotal",
+    "total",
+    "amountremaining",
+    // addresses (again, may vary)
+    "billAddress",
+    "shipAddress",
+  ].join(",");
+}
+
+function buildCustomerFields() {
+  return [
+    "id",
+    "firstName",
+    "lastName",
+    "email",
+    "phone",
+    "altPhone",
+    "custentity_title",
+    // optional address-related fields if you rely on them
+    "addressbook",
+  ].join(",");
+}
 
 /* =====================================================
    === CREATE NEW SALES ORDER ===========================
@@ -73,8 +241,6 @@ router.post("/create", async (req, res) => {
       userId = session?.id || null;
       console.log("🔐 Authenticated session for SO creation:", userId);
     }
-
-
 
     const { customer, order, items } = req.body;
     let customerId = customer?.id || null;
@@ -114,7 +280,10 @@ router.post("/create", async (req, res) => {
       const newCustomer = await nsPost("/customer", custBody, userId, "sb");
 
       let match;
-      if (newCustomer._location && (match = newCustomer._location.match(/customer\/(\d+)/))) {
+      if (
+        newCustomer._location &&
+        (match = newCustomer._location.match(/customer\/(\d+)/))
+      ) {
         customerId = match[1];
       } else if (newCustomer.id) customerId = newCustomer.id;
 
@@ -161,14 +330,16 @@ router.post("/create", async (req, res) => {
           storeNsId = row.netsuite_internal_id;
           invoiceLocationId = row.invoice_location_id;
           storeName = row.name;
-          console.log("🏬 Store lookup →", { storeNsId, invoiceLocationId, storeName });
+          console.log("🏬 Store lookup →", {
+            storeNsId,
+            invoiceLocationId,
+            storeName,
+          });
         }
       } catch (err) {
         console.error("❌ Store lookup failed:", err.message);
       }
     }
-
-
 
     /* ======================================================
        4️⃣ BUILD ORDER BODY (BEFORE INTERCOPO + WEB ORDER)
@@ -193,7 +364,7 @@ router.post("/create", async (req, res) => {
             item: { id: i.item },
             quantity: i.quantity,
             amount: i.amount / 1.2,
-            custcol_sb_itemoptionsdisplay: i.options || ""
+            custcol_sb_itemoptionsdisplay: i.options || "",
           };
 
           // Fulfilment Method → custcol_sb_fulfilmentlocation
@@ -201,34 +372,22 @@ router.post("/create", async (req, res) => {
             line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
           }
 
-
           /* ======================================================
              createpo logic — ONLY for subsidiary 6
-             Other subsidiaries → let NetSuite set defaults
           ====================================================== */
           const fulfilId = String(i.fulfilmentMethod || "").trim();
 
-          // Only apply PO logic for subsidiary 6
           if (String(storeNsId) === "6") {
             if (fulfilId === "3") {
-              line.createpo = "SpecOrd";  // Special Order
+              line.createpo = "SpecOrd";
               console.log(`🟦 Line ${idx + 1} createpo = SpecOrd (Special Order)`);
+            } else {
+              line.createpo = "";
+              console.log(`⬜ Line ${idx + 1} createpo = "" (default/warehouse)`);
             }
-            else if (fulfilId === "2") {
-              line.createpo = "";  // Warehouse
-              console.log(`⬜ Line ${idx + 1} createpo = "" (warehouse)`);
-            }
-            else {
-              line.createpo = "";  // Default
-              console.log(`▫️ Line ${idx + 1} createpo = "" (default)`);
-            }
-          }
-          else {
-            // ❌ For all other subsidiaries → DO NOT SEND createpo
+          } else {
             console.log(`🚫 Subsidiary ${storeNsId} → createpo removed`);
           }
-
-
 
           /* ======================================================
              LOT / META ALLOCATION
@@ -242,10 +401,9 @@ router.post("/create", async (req, res) => {
 
           console.log(`🧾 Final Line ${idx + 1}:`, line);
           return line;
-        })
-      }
+        }),
+      },
     };
-
 
     /* ======================================================
        5️⃣ WEB ORDER FLAG — MUST BE BEFORE PAYLOAD PREVIEW
@@ -258,10 +416,7 @@ router.post("/create", async (req, res) => {
     /* ======================================================
        6️⃣ FINAL PAYLOAD PREVIEW (AFTER ALL MODIFICATIONS)
     ====================================================== */
-    console.log(
-      "🚀 FINAL Sales Order payload:",
-      JSON.stringify(orderBody, null, 2)
-    );
+    console.log("🚀 FINAL Sales Order payload:", JSON.stringify(orderBody, null, 2));
 
     /* ======================================================
        7️⃣ CREATE SALES ORDER IN NETSUITE
@@ -277,11 +432,10 @@ router.post("/create", async (req, res) => {
     if (!salesOrderId)
       return res.status(500).json({
         ok: false,
-        error: "Failed to resolve Sales Order ID"
+        error: "Failed to resolve Sales Order ID",
       });
 
     console.log("✅ Sales Order created successfully with ID:", salesOrderId);
-
 
     // ==========================================================
     // 💰 Create Customer Deposit(s) if provided in payload
@@ -293,7 +447,9 @@ router.post("/create", async (req, res) => {
         : [];
 
     if (Array.isArray(allDeposits) && allDeposits.length > 0) {
-      console.log(`💰 Found ${allDeposits.length} deposit(s) in payload — creating in NetSuite...`);
+      console.log(
+        `💰 Found ${allDeposits.length} deposit(s) in payload — creating in NetSuite...`
+      );
       console.table(
         allDeposits.map((d) => ({
           MethodID: d.id,
@@ -308,9 +464,9 @@ router.post("/create", async (req, res) => {
       try {
         const accResult = await pool.query(
           `SELECT current_account, petty_cash_account 
-     FROM locations 
-    WHERE id = $1 
-    LIMIT 1`,
+           FROM locations 
+           WHERE id = $1 
+           LIMIT 1`,
           [order.store]
         );
         const accRows = accResult.rows;
@@ -338,7 +494,6 @@ router.post("/create", async (req, res) => {
             );
           }
 
-          // ✅ Correct NetSuite payload
           const depositBody = {
             entity: { id: String(customerId) },
             subsidiary: storeNsId ? { id: String(storeNsId) } : undefined,
@@ -346,8 +501,8 @@ router.post("/create", async (req, res) => {
             salesorder: { id: String(salesOrderId) },
             payment: parseFloat(dep.amount || 0),
             paymentmethod: { id: String(dep.id) },
-            undepfunds: false, // ✅ Use Account instead of Undeposited Funds
-            memo: dep.name || "", // ✅ NEW — populate memo with payment method name
+            undepfunds: false,
+            memo: dep.name || "",
             ...(selectedAccountId && { account: { id: String(selectedAccountId) } }),
           };
 
@@ -355,7 +510,6 @@ router.post("/create", async (req, res) => {
           console.dir(depositBody, { depth: null });
 
           const depositRes = await nsPost("/customerDeposit", depositBody, userId, "sb");
-
 
           let depositId = depositRes?.id || null;
           if (!depositId && depositRes?._location) {
@@ -388,12 +542,12 @@ router.post("/create", async (req, res) => {
       try {
         const storeRes = await pool.query(
           `SELECT 
-         netsuite_internal_id, 
-         invoice_location_id, 
-         distribution_location_id 
-       FROM locations 
-       WHERE id = $1 
-       LIMIT 1`,
+             netsuite_internal_id, 
+             invoice_location_id, 
+             distribution_location_id 
+           FROM locations 
+           WHERE id = $1 
+           LIMIT 1`,
           [order.store]
         );
 
@@ -405,9 +559,7 @@ router.post("/create", async (req, res) => {
           const main = (row.netsuite_internal_id || "").toString().trim();
 
           storeDistributionLocId =
-            dist !== "" ? dist :
-              inv !== "" ? inv :
-                main !== "" ? main : null;
+            dist !== "" ? dist : inv !== "" ? inv : main !== "" ? main : null;
 
           console.log("🏬 Store location mapping →", {
             storeNsId: main,
@@ -422,28 +574,21 @@ router.post("/create", async (req, res) => {
         console.error("❌ Failed to load store distribution location:", err.message);
       }
 
-      // ==========================================================
-      // PROCESS EACH LINE (clean & fully safe version)
-      // ==========================================================
       for (const [idx, line] of items.entries()) {
-
         const fulfilMethod = String(line.fulfilmentMethod || "").trim();
         console.log(`📦 Line ${idx + 1} fulfilMethod =`, fulfilMethod);
 
         let skipTransfer = false;
 
-        // ==========================================================
-        // STEP 0 — LOT-only → Resolve source metadata if missing
-        // ==========================================================
         if (line.lotnumber && !line.inventoryMeta) {
           console.log(`🔍 Resolving LOT source for LOT ${line.lotnumber}`);
 
           try {
             const lotRes = await pool.query(
               `SELECT location_name, location_id, distribution_location_id
-         FROM epos_lots
-         WHERE lot_id = $1
-         LIMIT 1`,
+               FROM epos_lots
+               WHERE lot_id = $1
+               LIMIT 1`,
               [line.lotnumber]
             );
 
@@ -454,8 +599,6 @@ router.post("/create", async (req, res) => {
               const srcDist = row.distribution_location_id || srcInv;
 
               console.log(`📦 LOT ${line.lotnumber} → ${srcName} (dist ${srcDist})`);
-
-              // Create synthetic metadata
               line.inventoryMeta = `1|${srcName}|${srcInv}|||LOT|${line.lotnumber}`;
             } else {
               console.warn(`⚠️ No LOT source found → cannot create transfer`);
@@ -467,15 +610,11 @@ router.post("/create", async (req, res) => {
           }
         }
 
-        // If still no metadata (item wasn't allocated)
         if (!line.inventoryMeta) {
           console.log(`⛔ [Line ${idx + 1}] No metadata → skip transfer`);
           skipTransfer = true;
         }
 
-        // ==========================================================
-        // Parse metadata into parts
-        // ==========================================================
         const metaParts = (line.inventoryMeta || "")
           .split(";")
           .map((p) => p.trim())
@@ -486,18 +625,12 @@ router.post("/create", async (req, res) => {
           skipTransfer = true;
         }
 
-        // ==========================================================
-        // FULFILMENT RULES
-        // ==========================================================
-
-        // In-store fulfilment (1)
         if (fulfilMethod === "1") {
           console.log(`🛒 In-Store fulfilment for line ${idx + 1}`);
-
           try {
             const [qty, locName] = metaParts[0].split("|");
             const metaLoc = (locName || "").trim().toLowerCase();
-            const storeLower = storeName.toLowerCase();
+            const storeLower = String(storeName || "").toLowerCase();
 
             const alreadyInStore =
               metaLoc === storeLower ||
@@ -511,11 +644,8 @@ router.post("/create", async (req, res) => {
           } catch { }
         }
 
-        // Warehouse fulfilment (2)
         if (fulfilMethod === "2") {
           console.log(`🏭 Warehouse fulfilment for line ${idx + 1}`);
-
-          // If item is already in warehouse — no transfer needed
           try {
             const [, , locIdRaw] = metaParts[0].split("|");
             if (String(locIdRaw || "") === String(order.warehouse)) {
@@ -525,15 +655,11 @@ router.post("/create", async (req, res) => {
           } catch { }
         }
 
-        // Early skip
         if (skipTransfer) {
           console.log(`🚫 [Line ${idx + 1}] Transfer skipped`);
           continue;
         }
 
-        // ==========================================================
-        // PROCESS EACH META PART
-        // ==========================================================
         for (const part of metaParts) {
           let sourceLocId = null;
 
@@ -548,16 +674,13 @@ router.post("/create", async (req, res) => {
             continue;
           }
 
-          // ==========================================================
-          // Resolve source location
-          // ==========================================================
           try {
             if (locId) {
               const q = await pool.query(
                 `SELECT distribution_location_id
-           FROM locations
-           WHERE netsuite_internal_id = $1
-           LIMIT 1`,
+                 FROM locations
+                 WHERE netsuite_internal_id = $1
+                 LIMIT 1`,
                 [locId]
               );
               sourceLocId = (q.rows[0]?.distribution_location_id || "").trim();
@@ -566,9 +689,9 @@ router.post("/create", async (req, res) => {
             if (!sourceLocId && locName) {
               const q2 = await pool.query(
                 `SELECT distribution_location_id
-           FROM locations
-           WHERE name ILIKE $1
-           LIMIT 1`,
+                 FROM locations
+                 WHERE name ILIKE $1
+                 LIMIT 1`,
                 [locName]
               );
               sourceLocId = (q2.rows[0]?.distribution_location_id || "").trim();
@@ -582,9 +705,6 @@ router.post("/create", async (req, res) => {
             continue;
           }
 
-          // ==========================================================
-          // Determine destination
-          // ==========================================================
           let destinationLocId = "";
 
           if (fulfilMethod === "1") {
@@ -594,14 +714,12 @@ router.post("/create", async (req, res) => {
             try {
               const w = await pool.query(
                 `SELECT distribution_location_id
-           FROM locations
-           WHERE netsuite_internal_id = $1
-           LIMIT 1`,
+                 FROM locations
+                 WHERE netsuite_internal_id = $1
+                 LIMIT 1`,
                 [order.warehouse]
               );
-              destinationLocId =
-                (w.rows[0]?.distribution_location_id ||
-                  order.warehouse).toString();
+              destinationLocId = (w.rows[0]?.distribution_location_id || order.warehouse).toString();
             } catch {
               destinationLocId = order.warehouse;
             }
@@ -610,9 +728,6 @@ router.post("/create", async (req, res) => {
 
           if (!destinationLocId) continue;
 
-          // ==========================================================
-          // BUILD TRANSFER ORDER
-          // ==========================================================
           const transferBody = {
             subsidiary: { id: "6" },
             custbody_sb_needed_by: new Date(Date.now() + 3 * 86400000)
@@ -666,8 +781,6 @@ router.post("/create", async (req, res) => {
           }
         }
       }
-
-
     } catch (err) {
       console.error("⚠️ Transfer Order creation block failed:", err.message);
     }
@@ -678,8 +791,6 @@ router.post("/create", async (req, res) => {
       createdTransfers,
       response: so,
     });
-
-
   } catch (err) {
     console.error("❌ Sales Order creation error:", err.message);
     if (err.stack) console.error(err.stack);
@@ -687,18 +798,28 @@ router.post("/create", async (req, res) => {
   }
 });
 
-
 /* =====================================================
    === GET SALES ORDER (for read-only view) =============
    ===================================================== */
 router.get("/:id", async (req, res) => {
+  let key;
+  let rejectInflight = null;
+
   try {
     const { id } = req.params;
     console.log(`📦 Fetching Sales Order ${id} from NetSuite...`);
 
     // ✅ Cache support
     const refresh = String(req.query.refresh || "") === "1";
-    const key = cacheKey(id);
+    key = cacheKey(id);
+
+    // Optional: lite mode (still returns lines via suiteql; just reduces base record payload)
+    const lite = String(req.query.lite || "") === "1" || String(req.query.lite || "") === "true";
+
+    // Optional: allow skipping deposits fetch for faster initial paint
+    // Default true to avoid breaking existing UI
+    const includeDeposits =
+      !(String(req.query.deposits || "") === "0" || String(req.query.deposits || "") === "false");
 
     if (!refresh) {
       const cached = cacheGet(key);
@@ -713,20 +834,19 @@ router.get("/:id", async (req, res) => {
         try {
           const data = await cached.inFlight;
           return res.json({ ...data, _cache: "HIT-INFLIGHT" });
-        } catch (e) {
+        } catch {
           // fall through and try fresh
         }
       }
     }
 
     // create in-flight promise so concurrent requests dedupe
-    let resolveInflight, rejectInflight;
+    let resolveInflight;
     const inFlight = new Promise((resolve, reject) => {
       resolveInflight = resolve;
       rejectInflight = reject;
     });
     soCache.set(key, { inFlight, expiresAt: Date.now() + SO_CACHE_TTL_MS, data: null });
-
 
     // 🔐 Resolve user session for per-user NetSuite token
     const auth = req.headers.authorization || "";
@@ -758,93 +878,39 @@ router.get("/:id", async (req, res) => {
       console.log("🔥 Prewarm auth accepted. Using userId:", userId);
     }
 
+    // ✅ Load cached maps in parallel (big win: removes 2 suitelet calls per SO view)
+    const [itemMap, fulfilmentMap] = await Promise.all([
+      getItemMapCached(),
+      getFulfilmentMapCached(),
+    ]);
 
-    // ✅ Use per-user token when calling NetSuite
-    const so = await nsGet(`/salesOrder/${id}`, userId, "sb");
+    // ✅ Pull a smaller SO record when lite is enabled
+    const soPath = lite
+      ? `/salesOrder/${id}?fields=${encodeURIComponent(buildSalesOrderFields())}`
+      : `/salesOrder/${id}`;
 
-    // 🔎 Fetch full entity (customer record) for title + custom fields
+    const so = await nsGet(soPath, userId, "sb");
+
+    // 🔎 Fetch *minimal* entity/customer record (title + contact fields)
     let entityFull = null;
     if (so.entity?.id) {
       try {
-        entityFull = await nsGet(`/customer/${so.entity.id}`, userId, "sb");
+        const custPath = `/customer/${so.entity.id}?fields=${encodeURIComponent(buildCustomerFields())}`;
+        entityFull = await nsGet(custPath, userId, "sb");
         console.log("✅ Entity fetched for SO:", {
           id: entityFull.id,
-          title: entityFull.custentity_title?.refName,
+          title: entityFull.custentity_title?.refName || entityFull.custentity_title?.text,
         });
       } catch (err) {
         console.warn("⚠️ Could not fetch full entity:", err.message);
       }
     }
-    if (entityFull) {
-      so.entityFull = entityFull; // attach for frontend
-    }
+    if (entityFull) so.entityFull = entityFull;
 
     /* -----------------------------------------------------
-           1️⃣ Fetch Item Feed (Name + Base Price)
-        ----------------------------------------------------- */
-    const baseUrlItems = process.env.SALES_ORDER_ITEMS_URL;
-    const itemFeedToken = process.env.SALES_ORDER_ITEMS;
-
-    if (!baseUrlItems || !itemFeedToken) {
-      throw new Error("Missing SALES_ORDER_ITEMS_URL or SALES_ORDER_ITEMS in .env");
-    }
-
-    const nsUrlItems = `${baseUrlItems}&token=${encodeURIComponent(itemFeedToken)}`;
-    console.log(`📡 Fetching item feed from: ${nsUrlItems}`);
-
-
-    const respItems = await fetch(nsUrlItems);
-    if (!respItems.ok) throw new Error(`NetSuite item feed returned ${respItems.status}`);
-    const rawItems = await respItems.json();
-
-    let itemList = [];
-    if (Array.isArray(rawItems)) itemList = rawItems;
-    else if (rawItems.results) itemList = rawItems.results;
-    else if (rawItems.data) itemList = rawItems.data;
-
-    const itemMap = {};
-    for (const i of itemList) {
-      const id = String(i.id || i.internalId || i.itemId || i["Internal ID"]);
-      const name = i.name || i.itemName || i["Name"] || i["Item Name"] || "";
-      const baseprice = parseFloat(
-        i.baseprice || i["Base Price"] || i["base price"] || i.price || 0
-      );
-      if (id) itemMap[id] = { name, baseprice };
-    }
-
-    /* -----------------------------------------------------
-       2️⃣ Fulfilment Method Map
+       3️⃣ Expand Item Lines via SuiteQL (only columns you need)
     ----------------------------------------------------- */
-    let fulfilmentMap = {};
-    try {
-      const baseUrlFM = process.env.SALES_ORDER_FULFIL_METHOD_URL;   // full scriptlet URL without &token=
-      const tokenFM = process.env.SALES_ORDER_FULFIL_METHOD;         // token
-
-      if (!baseUrlFM || !tokenFM) {
-        console.warn("⚠️ Missing SALES_ORDER_FULFIL_METHOD environment variables.");
-      } else {
-        const nsUrlFM = `${baseUrlFM}&token=${encodeURIComponent(tokenFM)}`;
-        const fmRes = await fetch(nsUrlFM);
-
-        if (fmRes.ok) {
-          const fmJson = await fmRes.json();
-          const fmList = fmJson.results || [];
-
-          for (const f of fmList) {
-            const id = String(f["Internal ID"] || f.id || f.internalid);
-            const name = f["Name"] || f.name;
-            if (id && name) fulfilmentMap[id] = name;
-          }
-        }
-      }
-    } catch (err) {
-      console.warn("⚠️ Could not fetch fulfilment methods:", err.message);
-    }
-
-    /* -----------------------------------------------------
-       3️⃣ Expand Item Lines via SuiteQL
-    ----------------------------------------------------- */
-    if (!so.item?.items) {
+    {
       const query = `
         SELECT
           id AS lineid,
@@ -856,8 +922,8 @@ router.get("/:id", async (req, res) => {
           custcol_sb_fulfilmentlocation
         FROM transactionline
         WHERE transaction = ${id}
-        AND mainline = 'F'
-        AND taxline = 'F'
+          AND mainline = 'F'
+          AND taxline = 'F'
         ORDER BY linesequencenumber
       `;
 
@@ -874,12 +940,16 @@ router.get("/:id", async (req, res) => {
           const lineId = String(r.lineid || "");
           const info = itemMap[itemId] || {};
           const itemName = info.name || `Item ${itemId}`;
+
           const qty = Math.abs(Number(r.quantity) || 0);
           const net = Math.abs(Number(r.netamount) || 0);
+
           const retailNet = parseFloat(info.baseprice || 0);
           const retailGross = +(retailNet * 1.2).toFixed(2);
+
           const vat = net > 0 ? +(net * 0.2).toFixed(2) : 0;
           const saleprice = net > 0 ? +(net + vat).toFixed(2) : 0;
+
           const fulfilId =
             r.fulfilmentlocation ||
             r.custcol_sb_fulfilmentlocation ||
@@ -904,48 +974,56 @@ router.get("/:id", async (req, res) => {
 
         so.item = { items };
         console.log(`✅ Loaded ${items.length} item lines`);
+      } else {
+        so.item = { items: [] };
       }
     }
 
     /* -----------------------------------------------------
-       💰 Fetch Customer Deposits
+       💰 Fetch Customer Deposits (optional)
     ----------------------------------------------------- */
     let deposits = [];
-    try {
-      console.log(`💰 Fetching deposit data for Sales Order ${id} via /api/netsuite/customer-deposits...`);
+    if (includeDeposits) {
+      try {
+        console.log(
+          `💰 Fetching deposit data for Sales Order ${id} via /api/netsuite/customer-deposits...`
+        );
 
-      const depRes = await fetch(`${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`);
-      if (!depRes.ok) throw new Error(`Deposit route returned ${depRes.status}`);
+        // NOTE: this endpoint is currently public in your access middleware, so no auth header required.
+        // If you later secure it, pass through bearer/prewarm headers here.
+        const depRes = await fetch(`${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`);
+        if (!depRes.ok) throw new Error(`Deposit route returned ${depRes.status}`);
 
-      const depJson = await depRes.json();
-      const allDeposits = depJson.results || depJson.data || [];
+        const depJson = await depRes.json();
+        const allDeposits = depJson.results || depJson.data || [];
 
-      const normalizeKeys = (obj) => {
-        const newObj = {};
-        for (const [key, value] of Object.entries(obj)) {
-          const cleanKey = key.replace(/\u00A0/g, " ");
-          newObj[cleanKey.trim()] = value;
-        }
-        return newObj;
-      };
+        const normalizeKeys = (obj) => {
+          const newObj = {};
+          for (const [k, v] of Object.entries(obj)) {
+            const cleanKey = k.replace(/\u00A0/g, " ");
+            newObj[cleanKey.trim()] = v;
+          }
+          return newObj;
+        };
 
-      deposits = allDeposits
-        .map(normalizeKeys)
-        .filter((d) => String(d["SO Id"]) === String(id))
-        .map((d) => ({
-          link: d["Document Number"] || "-",
-          amount: parseFloat(String(d["Amount"] || "0").replace(/[^\d.-]/g, "")) || 0,
-          method: d["Payment Method"] || "-",
-          soId: String(d["SO Id"] || ""),
-        }));
+        deposits = allDeposits
+          .map(normalizeKeys)
+          .filter((d) => String(d["SO Id"]) === String(id))
+          .map((d) => ({
+            link: d["Document Number"] || "-",
+            amount: parseFloat(String(d["Amount"] || "0").replace(/[^\d.-]/g, "")) || 0,
+            method: d["Payment Method"] || "-",
+            soId: String(d["SO Id"] || ""),
+          }));
 
-      console.log(`✅ Found ${deposits.length} deposit(s) for Sales Order ${id}`);
-    } catch (err) {
-      console.warn("⚠️ Could not fetch deposits:", err.message);
+        console.log(`✅ Found ${deposits.length} deposit(s) for Sales Order ${id}`);
+      } catch (err) {
+        console.warn("⚠️ Could not fetch deposits:", err.message);
+      }
     }
 
     /* -----------------------------------------------------
-       ✅ Respond
+       ✅ Respond + cache
     ----------------------------------------------------- */
     console.log("✅ Sales Order fetched successfully:", so.tranId || so.id);
 
@@ -954,6 +1032,7 @@ router.get("/:id", async (req, res) => {
       salesOrderId: so.id,
       salesOrder: so,
       deposits,
+      _mode: lite ? "LITE" : "FULL",
     };
 
     cacheSet(key, payload);
@@ -961,21 +1040,18 @@ router.get("/:id", async (req, res) => {
     resolveInflight(payload);
 
     return res.json({ ...payload, _cache: "MISS" });
-
   } catch (err) {
     console.error("❌ GET /salesorder/:id error:", err.message);
 
     // if we created an inflight promise above, reject + clear cache entry
     try {
       if (typeof rejectInflight === "function") rejectInflight(err);
-      if (typeof key !== "undefined") soCache.delete(key);
+      if (key) soCache.delete(key);
     } catch { }
 
     return res.status(500).json({ ok: false, error: err.message });
   }
 });
-
-
 
 // =====================================================
 // === COMMIT SALES ORDER (Approve via RESTlet only) ===
@@ -988,7 +1064,6 @@ router.post("/:id/commit", async (req, res) => {
     console.log(`🔁 Approving Sales Order ${id} via NetSuite RESTlet`);
     console.log("📦 Incoming updates:", JSON.stringify(updates, null, 2));
 
-    // ✅ Validate
     if (!id || !Array.isArray(updates)) {
       return res
         .status(400)
@@ -1002,7 +1077,6 @@ router.post("/:id/commit", async (req, res) => {
     let userId = null;
     if (token) {
       try {
-        const { getSession } = require("../sessions");
         const session = await getSession(token);
         userId = session?.id || null;
         console.log("🔐 Commit request for user:", userId);
@@ -1033,7 +1107,6 @@ router.post("/:id/commit", async (req, res) => {
     }
     global._recentCommits[id] = now;
 
-    // 🧾 Build payload
     const payload = { id, updates };
     console.log("📡 Calling NetSuite RESTlet with payload:", JSON.stringify(payload, null, 2));
 
@@ -1068,19 +1141,17 @@ router.post("/:id/commit", async (req, res) => {
     try {
       console.log("📊 Creating customrecord_sb_coms_sales_value for SO:", id);
 
-      // Fetch SO to get field values
+      // If you want to speed this up too, you can do fields= here (once you confirm your field IDs)
       const soData = await nsGet(`/salesOrder/${id}`, userId, "sb");
 
-      // Extract fields
-      const soInternalId = soData?.id || soData?.internalId || id; // internal record ID
+      const soInternalId = soData?.id || soData?.internalId || id;
       const grossValue = soData?.custbody_stc_total_after_discount || 0;
       const profitValue = soData?.custrecord_sb_coms_profit || 0;
       const salesRep = soData?.custbody_sb_bedspecialist?.id || null;
 
-      // Build custom record payload
       const recordBody = {
         custrecord_sb_coms_date: new Date().toISOString().split("T")[0],
-        custrecord_sb_coms_sales_order: { id: String(soInternalId) }, // link to SO ID
+        custrecord_sb_coms_sales_order: { id: String(soInternalId) },
         custrecord_sb_coms_gross: parseFloat(grossValue) || 0,
         custrecord_sb_coms_profit: parseFloat(profitValue) || 0,
         ...(salesRep && { custrecord_sb_coms_sales_rep: { id: String(salesRep) } }),
@@ -1088,24 +1159,21 @@ router.post("/:id/commit", async (req, res) => {
 
       console.log("🧾 Custom record payload:", recordBody);
 
-      // ==========================================================
-      // 🌐 Post to RESTlet (customscript_sb_epos_coms_sales_data)
-      // ==========================================================
-      const restletUrl = "https://7972741-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=4193&deploy=1";
+      const restletUrl =
+        "https://7972741-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=4193&deploy=1";
 
-      // Available Without Login → no token header needed
       const resCreate = await fetch(restletUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(recordBody),
       });
 
-      const text = await resCreate.text();
+      const t = await resCreate.text();
       let json;
       try {
-        json = JSON.parse(text);
+        json = JSON.parse(t);
       } catch {
-        json = { ok: false, raw: text };
+        json = { ok: false, raw: t };
       }
 
       if (resCreate.ok && json.ok) {
@@ -1117,10 +1185,6 @@ router.post("/:id/commit", async (req, res) => {
       console.error("❌ Failed to create customrecord_sb_coms_sales_value:", err.message);
     }
 
-
-    // ==========================================================
-    // ✅ Final API Response
-    // ==========================================================
     return res.json({
       ok: true,
       message: data.message || "Sales Order approved",
@@ -1140,8 +1204,8 @@ router.post("/:id/commit", async (req, res) => {
 // ==========================================================
 router.post("/:id/add-deposit", async (req, res) => {
   try {
-    const { id } = req.params; // NetSuite Sales Order ID
-    const dep = req.body;      // { id, name, amount, storeId? }
+    const { id } = req.params;
+    const dep = req.body;
     console.log(`💰 [Popup] Creating deposit for Sales Order ${id}`, dep);
 
     if (!dep?.id || !dep?.amount || !dep?.name) {
@@ -1167,7 +1231,7 @@ router.post("/:id/add-deposit", async (req, res) => {
 
     if (!storeId && id) {
       try {
-        // 🔎 If this is an existing Sales Order, get its store/location from NetSuite
+        // If you want this faster too: use lite fields once confirmed
         const so = await nsGet(`/salesOrder/${id}`, userId, "sb");
         storeId = so?.location?.id || so?.custbody_sb_primarystore?.id || null;
         console.log("🏬 Store determined from NetSuite SO:", storeId);
@@ -1178,48 +1242,45 @@ router.post("/:id/add-deposit", async (req, res) => {
 
     if (!storeId) {
       console.warn("⚠️ No store ID provided or found; using fallback location 1");
-      storeId = 1; // fallback location
+      storeId = 1;
     }
 
     // ==========================================================
-    // 🔎 Fetch account mapping for that store (handles invoice vs store subsidiary)
+    // 🔎 Fetch account mapping for that store
     // ==========================================================
     let accRows = [];
     try {
-      // Step 1️⃣ — Try matching on id, netsuite_internal_id, or invoice_location_id
       const query = `
-    SELECT id, name, netsuite_internal_id, invoice_location_id, current_account, petty_cash_account
-    FROM locations
-    WHERE id::text = $1::text 
-       OR netsuite_internal_id::text = $1::text
-       OR invoice_location_id::text = $1::text
-    LIMIT 1
-  `;
+        SELECT id, name, netsuite_internal_id, invoice_location_id, current_account, petty_cash_account
+        FROM locations
+        WHERE id::text = $1::text 
+           OR netsuite_internal_id::text = $1::text
+           OR invoice_location_id::text = $1::text
+        LIMIT 1
+      `;
       const result = await pool.query(query, [String(storeId)]);
       accRows = result.rows || [];
 
-      // Step 2️⃣ — If we matched an invoice location, follow back to its store subsidiary
       if (accRows.length && accRows[0].invoice_location_id?.toString() === String(storeId)) {
         const realStoreNsId = accRows[0].netsuite_internal_id;
-        console.log(`🔁 Matched invoice location ${storeId}, resolving real store netsuite_internal_id → ${realStoreNsId}`);
+        console.log(
+          `🔁 Matched invoice location ${storeId}, resolving real store netsuite_internal_id → ${realStoreNsId}`
+        );
 
         const storeRes = await pool.query(
           `
-      SELECT id, name, netsuite_internal_id, current_account, petty_cash_account
-      FROM locations
-      WHERE netsuite_internal_id::text = $1::text
-      LIMIT 1
-      `,
+          SELECT id, name, netsuite_internal_id, current_account, petty_cash_account
+          FROM locations
+          WHERE netsuite_internal_id::text = $1::text
+          LIMIT 1
+          `,
           [String(realStoreNsId)]
         );
         if (storeRes.rows.length) accRows = storeRes.rows;
       }
 
-      if (accRows.length) {
-        console.log("🏪 Store match found:", accRows[0]);
-      } else {
-        console.warn("⚠️ No location match found for storeId:", storeId);
-      }
+      if (accRows.length) console.log("🏪 Store match found:", accRows[0]);
+      else console.warn("⚠️ No location match found for storeId:", storeId);
     } catch (dbErr) {
       console.error("❌ Failed to fetch account mapping:", dbErr.message);
     }
@@ -1227,7 +1288,6 @@ router.post("/:id/add-deposit", async (req, res) => {
     const currentAccountId = accRows?.[0]?.current_account || null;
     const pettyCashAccountId = accRows?.[0]?.petty_cash_account || null;
 
-    // ✅ Choose correct account based on payment method name
     const isCash = /cash/i.test(dep.name || dep.method || "");
     const selectedAccountId = isCash ? pettyCashAccountId : currentAccountId;
 
@@ -1238,7 +1298,6 @@ router.post("/:id/add-deposit", async (req, res) => {
       selectedAccountId,
       isCash,
     });
-
 
     // ==========================================================
     // ✅ Build NetSuite deposit body
@@ -1254,14 +1313,13 @@ router.post("/:id/add-deposit", async (req, res) => {
 
     console.log("🧾 [AddDeposit] Payload to NetSuite:", depositBody);
 
-    // ✅ Create Customer Deposit using user's NetSuite credentials
     const depositRes = await nsPost("/customerDeposit", depositBody, userId, "sb");
     console.log("💰 NetSuite Deposit response:", depositRes);
 
     let depositId = depositRes?.id || null;
     if (!depositId && depositRes?._location) {
       const match = depositRes._location.match(/customerDeposit\/(\d+)/i);
-      if (match) depositId = match[1];
+      if (match) depositId = match[1];  
     }
 
     if (!depositId) throw new Error("Deposit created but ID not returned");
@@ -1276,10 +1334,10 @@ router.post("/:id/add-deposit", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Add Deposit (Popup) failed:", err);
-    return res.status(500).json({ ok: false, error: err.message || "Deposit creation failed" });
+    return res
+      .status(500)
+      .json({ ok: false, error: err.message || "Deposit creation failed" });
   }
 });
-
-
 
 module.exports = router;
