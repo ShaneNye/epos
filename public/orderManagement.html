@@ -306,27 +306,7 @@
                 </div>
 
                 <!-- === TABLE OF PENDING INTERCOMPANY PURCHASE ORDERS === -->
-                <div class="table-container">
-                    <table class="data-table fixed-header">
-                        <thead>
-                            <tr>
-                                <th>Document #</th>
-                                <th>Store</th>
-                                <th>Fulfilment Centre</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                    </table>
-                    <div class="table-scroll">
-                        <table class="data-table" id="intercoTable">
-                            <tbody>
-                                <tr>
-                                    <td colspan="4">Loading intercompany purchase orders...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
+
 
                 <!-- === EXISTING LAUNCH CONSOLE === -->
                 <div class="panel-body" style="padding: 2rem; text-align: center;">
@@ -359,7 +339,7 @@
             <script>
                 document.getElementById("openIntercompanyBtn")?.addEventListener("click", () => {
                     const base = window.NS_ACCOUNT_DASH || "7972741-sb1";
-                    const url = `https://${base}.app.netsuite.com/app/accounting/transactions/interco/salesordqueue.nl?whence=&siaT=1760434084843&siaWhc=%2Fapp%2Faccounting%2Fbulkprocessing%2Fbulkprocessingsoqueue.nl&siaNv=ct2`;
+                    const url = `https://7972741-sb1.app.netsuite.com/app/site/hosting/scriptlet.nl?script=4404&deploy=1`;
 
                     const w = 1300, h = 850;
                     const left = (window.screen.width / 2) - (w / 2);

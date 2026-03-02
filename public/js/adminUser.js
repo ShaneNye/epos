@@ -1,3 +1,6 @@
+// adminUsers.js (full updated doc)
+// Fix: token fields no longer get cleared on edit unless a new value is provided.
+
 let editingUserId = null;
 let allUsers = []; // cache of all users
 
@@ -70,9 +73,9 @@ async function loadRoleAndLocationOptions() {
       fetch("/api/meta/locations").then(r => r.json())
     ]);
 
-    const modal = document.querySelector('#userModal:not(.hidden)') || document.getElementById('userModal');
-    const roleSelect = modal.querySelector('#roleSelect');
-    const locationSelect = modal.querySelector('#locationSelect');
+    const modal = document.querySelector("#userModal:not(.hidden)") || document.getElementById("userModal");
+    const roleSelect = modal.querySelector("#roleSelect");
+    const locationSelect = modal.querySelector("#locationSelect");
 
     // Populate roles
     if (rolesRes.ok && rolesRes.roles.length > 0) {
@@ -121,8 +124,8 @@ async function openModalForEdit(userId) {
     form.password.value = "";
     form.netsuiteId.value = user.netsuiteId || ""; // ✅ new field populated
 
-    const roleSelect = document.querySelector('#userModal:not(.hidden) #roleSelect');
-    const locationSelect = document.querySelector('#userModal:not(.hidden) #locationSelect');
+    const roleSelect = document.querySelector("#userModal:not(.hidden) #roleSelect");
+    const locationSelect = document.querySelector("#userModal:not(.hidden) #locationSelect");
 
     if (user.roles && Array.isArray(user.roles)) {
       const userRoleIds = user.roles.map(r => String(r.id));
@@ -209,14 +212,21 @@ document.addEventListener("DOMContentLoaded", () => {
 
       if (form.password.value) body.password = form.password.value;
 
-      ["sb_netsuite_token_id", "sb_netsuite_token_secret", "prod_netsuite_token_id", "prod_netsuite_token_secret"].forEach(field => {
-        if (form[field] && form[field].value && form[field].value !== "************") {
-          body[field] = form[field].value;
-        }
-        if (form[field] && !form[field].value) {
-          body[field] = null;
-        }
-      });
+      // ✅ Token fields behaviour (FIXED):
+      // - "************" => unchanged (do not send)
+      // - ""            => unchanged (do not send)
+      // - any other     => update (send)
+      ["sb_netsuite_token_id", "sb_netsuite_token_secret", "prod_netsuite_token_id", "prod_netsuite_token_secret"]
+        .forEach(field => {
+          if (!form[field]) return;
+
+          const val = (form[field].value || "").trim();
+
+          if (val === "************") return; // unchanged
+          if (val === "") return;             // unchanged (prevents clearing!)
+
+          body[field] = val;                   // user provided new value
+        });
 
       try {
         const url = editingUserId ? `/api/users/${editingUserId}` : "/api/users";
