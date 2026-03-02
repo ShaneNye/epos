@@ -1,18 +1,31 @@
 const OAuth = require("oauth-1.0a");
 const crypto = require("crypto");
 const fetch = require("node-fetch");
-const pool = require("./db"); // ✅ needed for per-user tokens
+const pool = require("./db");
 
 /* ======================================================
    ===============  Base Config  =========================
    ====================================================== */
+
 const config = {
-  account: process.env.NS_ACCOUNT,               // e.g. 7972741_SB1
-  accountDash: process.env.NS_ACCOUNT_DASH,      // e.g. 7972741-sb1
+  account: process.env.NS_ACCOUNT,
+  accountDash: process.env.NS_ACCOUNT_DASH,
   consumerKey: process.env.NS_CONSUMER_KEY,
   consumerSecret: process.env.NS_CONSUMER_SECRET,
   restUrl: `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/record/v1`,
 };
+
+/* ======================================================
+   ===============  Environment Resolver  =================
+   ====================================================== */
+
+function isProduction() {
+  return (process.env.ENVIRONMENT || "").toUpperCase() === "PRODUCTION";
+}
+
+function currentEnvLabel() {
+  return isProduction() ? "PRODUCTION" : "SANDBOX";
+}
 
 const oauth = OAuth({
   consumer: { key: config.consumerKey, secret: config.consumerSecret },
@@ -25,11 +38,8 @@ const oauth = OAuth({
 /* ======================================================
    ===============  Auth Header Helper  =================
    ====================================================== */
-/**
- * Build an OAuth 1.0 header.  If userId provided, pull their tokens from DB.
- * envType: 'sb' or 'prod'
- */
-async function getAuthHeader(url, method, userId = null, envType = "sb") {
+
+async function getAuthHeader(url, method, userId = null) {
   let tokenId = process.env.NS_TOKEN_ID;
   let tokenSecret = process.env.NS_TOKEN_SECRET;
 
@@ -47,7 +57,8 @@ async function getAuthHeader(url, method, userId = null, envType = "sb") {
 
       if (result.rows.length) {
         const u = result.rows[0];
-        if (envType === "prod") {
+
+        if (isProduction()) {
           tokenId = u.prod_netsuite_token_id || tokenId;
           tokenSecret = u.prod_netsuite_token_secret || tokenSecret;
         } else {
@@ -56,12 +67,18 @@ async function getAuthHeader(url, method, userId = null, envType = "sb") {
         }
 
         if (!tokenId || !tokenSecret) {
-          console.warn(`⚠️ User ${userId} has missing NetSuite token fields for ${envType}`);
+          console.warn(
+            `⚠️ User ${userId} missing NetSuite token fields for ${currentEnvLabel()}`
+          );
         } else {
-          console.log(`🔐 Using user-specific NetSuite tokens for user ${userId} (${envType})`);
+          console.log(
+            `🔐 Using user-specific NetSuite tokens for user ${userId} (${currentEnvLabel()})`
+          );
         }
       } else {
-        console.warn(`⚠️ No DB record found for user ${userId}, falling back to global tokens`);
+        console.warn(
+          `⚠️ No DB record found for user ${userId}, falling back to global tokens`
+        );
       }
     } catch (err) {
       console.error("❌ DB token lookup failed:", err.message);
@@ -69,7 +86,9 @@ async function getAuthHeader(url, method, userId = null, envType = "sb") {
   }
 
   if (!tokenId || !tokenSecret) {
-    console.warn("⚠️ Using fallback global .env NetSuite token credentials");
+    console.warn(
+      `⚠️ Using fallback global .env NetSuite token credentials (${currentEnvLabel()})`
+    );
   }
 
   const token = { key: tokenId, secret: tokenSecret };
@@ -82,10 +101,11 @@ async function getAuthHeader(url, method, userId = null, envType = "sb") {
 /* ======================================================
    ===============   GET   ===============================
    ====================================================== */
-async function nsGet(endpoint, userId = null, envType = "sb") {
+
+async function nsGet(endpoint, userId = null) {
   const url = `${config.restUrl}${endpoint}`;
   const headers = {
-    ...(await getAuthHeader(url, "GET", userId, envType)),
+    ...(await getAuthHeader(url, "GET", userId)),
     "Content-Type": "application/json",
   };
 
@@ -106,10 +126,11 @@ async function nsGet(endpoint, userId = null, envType = "sb") {
 /* ======================================================
    ===============   POST (record API)   =================
    ====================================================== */
-async function nsPost(endpoint, body, userId = null, envType = "sb") {
+
+async function nsPost(endpoint, body, userId = null) {
   const url = `${config.restUrl}${endpoint}`;
   const headers = {
-    ...(await getAuthHeader(url, "POST", userId, envType)),
+    ...(await getAuthHeader(url, "POST", userId)),
     "Content-Type": "application/json",
   };
 
@@ -127,13 +148,12 @@ async function nsPost(endpoint, body, userId = null, envType = "sb") {
     console.error(`❌ NetSuite POST ${endpoint} → ${res.status}`);
     console.error("🧾 NetSuite error response:", text);
 
-    // diagnostic dump for debugging
-    console.error("🔍 Token used →", {
+    console.error("🔍 Diagnostic →", {
       userId,
-      envType,
+      environment: currentEnvLabel(),
       account: config.account,
       consumerKey: config.consumerKey ? "***" : "(missing)",
-      tokenId: userId ? "(from user DB)" : process.env.NS_TOKEN_ID,
+      tokenSource: userId ? "user DB" : "global env",
     });
 
     const err = new Error(`NetSuite POST ${endpoint} → ${res.status}`);
@@ -141,7 +161,8 @@ async function nsPost(endpoint, body, userId = null, envType = "sb") {
     throw err;
   }
 
-  const locationHeader = res.headers.get("Location") || res.headers.get("location");
+  const locationHeader =
+    res.headers.get("Location") || res.headers.get("location");
   const idMatch = locationHeader?.match(/\/(\d+)$/);
   const id = idMatch ? idMatch[1] : null;
 
@@ -152,16 +173,22 @@ async function nsPost(endpoint, body, userId = null, envType = "sb") {
 /* ======================================================
    ===============   PATCH (update record)   =============
    ====================================================== */
-async function nsPatch(endpoint, body, userId = null, envType = "sb") {
+
+async function nsPatch(endpoint, body, userId = null) {
   const url = `${config.restUrl}${endpoint}`;
   const headers = {
-    ...(await getAuthHeader(url, "PATCH", userId, envType)),
+    ...(await getAuthHeader(url, "PATCH", userId)),
     "Content-Type": "application/json",
   };
 
   console.log(`🔄 [PATCH] NetSuite ${endpoint}`);
 
-  const res = await fetch(url, { method: "PATCH", headers, body: JSON.stringify(body) });
+  const res = await fetch(url, {
+    method: "PATCH",
+    headers,
+    body: JSON.stringify(body),
+  });
+
   const text = await res.text();
 
   if (!res.ok) {
@@ -179,15 +206,22 @@ async function nsPatch(endpoint, body, userId = null, envType = "sb") {
 /* ======================================================
    ===============   POST RAW (SuiteQL etc)  =============
    ====================================================== */
-async function nsPostRaw(fullUrl, body, userId = null, envType = "sb") {
+
+async function nsPostRaw(fullUrl, body, userId = null) {
   const headers = {
-    ...(await getAuthHeader(fullUrl, "POST", userId, envType)),
+    ...(await getAuthHeader(fullUrl, "POST", userId)),
     "Content-Type": "application/json",
     Prefer: "transient",
   };
+
   console.log(`🧾 [SuiteQL] ${fullUrl}`);
 
-  const res = await fetch(fullUrl, { method: "POST", headers, body: JSON.stringify(body) });
+  const res = await fetch(fullUrl, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+
   const text = await res.text();
 
   if (!res.ok) {
@@ -201,22 +235,22 @@ async function nsPostRaw(fullUrl, body, userId = null, envType = "sb") {
   return tryParse(text);
 }
 
-async function nsRestlet(fullUrl, body = null, userId = null, envType = "sb", method = "POST") {
-  // Build OAuth header for the correct HTTP method
+/* ======================================================
+   ===============   RESTlet   ============================
+   ====================================================== */
+
+async function nsRestlet(fullUrl, body = null, userId = null, method = "POST") {
   const headers = {
-    ...(await getAuthHeader(fullUrl, method, userId, envType)),
-    "Content-Type": "application/json"
+    ...(await getAuthHeader(fullUrl, method, userId)),
+    "Content-Type": "application/json",
   };
 
   console.log(`🛠 [RESTlet] ${method} ${fullUrl}`);
-  if (body && method === "POST") {
-    console.log("📤 RESTlet payload:", body);
-  }
 
   const res = await fetch(fullUrl, {
     method,
     headers,
-    body: method === "POST" ? JSON.stringify(body || {}) : undefined
+    body: method === "POST" ? JSON.stringify(body || {}) : undefined,
   });
 
   const text = await res.text();
@@ -229,11 +263,10 @@ async function nsRestlet(fullUrl, body = null, userId = null, envType = "sb", me
   }
 }
 
-
-
 /* ======================================================
    ===============   Helper: safe JSON parse   ===========
    ====================================================== */
+
 function tryParse(text) {
   try {
     return JSON.parse(text);
@@ -242,4 +275,11 @@ function tryParse(text) {
   }
 }
 
-module.exports = { nsGet, nsPost, nsPatch, nsPostRaw, nsRestlet, getAuthHeader };
+module.exports = {
+  nsGet,
+  nsPost,
+  nsPatch,
+  nsPostRaw,
+  nsRestlet,
+  getAuthHeader,
+};
