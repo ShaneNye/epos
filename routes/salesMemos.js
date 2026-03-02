@@ -9,7 +9,7 @@ const { nsRestlet } = require("../netsuiteClient");
 const MEMO_RESTLET_URL = process.env.MEMO_RESTLET_URL;
 
 if (!MEMO_RESTLET_URL) {
-    console.error("❌ MEMO_RESTLET_URL missing from environment variables");
+  console.error("❌ MEMO_RESTLET_URL missing from environment variables");
 }
 
 /* ============================================================
@@ -17,61 +17,58 @@ if (!MEMO_RESTLET_URL) {
    Creates memo in NetSuite via RESTlet
 ============================================================ */
 router.post("/memo", async (req, res) => {
-    try {
-        const auth = req.headers.authorization || "";
-        const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  try {
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
 
-        console.log("🔑 Token:", token);
+    console.log("🔑 Token:", token);
 
-        if (!token)
-            return res.status(401).json({ ok: false, error: "Unauthorized" });
+    if (!token) return res.status(401).json({ ok: false, error: "Unauthorized" });
 
-        const session = await getSession(token);
-        console.log("👤 Session:", session);
+    const session = await getSession(token);
+    console.log("👤 Session:", session);
 
-        const userEmail = session?.email;
-        const userId = session?.id;   // Needed for user-specific OAuth
+    const userEmail = session?.email;
+    const userId = session?.id; // Needed for user-specific OAuth
 
-        console.log("📧 Author Email:", userEmail);
-        console.log("🧑 User ID:", userId);
+    console.log("📧 Author Email:", userEmail);
+    console.log("🧑 User ID:", userId);
 
-        if (!userEmail)
-            return res.status(401).json({ ok: false, error: "Invalid session" });
+    if (!userEmail) return res.status(401).json({ ok: false, error: "Invalid session" });
 
-        const { orderId, title, type, memo } = req.body;
+    const { orderId, title, type, memo } = req.body;
 
-        console.log("📦 Received Payload:", req.body);
+    console.log("📦 Received Payload:", req.body);
 
-        if (!orderId || !title || !memo) {
-            console.log("❌ Missing required fields");
-            return res.json({ ok: false, error: "Missing required fields" });
-        }
-
-        const payload = {
-            orderId,
-            title,
-            type,
-            memo,
-            authorId: session.netsuiteId || null  // ← from your users table
-        };
-
-
-        console.log("📤 Sending to RESTlet:", payload);
-        console.log("🌐 RESTlet URL:", MEMO_RESTLET_URL);
-
-        // ---- Call RESTlet ----
-        const nsResponse = await nsRestlet(MEMO_RESTLET_URL, payload, userId, "sb");
-
-        console.log("📥 RESTlet Response:", nsResponse);
-
-        return res.json(nsResponse);
-
-    } catch (err) {
-        console.error("❌ Error creating memo:", err);
-        res.status(500).json({ ok: false, error: "Server error" });
+    if (!orderId || !title || !memo) {
+      console.log("❌ Missing required fields");
+      return res.json({ ok: false, error: "Missing required fields" });
     }
-});
 
+    const payload = {
+      orderId,
+      title,
+      type,
+      memo,
+      // support both naming styles in case session uses netsuiteid (lowercase)
+      authorId: session?.netsuiteid || session?.netsuiteId || null,
+    };
+
+    console.log("📤 Sending to RESTlet:", payload);
+    console.log("🌐 RESTlet URL:", MEMO_RESTLET_URL);
+
+    // ---- Call RESTlet ----
+    // IMPORTANT: 4th param is HTTP method now, NOT envType
+    const nsResponse = await nsRestlet(MEMO_RESTLET_URL, payload, userId, "POST");
+
+    console.log("📥 RESTlet Response:", nsResponse);
+
+    return res.json(nsResponse);
+  } catch (err) {
+    console.error("❌ Error creating memo:", err);
+    return res.status(500).json({ ok: false, error: "Server error" });
+  }
+});
 
 router.get("/memo/:orderId", async (req, res) => {
   try {
@@ -98,7 +95,7 @@ router.get("/memo/:orderId", async (req, res) => {
       return res.json({
         ok: false,
         error: "Authentication failed calling Suitelet.",
-        details: text.substring(0, 200)
+        details: text.substring(0, 200),
       });
     }
 
@@ -109,18 +106,13 @@ router.get("/memo/:orderId", async (req, res) => {
     }
 
     // Filter by Sales Order internal ID
-    const memos = data.results.filter(n =>
-      String(n["Internal ID"]) === String(orderId)
-    );
+    const memos = data.results.filter((n) => String(n["Internal ID"]) === String(orderId));
 
     return res.json({ ok: true, memos });
-
   } catch (err) {
     console.error("❌ Error fetching memos via Suitelet:", err);
     return res.status(500).json({ ok: false, error: "Server error" });
   }
 });
-
-
 
 module.exports = router;
