@@ -127,6 +127,7 @@ router.delete("/roles/:id", async (req, res) => {
   }
 });
 
+
 /* ==========================
    ====== LOCATIONS =========
    ========================== */
@@ -144,7 +145,19 @@ router.get("/locations", async (req, res) => {
         distribution_location_id,
         petty_cash_account,
         current_account,
+
+        -- existing field (keep for backwards compatibility)
         email,
+
+        -- ✅ new fields
+        location_phone_number,
+        location_email,
+        vat_number,
+        company_number,
+        address_line_1,
+        address_line_2,
+        postcode,
+
         float_balance,
         safe_balance                    
        FROM locations
@@ -171,7 +184,16 @@ router.post("/locations", async (req, res) => {
       distribution_location_id,
       petty_cash_account,
       current_account,
-      email                   // ⭐ NEW
+
+      // existing + new
+      email,                 // legacy
+      location_phone_number,
+      location_email,
+      vat_number,
+      company_number,
+      address_line_1,
+      address_line_2,
+      postcode
     } = req.body;
 
     if (!name) {
@@ -179,11 +201,32 @@ router.post("/locations", async (req, res) => {
     }
 
     console.log("🟢 Creating location:", name);
+
     await pool.query(
       `INSERT INTO locations 
-        (name, netsuite_internal_id, invoice_location_id, intercompany_customer, intercompany_location,
-         distribution_location_id, petty_cash_account, current_account, email)     -- ⭐ NEW
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+        (
+          name,
+          netsuite_internal_id,
+          invoice_location_id,
+          intercompany_customer,
+          intercompany_location,
+          distribution_location_id,
+          petty_cash_account,
+          current_account,
+
+          email,
+          location_phone_number,
+          location_email,
+          vat_number,
+          company_number,
+          address_line_1,
+          address_line_2,
+          postcode
+        )
+       VALUES (
+          $1,$2,$3,$4,$5,$6,$7,$8,
+          $9,$10,$11,$12,$13,$14,$15,$16
+       )`,
       [
         name,
         netsuite_internal_id || null,
@@ -193,7 +236,15 @@ router.post("/locations", async (req, res) => {
         distribution_location_id || null,
         petty_cash_account || null,
         current_account || null,
-        email || null             // ⭐ NEW
+
+        email || null,                     // legacy
+        location_phone_number || null,
+        location_email || null,
+        vat_number || null,
+        company_number || null,
+        address_line_1 || null,
+        address_line_2 || null,
+        postcode || null
       ]
     );
 
@@ -217,7 +268,16 @@ router.put("/locations/:id", async (req, res) => {
       distribution_location_id,
       petty_cash_account,
       current_account,
-      email                     // ⭐ NEW
+
+      // existing + new
+      email,                 // legacy
+      location_phone_number,
+      location_email,
+      vat_number,
+      company_number,
+      address_line_1,
+      address_line_2,
+      postcode
     } = req.body;
 
     if (!name) {
@@ -225,6 +285,7 @@ router.put("/locations/:id", async (req, res) => {
     }
 
     console.log("🟡 Updating location:", req.params.id);
+
     const updateResult = await pool.query(
       `UPDATE locations
          SET name = $1,
@@ -235,8 +296,16 @@ router.put("/locations/:id", async (req, res) => {
              distribution_location_id = $6,
              petty_cash_account = $7,
              current_account = $8,
-             email = $9                       -- ⭐ NEW
-       WHERE id = $10`,
+
+             email = $9,
+             location_phone_number = $10,
+             location_email = $11,
+             vat_number = $12,
+             company_number = $13,
+             address_line_1 = $14,
+             address_line_2 = $15,
+             postcode = $16
+       WHERE id = $17`,
       [
         name,
         netsuite_internal_id || null,
@@ -246,7 +315,16 @@ router.put("/locations/:id", async (req, res) => {
         distribution_location_id || null,
         petty_cash_account || null,
         current_account || null,
-        email || null,                        // ⭐ NEW
+
+        email || null,                     // legacy
+        location_phone_number || null,
+        location_email || null,
+        vat_number || null,
+        company_number || null,
+        address_line_1 || null,
+        address_line_2 || null,
+        postcode || null,
+
         req.params.id
       ]
     );

@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+    <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico" />
     <title>Edit Location</title>
     <link rel="stylesheet" href="/css/styles.css" />
     <style>
@@ -35,7 +35,7 @@
         border-radius: 12px;
         box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
         padding: 1.5rem;
-        max-width: 450px;
+        max-width: 520px;
         margin: 0 auto;
       }
 
@@ -63,6 +63,22 @@
         outline: none;
         border-color: var(--brand);
         box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.15);
+      }
+
+      .section-title {
+        margin-top: 1.4rem;
+        padding-top: 1.2rem;
+        border-top: 1px dashed var(--line);
+        color: var(--ink);
+        font-weight: 700;
+        font-size: 0.95rem;
+      }
+
+      .hint {
+        font-size: 0.82rem;
+        color: var(--muted);
+        margin-top: 0.25rem;
+        font-weight: 500;
       }
 
       .btn-row {
@@ -107,26 +123,70 @@
 
   <body>
     <h2 id="formTitle">Edit Location</h2>
+
     <form id="locationForm">
+      <div class="section-title">Core</div>
+
       <label>Name <input name="name" required /></label>
-      <label>Email
-  <input name="email" type="email" placeholder="store@example.com" />
-</label>
+
+      <!-- Keep legacy field for backwards compatibility -->
+      <label>
+        Email (legacy)
+        <input name="email" type="email" placeholder="store@example.com" />
+        <div class="hint">Existing column: <code>email</code></div>
+      </label>
+
+      <!-- New preferred email column -->
+      <label>
+        Location Email
+        <input name="location_email" type="email" placeholder="store@example.com" />
+        <div class="hint">New column: <code>location_email</code></div>
+      </label>
+
+      <label>
+        Phone Number
+        <input name="location_phone_number" placeholder="e.g. 01273 123456" />
+        <div class="hint">Stored as text; supports +44, spaces, etc.</div>
+      </label>
 
       <label>NetSuite Internal ID <input name="netsuite_internal_id" /></label>
       <label>Invoice Location ID <input name="invoice_location_id" /></label>
       <label>Intercompany Customer <input name="intercompany_customer" /></label>
-      
-      <!-- ✅ NEW FIELD -->
-      <label>Distribution Location ID <input name="distribution_location_id" placeholder="e.g. 203" /></label>
 
-      <label>Petty Cash Account
+      <label>
+        Distribution Location ID
+        <input name="distribution_location_id" placeholder="e.g. 203" />
+      </label>
+
+      <div class="section-title">Company / Compliance</div>
+
+      <label>
+        VAT Number
+        <input name="vat_number" placeholder="e.g. GB123456789" />
+      </label>
+
+      <label>
+        Company Number
+        <input name="company_number" placeholder="e.g. 12345678" />
+      </label>
+
+      <div class="section-title">Address</div>
+
+      <label>Address Line 1 <input name="address_line_1" /></label>
+      <label>Address Line 2 <input name="address_line_2" /></label>
+      <label>Postcode <input name="postcode" placeholder="e.g. BN27 1AA" /></label>
+
+      <div class="section-title">Accounts</div>
+
+      <label>
+        Petty Cash Account
         <select name="petty_cash_account">
           <option value="">Loading...</option>
         </select>
       </label>
 
-      <label>Current Account
+      <label>
+        Current Account
         <select name="current_account">
           <option value="">Loading...</option>
         </select>
@@ -160,7 +220,7 @@
             pettySelect.innerHTML = `<option value="">Select Account</option>`;
             currentSelect.innerHTML = `<option value="">Select Account</option>`;
 
-            data.results.forEach(acc => {
+            data.results.forEach((acc) => {
               const opt1 = document.createElement("option");
               const opt2 = document.createElement("option");
               opt1.value = String(acc["Internal ID"]);
@@ -172,14 +232,22 @@
             });
 
             // If edit data arrived before GL accounts were ready, apply now
-            if (pendingLocationData) {
+            if (pendingLocationData !== null) {
               applyLocationData(pendingLocationData);
               pendingLocationData = null;
             }
+          } else {
+            console.warn("⚠️ GL accounts payload unexpected:", data);
           }
         } catch (err) {
           console.error("❌ Failed to load GL Accounts:", err);
         }
+      }
+
+      function setField(name, value) {
+        const el = document.querySelector(`[name="${name}"]`);
+        if (!el) return;
+        el.value = value ?? "";
       }
 
       /* === Apply existing location data === */
@@ -187,25 +255,46 @@
         document.getElementById("formTitle").textContent = loc ? "Edit Location" : "New Location";
         currentId = loc?.id || null;
 
-        // Fill text inputs, including new field
-        for (const key in loc || {}) {
-          const input = document.querySelector(`[name="${key}"]`);
-          if (input && input.tagName !== "SELECT") {
-            input.value = loc[key] ?? "";
-          }
-        }
+        // Clear all fields first (important when switching from edit -> new without refresh)
+        const form = document.getElementById("locationForm");
+        form.querySelectorAll("input").forEach((i) => (i.value = ""));
+        // selects will be set after GL loaded, but clear them now too:
+        form.querySelectorAll("select").forEach((s) => (s.value = ""));
 
-        // Set dropdown selections
+        if (!loc) return;
+
+        // Core
+        setField("name", loc.name);
+        setField("netsuite_internal_id", loc.netsuite_internal_id);
+        setField("invoice_location_id", loc.invoice_location_id);
+        setField("intercompany_customer", loc.intercompany_customer);
+        setField("distribution_location_id", loc.distribution_location_id);
+
+        // Emails: support both, and if one is missing, mirror from the other for convenience
+        setField("email", loc.email);
+        setField("location_email", loc.location_email || loc.email || "");
+        setField("location_phone_number", loc.location_phone_number);
+
+        // Compliance
+        setField("vat_number", loc.vat_number);
+        setField("company_number", loc.company_number);
+
+        // Address
+        setField("address_line_1", loc.address_line_1);
+        setField("address_line_2", loc.address_line_2);
+        setField("postcode", loc.postcode);
+
+        // Accounts
         if (glAccountsLoaded) {
-          document.querySelector('[name="petty_cash_account"]').value = loc.petty_cash_account || "";
-          document.querySelector('[name="current_account"]').value = loc.current_account || "";
+          setField("petty_cash_account", loc.petty_cash_account || "");
+          setField("current_account", loc.current_account || "");
         }
       }
 
       /* === Listen for parent edit message === */
       window.addEventListener("message", (event) => {
         if (event.data?.action === "edit-location") {
-          const loc = event.data.location;
+          const loc = event.data.location; // can be null
           if (glAccountsLoaded) applyLocationData(loc);
           else pendingLocationData = loc; // wait until GL accounts load
         }
@@ -215,22 +304,42 @@
       document.querySelector(".cancel").addEventListener("click", () => window.close());
 
       document.querySelector(".save").addEventListener("click", async () => {
-        const formData = Object.fromEntries(new FormData(document.getElementById("locationForm")).entries());
+        const formEl = document.getElementById("locationForm");
+        const raw = Object.fromEntries(new FormData(formEl).entries());
+
+        // Trim strings
+        const formData = {};
+        Object.keys(raw).forEach((k) => {
+          const v = raw[k];
+          formData[k] = typeof v === "string" ? v.trim() : v;
+          if (formData[k] === "") formData[k] = null;
+        });
+
+        // Convenience: if user fills only one email field, keep them aligned
+        // (backend supports both columns; this just reduces mistakes)
+        if (!formData.location_email && formData.email) formData.location_email = formData.email;
+        if (!formData.email && formData.location_email) formData.email = formData.location_email;
+
         const method = currentId ? "PUT" : "POST";
         const url = currentId ? `/api/meta/locations/${currentId}` : `/api/meta/locations`;
 
-        const res = await fetch(url, {
-          method,
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(formData),
-        });
+        try {
+          const res = await fetch(url, {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formData),
+          });
 
-        const data = await res.json();
-        if (data.ok) {
-          window.opener.postMessage({ action: "refresh-locations" }, "*");
-          window.close();
-        } else {
-          alert("Failed to save location: " + (data.error || "Unknown error"));
+          const data = await res.json();
+          if (data.ok) {
+            window.opener?.postMessage({ action: "refresh-locations" }, "*");
+            window.close();
+          } else {
+            alert("Failed to save location: " + (data.error || "Unknown error"));
+          }
+        } catch (err) {
+          console.error("❌ Save failed:", err);
+          alert("Save failed. Check console for details.");
         }
       });
 
