@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Quote</title>
+    <!-- Reuse the same styling as Sales Order receipt -->
+    <link rel="stylesheet" href="/css/reciepts/SalesOrdReciept.css" />
+  </head>
+
+  <body>
+    <div class="page">
+      <!-- HEADER -->
+      <div class="header">
+        <img class="logo" src="/assets/ReceiptLogo.png" />
+
+        <table style="width: 118%;">
+          <td>
+            <table>
+              <tr>
+                <td>Tel:</td>
+                <td id="storeTel">-</td>
+              </tr>
+              <tr>
+                <td>Email:</td>
+                <td id="storeEmail">-</td>
+              </tr>
+              <tr>
+                <td>Website:</td>
+                <td>www.sussexbeds.co.uk</td>
+              </tr>
+            </table>
+
+            <table>
+              <tr>
+                <td>Vat No :</td>
+                <td id="storeVatNo">-</td>
+                <td>Company No:</td>
+                <td id="storeCompanyNo">-</td>
+              </tr>
+            </table>
+          </td>
+
+          <td>
+            <table style="text-align: right;">
+              <tr>
+                <td id="storeName">-</td>
+              </tr>
+              <tr>
+                <td id="storeAdd1">-</td>
+              </tr>
+              <tr>
+                <td id="storeAdd2">-</td>
+              </tr>
+              <tr>
+                <td id="storePostcode">-</td>
+              </tr>
+            </table>
+          </td>
+        </table>
+
+        <!-- ✅ Quote label -->
+        <p class="receipt-type">Quote</p>
+      </div>
+
+      <!-- MAIN CONTENT -->
+      <div class="content">
+        <table class="details-parent">
+          <td>
+            <table class="customer-details">
+              <tr>
+                <td>Name:</td>
+                <td id="customerName"></td>
+              </tr>
+              <tr>
+                <td>Address:</td>
+                <td>
+                  <p id="custadd1"></p>
+                  <p id="custadd2"></p>
+                  <p id="custadd3"></p>
+                  <p id="custzip"></p>
+                </td>
+              </tr>
+              <tr>
+                <td>Email:</td>
+                <td id="custEmail"></td>
+              </tr>
+              <tr>
+                <td>Tel:</td>
+                <td id="custTel"></td>
+              </tr>
+            </table>
+          </td>
+
+          <td>
+            <table class="order-details">
+              <tr>
+                <td>Quote No:</td>
+                <td id="quoteNo"></td>
+              </tr>
+              <tr>
+                <td>Quote Date:</td>
+                <td id="quoteDate"></td>
+              </tr>
+
+              <!-- Payment method is OPTIONAL on quotes -->
+              <tr>
+                <td>Payment <br /> Method:</td>
+                <td id="pymtMthd">—</td>
+              </tr>
+
+              <tr>
+                <td>Sales Person</td>
+                <td id="salesRep"></td>
+              </tr>
+            </table>
+          </td>
+        </table>
+      </div>
+
+      <div class="prod-table">
+        <table id="productTable">
+          <thead>
+            <tr>
+              <th>Item</th>
+              <th>Options</th>
+              <th>QTY</th>
+              <th>Price</th>
+              <th>Discount</th>
+              <th>Total</th>
+            </tr>
+          </thead>
+          <tbody id="productTableBody">
+            <!-- JS will insert rows here -->
+          </tbody>
+        </table>
+      </div>
+
+      <div class="order-breakdown">
+        <table>
+          <tr class="order-breakdown-parent">
+            <th>Payment History</th>
+            <th>Discount Summary</th>
+            <th>Quote Summary</th>
+          </tr>
+          <tr>
+            <td>
+              <div class="order-breakdown-child">
+                <table id="deposit-table">
+                  <thead>
+                    <tr>
+                      <th>Dep No.</th>
+                      <th>Method</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody id="depositTableBody">
+                    <!-- Quotes normally have none, but keep for reuse -->
+                  </tbody>
+                </table>
+              </div>
+            </td>
+
+            <td>
+              <div class="order-breakdown-child">
+                <table>
+                  <tr>
+                    <th>Original <br /> Price</th>
+                    <th>Discount <br /> Amount</th>
+                    <th>Percentage <br /> Discount</th>
+                  </tr>
+                  <tr>
+                    <td id="originalPrice"></td>
+                    <td id="discAmount"></td>
+                    <td id="totalDiscPerc"></td>
+                  </tr>
+                </table>
+              </div>
+            </td>
+
+            <td>
+              <div class="order-breakdown-child">
+                <table>
+                  <tr>
+                    <th>VAT</th>
+                    <td id="vatTotal">£0.00</td>
+                  </tr>
+                  <tr>
+                    <th>Quote Total</th>
+                    <td id="quoteTotal">£0.00</td>
+                  </tr>
+                  <tr>
+                    <th>Remaining <br /> Balance</th>
+                    <td id="balance">£0.00</td>
+                  </tr>
+                </table>
+              </div>
+            </td>
+          </tr>
+        </table>
+      </div>
+
+      <!-- FOOTER -->
+      <div class="footer">
+        <!-- Terms / VAT info / thank you message -->
+      </div>
+    </div>
+  </body>
+
+  <!-- Scripts -->
+  <script src="/js/storage.js"></script>
+
+  <!-- ✅ New quote receipt JS (mirror salesOrdReceipt.js but reading estimate/quote) -->
+  <script src="/js/quoteReceipt.js"></script>
+</html>

@@ -265,10 +265,11 @@ app.use(async (req, res, next) => {
     // ==========================================================
     const alwaysAllowed = [
       "/sales/view",
-      "sales/reciept",
+      "/sales/reciept",
       "/sales/new",
       "/quote/view",
       "/quote/new",
+      "/quote/reciept",
       "/api/netsuite/salesorder",
       "/api/netsuite/quote",
       "/api/netsuite/order-management",
@@ -708,6 +709,9 @@ app.get("/sales/reciept/:id", (req, res) => res.sendFile(path.join(__dirname,"pu
 app.get("/quote/view/:id", (req, res) =>
   res.sendFile(path.join(__dirname, "public", "quoteView.html"))
 );
+app.get(["/quote/reciept/:id", "/quote/receipt/:id"], (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "quoteReciept.html"));
+});
 app.get("/sales/view/:id", (req, res) => {
   res.sendFile(path.join(__dirname, "public", "salesOrderView.html"));
 });

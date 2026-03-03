@@ -4,6 +4,11 @@
  * Locks customer, contact info, order details, and order items until confirmed.
  * Allows full unlock when pencil icon clicked.
  * After first confirm, triggers confirmation alert if store or warehouse is changed.
+ *
+ * Update:
+ *  - Payment Info is mandatory on Sales Order pages
+ *  - Payment Info is OPTIONAL on Quote pages
+ *
  * Fixes:
  *  - Cancel on store/warehouse now correctly reverts to the prior value (not null/blank)
  *  - Order items unlock after Confirm (original behaviour restored)
@@ -18,13 +23,32 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (!confirmBtn || !customerSection || !contactSection || !orderDetailsSection || !orderItemsSection) return;
 
+  /* =========================================================
+     Page detection (Sales vs Quote)
+     - Quotes: /quote/new, /quote/, title includes "Quote"
+     - Sales:  /sales/new, /sales/, title includes "Sales"
+  ========================================================= */
+  const path = (window.location.pathname || "").toLowerCase();
+  const title = (document.title || "").toLowerCase();
+
+  const isQuotePage =
+    path.includes("/quote") ||
+    title.includes("quote");
+
+  // Default behaviour remains Sales-required unless clearly Quote
+  const requirePaymentInfo = !isQuotePage;
+
+  console.log(
+    `🔒 salesCustomerLock active — paymentInfo required: ${requirePaymentInfo ? "YES" : "NO"}`
+  );
+
   // === Utility: lock/unlock a section's inputs (EXCLUDES confirm/edit button)
   const setSectionLocked = (section, locked, includeButtons = false) => {
     if (!section) return;
     const selector = includeButtons ? "input, select, textarea, button" : "input, select, textarea";
     const inputs = section.querySelectorAll(selector);
 
-    inputs.forEach(el => {
+    inputs.forEach((el) => {
       if (el.id === "confirmCustomerBtn") return; // never disable the main toggle
 
       if (locked) {
@@ -67,25 +91,28 @@ document.addEventListener("DOMContentLoaded", () => {
     const errors = [];
 
     // Customer info mandatory
-    const firstName = document.querySelector('input[name="firstName"]').value.trim();
-    const lastName = document.querySelector('input[name="lastName"]').value.trim();
-    const email = document.querySelector('input[name="email"]').value.trim();
-    const postcode = document.querySelector('input[name="postcode"]').value.trim();
-    const title = document.querySelector('select[name="title"]').value;
+    const firstName = document.querySelector('input[name="firstName"]')?.value.trim() || "";
+    const lastName = document.querySelector('input[name="lastName"]')?.value.trim() || "";
+    const email = document.querySelector('input[name="email"]')?.value.trim() || "";
+    const postcode = document.querySelector('input[name="postcode"]')?.value.trim() || "";
+    const titleVal = document.querySelector('select[name="title"]')?.value || "";
 
     if (!firstName) errors.push("First Name is required");
     if (!lastName) errors.push("Last Name is required");
     if (!email) errors.push("Email is required");
     if (!postcode) errors.push("Postcode is required");
-    if (!title) errors.push("Title Is required");
+    if (!titleVal) errors.push("Title is required");
 
     // Order details mandatory
-    const leadSource = document.querySelector('select[name="leadSource"]').value;
-    const paymentInfo = document.querySelector('select[name="paymentInfo"]').value;
-    const warehouse = document.querySelector('select[name="warehouse"]').value;
+    const leadSource = document.querySelector('select[name="leadSource"]')?.value || "";
+    const paymentInfo = document.querySelector('select[name="paymentInfo"]')?.value || "";
+    const warehouse = document.querySelector('select[name="warehouse"]')?.value || "";
 
     if (!leadSource) errors.push("Lead Source is required");
-    if (!paymentInfo) errors.push("Payment Info is required");
+
+    // ✅ Only enforce Payment Info on Sales pages
+    if (requirePaymentInfo && !paymentInfo) errors.push("Payment Info is required");
+
     if (!warehouse) errors.push("Warehouse is required");
 
     return { valid: errors.length === 0, errors };
@@ -96,6 +123,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const tableBody = document.getElementById("orderItemsBody");
     if (tableBody) tableBody.innerHTML = "";
     if (typeof updateOrderSummary === "function") updateOrderSummary();
+    if (typeof updateQuoteSummary === "function") updateQuoteSummary();
   }
 
   // === Track and guard Store/Warehouse changes ===
@@ -107,12 +135,10 @@ document.addEventListener("DOMContentLoaded", () => {
   const bindPrevCapture = (selectEl) => {
     if (!selectEl) return;
     const capture = () => {
-      // store as string to avoid type mismatch issues
       selectEl.dataset.prevValue = String(selectEl.value ?? "");
     };
     selectEl.addEventListener("focus", capture, { passive: true });
-    selectEl.addEventListener("mousedown", capture, { passive: true }); // pick up mouse-driven changes
-    // initialise once on load
+    selectEl.addEventListener("mousedown", capture, { passive: true });
     capture();
   };
 
@@ -120,7 +146,7 @@ document.addEventListener("DOMContentLoaded", () => {
   bindPrevCapture(warehouseSelect);
 
   const handleSelectChange = (e) => {
-    if (!alertEnabled) return; // no alert before first confirm
+    if (!alertEnabled) return;
 
     const selectEl = e.target;
     if (!selectEl || (selectEl.id !== "store" && selectEl.id !== "warehouse")) return;
@@ -129,15 +155,14 @@ document.addEventListener("DOMContentLoaded", () => {
     const newValue = String(selectEl.value ?? "");
 
     if (prevValue !== newValue) {
-      const confirmed = confirm("Changing this field will result in the item table resetting — are you sure you want to do this?");
+      const confirmed = confirm(
+        "Changing this field will result in the item table resetting — are you sure you want to do this?"
+      );
       if (confirmed) {
         resetItemTable();
-        // update stored previous value to the new one (so future cancel reverts to this)
         selectEl.dataset.prevValue = newValue;
       } else {
-        // revert to previous exact value (not null/blank)
         selectEl.value = prevValue;
-        // fire a change so any UI bound to this updates
         selectEl.dispatchEvent(new Event("change", { bubbles: true }));
       }
     }
@@ -152,7 +177,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     // === UNLOCK MODE === (user clicked Edit)
     if (confirmBtn.dataset.locked === "true") {
-      // Unlock everything
       setSectionLocked(customerSection, false);
       setSectionLocked(contactSection, false);
       setSectionLocked(orderDetailsSection, false);
@@ -164,7 +188,7 @@ document.addEventListener("DOMContentLoaded", () => {
       confirmBtn.dataset.locked = "false";
       matchStatus.textContent = "";
 
-      alertEnabled = true; // enable store/warehouse alert after first confirm has happened
+      alertEnabled = true;
       return;
     }
 
@@ -179,9 +203,8 @@ document.addEventListener("DOMContentLoaded", () => {
     setSectionLocked(customerSection, true);
     setSectionLocked(contactSection, true);
     setSectionLocked(orderDetailsSection, true);
-    setSectionLocked(orderItemsSection, true, true); // lock items briefly during match
+    setSectionLocked(orderItemsSection, true, true);
 
-    // keep confirm/edit button active after lock
     ensureConfirmActive();
 
     confirmBtn.innerHTML = `
@@ -195,10 +218,9 @@ document.addEventListener("DOMContentLoaded", () => {
     matchStatus.innerHTML = `<div class="spinner"></div> Searching for customer match...`;
 
     // Gather data
-    const firstName = document.querySelector('input[name="firstName"]').value.trim();
-    const lastName = document.querySelector('input[name="lastName"]').value.trim();
-    const email = document.querySelector('input[name="email"]').value.trim();
-    const postcode = document.querySelector('input[name="postcode"]').value.trim();
+    const lastName = document.querySelector('input[name="lastName"]')?.value.trim() || "";
+    const email = document.querySelector('input[name="email"]')?.value.trim() || "";
+    const postcode = document.querySelector('input[name="postcode"]')?.value.trim() || "";
 
     try {
       const qs = new URLSearchParams({ email, lastName, postcode }).toString();
@@ -228,9 +250,7 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("❌ Error searching for customer.");
       window.currentCustomerId = null;
     } finally {
-      // ✅ Restore original behaviour: unlock items after confirm completes
       setSectionLocked(orderItemsSection, false, true);
-      // Start guarding store/warehouse changes from now on
       alertEnabled = true;
     }
   });
