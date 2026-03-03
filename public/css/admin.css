@@ -478,3 +478,16 @@
   background: #d0d5da;
   border-radius: 4px;
 }
+/* Reuse the wrapper for widget grid */
+.widget-scroll {
+  max-height: 420px;     /* or whatever feels right */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 12px;
+  background: var(--panel);
+}
+
+/* Optional: stops the last row looking cut-off */
+.widget-scroll .widget-admin-grid {
+  margin-top: 0;         /* you currently set margin-top: 1rem */
+}

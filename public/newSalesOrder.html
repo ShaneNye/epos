@@ -20,10 +20,9 @@
     <script src="/js/salesNewFetchify.js" defer></script>
     <script src="/js/salesCustomerLock.js" defer></script>
     <script src="/js/salesNewItemLine.js" defer></script>
-    <script src="/js/salesNew60Night.js"></script>
+    <!-- <script src="/js/salesNew60Night.js"></script> -->
     <script src="/js/salesInventoryModal.js" defer></script>
     <script src="/js/logisticsPostcodeLookup.js" defer></script>
-
 
     <!-- Virtual Sales Assistant -->
     <script src="/assistant/assistant.js"></script>
@@ -32,7 +31,6 @@
     <script type="module" src="/assistant/salesNew.js"></script>
 
     <link rel="stylesheet" href="/assistant/assistant.css" />
-
 </head>
 
 <body>
@@ -150,11 +148,6 @@
                             </label>
                         </div>
 
-                        <!-- <label class="memo">
-                            Memo / Notes
-                            <textarea name="memo" rows="3" placeholder="Any notes for this order..."></textarea>
-                        </label> -->
-
                         <!-- CONFIRM BUTTON -->
                         <div class="confirm-wrapper">
                             <button id="confirmCustomerBtn" class="btn-primary">Confirm</button>
@@ -175,116 +168,123 @@
                     <p>Outstanding Balance: <span id="outstandingBalance">£0.00</span></p>
 
                     <!-- 🌀 Spinner + Toast now INSIDE the aside -->
-                    <div id="orderStatusArea">
-                        <div id="orderSpinner" class="order-spinner hidden">
-                            <div class="spinner"></div>
-                            <p>Creating order...</p>
-                        </div>
-
-                        <div id="orderToast" class="order-toast hidden"></div>
+                    <div id="orderSpinner" class="order-spinner hidden">
+                        <div class="spinner"></div>
+                        <div class="spinner-title" id="orderSpinnerTitle">Creating order…</div>
                     </div>
+
+                    <div id="orderToast" class="order-toast hidden"></div>
                 </aside>
 
             </div>
 
-            <!-- === ORDER ITEMS TABLE (FULL WIDTH) === -->
-            <section class="form-section order-items-section">
-                <div class="section-header-flex">
-                    <h2>Order Items</h2>
-                    <div style="display: flex;" class="item-line-filters">
-                        <label for="sizeFilter">Filter by Size:</label>
-                        <select id="sizeFilter">
-                            <option value="">All Sizes</option>
-                        </select>
-                        <label for="baseOptionFilter">Storage:</label>
-                        <select id="baseOptionFilter">
-                            <option value="">All Storage Options</option>
-                        </select>
-                        <label for="typeFilter">Type:</label>
-                        <select id="typeFilter">
-                            <option value="">All</option>
-                            <option value="services">Services</option>
-                            <option value="items">Items</option>
-                        </select>
+        </div>
 
-                    </div>
-
-
-                    <button style="display: none;" type="button" id="addItemBtn" class="btn-secondary small-btn">+ Add Item</button>
+        <!-- === ORDER ITEMS TABLE (FULL WIDTH) === -->
+        <section class="form-section order-items-section">
+            <div class="section-header-flex">
+                <h2>Order Items</h2>
+                <div style="display: flex;" class="item-line-filters">
+                    <label for="sizeFilter">Filter by Size:</label>
+                    <select id="sizeFilter">
+                        <option value="">All Sizes</option>
+                    </select>
+                    <label for="baseOptionFilter">Storage:</label>
+                    <select id="baseOptionFilter">
+                        <option value="">All Storage Options</option>
+                    </select>
+                    <label for="typeFilter">Type:</label>
+                    <select id="typeFilter">
+                        <option value="">All</option>
+                        <option value="services">Services</option>
+                        <option value="items">Items</option>
+                    </select>
                 </div>
 
-                <table class="order-table" id="orderItemsTable">
-                    <thead>
-                        <tr>
-                            <th>Item</th>
-                            <th>Options</th>
-                            <th>Quantity</th>
-                            <th>Amount</th>
-                            <th>Discount %</th>
-                            <th>Sale Price</th>
-                            <th style="display: none;" id="60ntheader">60 Night Trial</th>
-                            <th>Fulfilment Method</th>
-                            <th>Inventory Detail</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody id="orderItemsBody">
-                        <tr class="order-line" data-line="0">
-                            <td>
-                                <div class="autocomplete">
-                                    <input type="text" id="itemSearch-0" class="item-search" placeholder="Product name"
-                                        autocomplete="off" aria-autocomplete="list" />
-                                    <input type="hidden" class="item-internal-id" />
-                                    <input type="hidden" class="item-baseprice" />
-                                </div>
-                            </td>
-                            <td class="options-cell"></td>
+                <button style="display: none;" type="button" id="addItemBtn" class="btn-secondary small-btn">+ Add
+                    Item</button>
+            </div>
 
-                            <td><input type="number" class="item-qty" value="1" min="1" step="1" /></td>
-                            <td><input type="number" class="item-amount" placeholder="£" step="0.01" readonly /></td>
-                            <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" />
-                            </td>
-                            <td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
-                            <td style="display: none;" id="60ntSelect"><select>
+            <table class="order-table" id="orderItemsTable">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Options</th>
+                        <th>Quantity</th>
+                        <th>Amount</th>
+                        <th>Discount %</th>
+                        <th>Sale Price</th>
+                        <th style="display: none;" id="60ntheader">60 Night Trial</th>
+                        <th>Fulfilment Method</th>
+                        <th>Inventory Detail</th>
+                        <th></th>
+                    </tr>
+                </thead>
+
+                <tbody id="orderItemsBody">
+                    <tr class="order-line" data-line="0">
+                        <td>
+                            <div class="autocomplete">
+                                <input type="text" id="itemSearch-0" class="item-search" placeholder="Product name"
+                                    autocomplete="off" aria-autocomplete="list" />
+                                <input type="hidden" class="item-internal-id" />
+                                <input type="hidden" class="item-baseprice" />
+                            </div>
+                        </td>
+
+                        <td class="options-cell"></td>
+
+                        <td><input type="number" class="item-qty" value="1" min="1" step="1" /></td>
+                        <td><input type="number" class="item-amount" placeholder="£" step="0.01" readonly /></td>
+                        <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" /></td>
+                        <td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
+
+                        <!-- ✅ UPDATED: 60 Night Trial cell uses class (NOT id) and includes placeholder -->
+                        <td class="sixty-night-cell" style="display:none;">
+                            <select class="sixty-night-select" style="display:none;">
                                 <option selected disabled hidden>Select</option>
                                 <option>Accepted</option>
                                 <option>Declined</option>
                                 <option>N/A</option>
-                                </select>
-                            </td>
-                            <td>
-                                <select name="fulfilmentMethod" class="item-fulfilment">
-                                    <option value="">Loading fulfilment methods...</option>
-                                </select>
-                            </td>
-                            <td class="inventory-cell"></td>
-                            <td><button type="button" class="delete-row">🗑</button></td>
-                        </tr>
-                    </tbody>
-                </table>
-            </section>
-            <!-- === ACTION BUTTONS === -->
-            <div class="actions">
-                <button class="btn-secondary">Cancel</button>
-                <button id="addDepositBtn" type="button" class="btn-secondary">+ Make Payment</button>
-                <button class="btn-primary">Save Order</button>
-            </div>
+                            </select>
+                            <span class="sixty-night-placeholder">—</span>
+                        </td>
 
-            <!-- === CUSTOMER DEPOSITS (hidden until first deposit) === -->
-            <section id="depositsSection" class="form-section" style="display:none; margin-top:1rem;">
-                <h2>Customer Deposits</h2>
-                <table class="order-table" id="depositsTable">
-                    <thead>
-                        <tr>
-                            <th>Payment Method</th>
-                            <th>Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </section>
+                        <!-- ✅ UPDATED: fulfilment td now has class used by JS insertion logic -->
+                        <td class="fulfilment-cell">
+                            <select name="fulfilmentMethod" class="item-fulfilment">
+                                <option value="">Loading fulfilment methods...</option>
+                            </select>
+                        </td>
 
+                        <td class="inventory-cell"></td>
+                        <td><button type="button" class="delete-row">🗑</button></td>
+                    </tr>
+                </tbody>
+            </table>
+        </section>
+
+        <!-- === ACTION BUTTONS === -->
+        <div class="actions">
+            <button class="btn-secondary">Cancel</button>
+            <button id="addDepositBtn" type="button" class="btn-secondary">+ Make Payment</button>
+            <button class="btn-primary">Save Order</button>
         </div>
+
+        <!-- === CUSTOMER DEPOSITS (hidden until first deposit) === -->
+        <section id="depositsSection" class="form-section" style="display:none; margin-top:1rem;">
+            <h2>Customer Deposits</h2>
+            <table class="order-table" id="depositsTable">
+                <thead>
+                    <tr>
+                        <th>Payment Method</th>
+                        <th>Amount</th>
+                    </tr>
+                </thead>
+                <tbody></tbody>
+            </table>
+        </section>
+
     </main>
 </body>
 

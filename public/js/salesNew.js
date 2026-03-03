@@ -1,13 +1,11 @@
 console.log("✅ salesNew.js loaded and running");
 
-
 document.addEventListener("DOMContentLoaded", async () => {
-
   // Stop salesNew summary logic from running on Sales View page
-if (window.location.pathname.includes("/sales/view/")) {
-  console.log("🔕 Skipping updateOrderSummary() — Sales View mode");
-  return;
-}
+  if (window.location.pathname.includes("/sales/view/")) {
+    console.log("🔕 Skipping updateOrderSummary() — Sales View mode");
+    return;
+  }
 
   const saved = storageGet(); // from main.js
   if (!saved || !saved.token) return (window.location.href = "/index.html");
@@ -129,95 +127,90 @@ if (window.location.pathname.includes("/sales/view/")) {
     }
   }
 
+  /* === ORDER SUMMARY CALCULATIONS === */
+  window.updateOrderSummary = function () {
+    let grossTotal = 0;
+    let discountTotal = 0;
 
+    document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
+      const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
+      const baseNet = parseFloat(tr.querySelector(".item-baseprice")?.value || 0); // base is NET
+      const salePriceGrossPerUnit = parseFloat(
+        tr.querySelector(".item-saleprice")?.value || 0
+      ); // sale price is GROSS (inc VAT)
+      const discountPct = parseFloat(
+        tr.querySelector(".item-discount")?.value || 0
+      );
 
-/* === ORDER SUMMARY CALCULATIONS === */
-window.updateOrderSummary = function () {
-  let grossTotal = 0;
-  let discountTotal = 0;
+      if (!qty) return;
 
-  document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
-    const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
-    const baseNet = parseFloat(tr.querySelector(".item-baseprice")?.value || 0); // base is NET
-    const salePriceGrossPerUnit = parseFloat(
-      tr.querySelector(".item-saleprice")?.value || 0
-    ); // sale price is GROSS (inc VAT)
-    const discountPct = parseFloat(
-      tr.querySelector(".item-discount")?.value || 0
+      // --- Default (RRP) pricing ---
+      const defaultGrossPerUnit = baseNet ? baseNet * 1.2 : salePriceGrossPerUnit;
+      const defaultGrossTotal = defaultGrossPerUnit * qty;
+
+      // --- Actual gross charged ---
+      // If a discount % is applied, override using RRP
+      let actualGrossTotal;
+
+      if (discountPct > 0) {
+        const discountedGrossPerUnit = defaultGrossPerUnit * (1 - discountPct / 100);
+        actualGrossTotal = discountedGrossPerUnit * qty;
+      } else if (salePriceGrossPerUnit > 0) {
+        // Manual override sale price (gross)
+        actualGrossTotal = salePriceGrossPerUnit * qty;
+      } else {
+        // No override → use RRP
+        actualGrossTotal = defaultGrossTotal;
+      }
+
+      grossTotal += actualGrossTotal;
+
+      // --- Discount (for reporting) ---
+      const discountValue = Math.max(0, defaultGrossTotal - actualGrossTotal);
+      discountTotal += discountValue;
+    });
+
+    // --- VAT breakdown ---
+    const netTotal = grossTotal / 1.2;
+    const taxTotal = grossTotal - netTotal;
+
+    // --- Deposits ---
+    const totalDeposits = deposits.reduce(
+      (sum, d) => sum + (parseFloat(d.amount) || 0),
+      0
     );
 
-    if (!qty) return;
+    const outstandingBalance = grossTotal - totalDeposits;
 
-    // --- Default (RRP) pricing ---
-    const defaultGrossPerUnit = baseNet ? baseNet * 1.2 : salePriceGrossPerUnit;
-    const defaultGrossTotal = defaultGrossPerUnit * qty;
+    // --- Update UI ---
+    document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
+    document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
+    document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
+    document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
 
-    // --- Actual gross charged ---
-    // If a discount % is applied, override using RRP
-    let actualGrossTotal;
+    const depositsTotalCell = document.getElementById("depositsTotal");
+    const balanceCell = document.getElementById("outstandingBalance");
+    if (depositsTotalCell)
+      depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
+    if (balanceCell)
+      balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
+  };
 
-    if (discountPct > 0) {
-      const discountedGrossPerUnit =
-        defaultGrossPerUnit * (1 - discountPct / 100);
-      actualGrossTotal = discountedGrossPerUnit * qty;
-    } else if (salePriceGrossPerUnit > 0) {
-      // Manual override sale price (gross)
-      actualGrossTotal = salePriceGrossPerUnit * qty;
-    } else {
-      // No override → use RRP
-      actualGrossTotal = defaultGrossTotal;
+  // Recalc triggers
+  document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
+    if (
+      e.target.classList.contains("item-qty") ||
+      e.target.classList.contains("item-discount") ||
+      e.target.classList.contains("item-saleprice")
+    ) {
+      updateOrderSummary();
     }
-
-    grossTotal += actualGrossTotal;
-
-    // --- Discount (for reporting) ---
-    const discountValue = Math.max(0, defaultGrossTotal - actualGrossTotal);
-    discountTotal += discountValue;
   });
 
-  // --- VAT breakdown ---
-  const netTotal = grossTotal / 1.2;
-  const taxTotal = grossTotal - netTotal;
+  const bodyObserver = new MutationObserver(updateOrderSummary);
+  bodyObserver.observe(document.getElementById("orderItemsBody"), { childList: true });
 
-  // --- Deposits ---
-  const totalDeposits = deposits.reduce(
-    (sum, d) => sum + (parseFloat(d.amount) || 0),
-    0
-  );
-
-  const outstandingBalance = grossTotal - totalDeposits;
-
-  // --- Update UI ---
-  document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
-  document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(
-    2
-  )}`;
-  document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
-  document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
-
-  const depositsTotalCell = document.getElementById("depositsTotal");
-  const balanceCell = document.getElementById("outstandingBalance");
-  if (depositsTotalCell)
-    depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
-  if (balanceCell)
-    balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
-};
-
-// Recalc triggers
-document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
-  if (
-    e.target.classList.contains("item-qty") ||
-    e.target.classList.contains("item-discount") ||
-    e.target.classList.contains("item-saleprice")
-  ) {
-    updateOrderSummary();
-  }
-});
-
-const bodyObserver = new MutationObserver(updateOrderSummary);
-bodyObserver.observe(document.getElementById("orderItemsBody"), { childList: true });
-
-updateOrderSummary();
+  updateOrderSummary();
 });
 
 /* === CUSTOMER DEPOSITS === */
@@ -245,13 +238,20 @@ function renderDeposits() {
 }
 
 document.getElementById("addDepositBtn")?.addEventListener("click", () => {
-  const win = window.open("/deposit.html", "AddDeposit", "width=400,height=300,resizable=yes,scrollbars=no");
+  const win = window.open(
+    "/deposit.html",
+    "AddDeposit",
+    "width=400,height=300,resizable=yes,scrollbars=no"
+  );
   win.focus();
 });
 
-/* === SAVE ORDER HANDLER (toast + spinner integrated) === */
+/* === SAVE ORDER HANDLER (simple spinner only) === */
 document.addEventListener("click", async (e) => {
-  if (e.target.classList.contains("btn-primary") && e.target.textContent.trim() === "Save Order") {
+  if (
+    e.target.classList.contains("btn-primary") &&
+    e.target.textContent.trim() === "Save Order"
+  ) {
     e.preventDefault();
 
     const customer = {
@@ -290,6 +290,11 @@ const items = [...document.querySelectorAll("#orderItemsBody .order-line")]
     const lotnumber = tr.dataset.lotnumber || "";
     const inventoryMeta = tr.dataset.inventoryMeta || "";
 
+    // ✅ 60 Night Trial (per-line)
+    // Only visible for mattress lines, but the cell exists on all lines when any mattress is present
+    const trialSel = tr.querySelector(".sixty-night-select");
+    const trialOption = (trialSel?.value || "").trim(); // "Accepted" | "Declined" | "N/A" | ""
+
     return {
       item,
       quantity,
@@ -298,29 +303,31 @@ const items = [...document.querySelectorAll("#orderItemsBody .order-line")]
       fulfilmentMethod,
       lotnumber,
       inventoryMeta,
+      trialOption, // ✅ send to API
     };
   })
   // Remove empty/null rows so NetSuite doesn't throw 400 INVALID_VALUE
   .filter((line) => line !== null);
 
-
-
-    const body = { customer, order, items, deposits };
-    console.log("💰 Including deposits in payload:", deposits);
-    await submitOrder(body);
-
+const body = { customer, order, items, deposits };
+console.log("💰 Including deposits in payload:", deposits);
+await submitOrder(body);
   }
 });
 
-/* === Spinner + Toast Controls === */
+/* === Spinner + Toast Controls (simple) === */
 const form = document.querySelector(".form-scroll");
 const spinner = document.getElementById("orderSpinner");
 const toast = document.getElementById("orderToast");
+
+// Optional: if your spinner has a text element, we can set it without timers/intervals
+const spinnerText = document.getElementById("orderSpinnerText");
 
 function lockForm() {
   if (form) form.classList.add("locked");
   if (spinner) spinner.classList.remove("hidden");
   if (toast) toast.classList.add("hidden");
+  if (spinnerText) spinnerText.textContent = "Creating order…";
 }
 
 function unlockForm() {
@@ -346,8 +353,6 @@ async function submitOrder(orderPayload) {
     lockForm();
     console.log("📦 Sending order payload:", orderPayload);
 
-    // Small delay for UI polish
-    await new Promise((resolve) => setTimeout(resolve, 50));
     // 🧩 Include session token for authenticated NetSuite calls
     const saved = storageGet();
     const headers = {
@@ -366,7 +371,6 @@ async function submitOrder(orderPayload) {
       headers,
       body: JSON.stringify(orderPayload),
     });
-
 
     const data = await res.json();
     console.log("🪵 [API Response]", data);
@@ -418,10 +422,3 @@ async function submitOrder(orderPayload) {
     unlockForm();
   }
 }
-
-
-
-
-
-
-

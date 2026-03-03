@@ -86,8 +86,6 @@ async function populateBaseOptionFilter() {
   }
 }
 
-
-
 // === Load inventory balances (bulk) ===
 async function loadInventoryBalances() {
   try {
@@ -132,7 +130,6 @@ function setupWarehouseTracking() {
   warehouseSelect.addEventListener("change", updateWarehouseCache);
 }
 
-
 // === Create global dropdown once ===
 function createGlobalSuggestions() {
   globalSuggestions = document.createElement("ul");
@@ -149,16 +146,15 @@ function showSuggestions(input, matches, lineIndex) {
 
   if (!matches.length) return hideSuggestions();
 
-matches.forEach(it => {
-  const li = document.createElement("li");
-  li.textContent = it["Name"];
-  li.addEventListener("click", () => {
-    selectItem(it);
-    hideSuggestions(); // ✅ ensures dropdown closes immediately
+  matches.forEach(it => {
+    const li = document.createElement("li");
+    li.textContent = it["Name"];
+    li.addEventListener("click", () => {
+      selectItem(it);
+      hideSuggestions(); // ✅ ensures dropdown closes immediately
+    });
+    globalSuggestions.appendChild(li);
   });
-  globalSuggestions.appendChild(li);
-});
-
 
   const rect = input.getBoundingClientRect();
   globalSuggestions.style.position = "fixed";
@@ -178,25 +174,148 @@ matches.forEach(it => {
   globalSuggestions.classList.remove("hidden");
 }
 
-function toggle60NightTrial(isMattress) {
-  const header = document.getElementById("60ntheader");
-  const cell = document.getElementById("60ntSelect");
-
-  if (!header || !cell) return;
-
-  if (isMattress) {
-    header.style.display = "table-cell";
-    cell.style.display = "table-cell";
-  } else {
-    header.style.display = "none";
-    cell.style.display = "none";
-
-    // optional reset to N/A when hiding
-    const sel = cell.querySelector("select");
-    if (sel) sel.value = "N/A";
-  }
+function hideSuggestions() {
+  globalSuggestions.classList.add("hidden");
+  globalSuggestions.innerHTML = "";
+  activeInput = null;
+  activeLineIndex = null;
 }
 
+/* ==========================================================
+   ✅ 60 NIGHT TRIAL COLUMN HELPERS (FIXED)
+   - Reuse existing 60NT cell if HTML already contains it
+   - Ensure it always sits AFTER Sale Price and BEFORE Fulfilment
+   - Only show dropdown on mattress rows; others show "—"
+   ========================================================== */
+
+function insertAfter(newNode, referenceNode) {
+  referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
+}
+
+function findExisting60NTSelect(row) {
+  // Common direct hooks
+  let sel =
+    row.querySelector("select.sixty-night-select") ||
+    row.querySelector("select#60ntSelect") ||
+    row.querySelector('select[name="60nt"]') ||
+    row.querySelector('select[name="sixtyNightTrial"]') ||
+    row.querySelector('select[name="sixty_night_trial"]');
+
+  if (sel) return sel;
+
+  // Fallback: detect by option values/text
+  const selects = row.querySelectorAll("select");
+  for (const s of selects) {
+    const opts = [...s.options].map(o => (o.value || o.textContent || "").trim().toLowerCase());
+    const hasYes = opts.includes("yes");
+    const hasNo = opts.includes("no");
+    const hasNA = opts.includes("n/a") || opts.includes("na");
+    if (hasYes && hasNo && hasNA) return s;
+  }
+
+  return null;
+}
+
+function ensure60NightTrialCell(row) {
+  if (!row) return null;
+
+  // If we already have our managed cell, just reposition it correctly
+  let td = row.querySelector("td.sixty-night-cell");
+
+  // If not, try to ADOPT an existing cell/select from the hard-coded HTML
+  if (!td) {
+    const existingSel = findExisting60NTSelect(row);
+    if (existingSel) {
+      td = existingSel.closest("td");
+      if (td) td.classList.add("sixty-night-cell");
+      existingSel.classList.add("sixty-night-select");
+    }
+  }
+
+  // If still none, create a new td
+  if (!td) {
+    td = document.createElement("td");
+    td.className = "sixty-night-cell";
+    td.innerHTML = `
+      <select class="sixty-night-select">
+        <option value="N/A">N/A</option>
+        <option value="Yes">Yes</option>
+        <option value="No">No</option>
+      </select>
+      <span class="sixty-night-placeholder">—</span>
+    `;
+  } else {
+    // Ensure placeholder exists if adopting legacy
+    if (!td.querySelector(".sixty-night-placeholder")) {
+      const span = document.createElement("span");
+      span.className = "sixty-night-placeholder";
+      span.textContent = "—";
+      td.appendChild(span);
+    }
+    // Ensure select has our class if adopting legacy
+    const sel = td.querySelector("select");
+    if (sel && !sel.classList.contains("sixty-night-select")) {
+      sel.classList.add("sixty-night-select");
+    }
+  }
+
+  // Default state (hidden until any mattress exists)
+  td.style.display = "none";
+
+  const sel = td.querySelector(".sixty-night-select");
+  const ph = td.querySelector(".sixty-night-placeholder");
+  if (sel) sel.style.display = "none";
+  if (ph) ph.style.display = "inline";
+
+  // ✅ Reposition into correct column order:
+  // after Sale Price td, before Fulfilment td
+  const saleTd = row.querySelector(".item-saleprice")?.closest("td");
+  const fulfilTd = row.querySelector(".fulfilment-cell");
+
+  if (saleTd) {
+    // Move td if it’s currently elsewhere in the row
+    if (td.parentNode === row) td.remove();
+    insertAfter(td, saleTd);
+  } else if (fulfilTd) {
+    if (td.parentNode === row) td.remove();
+    fulfilTd.parentNode.insertBefore(td, fulfilTd);
+  } else {
+    if (!td.parentNode) row.appendChild(td);
+  }
+
+  return td;
+}
+
+function update60NightTrialColumnVisibility() {
+  const header = document.getElementById("60ntheader");
+  const rows = document.querySelectorAll("#orderItemsBody .order-line");
+  if (!header) return;
+
+  // Ensure each row has the cell (and is in the correct position)
+  rows.forEach(r => ensure60NightTrialCell(r));
+
+  const anyMattress = [...rows].some(
+    r => (r.dataset.itemClass || "").toLowerCase() === "mattress"
+  );
+
+  header.style.display = anyMattress ? "table-cell" : "none";
+
+  rows.forEach(r => {
+    const cell = r.querySelector("td.sixty-night-cell");
+    if (!cell) return;
+
+    cell.style.display = anyMattress ? "table-cell" : "none";
+
+    const sel = cell.querySelector(".sixty-night-select");
+    const ph = cell.querySelector(".sixty-night-placeholder");
+    const isMattress = (r.dataset.itemClass || "").toLowerCase() === "mattress";
+
+    if (sel) sel.style.display = isMattress ? "inline-block" : "none";
+    if (ph) ph.style.display = isMattress ? "none" : "inline";
+
+    if (!isMattress && sel) sel.value = "N/A";
+  });
+}
 
 // === Handle selection ===
 async function selectItem(item) {
@@ -250,59 +369,52 @@ async function selectItem(item) {
   }
 
   // ✅ Handle Service class (hide fulfilment + inventory)
-// ✅ Handle Service class (hide fulfilment + inventory)
-const fulfilCell = line.querySelector(".fulfilment-cell");
-const fulfilSel = line.querySelector(".item-fulfilment");
-const invCell = line.querySelector(".inventory-cell");
+  const fulfilCell = line.querySelector(".fulfilment-cell");
+  const fulfilSel = line.querySelector(".item-fulfilment");
+  const invCell = line.querySelector(".inventory-cell");
 
-// ✅ 60 Night Trial toggle (Mattress only)
-const itemClass = (item["Class"] || "").toLowerCase();
-toggle60NightTrial(itemClass === "mattress");
+  // ✅ Track item class on the row for global 60NT logic
+  const itemClass = (item["Class"] || "").toLowerCase();
+  line.dataset.itemClass = itemClass;
 
+  // Ensure 60NT cell is correct and update entire table column state
+  ensure60NightTrialCell(line);
+  update60NightTrialColumnVisibility();
 
-if (item["Class"] && item["Class"].toLowerCase() === "service") {
-  console.log("🧾 Service item detected – hiding fulfilment and inventory");
+  if (item["Class"] && item["Class"].toLowerCase() === "service") {
+    console.log("🧾 Service item detected – hiding fulfilment and inventory");
 
-  // Hide fulfilment cell and dropdown
-  if (fulfilCell) fulfilCell.classList.add("hidden-cell");
-  if (fulfilSel) {
-    fulfilSel.value = ""; // reset selection
-    fulfilSel.style.display = "none"; // hide the dropdown itself
+    // Hide fulfilment cell and dropdown
+    if (fulfilCell) fulfilCell.classList.add("hidden-cell");
+    if (fulfilSel) {
+      fulfilSel.value = "";
+      fulfilSel.style.display = "none";
+    }
+
+    // Hide inventory cell
+    if (invCell) invCell.classList.add("hidden-cell");
+  } else {
+    console.log("📦 Non-service item – showing fulfilment and inventory");
+
+    if (fulfilCell) fulfilCell.classList.remove("hidden-cell");
+    if (fulfilSel) fulfilSel.style.display = "inline-block";
+
+    if (invCell) invCell.classList.remove("hidden-cell");
+
+    validateInventoryForRow(line);
   }
 
-  // Hide inventory cell
-  if (invCell) invCell.classList.add("hidden-cell");
-} else {
-  console.log("📦 Non-service item – showing fulfilment and inventory");
-
-  // Show fulfilment cell and dropdown again
-  if (fulfilCell) fulfilCell.classList.remove("hidden-cell");
-  if (fulfilSel) fulfilSel.style.display = "inline-block";
-
-  // Show inventory cell
-  if (invCell) invCell.classList.remove("hidden-cell");
-
-  // Re-validate inventory for visible lines
-  validateInventoryForRow(line);
-}
-// ✅ Automatically add a new empty item row when user finishes selecting this item
-setTimeout(() => {
-  const addBtn = document.getElementById("addItemBtn");
-  if (addBtn) addBtn.click();
-}, 50);
-
+  // ✅ Automatically add a new empty item row when user finishes selecting this item
+  setTimeout(() => {
+    const addBtn = document.getElementById("addItemBtn");
+    if (addBtn) addBtn.click();
+  }, 50);
 
   hideSuggestions();
 
   // ✅ Recalculate summary after item is selected
   updateOrderSummary();
 }
-
-
-
-
-
-
 
 // === Convert selections to summary ===
 function selectionsToSummary(selections) {
@@ -315,14 +427,6 @@ function selectionsToSummary(selections) {
     }
   });
   return parts.join("<br>");
-}
-
-// === Hide autocomplete ===
-function hideSuggestions() {
-  globalSuggestions.classList.add("hidden");
-  globalSuggestions.innerHTML = "";
-  activeInput = null;
-  activeLineIndex = null;
 }
 
 // === Sync discount/price/qty ===
@@ -364,7 +468,7 @@ function setupPriceSync(line) {
       const discount = ((retailTotal - saleTotal) / retailTotal) * 100;
       discountField.value = discount.toFixed(1);
     }
-    updateOrderSummary(); // ✅ recalc after manual sale price edit
+    updateOrderSummary();
   });
   qtyField.addEventListener("input", recalc);
 
@@ -383,78 +487,62 @@ function setupAutocomplete(lineIndex) {
     const query = input.value.trim().toLowerCase();
     if (!query) return hideSuggestions();
 
-   // 🔥 NEW — unlimited results + contains() match
-const selectedSize = (document.getElementById("sizeFilter")?.value || "").toLowerCase();
-const selectedBaseOption = (document.getElementById("baseOptionFilter")?.value || "").toLowerCase();
-const selectedType = (document.getElementById("typeFilter")?.value || "").toLowerCase();
+    const selectedSize = (document.getElementById("sizeFilter")?.value || "").toLowerCase();
+    const selectedBaseOption = (document.getElementById("baseOptionFilter")?.value || "").toLowerCase();
+    const selectedType = (document.getElementById("typeFilter")?.value || "").toLowerCase();
 
-const matches = items.filter(it => {
-  const name = it["Name"].toLowerCase();
+    const matches = items.filter(it => {
+      const name = it["Name"].toLowerCase();
+      const nameMatch = name.includes(query);
 
-  // 🔍 Name search
-  const nameMatch = name.includes(query);
+      const sizeMatch = (() => {
+        if (selectedSize === "") return true;
 
+        if (selectedSize === "double") {
+          return name.includes("double") && !name.includes("small double");
+        }
 
-  // 🔎 SIZE FILTER (exactly as your working version)
-  const sizeMatch = (() => {
-    if (selectedSize === "") return true;   // All sizes = match everything
+        if (selectedSize === "king") {
+          return (
+            (name.includes(" king") || name.startsWith("king") || name.includes("(king")) &&
+            !name.includes("super king") &&
+            !name.includes("zip and link") &&
+            !name.includes("zip & link")
+          );
+        }
 
-    if (selectedSize === "double") {
-      return name.includes("double") && !name.includes("small double");
-    }
+        if (selectedSize === "single") {
+          return (
+            (name.includes(" single") || name.startsWith("single") || name.includes("(single")) &&
+            !name.includes("small single") &&
+            !name.includes("euro single")
+          );
+        }
 
-    if (selectedSize === "king") {
-      return (
-        (name.includes(" king") || name.startsWith("king") || name.includes("(king")) &&
-        !name.includes("super king") &&
-        !name.includes("zip and link") &&
-        !name.includes("zip & link")
-      );
-    }
+        const pattern = new RegExp(`\\b${selectedSize}\\b`, "i");
+        return pattern.test(name);
+      })();
 
-    if (selectedSize === "single") {
-      return (
-        (name.includes(" single") || name.startsWith("single") || name.includes("(single")) &&
-        !name.includes("small single") &&
-        !name.includes("euro single")
-      );
-    }
+      const baseMatch = (() => {
+        if (selectedBaseOption === "") return true;
+        const cleanName = name.replace(/[^a-z0-9 ]/g, "");
+        return cleanName.includes(selectedBaseOption);
+      })();
 
-    const pattern = new RegExp(`\\b${selectedSize}\\b`, "i");
-    return pattern.test(name);
-  })();
+      const typeMatch = (() => {
+        const cls = (it["Class"] || "").toLowerCase();
+        if (selectedType === "") return true;
+        if (selectedType === "services") return cls === "service";
+        if (selectedType === "items") return cls !== "service";
+        return true;
+      })();
 
-
-  // 🔎 BASE OPTION / STORAGE FILTER
-  const baseMatch = (() => {
-    if (selectedBaseOption === "") return true; // All storage options
-
-    const cleanName = name.replace(/[^a-z0-9 ]/g, "");
-    return cleanName.includes(selectedBaseOption);
-  })();
-
-
-  // 🔎 TYPE FILTER (NEW)
-  const typeMatch = (() => {
-    const cls = (it["Class"] || "").toLowerCase();
-
-    if (selectedType === "") return true;       // All
-    if (selectedType === "services") return cls === "service";
-    if (selectedType === "items") return cls !== "service";
-
-    return true;
-  })();
-
-
-  // ✔ FINAL FILTER CHECK
-  return nameMatch && sizeMatch && baseMatch && typeMatch;
-});
-
+      return nameMatch && sizeMatch && baseMatch && typeMatch;
+    });
 
     showSuggestions(input, matches, lineIndex);
   });
 }
-
 
 // === Fulfilment methods ===
 let fulfilmentMethodsCache = [];
@@ -483,6 +571,7 @@ function fillFulfilmentSelect(select) {
     select.appendChild(option);
   });
 }
+
 // === Inventory validation ===
 function validateInventoryForRow(row) {
   const button = row.querySelector(".open-inventory");
@@ -492,8 +581,6 @@ function validateInventoryForRow(row) {
   if (!button || !detailField || !fulfilSel) return;
 
   const fulfilmentText = fulfilSel.options[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() || "";
-
-  // ✅ Show inventory detail only for these fulfilment methods
   const allowedFulfilments = ["in store", "warehouse", "fulfil from store"];
 
   if (!allowedFulfilments.includes(fulfilmentText)) {
@@ -502,11 +589,9 @@ function validateInventoryForRow(row) {
     return;
   }
 
-  // ✅ Otherwise, show inventory button + summary
   button.style.display = "inline-block";
   if (invSummary) invSummary.style.display = "inline-block";
 
-  // ✅ Update status based on selected quantity
   const qty = parseInt(row.querySelector(".item-qty")?.value, 10) || 0;
   if (detailField.value) {
     const totalSelected = detailField.value
@@ -518,9 +603,6 @@ function validateInventoryForRow(row) {
     button.textContent = "📦";
   }
 }
-
-
-
 
 // === Popup windows ===
 function openOptionsWindow(row) {
@@ -554,24 +636,10 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
   const row = rows[lineIndex];
   if (!row) return;
 
-  /*
-    Modal already sets:
-      row.dataset.lotnumber
-      row.dataset.inventoryMeta
-      row.dataset.invdetail
-    We ONLY refresh UI here, do NOT overwrite them.
-  */
-
-  // Refresh UI for new LOT or META
   window.updateInventoryCellForRow(lineIndex);
-
-  // Re-evaluate fulfilment rule visibility etc.
   validateInventoryForRow(row);
-
-  // Update totals
   updateOrderSummary();
 };
-
 
 // === Add new row ===
 function addNewRow() {
@@ -583,6 +651,7 @@ function addNewRow() {
   tr.className = "order-line";
   tr.setAttribute("data-line", newLine);
 
+  // ✅ IMPORTANT: 60NT td is now in the template, in the RIGHT position
   tr.innerHTML = `
 <td>
   <div class="autocomplete">
@@ -597,6 +666,16 @@ function addNewRow() {
 <td><input type="number" class="item-amount" placeholder="£" step="0.01" readonly /></td>
 <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" /></td>
 <td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
+
+<td class="sixty-night-cell" style="display:none;">
+  <select class="sixty-night-select" style="display:none;">
+    <option value="N/A">N/A</option>
+    <option value="Yes">Yes</option>
+    <option value="No">No</option>
+  </select>
+  <span class="sixty-night-placeholder">—</span>
+</td>
+
 <td class="fulfilment-cell">
   <select name="fulfilmentMethod" class="item-fulfilment">
     <option value="">Loading fulfilment methods...</option>
@@ -612,7 +691,10 @@ function addNewRow() {
 
   tbody.appendChild(tr);
 
-  // Setup logic for new row
+  // ✅ Ensure correct position + adopt legacy if needed (belt & braces)
+  ensure60NightTrialCell(tr);
+  update60NightTrialColumnVisibility();
+
   setupAutocomplete(newLine);
   setupPriceSync(tr);
 
@@ -628,38 +710,31 @@ function addNewRow() {
     }, 200);
   }
 
-  // Hook up inventory button
   tr.querySelector(".open-inventory").addEventListener("click", () => openInventoryWindow(tr));
 
-  // Delete row button
   tr.querySelector(".delete-row").addEventListener("click", () => {
     tr.remove();
-    updateOrderSummary(); // ✅ recalc after row removal
+    updateOrderSummary();
+    update60NightTrialColumnVisibility(); // ✅ if a mattress row was removed
   });
 
-  // Fulfilment change
   fulfilSel.addEventListener("change", () => {
     validateInventoryForRow(tr);
-    updateOrderSummary(); // ✅ recalc after fulfilment change
+    updateOrderSummary();
   });
 
-  // ✅ Recalculate summary immediately after adding row
   updateOrderSummary();
 }
-
-
-
 
 // === Init ===
 document.addEventListener("DOMContentLoaded", async () => {
   await loadItems();
   populateSizeFilter();
-  populateBaseOptionFilter();     // 🔥 NEW LINE
+  populateBaseOptionFilter();
   await loadInventoryBalances();
   createGlobalSuggestions();
   setupAutocomplete(0);
 
-  // Track warehouse dropdown from order header
   setupWarehouseTracking();
 
   // 🔧 Handle the hard-coded first row (line 0)
@@ -667,7 +742,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (firstRow) {
     setupPriceSync(firstRow);
 
-    // Ensure inventory cell has button + hidden field + summary
+    // ✅ Ensure the first row's 60NT cell is adopted/repositioned (prevents duplicate columns)
+    ensure60NightTrialCell(firstRow);
+    update60NightTrialColumnVisibility();
+
     const invCell =
       firstRow.querySelector(".inventory-cell") ||
       firstRow.querySelector("td:nth-child(8)");
@@ -680,7 +758,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       `;
     }
 
-    // Wire up events
     const firstInvBtn = firstRow.querySelector(".open-inventory");
     if (firstInvBtn) {
       firstInvBtn.addEventListener("click", () => openInventoryWindow(firstRow));
@@ -691,7 +768,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       firstFulfilSel.addEventListener("change", () => validateInventoryForRow(firstRow));
     }
 
-    // ✅ Make sure button is visible unless fulfilment = Special Order
     validateInventoryForRow(firstRow);
   }
 
@@ -700,7 +776,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const addBtn = document.getElementById("addItemBtn");
   if (addBtn) addBtn.addEventListener("click", addNewRow);
 });
-
 
 // =====================================================
 // NEW: Update inventory UI after modal save (LOT + META)
@@ -716,7 +791,6 @@ window.updateInventoryCellForRow = function (lineIndex) {
   const cell = row.querySelector(".inventory-cell");
   if (!cell) return;
 
-  // LOT flow (same-source)
   if (lot) {
     cell.innerHTML = `
       <strong>Lot:</strong> ${lot}<br>
@@ -725,7 +799,6 @@ window.updateInventoryCellForRow = function (lineIndex) {
     return;
   }
 
-  // META flow (transfer needed)
   if (meta) {
     const display = meta.split(";").map(part => {
       const [qty, locName, , , , invName] = part.split("|");
@@ -736,6 +809,5 @@ window.updateInventoryCellForRow = function (lineIndex) {
     return;
   }
 
-  // Nothing allocated
   cell.textContent = "—";
 };

@@ -41,8 +41,8 @@
         <!-- Main Tabs -->
         <div class="tabs">
             <div class="tab active" data-target="users">User Management</div>
-            <div class="tab" data-target="permissions">Feature Permissions</div>
-            <div class="tab" data-target="fields">Field Mapping</div>
+            <!-- <div class="tab" data-target="permissions">Feature Permissions</div>
+            <div class="tab" data-target="fields">Field Mapping</div> -->
             <div class="tab" data-target="dashboard-widgets">Dashboard Widgets</div>
         </div>
 
@@ -230,7 +230,7 @@
                 <div class="user-toolbar">
                     <button id="addLocationBtn" class="btn-primary">+ Add Location</button>
                 </div>
-
+                <div class="table-scroll-wrapper">
                 <table id="locationTable">
                     <thead>
                         <tr>
@@ -247,6 +247,7 @@
                     </thead>
                     <tbody></tbody>
                 </table>
+                </div>
 
                 <div id="locationModal" class="modal hidden">
                     <div class="modal-content">
@@ -340,26 +341,31 @@
             </div>
 
 
-        </div> <!-- ✅ FIX: CLOSES USERS MASTER TAB -->
-
-        <!-- === Feature Permissions === -->
+        </div> 
+        <!-- TODO : No content for these tabs yet    
+         Feature Permissions === 
         <div id="permissions" class="tab-content hidden">
             <h2>Feature Permissions</h2>
             <p>Configure which features are available to different roles.</p>
         </div>
 
-        <!-- === Field Mapping === -->
+         === Field Mapping === 
         <div id="fields" class="tab-content hidden">
             <h2>Field Mapping</h2>
             <p>Map external data fields to system fields.</p>
         </div>
 
+    -->
+
+    
+
         <!-- === Dashboard Widgets === -->
         <div id="dashboard-widgets" class="tab-content hidden">
             <h2>Dashboard Widgets</h2>
             <p>Control which roles can view each dashboard widget.</p>
-
+            <div class="table-scroll-wrapper">
             <div id="widgetList" class="widget-admin-grid"></div>
+            </div>
 
             <div id="widgetRoleModal" class="modal hidden">
                 <div class="modal-content">

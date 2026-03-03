@@ -181,6 +181,16 @@ async function getFulfilmentMapCached() {
   }
 }
 
+function map30NightTrialOptionId(raw) {
+  const v = String(raw || "").trim().toLowerCase();
+
+  if (v === "accepted") return "1";
+  if (v === "declined") return "2";
+  if (v === "n/a" || v === "na") return "3";
+
+  return ""; // not provided / unknown
+}
+
 // =====================================================
 // ✅ Helper: build “lite” fields lists for REST Record service
 // =====================================================
@@ -356,53 +366,68 @@ router.post("/create", async (req, res) => {
       custbody_sb_paymentinfo: { id: order.paymentInfo },
       custbody_sb_warehouse: { id: order.warehouse },
 
-      item: {
-        items: items.map((i, idx) => {
-          console.log(`🧪 RAW FRONTEND LINE ${idx + 1}:`, i);
+item: {
+  items: items.map((i, idx) => {
+    console.log(`🧪 RAW FRONTEND LINE ${idx + 1}:`, i);
 
-          const line = {
-            item: { id: i.item },
-            quantity: i.quantity,
-            amount: i.amount / 1.2,
-            custcol_sb_itemoptionsdisplay: i.options || "",
-          };
+    const line = {
+      item: { id: i.item },
+      quantity: i.quantity,
+      amount: i.amount / 1.2,
+      custcol_sb_itemoptionsdisplay: i.options || "",
+    };
 
-          // Fulfilment Method → custcol_sb_fulfilmentlocation
-          if (i.fulfilmentMethod && i.class !== "service") {
-            line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
-          }
+    // ✅ 60 Night Trial → custcol_sb_30nighttrialoption (List/Record)
+    // accepted = 1, declined = 2, n/a = 3
+    const trial = String(i.trialOption || "").trim().toLowerCase();
+    if (trial === "accepted") {
+      line.custcol_sb_30nighttrialoption = { id: "1" };
+    } else if (trial === "declined") {
+      line.custcol_sb_30nighttrialoption = { id: "2" };
+    } else if (trial === "n/a" || trial === "na") {
+      line.custcol_sb_30nighttrialoption = { id: "3" };
+    }
+    // (optional default if blank)
+    // else {
+    //   line.custcol_sb_30nighttrialoption = { id: "3" };
+    // }
 
-          /* ======================================================
-             createpo logic — ONLY for subsidiary 6
-          ====================================================== */
-          const fulfilId = String(i.fulfilmentMethod || "").trim();
+    // Fulfilment Method → custcol_sb_fulfilmentlocation
+    if (i.fulfilmentMethod && i.class !== "service") {
+      line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
+    }
 
-          if (String(storeNsId) === "6") {
-            if (fulfilId === "3") {
-              line.createpo = "SpecOrd";
-              console.log(`🟦 Line ${idx + 1} createpo = SpecOrd (Special Order)`);
-            } else {
-              line.createpo = "";
-              console.log(`⬜ Line ${idx + 1} createpo = "" (default/warehouse)`);
-            }
-          } else {
-            console.log(`🚫 Subsidiary ${storeNsId} → createpo removed`);
-          }
+    /* ======================================================
+       createpo logic — ONLY for subsidiary 6
+    ====================================================== */
+    const fulfilId = String(i.fulfilmentMethod || "").trim();
 
-          /* ======================================================
-             LOT / META ALLOCATION
-          ====================================================== */
-          if (i.lotnumber) {
-            line.custcol_sb_lotnumber = { id: i.lotnumber };
-          } else if (i.inventoryMeta) {
-            line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
-            line.orderallocationstrategy = null;
-          }
+    if (String(storeNsId) === "6") {
+      if (fulfilId === "3") {
+        line.createpo = "SpecOrd";
+        console.log(`🟦 Line ${idx + 1} createpo = SpecOrd (Special Order)`);
+      } else {
+        line.createpo = "";
+        console.log(`⬜ Line ${idx + 1} createpo = "" (default/warehouse)`);
+      }
+    } else {
+      console.log(`🚫 Subsidiary ${storeNsId} → createpo removed`);
+    }
 
-          console.log(`🧾 Final Line ${idx + 1}:`, line);
-          return line;
-        }),
-      },
+    /* ======================================================
+       LOT / META ALLOCATION
+    ====================================================== */
+    if (i.lotnumber) {
+      line.custcol_sb_lotnumber = { id: i.lotnumber };
+    } else if (i.inventoryMeta) {
+      line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
+      line.orderallocationstrategy = null;
+    }
+
+    console.log(`🧾 Final Line ${idx + 1}:`, line);
+    return line;
+  }),
+},
     };
 
     /* ======================================================

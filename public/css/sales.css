@@ -505,3 +505,18 @@ textarea:focus {
   color: #991b1b;
   border: 1px solid #ef4444;
 }
+/* === FORCE Order Summary spinner to show (avoid .spinner conflicts) === */
+#orderSpinner .spinner {
+  display: inline-block !important;
+  box-sizing: border-box;
+  width: 28px !important;
+  height: 28px !important;
+  border-radius: 50%;
+  border: 3px solid rgba(0,0,0,0.15) !important;
+  border-top-color: #0081ab !important;
+  animation: orderSpin 0.8s linear infinite !important;
+}
+
+@keyframes orderSpin {
+  to { transform: rotate(360deg); }
+}
