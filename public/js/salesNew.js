@@ -149,17 +149,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       const defaultGrossTotal = defaultGrossPerUnit * qty;
 
       // --- Actual gross charged ---
-      // If a discount % is applied, override using RRP
       let actualGrossTotal;
 
       if (discountPct > 0) {
         const discountedGrossPerUnit = defaultGrossPerUnit * (1 - discountPct / 100);
         actualGrossTotal = discountedGrossPerUnit * qty;
       } else if (salePriceGrossPerUnit > 0) {
-        // Manual override sale price (gross)
         actualGrossTotal = salePriceGrossPerUnit * qty;
       } else {
-        // No override → use RRP
         actualGrossTotal = defaultGrossTotal;
       }
 
@@ -246,82 +243,13 @@ document.getElementById("addDepositBtn")?.addEventListener("click", () => {
   win.focus();
 });
 
-/* === SAVE ORDER HANDLER (simple spinner only) === */
-document.addEventListener("click", async (e) => {
-  if (
-    e.target.classList.contains("btn-primary") &&
-    e.target.textContent.trim() === "Save Order"
-  ) {
-    e.preventDefault();
-
-    const customer = {
-      id: window.currentCustomerId || null,
-      title: document.querySelector('select[name="title"]').value,
-      firstName: document.querySelector('input[name="firstName"]').value,
-      lastName: document.querySelector('input[name="lastName"]').value,
-      postcode: document.querySelector('input[name="postcode"]').value,
-      address1: document.querySelector('input[name="address1"]').value,
-      address2: document.querySelector('input[name="address2"]').value,
-      contactNumber: document.querySelector('input[name="contactNumber"]').value,
-      altContactNumber: document.querySelector('input[name="altContactNumber"]').value,
-      email: document.querySelector('input[name="email"]').value,
-    };
-
-    const order = {
-      salesExec: document.getElementById("salesExec").value,
-      store: document.getElementById("store").value,
-      leadSource: document.querySelector('select[name="leadSource"]').value,
-      paymentInfo: document.getElementById("paymentInfo").value,
-      warehouse: document.getElementById("warehouse").value,
-    };
-
-const items = [...document.querySelectorAll("#orderItemsBody .order-line")]
-  .map((tr) => {
-    const item = tr.querySelector(".item-internal-id")?.value.trim();
-
-    // ❌ Skip rows where no item has been selected
-    if (!item) return null;
-
-    const quantity = parseFloat(tr.querySelector(".item-qty").value || 0);
-    const amount = parseFloat(tr.querySelector(".item-saleprice").value || 0);
-    const options = tr.querySelector(".options-summary")?.innerText || "";
-    const fulfilmentMethod = tr.querySelector(".item-fulfilment").value;
-
-    const lotnumber = tr.dataset.lotnumber || "";
-    const inventoryMeta = tr.dataset.inventoryMeta || "";
-
-    // ✅ 60 Night Trial (per-line)
-    // Only visible for mattress lines, but the cell exists on all lines when any mattress is present
-    const trialSel = tr.querySelector(".sixty-night-select");
-    const trialOption = (trialSel?.value || "").trim(); // "Accepted" | "Declined" | "N/A" | ""
-
-    return {
-      item,
-      quantity,
-      amount,
-      options,
-      fulfilmentMethod,
-      lotnumber,
-      inventoryMeta,
-      trialOption, // ✅ send to API
-    };
-  })
-  // Remove empty/null rows so NetSuite doesn't throw 400 INVALID_VALUE
-  .filter((line) => line !== null);
-
-const body = { customer, order, items, deposits };
-console.log("💰 Including deposits in payload:", deposits);
-await submitOrder(body);
-  }
-});
-
 /* === Spinner + Toast Controls (simple) === */
 const form = document.querySelector(".form-scroll");
 const spinner = document.getElementById("orderSpinner");
 const toast = document.getElementById("orderToast");
 
-// Optional: if your spinner has a text element, we can set it without timers/intervals
-const spinnerText = document.getElementById("orderSpinnerText");
+// ✅ your HTML uses orderSpinnerTitle (not orderSpinnerText)
+const spinnerText = document.getElementById("orderSpinnerTitle");
 
 function lockForm() {
   if (form) form.classList.add("locked");
@@ -346,6 +274,150 @@ function showToast(message, type = "success") {
     setTimeout(() => toast.classList.add("hidden"), 300);
   }, 3000);
 }
+
+/* =========================================================
+   ✅ Mandatory validations before save
+   - At least one item
+   - Fulfilment method required
+   - If fulfilment is Warehouse or In Store, inventory detail required
+========================================================= */
+function validateOrderBeforeSave() {
+  const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
+
+  // Only rows with a selected item
+  const itemRows = rows.filter(r => (r.querySelector(".item-internal-id")?.value || "").trim());
+
+  // 1) Must have at least one item
+  if (itemRows.length === 0) {
+    alert("⚠️ Please add at least one item to the sales order before saving.");
+    return false;
+  }
+
+  // Reset any previous error styling
+  rows.forEach(r => r.classList.remove("row-error"));
+  rows.forEach(r => {
+    r.querySelectorAll(".field-error").forEach(el => el.classList.remove("field-error"));
+  });
+
+  let ok = true;
+  const errors = [];
+
+  itemRows.forEach((row, idx) => {
+    const lineNo = row.getAttribute("data-line") ?? String(idx + 1);
+
+    const fulfilSel = row.querySelector(".item-fulfilment");
+    const fulfilId = (fulfilSel?.value || "").trim();
+    const fulfilText =
+      fulfilSel?.options?.[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() || "";
+
+    // 2) Fulfilment method must be chosen
+    if (!fulfilId) {
+      ok = false;
+      errors.push(`• Line ${lineNo}: Fulfilment Method is required.`);
+      row.classList.add("row-error");
+      if (fulfilSel) fulfilSel.classList.add("field-error");
+    }
+
+    // 3) If fulfilment is Warehouse or In Store, inventory detail must have a value
+    const requiresInv = fulfilText === "warehouse" || fulfilText === "in store";
+
+    if (requiresInv) {
+      const invHidden = row.querySelector(".item-inv-detail");
+      const invHasValue = !!(invHidden?.value || "").trim();
+
+      // also support your dataset-based flows (lot/meta)
+      const hasLot = !!(row.dataset.lotnumber || "").trim();
+      const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
+
+      if (!invHasValue && !hasLot && !hasMeta) {
+        ok = false;
+        errors.push(
+          `• Line ${lineNo}: Inventory Detail is required for "${fulfilText === "warehouse" ? "Warehouse" : "In Store"}".`
+        );
+        row.classList.add("row-error");
+
+        const invCell = row.querySelector(".inventory-cell");
+        if (invCell) invCell.classList.add("field-error");
+      }
+    }
+  });
+
+  if (!ok) {
+    alert("Please fix the following before saving:\n\n" + errors.join("\n"));
+  }
+
+  return ok;
+}
+
+/* === SAVE ORDER HANDLER (simple spinner only) === */
+document.addEventListener("click", async (e) => {
+  if (
+    e.target.classList.contains("btn-primary") &&
+    e.target.textContent.trim() === "Save Order"
+  ) {
+    e.preventDefault();
+
+    // ✅ enforce mandatory rules before building payload
+    if (!validateOrderBeforeSave()) return;
+
+    const customer = {
+      id: window.currentCustomerId || null,
+      title: document.querySelector('select[name="title"]').value,
+      firstName: document.querySelector('input[name="firstName"]').value,
+      lastName: document.querySelector('input[name="lastName"]').value,
+      postcode: document.querySelector('input[name="postcode"]').value,
+      address1: document.querySelector('input[name="address1"]').value,
+      address2: document.querySelector('input[name="address2"]').value,
+      contactNumber: document.querySelector('input[name="contactNumber"]').value,
+      altContactNumber: document.querySelector('input[name="altContactNumber"]').value,
+      email: document.querySelector('input[name="email"]').value,
+    };
+
+    const order = {
+      salesExec: document.getElementById("salesExec").value,
+      store: document.getElementById("store").value,
+      leadSource: document.querySelector('select[name="leadSource"]').value,
+      paymentInfo: document.getElementById("paymentInfo").value,
+      warehouse: document.getElementById("warehouse").value,
+    };
+
+    const items = [...document.querySelectorAll("#orderItemsBody .order-line")]
+      .map((tr) => {
+        const item = tr.querySelector(".item-internal-id")?.value.trim();
+
+        // ❌ Skip rows where no item has been selected
+        if (!item) return null;
+
+        const quantity = parseFloat(tr.querySelector(".item-qty").value || 0);
+        const amount = parseFloat(tr.querySelector(".item-saleprice").value || 0);
+        const options = tr.querySelector(".options-summary")?.innerText || "";
+        const fulfilmentMethod = tr.querySelector(".item-fulfilment").value;
+
+        const lotnumber = tr.dataset.lotnumber || "";
+        const inventoryMeta = tr.dataset.inventoryMeta || "";
+
+        // ✅ 60 Night Trial (per-line)
+        const trialSel = tr.querySelector(".sixty-night-select");
+        const trialOption = (trialSel?.value || "").trim(); // "Accepted" | "Declined" | "N/A" | ""
+
+        return {
+          item,
+          quantity,
+          amount,
+          options,
+          fulfilmentMethod,
+          lotnumber,
+          inventoryMeta,
+          trialOption,
+        };
+      })
+      .filter((line) => line !== null);
+
+    const body = { customer, order, items, deposits };
+    console.log("💰 Including deposits in payload:", deposits);
+    await submitOrder(body);
+  }
+});
 
 // public/js/salesNew.js
 async function submitOrder(orderPayload) {

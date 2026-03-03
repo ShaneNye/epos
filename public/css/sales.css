@@ -520,3 +520,13 @@ textarea:focus {
 @keyframes orderSpin {
   to { transform: rotate(360deg); }
 }
+
+.row-error {
+  outline: 2px solid rgba(255, 0, 0, 0.35);
+  outline-offset: -2px;
+}
+
+.field-error {
+  box-shadow: 0 0 0 2px rgba(255, 0, 0, 0.35);
+  border-radius: 6px;
+}
