@@ -180,13 +180,9 @@
                     <p>Outstanding Balance: <span id="outstandingBalance">£0.00</span></p>
 
                     <!-- 🌀 Spinner + Toast now INSIDE the aside -->
-                    <div id="orderStatusArea">
-                        <div id="orderSpinner" class="order-spinner hidden">
-                            <div class="spinner"></div>
-                            <p>Creating order...</p>
-                        </div>
-
-                        <div id="orderToast" class="order-toast hidden"></div>
+                    <div id="commitInlineStatus" class="inline-status hidden">
+                        <span class="mini-spinner" aria-hidden="true"></span>
+                        <span id="commitInlineText">Committing…</span>
                     </div>
                 </aside>
 

@@ -1,496 +1,535 @@
 console.log("✅ salesNew.js loaded and running");
 
-document.addEventListener("DOMContentLoaded", async () => {
-  // Stop salesNew summary logic from running on Sales View page
-  if (window.location.pathname.includes("/sales/view/")) {
-    console.log("🔕 Skipping updateOrderSummary() — Sales View mode");
-    return;
-  }
+/* =========================================================
+   🔕 HARD STOP on Sales View
+   If this file is accidentally loaded on /sales/view/, nothing runs.
+========================================================= */
+if (window.location.pathname.includes("/sales/view/")) {
+  console.log("🔕 salesNew.js fully disabled — Sales View mode");
+} else {
+  /* === CUSTOMER DEPOSITS (kept inside guard) === */
+  let deposits = [];
 
-  const saved = storageGet(); // from main.js
-  if (!saved || !saved.token) return (window.location.href = "/index.html");
-
-  const headers = { Authorization: `Bearer ${saved.token}` };
-  let currentUser = null;
-
-  /* === Load Current User === */
-  try {
-    const meRes = await fetch("/api/me", { headers });
-    const meData = await meRes.json();
-
-    if (meData.ok && meData.user) {
-      currentUser = meData.user;
-      console.log("🧑 Current user loaded:", currentUser);
-      console.log("📦 User primaryStore:", currentUser.primaryStore);
-    } else {
-      console.warn("⚠️ No user data returned from /api/me");
-    }
-  } catch (err) {
-    console.error("Failed to fetch current user:", err);
-  }
-
-  /* === Load Sales Executives === */
-  try {
-    const res = await fetch("/api/users", { headers });
-    const data = await res.json();
-
-    if (data.ok) {
-      const execSelect = document.getElementById("salesExec");
-      execSelect.innerHTML = '<option value="">Select Sales Executive</option>';
-
-      const salesExecs = data.users.filter(
-        (u) =>
-          Array.isArray(u.roles) &&
-          u.roles.some((r) => r.name === "Sales Executive")
-      );
-
-      salesExecs.forEach((u) => {
-        const opt = document.createElement("option");
-        opt.value = u.id;
-        opt.textContent = `${u.firstName} ${u.lastName}`;
-        execSelect.appendChild(opt);
-      });
-
-      if (currentUser && salesExecs.some((u) => u.id === currentUser.id)) {
-        execSelect.value = currentUser.id;
-        console.log(
-          `✅ Default Sales Executive set to: ${currentUser.firstName} ${currentUser.lastName}`
-        );
-      }
-    }
-  } catch (err) {
-    console.error("Failed to load sales executives:", err);
-  }
-
-  /* === Load Stores === */
-  try {
-    const res = await fetch("/api/meta/locations", { headers });
-    const data = await res.json();
-
-    if (data.ok) {
-      const storeSelect = document.getElementById("store");
-      storeSelect.innerHTML = '<option value="">Select Store</option>';
-
-      const filteredLocations = data.locations.filter(
-        (loc) => !/warehouse/i.test(loc.name)
-      );
-
-      filteredLocations.forEach((loc) => {
-        const opt = document.createElement("option");
-        opt.value = String(loc.id);
-        opt.textContent = loc.name;
-        storeSelect.appendChild(opt);
-      });
-
-      if (currentUser && currentUser.primaryStore) {
-        const match = filteredLocations.find(
-          (l) =>
-            String(l.id) === String(currentUser.primaryStore) ||
-            l.name === currentUser.primaryStore
-        );
-
-        if (match) {
-          storeSelect.value = String(match.id);
-          console.log(`🏪 Default store set to: ${match.name} (ID: ${match.id})`);
-        } else {
-          console.warn(
-            `⚠️ No store match found for primaryStore: ${currentUser.primaryStore}`
-          );
-        }
-      }
-    }
-  } catch (err) {
-    console.error("Failed to load stores:", err);
-  }
-
-  // ✅ Move Prefill HERE — runs after user + store are ready
-  const stored = localStorage.getItem("selectedCustomer");
-  if (stored) {
-    try {
-      const c = JSON.parse(stored);
-      console.log("🧾 Prefilling customer from lookup:", c);
-
-      document.querySelector('input[name="firstName"]').value = c["First Name"] || "";
-      document.querySelector('input[name="lastName"]').value = c["Last Name"] || "";
-      document.querySelector('input[name="email"]').value = c["Email"] || "";
-      document.querySelector('input[name="contactNumber"]').value = c["Phone"] || "";
-      document.querySelector('input[name="postcode"]').value = c["Postal Code"] || "";
-      document.querySelector('input[name="address1"]').value = c["Address 1"] || "";
-      document.querySelector('input[name="address2"]').value = c["Address 2"] || "";
-      document.querySelector('input[name="address3"]').value = c["Address 3"] || "";
-
-      window.currentCustomerId = c["Internal ID"];
-    } catch (err) {
-      console.error("❌ Failed to parse stored customer:", err);
-    } finally {
-      localStorage.removeItem("selectedCustomer");
-    }
-  }
-
-  /* === ORDER SUMMARY CALCULATIONS === */
-  window.updateOrderSummary = function () {
-    let grossTotal = 0;
-    let discountTotal = 0;
-
-    document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
-      const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
-      const baseNet = parseFloat(tr.querySelector(".item-baseprice")?.value || 0); // base is NET
-      const salePriceGrossPerUnit = parseFloat(
-        tr.querySelector(".item-saleprice")?.value || 0
-      ); // sale price is GROSS (inc VAT)
-      const discountPct = parseFloat(
-        tr.querySelector(".item-discount")?.value || 0
-      );
-
-      if (!qty) return;
-
-      // --- Default (RRP) pricing ---
-      const defaultGrossPerUnit = baseNet ? baseNet * 1.2 : salePriceGrossPerUnit;
-      const defaultGrossTotal = defaultGrossPerUnit * qty;
-
-      // --- Actual gross charged ---
-      let actualGrossTotal;
-
-      if (discountPct > 0) {
-        const discountedGrossPerUnit = defaultGrossPerUnit * (1 - discountPct / 100);
-        actualGrossTotal = discountedGrossPerUnit * qty;
-      } else if (salePriceGrossPerUnit > 0) {
-        actualGrossTotal = salePriceGrossPerUnit * qty;
-      } else {
-        actualGrossTotal = defaultGrossTotal;
-      }
-
-      grossTotal += actualGrossTotal;
-
-      // --- Discount (for reporting) ---
-      const discountValue = Math.max(0, defaultGrossTotal - actualGrossTotal);
-      discountTotal += discountValue;
-    });
-
-    // --- VAT breakdown ---
-    const netTotal = grossTotal / 1.2;
-    const taxTotal = grossTotal - netTotal;
-
-    // --- Deposits ---
-    const totalDeposits = deposits.reduce(
-      (sum, d) => sum + (parseFloat(d.amount) || 0),
-      0
-    );
-
-    const outstandingBalance = grossTotal - totalDeposits;
-
-    // --- Update UI ---
-    document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
-    document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
-    document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
-    document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
-
-    const depositsTotalCell = document.getElementById("depositsTotal");
-    const balanceCell = document.getElementById("outstandingBalance");
-    if (depositsTotalCell)
-      depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
-    if (balanceCell)
-      balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
+  window.onDepositSaved = function (deposit) {
+    deposits.push(deposit);
+    renderDeposits();
+    if (typeof window.updateOrderSummary === "function") window.updateOrderSummary();
   };
 
-  // Recalc triggers
-  document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
-    if (
-      e.target.classList.contains("item-qty") ||
-      e.target.classList.contains("item-discount") ||
-      e.target.classList.contains("item-saleprice")
-    ) {
-      updateOrderSummary();
-    }
-  });
+  function renderDeposits() {
+    const section = document.getElementById("depositsSection");
+    const tbody = document.querySelector("#depositsTable tbody");
+    if (!tbody) return;
 
-  const bodyObserver = new MutationObserver(updateOrderSummary);
-  bodyObserver.observe(document.getElementById("orderItemsBody"), { childList: true });
+    if (deposits.length > 0 && section) section.style.display = "block";
 
-  updateOrderSummary();
-});
-
-/* === CUSTOMER DEPOSITS === */
-let deposits = [];
-
-window.onDepositSaved = function (deposit) {
-  deposits.push(deposit);
-  renderDeposits();
-  updateOrderSummary();
-};
-
-function renderDeposits() {
-  const section = document.getElementById("depositsSection");
-  const tbody = document.querySelector("#depositsTable tbody");
-  if (!tbody) return;
-  if (deposits.length > 0) section.style.display = "block";
-
-  tbody.innerHTML = "";
-  deposits.forEach((d) => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `<td>${d.method}</td><td>£${parseFloat(d.amount).toFixed(2)}</td>`;
-    tbody.appendChild(tr);
-  });
-  if (typeof updateOrderSummary === "function") updateOrderSummary();
-}
-
-document.getElementById("addDepositBtn")?.addEventListener("click", () => {
-  const win = window.open(
-    "/deposit.html",
-    "AddDeposit",
-    "width=400,height=300,resizable=yes,scrollbars=no"
-  );
-  win.focus();
-});
-
-/* === Spinner + Toast Controls (simple) === */
-const form = document.querySelector(".form-scroll");
-const spinner = document.getElementById("orderSpinner");
-const toast = document.getElementById("orderToast");
-
-// ✅ your HTML uses orderSpinnerTitle (not orderSpinnerText)
-const spinnerText = document.getElementById("orderSpinnerTitle");
-
-function lockForm() {
-  if (form) form.classList.add("locked");
-  if (spinner) spinner.classList.remove("hidden");
-  if (toast) toast.classList.add("hidden");
-  if (spinnerText) spinnerText.textContent = "Creating order…";
-}
-
-function unlockForm() {
-  if (form) form.classList.remove("locked");
-  if (spinner) spinner.classList.add("hidden");
-}
-
-function showToast(message, type = "success") {
-  if (!toast) return;
-  toast.textContent = message;
-  toast.className = `order-toast ${type}`;
-  toast.classList.remove("hidden");
-  setTimeout(() => toast.classList.add("show"), 10);
-  setTimeout(() => {
-    toast.classList.remove("show");
-    setTimeout(() => toast.classList.add("hidden"), 300);
-  }, 3000);
-}
-
-/* =========================================================
-   ✅ Mandatory validations before save
-   - At least one item
-   - Fulfilment method required
-   - If fulfilment is Warehouse or In Store, inventory detail required
-========================================================= */
-function validateOrderBeforeSave() {
-  const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
-
-  // Only rows with a selected item
-  const itemRows = rows.filter(r => (r.querySelector(".item-internal-id")?.value || "").trim());
-
-  // 1) Must have at least one item
-  if (itemRows.length === 0) {
-    alert("⚠️ Please add at least one item to the sales order before saving.");
-    return false;
-  }
-
-  // Reset any previous error styling
-  rows.forEach(r => r.classList.remove("row-error"));
-  rows.forEach(r => {
-    r.querySelectorAll(".field-error").forEach(el => el.classList.remove("field-error"));
-  });
-
-  let ok = true;
-  const errors = [];
-
-  itemRows.forEach((row, idx) => {
-    const lineNo = row.getAttribute("data-line") ?? String(idx + 1);
-
-    const fulfilSel = row.querySelector(".item-fulfilment");
-    const fulfilId = (fulfilSel?.value || "").trim();
-    const fulfilText =
-      fulfilSel?.options?.[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() || "";
-
-    // 2) Fulfilment method must be chosen
-    if (!fulfilId) {
-      ok = false;
-      errors.push(`• Line ${lineNo}: Fulfilment Method is required.`);
-      row.classList.add("row-error");
-      if (fulfilSel) fulfilSel.classList.add("field-error");
-    }
-
-    // 3) If fulfilment is Warehouse or In Store, inventory detail must have a value
-    const requiresInv = fulfilText === "warehouse" || fulfilText === "in store";
-
-    if (requiresInv) {
-      const invHidden = row.querySelector(".item-inv-detail");
-      const invHasValue = !!(invHidden?.value || "").trim();
-
-      // also support your dataset-based flows (lot/meta)
-      const hasLot = !!(row.dataset.lotnumber || "").trim();
-      const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
-
-      if (!invHasValue && !hasLot && !hasMeta) {
-        ok = false;
-        errors.push(
-          `• Line ${lineNo}: Inventory Detail is required for "${fulfilText === "warehouse" ? "Warehouse" : "In Store"}".`
-        );
-        row.classList.add("row-error");
-
-        const invCell = row.querySelector(".inventory-cell");
-        if (invCell) invCell.classList.add("field-error");
-      }
-    }
-  });
-
-  if (!ok) {
-    alert("Please fix the following before saving:\n\n" + errors.join("\n"));
-  }
-
-  return ok;
-}
-
-/* === SAVE ORDER HANDLER (simple spinner only) === */
-document.addEventListener("click", async (e) => {
-  if (
-    e.target.classList.contains("btn-primary") &&
-    e.target.textContent.trim() === "Save Order"
-  ) {
-    e.preventDefault();
-
-    // ✅ enforce mandatory rules before building payload
-    if (!validateOrderBeforeSave()) return;
-
-    const customer = {
-      id: window.currentCustomerId || null,
-      title: document.querySelector('select[name="title"]').value,
-      firstName: document.querySelector('input[name="firstName"]').value,
-      lastName: document.querySelector('input[name="lastName"]').value,
-      postcode: document.querySelector('input[name="postcode"]').value,
-      address1: document.querySelector('input[name="address1"]').value,
-      address2: document.querySelector('input[name="address2"]').value,
-      contactNumber: document.querySelector('input[name="contactNumber"]').value,
-      altContactNumber: document.querySelector('input[name="altContactNumber"]').value,
-      email: document.querySelector('input[name="email"]').value,
-    };
-
-    const order = {
-      salesExec: document.getElementById("salesExec").value,
-      store: document.getElementById("store").value,
-      leadSource: document.querySelector('select[name="leadSource"]').value,
-      paymentInfo: document.getElementById("paymentInfo").value,
-      warehouse: document.getElementById("warehouse").value,
-    };
-
-    const items = [...document.querySelectorAll("#orderItemsBody .order-line")]
-      .map((tr) => {
-        const item = tr.querySelector(".item-internal-id")?.value.trim();
-
-        // ❌ Skip rows where no item has been selected
-        if (!item) return null;
-
-        const quantity = parseFloat(tr.querySelector(".item-qty").value || 0);
-        const amount = parseFloat(tr.querySelector(".item-saleprice").value || 0);
-        const options = tr.querySelector(".options-summary")?.innerText || "";
-        const fulfilmentMethod = tr.querySelector(".item-fulfilment").value;
-
-        const lotnumber = tr.dataset.lotnumber || "";
-        const inventoryMeta = tr.dataset.inventoryMeta || "";
-
-        // ✅ 60 Night Trial (per-line)
-        const trialSel = tr.querySelector(".sixty-night-select");
-        const trialOption = (trialSel?.value || "").trim(); // "Accepted" | "Declined" | "N/A" | ""
-
-        return {
-          item,
-          quantity,
-          amount,
-          options,
-          fulfilmentMethod,
-          lotnumber,
-          inventoryMeta,
-          trialOption,
-        };
-      })
-      .filter((line) => line !== null);
-
-    const body = { customer, order, items, deposits };
-    console.log("💰 Including deposits in payload:", deposits);
-    await submitOrder(body);
-  }
-});
-
-// public/js/salesNew.js
-async function submitOrder(orderPayload) {
-  try {
-    lockForm();
-    console.log("📦 Sending order payload:", orderPayload);
-
-    // 🧩 Include session token for authenticated NetSuite calls
-    const saved = storageGet();
-    const headers = {
-      "Content-Type": "application/json",
-      ...(saved?.token ? { Authorization: `Bearer ${saved.token}` } : {}),
-    };
-
-    if (!saved?.token) {
-      console.warn("⚠️ No session token found — request may fail with 401");
-    }
-
-    console.log("📡 Sending order request with headers:", headers);
-
-    const res = await fetch("/api/netsuite/salesorder/create", {
-      method: "POST",
-      headers,
-      body: JSON.stringify(orderPayload),
+    tbody.innerHTML = "";
+    deposits.forEach((d) => {
+      const tr = document.createElement("tr");
+      // NOTE: your deposit popup sends { id, name, amount } — not method
+      // so we use name safely here
+      tr.innerHTML = `<td>${d.name || d.method || ""}</td><td>£${parseFloat(d.amount).toFixed(2)}</td>`;
+      tbody.appendChild(tr);
     });
 
-    const data = await res.json();
-    console.log("🪵 [API Response]", data);
+    if (typeof window.updateOrderSummary === "function") window.updateOrderSummary();
+  }
 
-    if (!data.ok) {
-      console.error("❌ Order failed:", data.error);
-      showToast(`❌ ${data.error || "Order creation failed"}`, "error");
-      unlockForm();
-      return;
-    }
+  document.addEventListener("DOMContentLoaded", async () => {
+    const saved = storageGet(); // from main.js
+    if (!saved || !saved.token) return (window.location.href = "/index.html");
 
-    // ✅ Extract identifiers
-    const soId = data.salesOrderId || null;
-    const tranId = data.tranId || data.response?.tranId || null;
+    const headers = { Authorization: `Bearer ${saved.token}` };
+    let currentUser = null;
 
-    // ✅ Cache locally for reference
-    if (soId) localStorage.setItem("currentSalesOrderId", soId);
-    if (tranId) localStorage.setItem("currentSalesOrderTranId", tranId);
+    /* === Load Current User === */
+    try {
+      const meRes = await fetch("/api/me", { headers });
+      const meData = await meRes.json();
 
-    // ✅ Notify and redirect
-    showToast(`✅ Order ${tranId || soId} created successfully! Redirecting...`, "success");
-
-    // ✅ Persist authentication before redirect (fix logout issue)
-    const savedAuth = storageGet();
-    if (savedAuth && savedAuth.token) {
-      localStorage.setItem("eposAuth", JSON.stringify(savedAuth));
-      console.log("💾 Promoted session token to localStorage for redirect persistence");
-    } else {
-      console.warn("⚠️ No auth token found to persist before redirect");
-    }
-
-    // ✅ Redirect to the new Sales Order view
-    setTimeout(() => {
-      if (tranId) {
-        console.log(`➡️ Redirecting to /sales/view/${tranId}`);
-        window.location.href = `/sales/view/${tranId}`;
-      } else if (soId) {
-        console.log(`➡️ Redirecting to /sales/view/${soId}`);
-        window.location.href = `/sales/view/${soId}`;
+      if (meData.ok && meData.user) {
+        currentUser = meData.user;
+        console.log("🧑 Current user loaded:", currentUser);
+        console.log("📦 User primaryStore:", currentUser.primaryStore);
       } else {
-        console.warn("⚠️ No tranId or soId found — redirecting to /home as fallback");
-        window.location.href = "/home";
+        console.warn("⚠️ No user data returned from /api/me");
       }
-    }, 1500);
-  } catch (err) {
-    console.error("❌ Error submitting order:", err);
-    showToast("❌ Something went wrong while creating the order.", "error");
-  } finally {
-    unlockForm();
+    } catch (err) {
+      console.error("Failed to fetch current user:", err);
+    }
+
+    /* === Load Sales Executives === */
+    try {
+      const res = await fetch("/api/users", { headers });
+      const data = await res.json();
+
+      if (data.ok) {
+        const execSelect = document.getElementById("salesExec");
+        if (execSelect) {
+          execSelect.innerHTML = '<option value="">Select Sales Executive</option>';
+
+          const salesExecs = data.users.filter(
+            (u) =>
+              Array.isArray(u.roles) &&
+              u.roles.some((r) => r.name === "Sales Executive")
+          );
+
+          salesExecs.forEach((u) => {
+            const opt = document.createElement("option");
+            opt.value = u.id;
+            opt.textContent = `${u.firstName} ${u.lastName}`;
+            execSelect.appendChild(opt);
+          });
+
+          if (currentUser && salesExecs.some((u) => u.id === currentUser.id)) {
+            execSelect.value = currentUser.id;
+            console.log(
+              `✅ Default Sales Executive set to: ${currentUser.firstName} ${currentUser.lastName}`
+            );
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load sales executives:", err);
+    }
+
+    /* === Load Stores === */
+    try {
+      const res = await fetch("/api/meta/locations", { headers });
+      const data = await res.json();
+
+      if (data.ok) {
+        const storeSelect = document.getElementById("store");
+        if (storeSelect) {
+          storeSelect.innerHTML = '<option value="">Select Store</option>';
+
+          const filteredLocations = data.locations.filter(
+            (loc) => !/warehouse/i.test(loc.name)
+          );
+
+          filteredLocations.forEach((loc) => {
+            const opt = document.createElement("option");
+            opt.value = String(loc.id);
+            opt.textContent = loc.name;
+            storeSelect.appendChild(opt);
+          });
+
+          if (currentUser && currentUser.primaryStore) {
+            const match = filteredLocations.find(
+              (l) =>
+                String(l.id) === String(currentUser.primaryStore) ||
+                l.name === currentUser.primaryStore
+            );
+
+            if (match) {
+              storeSelect.value = String(match.id);
+              console.log(`🏪 Default store set to: ${match.name} (ID: ${match.id})`);
+            } else {
+              console.warn(
+                `⚠️ No store match found for primaryStore: ${currentUser.primaryStore}`
+              );
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load stores:", err);
+    }
+
+    // ✅ Prefill from lookup (after user + store)
+    const stored = localStorage.getItem("selectedCustomer");
+    if (stored) {
+      try {
+        const c = JSON.parse(stored);
+        console.log("🧾 Prefilling customer from lookup:", c);
+
+        document.querySelector('input[name="firstName"]').value = c["First Name"] || "";
+        document.querySelector('input[name="lastName"]').value = c["Last Name"] || "";
+        document.querySelector('input[name="email"]').value = c["Email"] || "";
+        document.querySelector('input[name="contactNumber"]').value = c["Phone"] || "";
+        document.querySelector('input[name="postcode"]').value = c["Postal Code"] || "";
+        document.querySelector('input[name="address1"]').value = c["Address 1"] || "";
+        document.querySelector('input[name="address2"]').value = c["Address 2"] || "";
+        document.querySelector('input[name="address3"]').value = c["Address 3"] || "";
+
+        window.currentCustomerId = c["Internal ID"];
+      } catch (err) {
+        console.error("❌ Failed to parse stored customer:", err);
+      } finally {
+        localStorage.removeItem("selectedCustomer");
+      }
+    }
+
+    /* === ORDER SUMMARY CALCULATIONS === */
+    window.updateOrderSummary = function () {
+      let grossTotal = 0;
+      let discountTotal = 0;
+
+      document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
+        const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
+        const baseNet = parseFloat(tr.querySelector(".item-baseprice")?.value || 0); // NET
+        const salePriceGrossPerUnit = parseFloat(
+          tr.querySelector(".item-saleprice")?.value || 0
+        ); // GROSS inc VAT
+        const discountPct = parseFloat(tr.querySelector(".item-discount")?.value || 0);
+
+        if (!qty) return;
+
+        const defaultGrossPerUnit = baseNet ? baseNet * 1.2 : salePriceGrossPerUnit;
+        const defaultGrossTotal = defaultGrossPerUnit * qty;
+
+        let actualGrossTotal;
+
+        if (discountPct > 0) {
+          const discountedGrossPerUnit = defaultGrossPerUnit * (1 - discountPct / 100);
+          actualGrossTotal = discountedGrossPerUnit * qty;
+        } else if (salePriceGrossPerUnit > 0) {
+          actualGrossTotal = salePriceGrossPerUnit * qty;
+        } else {
+          actualGrossTotal = defaultGrossTotal;
+        }
+
+        grossTotal += actualGrossTotal;
+
+        const discountValue = Math.max(0, defaultGrossTotal - actualGrossTotal);
+        discountTotal += discountValue;
+      });
+
+      const netTotal = grossTotal / 1.2;
+      const taxTotal = grossTotal - netTotal;
+
+      const totalDeposits = deposits.reduce(
+        (sum, d) => sum + (parseFloat(d.amount) || 0),
+        0
+      );
+
+      const outstandingBalance = grossTotal - totalDeposits;
+
+      document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
+      document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
+      document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
+      document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
+
+      const depositsTotalCell = document.getElementById("depositsTotal");
+      const balanceCell = document.getElementById("outstandingBalance");
+      if (depositsTotalCell) depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
+      if (balanceCell) balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
+
+      // ✅ globals for deposit popup
+      window.__grossTotal = grossTotal;
+      window.__outstandingBalance = outstandingBalance;
+    };
+
+    // Recalc triggers
+    document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
+      if (
+        e.target.classList.contains("item-qty") ||
+        e.target.classList.contains("item-discount") ||
+        e.target.classList.contains("item-saleprice")
+      ) {
+        window.updateOrderSummary();
+      }
+    });
+
+    const orderBody = document.getElementById("orderItemsBody");
+    if (orderBody) {
+      const bodyObserver = new MutationObserver(() => window.updateOrderSummary());
+      bodyObserver.observe(orderBody, { childList: true });
+    }
+
+// ✅ bind deposit popup (inside guard)
+const addDepositBtn = document.getElementById("addDepositBtn");
+
+function moneyToNumber(val) {
+  if (val == null) return 0;
+  const cleaned = String(val).replace(/[^0-9.-]/g, ""); // strips £, commas, spaces etc.
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
+if (addDepositBtn) {
+  // prevent accidental multiple bindings
+  addDepositBtn.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // ✅ Read totals directly from DOM at click-time (most reliable)
+    const outstandingText =
+      document.getElementById("outstandingBalance")?.textContent || "";
+    const grandTotalText =
+      document.getElementById("grandTotal")?.textContent || "";
+
+    let amount = moneyToNumber(outstandingText);
+    if (!(amount > 0)) amount = moneyToNumber(grandTotalText);
+
+    // ✅ Final fallback to globals if DOM is missing
+    if (!(amount > 0)) {
+      amount =
+        Number(window.__outstandingBalance) > 0
+          ? Number(window.__outstandingBalance)
+          : Number(window.__grossTotal) || 0;
+    }
+
+    console.log("🧾 outstandingText:", outstandingText);
+    console.log("🧾 grandTotalText:", grandTotalText);
+    console.log("🧾 amount used:", amount);
+
+    const url =
+      `${window.location.origin}/deposit.html?amount=` +
+      encodeURIComponent(amount.toFixed(2));
+
+    console.log("🧾 Opening deposit popup:", url);
+
+    const win = window.open(
+      url,
+      "AddDeposit",
+      "width=420,height=520,resizable=yes,scrollbars=no"
+    );
+
+    if (!win) alert("⚠️ Please allow popups for this site to add deposits.");
+    else win.focus();
+  };
+}
+
+window.updateOrderSummary();
+});
+
+  /* === Spinner + Toast Controls (simple) === */
+  const form = document.querySelector(".form-scroll");
+  const spinner = document.getElementById("orderSpinner");
+  const toast = document.getElementById("orderToast");
+  const spinnerText = document.getElementById("orderSpinnerTitle"); // ✅ matches your HTML
+
+  function lockForm() {
+    if (form) form.classList.add("locked");
+    if (spinner) spinner.classList.remove("hidden");
+    if (toast) toast.classList.add("hidden");
+    if (spinnerText) spinnerText.textContent = "Creating order…";
+  }
+
+  function unlockForm() {
+    if (form) form.classList.remove("locked");
+    if (spinner) spinner.classList.add("hidden");
+  }
+
+  function showToast(message, type = "success") {
+    if (!toast) return;
+    toast.textContent = message;
+    toast.className = `order-toast ${type}`;
+    toast.classList.remove("hidden");
+    setTimeout(() => toast.classList.add("show"), 10);
+    setTimeout(() => {
+      toast.classList.remove("show");
+      setTimeout(() => toast.classList.add("hidden"), 300);
+    }, 3000);
+  }
+
+  /* =========================================================
+     ✅ Mandatory validations before save
+  ========================================================= */
+  function validateOrderBeforeSave() {
+    const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
+
+    const itemRows = rows.filter((r) =>
+      (r.querySelector(".item-internal-id")?.value || "").trim()
+    );
+
+    if (itemRows.length === 0) {
+      alert("⚠️ Please add at least one item to the sales order before saving.");
+      return false;
+    }
+
+    rows.forEach((r) => r.classList.remove("row-error"));
+    rows.forEach((r) => {
+      r.querySelectorAll(".field-error").forEach((el) => el.classList.remove("field-error"));
+    });
+
+    let ok = true;
+    const errors = [];
+
+    itemRows.forEach((row, idx) => {
+      const lineNo = row.getAttribute("data-line") ?? String(idx + 1);
+
+      const fulfilSel = row.querySelector(".item-fulfilment");
+      const fulfilId = (fulfilSel?.value || "").trim();
+      const fulfilText =
+        fulfilSel?.options?.[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() || "";
+
+      if (!fulfilId) {
+        ok = false;
+        errors.push(`• Line ${lineNo}: Fulfilment Method is required.`);
+        row.classList.add("row-error");
+        if (fulfilSel) fulfilSel.classList.add("field-error");
+      }
+
+      const requiresInv = fulfilText === "warehouse" || fulfilText === "in store";
+
+      if (requiresInv) {
+        const invHidden = row.querySelector(".item-inv-detail");
+        const invHasValue = !!(invHidden?.value || "").trim();
+
+        const hasLot = !!(row.dataset.lotnumber || "").trim();
+        const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
+
+        if (!invHasValue && !hasLot && !hasMeta) {
+          ok = false;
+          errors.push(
+            `• Line ${lineNo}: Inventory Detail is required for "${
+              fulfilText === "warehouse" ? "Warehouse" : "In Store"
+            }".`
+          );
+          row.classList.add("row-error");
+
+          const invCell = row.querySelector(".inventory-cell");
+          if (invCell) invCell.classList.add("field-error");
+        }
+      }
+    });
+
+    if (!ok) {
+      alert("Please fix the following before saving:\n\n" + errors.join("\n"));
+    }
+
+    return ok;
+  }
+
+  /* === SAVE ORDER HANDLER (simple spinner only) === */
+  document.addEventListener("click", async (e) => {
+    if (
+      e.target.classList.contains("btn-primary") &&
+      e.target.textContent.trim() === "Save Order"
+    ) {
+      e.preventDefault();
+
+      if (!validateOrderBeforeSave()) return;
+
+      const customer = {
+        id: window.currentCustomerId || null,
+        title: document.querySelector('select[name="title"]').value,
+        firstName: document.querySelector('input[name="firstName"]').value,
+        lastName: document.querySelector('input[name="lastName"]').value,
+        postcode: document.querySelector('input[name="postcode"]').value,
+        address1: document.querySelector('input[name="address1"]').value,
+        address2: document.querySelector('input[name="address2"]').value,
+        contactNumber: document.querySelector('input[name="contactNumber"]').value,
+        altContactNumber: document.querySelector('input[name="altContactNumber"]').value,
+        email: document.querySelector('input[name="email"]').value,
+      };
+
+      const order = {
+        salesExec: document.getElementById("salesExec").value,
+        store: document.getElementById("store").value,
+        leadSource: document.querySelector('select[name="leadSource"]').value,
+        paymentInfo: document.getElementById("paymentInfo").value,
+        warehouse: document.getElementById("warehouse").value,
+      };
+
+      const items = [...document.querySelectorAll("#orderItemsBody .order-line")]
+        .map((tr) => {
+          const item = tr.querySelector(".item-internal-id")?.value.trim();
+          if (!item) return null;
+
+          const quantity = parseFloat(tr.querySelector(".item-qty").value || 0);
+          const amount = parseFloat(tr.querySelector(".item-saleprice").value || 0);
+          const options = tr.querySelector(".options-summary")?.innerText || "";
+          const fulfilmentMethod = tr.querySelector(".item-fulfilment").value;
+
+          const lotnumber = tr.dataset.lotnumber || "";
+          const inventoryMeta = tr.dataset.inventoryMeta || "";
+
+          // ✅ 60 Night Trial (per-line)
+          const trialSel = tr.querySelector(".sixty-night-select");
+          const trialOption = (trialSel?.value || "").trim();
+
+          return {
+            item,
+            quantity,
+            amount,
+            options,
+            fulfilmentMethod,
+            lotnumber,
+            inventoryMeta,
+            trialOption,
+          };
+        })
+        .filter((line) => line !== null);
+
+      const body = { customer, order, items, deposits };
+      console.log("💰 Including deposits in payload:", deposits);
+      await submitOrder(body);
+    }
+  });
+
+  // public/js/salesNew.js
+  async function submitOrder(orderPayload) {
+    try {
+      lockForm();
+      console.log("📦 Sending order payload:", orderPayload);
+
+      const saved = storageGet();
+      const headers = {
+        "Content-Type": "application/json",
+        ...(saved?.token ? { Authorization: `Bearer ${saved.token}` } : {}),
+      };
+
+      if (!saved?.token) {
+        console.warn("⚠️ No session token found — request may fail with 401");
+      }
+
+      console.log("📡 Sending order request with headers:", headers);
+
+      const res = await fetch("/api/netsuite/salesorder/create", {
+        method: "POST",
+        headers,
+        body: JSON.stringify(orderPayload),
+      });
+
+      const data = await res.json();
+      console.log("🪵 [API Response]", data);
+
+      if (!data.ok) {
+        console.error("❌ Order failed:", data.error);
+        showToast(`❌ ${data.error || "Order creation failed"}`, "error");
+        unlockForm();
+        return;
+      }
+
+      const soId = data.salesOrderId || null;
+      const tranId = data.tranId || data.response?.tranId || null;
+
+      if (soId) localStorage.setItem("currentSalesOrderId", soId);
+      if (tranId) localStorage.setItem("currentSalesOrderTranId", tranId);
+
+      showToast(
+        `✅ Order ${tranId || soId} created successfully! Redirecting...`,
+        "success"
+      );
+
+      const savedAuth = storageGet();
+      if (savedAuth && savedAuth.token) {
+        localStorage.setItem("eposAuth", JSON.stringify(savedAuth));
+        console.log("💾 Promoted session token to localStorage for redirect persistence");
+      } else {
+        console.warn("⚠️ No auth token found to persist before redirect");
+      }
+
+      setTimeout(() => {
+        if (tranId) {
+          console.log(`➡️ Redirecting to /sales/view/${tranId}`);
+          window.location.href = `/sales/view/${tranId}`;
+        } else if (soId) {
+          console.log(`➡️ Redirecting to /sales/view/${soId}`);
+          window.location.href = `/sales/view/${soId}`;
+        } else {
+          console.warn("⚠️ No tranId or soId found — redirecting to /home as fallback");
+          window.location.href = "/home";
+        }
+      }, 1500);
+    } catch (err) {
+      console.error("❌ Error submitting order:", err);
+      showToast("❌ Something went wrong while creating the order.", "error");
+    } finally {
+      unlockForm();
+    }
   }
 }

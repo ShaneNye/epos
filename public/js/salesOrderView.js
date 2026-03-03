@@ -592,40 +592,71 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("🔒 Form locked (read-only, memo enabled)");
     }
 
+  
     // ==================================================
     // 7️⃣ Summary + Action button + Add Deposit
     // ==================================================
     updateOrderSummaryFromTable();
     updateActionButton(so.orderStatus || so.status || {}, tranId, so);
 
-    // Enable Add Deposit popup
-    const addDepositBtn = document.getElementById("addDepositBtn");
-    if (addDepositBtn) {
-      addDepositBtn.disabled = false;
-      addDepositBtn.classList.remove("locked-input");
-      addDepositBtn.addEventListener("click", (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        const popup = window.open(
-          window.location.origin + "/deposit.html",
-          "AddDeposit",
-          "width=420,height=520,resizable=yes,scrollbars=no"
-        );
-        if (!popup) {
-          alert("⚠️ Please allow popups for this site to add deposits.");
-        } else {
-          popup.focus();
-        }
-      });
-    }
-  } catch (err) {
-    console.error("❌ Load failure:", err.message || err);
-    alert("Failed to load Sales Order details. " + (err.message || err));
-  } finally {
-    overlay?.classList.add("hidden");
-  }
-});
 
+    
+
+// Enable Add Deposit popup
+const addDepositBtn = document.getElementById("addDepositBtn");
+
+function cleanMoneyText(rawValue) {
+  if (rawValue == null) return 0;
+  const cleaned = String(rawValue).replace(/[^0-9.-]/g, ""); // strips £, commas, spaces etc.
+  const n = parseFloat(cleaned);
+  return Number.isFinite(n) ? n : 0;
+}
+
+if (addDepositBtn) {
+  addDepositBtn.disabled = false;
+  addDepositBtn.classList.remove("locked-input");
+
+  // prevent accidental multiple bindings
+  addDepositBtn.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+
+    // Prefer outstanding balance, fallback to grand total
+    const outstandingText =
+      document.getElementById("outstandingBalance")?.textContent || "";
+    const grandTotalText =
+      document.getElementById("grandTotal")?.textContent || "";
+
+    let amount = cleanMoneyText(outstandingText);
+    if (!(amount > 0)) amount = cleanMoneyText(grandTotalText);
+
+    console.log("🧾 outstandingText:", outstandingText);
+    console.log("🧾 grandTotalText:", grandTotalText);
+    console.log("🧾 amount used for popup:", amount);
+
+    const popup = window.open(
+      `${window.location.origin}/deposit.html?amount=${encodeURIComponent(
+        amount.toFixed(2)
+      )}`,
+      "AddDeposit",
+      "width=420,height=520,resizable=yes,scrollbars=no"
+    );
+
+    if (!popup) {
+      alert("⚠️ Please allow popups for this site to add deposits.");
+    } else {
+      popup.focus();
+    }
+  };
+}
+
+} catch (err) {
+  console.error("❌ Load failure:", err.message || err);
+  alert("Failed to load Sales Order details. " + (err.message || err));
+} finally {
+  overlay?.classList.add("hidden");
+}
+});
 /* =====================================================
    Memo Panel (separate but lightweight)
    ===================================================== */
@@ -917,108 +948,138 @@ document.getElementById("printBtn").addEventListener("click", () => {
 /* =====================================================
    Commit / fulfil buttons
    ===================================================== */
-function showCommitSpinner() {
-  document.getElementById("commitSpinner")?.classList.remove("hidden");
+function showCommitInline(message = "Committing…") {
+  const wrap = document.getElementById("commitInlineStatus");
+  const text = document.getElementById("commitInlineText");
+  if (text) text.textContent = message;
+  wrap?.classList.remove("hidden");
 }
-function hideCommitSpinner() {
-  document.getElementById("commitSpinner")?.classList.add("hidden");
+
+function hideCommitInline() {
+  document.getElementById("commitInlineStatus")?.classList.add("hidden");
 }
 
 function updateActionButton(orderStatusObj, tranId, so) {
   const wrapper = document.getElementById("orderActionWrapper");
   if (!wrapper) return;
+
   wrapper.innerHTML = "";
+
+  // ---- Inline commit status helpers ----
+  function showCommitInline(message = "Committing…") {
+    const wrap = document.getElementById("commitInlineStatus");
+    const text = document.getElementById("commitInlineText");
+    if (text) text.textContent = message;
+    wrap?.classList.remove("hidden");
+  }
+
+  function hideCommitInline() {
+    document.getElementById("commitInlineStatus")?.classList.add("hidden");
+  }
 
   const statusId = (orderStatusObj?.id || "").toUpperCase();
   const statusName = (orderStatusObj?.refName || "").toLowerCase();
-  let btnHtml = "", btnId = "";
 
-  if (statusId === "A" || statusName.includes("approval")) {
-    btnId = "commitOrderBtn";
-    btnHtml = `<button id="${btnId}" class="btn-primary">Commit</button>`;
-  } else if (["B", "C"].includes(statusId) || statusName.includes("fulfil")) {
-    btnId = "fulfilOrderBtn";
-    btnHtml = `<button id="${btnId}" class="btn-primary">Fulfil</button>`;
-  } else {
+  // =====================================================
+  // ✅ ONLY show Commit if Pending Approval
+  // =====================================================
+  const isPendingApproval =
+    statusId === "A" || statusName.includes("approval");
+
+  if (!isPendingApproval) {
+    // If not pending approval → show nothing
     return;
   }
 
-  wrapper.innerHTML = btnHtml;
+  // Render Commit button
+  wrapper.innerHTML = `<button id="commitOrderBtn" class="btn-primary">Commit</button>`;
 
-  const commitBtn = document.getElementById(btnId);
-  if (btnId === "commitOrderBtn" && commitBtn) {
-    commitBtn.replaceWith(commitBtn.cloneNode(true));
-    const freshBtn = document.getElementById(btnId);
+  const commitBtn = document.getElementById("commitOrderBtn");
+  if (!commitBtn) return;
 
-    freshBtn.addEventListener("click", async () => {
-      const savedAuth = storageGet?.();
-      const token = savedAuth?.token;
-      if (!token) {
-        return (window.location.href = "/index.html");
+  // Prevent duplicate bindings
+  commitBtn.replaceWith(commitBtn.cloneNode(true));
+  const freshBtn = document.getElementById("commitOrderBtn");
+
+  freshBtn.addEventListener("click", async () => {
+    const savedAuth = storageGet?.();
+    const token = savedAuth?.token;
+    if (!token) return (window.location.href = "/index.html");
+
+    // Disable only commit button
+    freshBtn.disabled = true;
+    freshBtn.classList.add("locked-input");
+
+    showCommitInline("Committing…");
+
+    const updates = [];
+
+    document.querySelectorAll("#orderItemsBody tr.order-line").forEach(row => {
+      const lineId = row.dataset.lineid || "";
+      const fulfilSel = row.querySelector(".fulfilmentSelect");
+      const invInp = row.querySelector(".item-inv-detail");
+      const qtyCache = row.querySelector(".item-qty-cache")?.value || 0;
+      const itemId = row.querySelector(".item-internal-id")?.value || "";
+
+      let fulfilmentValue = fulfilSel?.value?.trim() || "";
+
+      if (!fulfilmentValue) {
+        const currentRef =
+          row.querySelector(".fulfilment-cell")?.textContent?.trim() || "";
+
+        if (currentRef && Array.isArray(window._fulfilmentMap)) {
+          const match = window._fulfilmentMap.find(
+            f => f.name?.toLowerCase() === currentRef.toLowerCase()
+          );
+          fulfilmentValue = match?.id || "";
+        }
       }
 
-      const updates = [];
-      document.querySelectorAll("#orderItemsBody tr.order-line").forEach(row => {
-        const lineId = row.dataset.lineid || "";
-        const fulfilSel = row.querySelector(".fulfilmentSelect");
-        const invInp = row.querySelector(".item-inv-detail");
-        const qtyCache = row.querySelector(".item-qty-cache")?.value || 0;
-        const itemId = row.querySelector(".item-internal-id")?.value || "";
-
-        let fulfilmentValue = fulfilSel?.value?.trim() || "";
-        if (!fulfilmentValue) {
-          const currentRef =
-            row.querySelector(".fulfilment-cell")?.textContent?.trim() || "";
-          if (currentRef && Array.isArray(window._fulfilmentMap)) {
-            const match = window._fulfilmentMap.find(
-              f => f.name?.toLowerCase() === currentRef.toLowerCase()
-            );
-            fulfilmentValue = match?.id || "";
-          }
-        }
-
-        updates.push({
-          lineId,
-          itemId,
-          quantity: Number(qtyCache),
-          fulfilmentMethod: fulfilmentValue || null,
-          inventoryDetail: invInp?.value || null,
-        });
+      updates.push({
+        lineId,
+        itemId,
+        quantity: Number(qtyCache),
+        fulfilmentMethod: fulfilmentValue || null,
+        inventoryDetail: invInp?.value || null,
       });
-
-      try {
-        showCommitSpinner();
-        const res = await fetch(`/api/netsuite/salesorder/${tranId}/commit`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify({ updates }),
-        });
-
-        const data = await res.json();
-        if (!res.ok || !data.ok) {
-          throw new Error(data.error || "Failed to commit order");
-        }
-
-        showToast?.(`✅ Order ${tranId} approved!`, "success");
-        hideCommitSpinner();
-      } catch (err) {
-        hideCommitSpinner();
-        console.error("❌ Commit error:", err.message || err);
-        showToast?.(`❌ ${err.message || err}`, "error");
-      }
     });
-  } else if (btnId === "fulfilOrderBtn") {
-    const fulfilBtn = document.getElementById(btnId);
-    if (fulfilBtn) {
-      fulfilBtn.replaceWith(fulfilBtn.cloneNode(true));
-      const freshFulfil = document.getElementById(btnId);
-      freshFulfil.addEventListener("click", () => {
-        console.log("📦 Fulfil clicked for:", tranId);
-        // future fulfilment flow
+
+    try {
+      const res = await fetch(`/api/netsuite/salesorder/${tranId}/commit`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ updates }),
       });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Failed to commit order");
+      }
+
+      showToast?.(`✅ Order ${tranId} approved!`, "success");
+
+      // Show success briefly
+      showCommitInline("Committed ✅");
+
+      // ✅ Hide Commit button permanently after success
+      setTimeout(() => {
+        wrapper.innerHTML = "";
+        hideCommitInline();
+      }, 1000);
+
+    } catch (err) {
+      console.error("❌ Commit error:", err.message || err);
+      showToast?.(`❌ ${err.message || err}`, "error");
+
+      showCommitInline("Commit failed ❌");
+      setTimeout(() => hideCommitInline(), 2000);
+
+      // Re-enable button on failure
+      freshBtn.disabled = false;
+      freshBtn.classList.remove("locked-input");
     }
-  }
+  });
 }

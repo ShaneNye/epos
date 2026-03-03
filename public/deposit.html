@@ -125,6 +125,18 @@
     </div>
 
     <script>
+          function prefillDepositAmountFromQuery() {
+    const params = new URLSearchParams(window.location.search);
+    const amount = parseFloat(params.get("amount"));
+
+    if (Number.isFinite(amount) && amount > 0) {
+      const input = document.getElementById("depositAmount");
+      input.value = amount.toFixed(2);     // ✅ prefill
+      input.focus();                       // optional
+      input.select();                      // optional: easy overwrite for partial payments
+    }
+  }
+
         async function loadPaymentMethods() {
             try {
                 const res = await fetch("/api/netsuite/paymentmethods");
@@ -172,7 +184,7 @@
             }
             window.close();
         });
-
+        prefillDepositAmountFromQuery();
         loadPaymentMethods();
     </script>
 </body>
