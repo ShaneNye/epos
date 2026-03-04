@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-        <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+    <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
     <title>Sussex Beds : Epos : Login Portal</title>
     <link rel="stylesheet" href="/css/index.css" />
     <script src="/js/particles.js"></script>
@@ -60,6 +60,34 @@
                 <button class="btn-primary" type="submit">Login</button>
             </form>
 
+            <!-- Full Launch Countdown -->
+            <section class="launch-countdown" aria-labelledby="launchCountdownTitle">
+                <div class="launch-countdown-head">
+                    <h3 id="launchCountdownTitle">Full Launch</h3>
+                    <p>Scheduled for 16 February 2026 at 9:00am</p>
+                </div>
+
+                <div id="launchCountdownGrid" class="countdown-grid">
+                    <div class="countdown-box">
+                        <span id="countDays" class="count-value">00</span>
+                        <span class="count-label">Days</span>
+                    </div>
+                    <div class="countdown-box">
+                        <span id="countHours" class="count-value">00</span>
+                        <span class="count-label">Hours</span>
+                    </div>
+                    <div class="countdown-box">
+                        <span id="countMinutes" class="count-value">00</span>
+                        <span class="count-label">Minutes</span>
+                    </div>
+                    <div class="countdown-box">
+                        <span id="countSeconds" class="count-value">00</span>
+                        <span class="count-label">Seconds</span>
+                    </div>
+                </div>
+
+                <div id="launchCountdownMessage" class="launch-message"></div>
+            </section>
 
             <footer class="portal-foot">
                 <small>© Sussex Beds • Epos <br>
@@ -68,8 +96,53 @@
         </section>
     </main>
 
+    <script>
+        (function () {
+            // 16/02/2026 09:00 local time
+const launchDate = new Date(2026, 2, 16, 9, 0, 0);
+            const daysEl = document.getElementById("countDays");
+            const hoursEl = document.getElementById("countHours");
+            const minsEl = document.getElementById("countMinutes");
+            const secsEl = document.getElementById("countSeconds");
+            const messageEl = document.getElementById("launchCountdownMessage");
+            const gridEl = document.getElementById("launchCountdownGrid");
 
+            function pad(num) {
+                return String(num).padStart(2, "0");
+            }
 
+            function updateCountdown() {
+                const now = new Date();
+                const diff = launchDate - now;
+
+                if (diff <= 0) {
+                    daysEl.textContent = "00";
+                    hoursEl.textContent = "00";
+                    minsEl.textContent = "00";
+                    secsEl.textContent = "00";
+
+                    gridEl.classList.add("countdown-complete");
+                    messageEl.textContent = "Full Launch is live.";
+                    return;
+                }
+
+                const totalSeconds = Math.floor(diff / 1000);
+                const days = Math.floor(totalSeconds / (60 * 60 * 24));
+                const hours = Math.floor((totalSeconds % (60 * 60 * 24)) / (60 * 60));
+                const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
+                const seconds = totalSeconds % 60;
+
+                daysEl.textContent = pad(days);
+                hoursEl.textContent = pad(hours);
+                minsEl.textContent = pad(minutes);
+                secsEl.textContent = pad(seconds);
+                messageEl.textContent = "Countdown to Full Launch";
+            }
+
+            updateCountdown();
+            setInterval(updateCountdown, 1000);
+        })();
+    </script>
 </body>
 
 </html>

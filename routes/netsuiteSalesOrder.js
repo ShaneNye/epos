@@ -1084,10 +1084,11 @@ router.get("/:id", async (req, res) => {
 router.post("/:id/commit", async (req, res) => {
   try {
     const { id } = req.params;
-    const { updates = [] } = req.body;
+    const { updates = [], headerUpdates = {} } = req.body;
 
     console.log(`🔁 Approving Sales Order ${id} via NetSuite RESTlet`);
     console.log("📦 Incoming updates:", JSON.stringify(updates, null, 2));
+    console.log("🧾 Incoming headerUpdates:", JSON.stringify(headerUpdates, null, 2));
 
     if (!id || !Array.isArray(updates)) {
       return res
@@ -1132,7 +1133,7 @@ router.post("/:id/commit", async (req, res) => {
     }
     global._recentCommits[id] = now;
 
-    const payload = { id, updates };
+    const payload = { id, updates, headerUpdates };
     console.log("📡 Calling NetSuite RESTlet with payload:", JSON.stringify(payload, null, 2));
 
     const response = await fetch(restletUrl, {
@@ -1362,6 +1363,105 @@ router.post("/:id/add-deposit", async (req, res) => {
     return res
       .status(500)
       .json({ ok: false, error: err.message || "Deposit creation failed" });
+  }
+});
+
+// =====================================================
+// === SAVE SALES ORDER (Patch via RESTlet, NO approval) ===
+// =====================================================
+router.post("/:id/save", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { updates = [], headerUpdates = {} } = req.body;
+
+    console.log(`💾 Saving (patch only) Sales Order ${id} via NetSuite RESTlet`);
+    console.log("📦 Incoming updates:", JSON.stringify(updates, null, 2));
+    console.log("🧾 Incoming headerUpdates:", JSON.stringify(headerUpdates, null, 2));
+
+    if (!id || !Array.isArray(updates)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Missing Sales Order ID or updates array." });
+    }
+
+    // 🔐 Get session from Authorization header
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+
+    let userId = null;
+    if (token) {
+      try {
+        const session = await getSession(token);
+        userId = session?.id || null;
+        console.log("🔐 Save request for user:", userId);
+      } catch (e) {
+        console.warn("⚠️ Could not resolve session for save:", e.message);
+      }
+    }
+
+    // 🔗 RESTlet URL (same one used for commit)
+    const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
+
+    // ✅ Build OAuth headers using per-user tokens
+    const authHeader = await getAuthHeader(restletUrl, "POST", userId, "sb");
+    const headers = {
+      ...authHeader,
+      "Content-Type": "application/json",
+    };
+
+    // 🔁 Prevent rapid double-submit (separate key from commit)
+    if (!global._recentSaves) global._recentSaves = {};
+    const now = Date.now();
+    if (global._recentSaves[id] && now - global._recentSaves[id] < 800) {
+      console.warn(`⚠️ Duplicate save request ignored for Sales Order ${id}`);
+      return res.json({
+        ok: false,
+        warning: "Duplicate save ignored (too soon)",
+      });
+    }
+    global._recentSaves[id] = now;
+
+    // ✅ IMPORTANT: tell RESTlet NOT to approve
+    const payload = { id, updates, headerUpdates, commit: false };
+
+    console.log("📡 Calling NetSuite RESTlet (save-only) with payload:", JSON.stringify(payload, null, 2));
+
+    const response = await fetch(restletUrl, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+
+    if (!response.ok || !data.ok) {
+      console.error("❌ RESTlet returned error (save-only):", text);
+      return res.status(500).json({
+        ok: false,
+        error: data?.error || "NetSuite RESTlet call failed",
+        raw: text,
+      });
+    }
+
+    console.log(`✅ Sales Order ${id} patched via RESTlet (save-only)`);
+
+    return res.json({
+      ok: true,
+      message: data.message || "Sales Order saved (not committed)",
+      restletResult: data,
+    });
+  } catch (err) {
+    console.error("❌ Save Sales Order failed:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Unexpected server error",
+    });
   }
 });
 

@@ -356,243 +356,80 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     // ==================================================
-    // 4️⃣ Render Item Lines (fast DOM)
+    // 4️⃣ Render Item Lines (delegated to salesViewItemLine.js)
     // ==================================================
-    const tbody = document.getElementById("orderItemsBody");
-    tbody.innerHTML = "";
-    if (Array.isArray(so.item?.items) && so.item.items.length) {
-      const frag = document.createDocumentFragment();
-
-      so.item.items.forEach((line, idx) => {
-        const tr = document.createElement("tr");
-        tr.classList.add("order-line");
-        tr.dataset.line = idx;
-        tr.dataset.lineid = line.lineId || "";
-
-        const itemId = String(line.item?.id || "");
-        const itemData = window.items?.find(it => String(it["Internal ID"]) === itemId);
-        const classFromCache = itemData?.["Class"];
-        const className = (classFromCache || "").toLowerCase();
-        const isService = className === "service";
-        const quantity = Number(line.quantity || 0);
-        const retailNet = Number(line.amount || 0);
-        const gross = retailNet * quantity || 0;
-
-        let sale = Number(line.saleprice || 0);
-        if (gross < 0 && sale > 0) {
-          sale = -sale;
-        }
-
-        const vat =
-          line.vat ??
-          (sale ? sale - retailNet * quantity : retailNet * quantity * 0.2);
-
-
-        let fulfilCellHtml = "";
-        let invCellHtml = "";
-
-        if (!isService) {
-          if (so.orderStatus?.id === "A") {
-            // Pending approval → editable fulfilment + inventory
-            fulfilCellHtml = `<select class="fulfilmentSelect" data-line="${idx}"></select>`;
-            invCellHtml = `
-              <div class="inventory-cell" style="display:none">
-                <button 
-                  type="button" 
-                  class="open-inventory btn-secondary small-btn" 
-                  data-itemid="${line.item?.id || ""}" 
-                  data-line="${idx}" 
-                  data-qty="${quantity}"
-                >📦</button>
-                <input 
-                  type="hidden" 
-                  class="item-internal-id" 
-                  data-line="${idx}" 
-                  value="${line.item?.id || ""}" 
-                />
-                <input 
-                  type="hidden" 
-                  class="item-qty-cache" 
-                  data-line="${idx}" 
-                  value="${quantity}" 
-                />
-                <input 
-                  type="hidden" 
-                  class="item-inv-detail" 
-                  data-line="${idx}" 
-                  value="${line.inventoryDetail || ""}" 
-                />
-                <span class="inv-summary">${line.inventoryDetail || ""}</span>
-              </div>
-            `;
-          } else {
-            fulfilCellHtml = line.custcol_sb_fulfilmentlocation?.refName || "";
-            invCellHtml = line.inventoryDetail ? "📦" : "";
-          }
-        }
-
-        const discountPct = (() => {
-          const retailGross = retailNet * quantity || 0;
-          const saleGross = sale || 0;
-          if (retailGross <= 0) return 0;
-          return Math.max(0, ((retailGross - saleGross) / retailGross) * 100);
-        })();
-
-        tr.innerHTML = `
-          <td>${line.item?.refName || "—"}</td>
-          <td>${line.custcol_sb_itemoptionsdisplay || ""}</td>
-          <td class="qty">${quantity}</td>
-          <td class="amount">£${gross.toFixed(2)}</td>
-          <td class="discount">${discountPct.toFixed(1)}%</td>
-          <td class="vat">£${Number(vat || 0).toFixed(2)}</td>
-          <td class="saleprice">£${sale ? sale.toFixed(2) : "0.00"}</td>
-          <td class="fulfilment-cell">${fulfilCellHtml}</td>
-          <td class="inventory-cell-wrapper">${invCellHtml}</td>
-          <input type="hidden" class="item-qty-cache" data-line="${idx}" value="${quantity}" />
-          <input type="hidden" class="item-internal-id" data-line="${idx}" value="${line.item?.id || ""}" />
-        `;
-
-        frag.appendChild(tr);
-      });
-
-      tbody.appendChild(frag);
-    } else {
-      const empty = document.createElement("tr");
-      empty.innerHTML = `<td colspan="8" style="text-align:center; color:#888;">No item lines found.</td>`;
-      tbody.appendChild(empty);
+    if (typeof window.renderSalesViewLines !== "function") {
+      throw new Error("renderSalesViewLines() not found — did salesViewItemLine.js load?");
     }
 
-    // ==================================================
-    // 5️⃣ Populate fulfilment dropdowns (once) + inventory buttons
-    // ==================================================
-    if (so.orderStatus?.id === "A" && fulfilmentMethods.length) {
-      const allowedInvTexts = ["warehouse", "in store", "fulfil from store"];
+    window.renderSalesViewLines({
+      so,
+      fulfilmentMethods: window._fulfilmentMap || [],
+    });
 
-      tbody.querySelectorAll(".fulfilmentSelect").forEach(sel => {
-        const lineIndex = sel.dataset.line;
-        const line = so.item?.items?.[lineIndex] || {};
 
-        const currentFulfilId =
-          line?.custcol_sb_fulfilmentlocation?.id ||
-          line?.fulfilmentlocation ||
-          line?.CUSTCOL_SB_FULFILMENTLOCATION ||
-          "";
-
-        const currentFulfilName =
-          line?.custcol_sb_fulfilmentlocation?.refName ||
-          line?.custcol_sb_fulfilmentlocation?.name ||
-          line?.fulfilmentlocationname ||
-          "";
-
-        sel.innerHTML = '<option value="">-- Select --</option>';
-
-        fulfilmentMethods.forEach(method => {
-          const id = String(method["Internal ID"] || method.id);
-          const name = method["Name"] || method.name;
-          const opt = document.createElement("option");
-          opt.value = id;
-          opt.textContent = name;
-
-          if (
-            (currentFulfilId && String(id) === String(currentFulfilId)) ||
-            (currentFulfilName && name.toLowerCase() === currentFulfilName.toLowerCase())
-          ) {
-            opt.selected = true;
-          }
-
-          sel.appendChild(opt);
-        });
-
-        // initial inventory toggle
-        const row = tbody.querySelector(`tr[data-line="${lineIndex}"]`);
-        const invWrapper = row?.querySelector(".inventory-cell");
-        const setInvVisibility = () => {
-          if (!invWrapper) return;
-          const text =
-            sel.options[sel.selectedIndex]?.textContent?.toLowerCase() || "";
-          invWrapper.style.display =
-            allowedInvTexts.some(a => text.includes(a)) ? "inline-block" : "none";
-        };
-        sel.addEventListener("change", setInvVisibility);
-        setInvVisibility();
-      });
-
-      // Inventory popup buttons
-      tbody.querySelectorAll(".open-inventory").forEach(btn => {
-        btn.addEventListener("click", () => {
-          const lineIndex = btn.dataset.line;
-          const itemId =
-            btn.dataset.itemid ||
-            document.querySelector(`.item-internal-id[data-line="${lineIndex}"]`)?.value ||
-            "";
-
-          let qty = btn.dataset.qty;
-          if (!qty || isNaN(qty) || Number(qty) <= 0) {
-            qty =
-              document.querySelector(`.item-qty-cache[data-line="${lineIndex}"]`)?.value ||
-              tbody.querySelector(`tr.order-line[data-line="${lineIndex}"] .qty`)?.textContent ||
-              0;
-          }
-          qty = String(qty).trim() || "0";
-
-          const existing =
-            document.querySelector(`.item-inv-detail[data-line="${lineIndex}"]`)?.value || "";
-
-          const warehouseSel = document.getElementById("warehouse");
-          if (warehouseSel) {
-            window.selectedWarehouseId = warehouseSel.value.trim();
-            window.selectedWarehouseName =
-              warehouseSel.options[warehouseSel.selectedIndex]?.textContent.trim() || "";
-          }
-
-          const url = `/inventory.html?itemId=${encodeURIComponent(
-            itemId
-          )}&qty=${encodeURIComponent(qty)}&detail=${encodeURIComponent(
-            existing
-          )}&line=${lineIndex}`;
-
-          const win = window.open(
-            url,
-            "InventoryDetail",
-            "width=900,height=600,resizable=yes,scrollbars=yes"
-          );
-          if (win) win.focus();
-        });
-      });
-    }
 
     // ==================================================
     // 6️⃣ Lock / unlock form depending on order status
     // ==================================================
-    if (so.orderStatus?.id === "A") {
-      console.log("🔓 Pending approval – fulfilment & inventory editable");
+    const isPendingApproval = so.orderStatus?.id === "A";
+
+    if (isPendingApproval) {
+      console.log("🔓 Pending approval – Sales New style fields editable");
+
       document.querySelectorAll("input, select, textarea, button").forEach(el => {
+        // ✅ allow editing for Sales New style line UI + header fields you want editable
         if (
+          // line inputs
+          el.classList.contains("item-qty") ||
+          el.classList.contains("item-discount") ||
+          el.classList.contains("item-saleprice") ||
+
+          // fulfilment / inventory
+          el.classList.contains("item-fulfilment") ||
           el.classList.contains("fulfilmentSelect") ||
           el.classList.contains("open-inventory") ||
           el.classList.contains("item-inv-detail") ||
+
+          // header fields you said should remain editable
+          el.name === "leadSource" ||
+          el.id === "paymentInfo" ||
+
+          // always allowed actions
           el.id === "newMemoBtn" ||
-          el.id === "printBtn"
+          el.id === "printBtn" ||
+          el.id === "addDepositBtn"
         ) {
+          el.disabled = false;
+          el.classList.remove("locked-input");
           return;
         }
+
+        // lock everything else
         el.disabled = true;
         el.classList.add("locked-input");
       });
+
     } else {
+      console.log("🔒 Not pending approval – lock everything (read-only)");
+
       document.querySelectorAll("input, select, textarea, button").forEach(el => {
-        if (el.id === 
-          "newMemoBtn" || 
-          "printBtn") 
-          
-          return;
+        // allow memo / print
+        if (el.id === "newMemoBtn" || el.id === "printBtn") return;
+
         el.disabled = true;
         el.classList.add("locked-input");
       });
-      console.log("🔒 Form locked (read-only, memo enabled)");
+
+      // but keep deposit disabled on committed orders (optional)
+      const addDepositBtn = document.getElementById("addDepositBtn");
+      if (addDepositBtn) {
+        addDepositBtn.disabled = true;
+        addDepositBtn.classList.add("locked-input");
+      }
     }
 
-  
+
     // ==================================================
     // 7️⃣ Summary + Action button + Add Deposit
     // ==================================================
@@ -600,62 +437,62 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateActionButton(so.orderStatus || so.status || {}, tranId, so);
 
 
-    
 
-// Enable Add Deposit popup
-const addDepositBtn = document.getElementById("addDepositBtn");
 
-function cleanMoneyText(rawValue) {
-  if (rawValue == null) return 0;
-  const cleaned = String(rawValue).replace(/[^0-9.-]/g, ""); // strips £, commas, spaces etc.
-  const n = parseFloat(cleaned);
-  return Number.isFinite(n) ? n : 0;
-}
+    // Enable Add Deposit popup
+    const addDepositBtn = document.getElementById("addDepositBtn");
 
-if (addDepositBtn) {
-  addDepositBtn.disabled = false;
-  addDepositBtn.classList.remove("locked-input");
-
-  // prevent accidental multiple bindings
-  addDepositBtn.onclick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    // Prefer outstanding balance, fallback to grand total
-    const outstandingText =
-      document.getElementById("outstandingBalance")?.textContent || "";
-    const grandTotalText =
-      document.getElementById("grandTotal")?.textContent || "";
-
-    let amount = cleanMoneyText(outstandingText);
-    if (!(amount > 0)) amount = cleanMoneyText(grandTotalText);
-
-    console.log("🧾 outstandingText:", outstandingText);
-    console.log("🧾 grandTotalText:", grandTotalText);
-    console.log("🧾 amount used for popup:", amount);
-
-    const popup = window.open(
-      `${window.location.origin}/deposit.html?amount=${encodeURIComponent(
-        amount.toFixed(2)
-      )}`,
-      "AddDeposit",
-      "width=420,height=520,resizable=yes,scrollbars=no"
-    );
-
-    if (!popup) {
-      alert("⚠️ Please allow popups for this site to add deposits.");
-    } else {
-      popup.focus();
+    function cleanMoneyText(rawValue) {
+      if (rawValue == null) return 0;
+      const cleaned = String(rawValue).replace(/[^0-9.-]/g, ""); // strips £, commas, spaces etc.
+      const n = parseFloat(cleaned);
+      return Number.isFinite(n) ? n : 0;
     }
-  };
-}
 
-} catch (err) {
-  console.error("❌ Load failure:", err.message || err);
-  alert("Failed to load Sales Order details. " + (err.message || err));
-} finally {
-  overlay?.classList.add("hidden");
-}
+    if (addDepositBtn) {
+      addDepositBtn.disabled = false;
+      addDepositBtn.classList.remove("locked-input");
+
+      // prevent accidental multiple bindings
+      addDepositBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+
+        // Prefer outstanding balance, fallback to grand total
+        const outstandingText =
+          document.getElementById("outstandingBalance")?.textContent || "";
+        const grandTotalText =
+          document.getElementById("grandTotal")?.textContent || "";
+
+        let amount = cleanMoneyText(outstandingText);
+        if (!(amount > 0)) amount = cleanMoneyText(grandTotalText);
+
+        console.log("🧾 outstandingText:", outstandingText);
+        console.log("🧾 grandTotalText:", grandTotalText);
+        console.log("🧾 amount used for popup:", amount);
+
+        const popup = window.open(
+          `${window.location.origin}/deposit.html?amount=${encodeURIComponent(
+            amount.toFixed(2)
+          )}`,
+          "AddDeposit",
+          "width=420,height=520,resizable=yes,scrollbars=no"
+        );
+
+        if (!popup) {
+          alert("⚠️ Please allow popups for this site to add deposits.");
+        } else {
+          popup.focus();
+        }
+      };
+    }
+
+  } catch (err) {
+    console.error("❌ Load failure:", err.message || err);
+    alert("Failed to load Sales Order details. " + (err.message || err));
+  } finally {
+    overlay?.classList.add("hidden");
+  }
 });
 /* =====================================================
    Memo Panel (separate but lightweight)
@@ -873,17 +710,52 @@ window.onDepositSaved = async (deposit) => {
    Summary from table
    ===================================================== */
 function updateOrderSummaryFromTable() {
-  console.log("🧮 updateOrderSummaryFromTable()");
-
   const rows = document.querySelectorAll("#orderItemsBody tr.order-line");
   if (!rows.length) return;
 
-  let grossTotal = 0;      // sum of Sale Price (inc VAT)
-  let discountTotal = 0;   // RRP gross - actual gross
+  const isPending = document.querySelector("#orderActionWrapper #commitOrderBtn") != null
+    || (window.__soStatusId === "A"); // optional fallback if you store status globally
+
+  let grossTotal = 0;
+  let discountTotal = 0;
 
   rows.forEach(row => {
-    const amountEl = row.querySelector(".amount");     // RRP / original gross
-    const saleEl = row.querySelector(".saleprice");  // actual charged gross
+    // Pending approval (Sales New style inputs)
+    const qtyInp = row.querySelector(".item-qty");
+    const discInp = row.querySelector(".item-discount");
+    const saleInp = row.querySelector(".item-saleprice");
+    const baseNetInp = row.querySelector(".item-baseprice");
+
+    if (qtyInp && saleInp && discInp && baseNetInp) {
+      const qty = parseFloat(qtyInp.value || 0) || 0;
+      if (!qty) return;
+
+      const baseNet = parseFloat(baseNetInp.value || 0) || 0; // NET per unit
+      const defaultGrossPerUnit = baseNet * 1.2;
+
+      const defaultGrossTotal = defaultGrossPerUnit * qty;
+
+      const discountPct = parseFloat(discInp.value || 0) || 0;
+      const saleGrossPerUnit = parseFloat(saleInp.value || 0) || 0;
+
+      let actualGrossTotal;
+
+      if (discountPct > 0) {
+        actualGrossTotal = defaultGrossPerUnit * (1 - discountPct / 100) * qty;
+      } else if (saleGrossPerUnit > 0) {
+        actualGrossTotal = saleGrossPerUnit * qty;
+      } else {
+        actualGrossTotal = defaultGrossTotal;
+      }
+
+      grossTotal += actualGrossTotal;
+      discountTotal += Math.max(0, defaultGrossTotal - actualGrossTotal);
+      return;
+    }
+
+    // Committed / read-only (table text)
+    const amountEl = row.querySelector(".amount");
+    const saleEl = row.querySelector(".saleprice");
 
     if (!saleEl) return;
 
@@ -893,27 +765,18 @@ function updateOrderSummaryFromTable() {
       : sale;
 
     grossTotal += sale;
-
-const lineDiscount = Math.max(0, amount - sale);
-discountTotal += lineDiscount;
-
-if (sale < 0) {
-  discountTotal += Math.abs(sale);
-}
-
+    discountTotal += Math.max(0, amount - sale);
   });
 
-  // 🔹 VAT breakdown from gross (20% VAT):
   const netTotal = grossTotal / 1.2;
   const taxTotal = grossTotal - netTotal;
 
-  // 🔹 Update UI labels
   document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
   document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
   document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
   document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
 
-  // 🔹 Recalculate deposits → outstanding balance (uses grandTotal text)
+  // deposits / outstanding balance
   if (window._currentDeposits?.length > 0) {
     const totalDeposits = window._currentDeposits.reduce(
       (sum, d) => sum + (parseFloat(d.amount) || 0),
@@ -921,9 +784,17 @@ if (sale < 0) {
     );
     updateDepositTotals(totalDeposits);
   }
-
-  console.log("📊 Summary recalculated — grand:", grossTotal.toFixed(2));
 }
+
+document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
+  if (
+    e.target.classList.contains("item-qty") ||
+    e.target.classList.contains("item-discount") ||
+    e.target.classList.contains("item-saleprice")
+  ) {
+    updateOrderSummaryFromTable();
+  }
+});
 
 
 document.getElementById("printBtn").addEventListener("click", () => {
@@ -965,8 +836,8 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
   wrapper.innerHTML = "";
 
-  // ---- Inline commit status helpers ----
-  function showCommitInline(message = "Committing…") {
+  // ---- Inline status helpers ----
+  function showCommitInline(message = "Working…") {
     const wrap = document.getElementById("commitInlineStatus");
     const text = document.getElementById("commitInlineText");
     if (text) text.textContent = message;
@@ -981,68 +852,136 @@ function updateActionButton(orderStatusObj, tranId, so) {
   const statusName = (orderStatusObj?.refName || "").toLowerCase();
 
   // =====================================================
-  // ✅ ONLY show Commit if Pending Approval
+  // ✅ ONLY show buttons if Pending Approval
   // =====================================================
-  const isPendingApproval =
-    statusId === "A" || statusName.includes("approval");
+  const isPendingApproval = statusId === "A" || statusName.includes("approval");
+  if (!isPendingApproval) return;
 
-  if (!isPendingApproval) {
-    // If not pending approval → show nothing
-    return;
-  }
+  // Render Save + Commit buttons
+  wrapper.innerHTML = `
+    <button id="saveOrderBtn" class="btn-secondary">Save</button>
+    <button id="commitOrderBtn" class="btn-primary">Commit</button>
+  `;
 
-  // Render Commit button
-  wrapper.innerHTML = `<button id="commitOrderBtn" class="btn-primary">Commit</button>`;
-
-  const commitBtn = document.getElementById("commitOrderBtn");
-  if (!commitBtn) return;
-
-  // Prevent duplicate bindings
-  commitBtn.replaceWith(commitBtn.cloneNode(true));
-  const freshBtn = document.getElementById("commitOrderBtn");
-
-  freshBtn.addEventListener("click", async () => {
-    const savedAuth = storageGet?.();
-    const token = savedAuth?.token;
-    if (!token) return (window.location.href = "/index.html");
-
-    // Disable only commit button
-    freshBtn.disabled = true;
-    freshBtn.classList.add("locked-input");
-
-    showCommitInline("Committing…");
+  // Helper to build payload (shared by Save + Commit)
+  function buildPayloadFromUI() {
+    const headerUpdates = {
+      leadSource: document.querySelector('select[name="leadSource"]')?.value || null,
+      paymentInfo: document.getElementById("paymentInfo")?.value || null,
+    };
 
     const updates = [];
 
-    document.querySelectorAll("#orderItemsBody tr.order-line").forEach(row => {
+    document.querySelectorAll("#orderItemsBody tr.order-line").forEach((row) => {
       const lineId = row.dataset.lineid || "";
-      const fulfilSel = row.querySelector(".fulfilmentSelect");
-      const invInp = row.querySelector(".item-inv-detail");
-      const qtyCache = row.querySelector(".item-qty-cache")?.value || 0;
       const itemId = row.querySelector(".item-internal-id")?.value || "";
 
+      const qty = Number(
+        row.querySelector(".item-qty")?.value ||
+          row.querySelector(".item-qty-cache")?.value ||
+          0
+      );
+
+      const fulfilSel =
+        row.querySelector(".item-fulfilment") || row.querySelector(".fulfilmentSelect");
       let fulfilmentValue = fulfilSel?.value?.trim() || "";
 
+      // fallback map refName -> id if blank
       if (!fulfilmentValue) {
-        const currentRef =
-          row.querySelector(".fulfilment-cell")?.textContent?.trim() || "";
-
+        const currentRef = row.querySelector(".fulfilment-cell")?.textContent?.trim() || "";
         if (currentRef && Array.isArray(window._fulfilmentMap)) {
           const match = window._fulfilmentMap.find(
-            f => f.name?.toLowerCase() === currentRef.toLowerCase()
+            (f) => f.name?.toLowerCase() === currentRef.toLowerCase()
           );
           fulfilmentValue = match?.id || "";
         }
       }
 
+      const invInp = row.querySelector(".item-inv-detail");
+
+      const discountPct = Number(row.querySelector(".item-discount")?.value || 0);
+      const saleGrossPerUnit = Number(row.querySelector(".item-saleprice")?.value || 0);
+
       updates.push({
         lineId,
         itemId,
-        quantity: Number(qtyCache),
+        quantity: qty,
         fulfilmentMethod: fulfilmentValue || null,
         inventoryDetail: invInp?.value || null,
+        discountPct,
+        saleGrossPerUnit,
       });
     });
+
+    return { updates, headerUpdates };
+  }
+
+  // -----------------------------
+  // ✅ Save Only button handler
+  // -----------------------------
+  const saveBtn = document.getElementById("saveOrderBtn");
+  if (saveBtn) {
+    saveBtn.replaceWith(saveBtn.cloneNode(true));
+    const freshSaveBtn = document.getElementById("saveOrderBtn");
+
+    freshSaveBtn.addEventListener("click", async () => {
+      const savedAuth = storageGet?.();
+      const token = savedAuth?.token;
+      if (!token) return (window.location.href = "/index.html");
+
+      freshSaveBtn.disabled = true;
+      freshSaveBtn.classList.add("locked-input");
+      showCommitInline("Saving…");
+
+      const { updates, headerUpdates } = buildPayloadFromUI();
+
+      try {
+        const res = await fetch(`/api/netsuite/salesorder/${tranId}/save`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ updates, headerUpdates }),
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.ok) throw new Error(data.error || "Failed to save order");
+
+        showToast?.("✅ Saved (not committed)", "success");
+        showCommitInline("Saved ✅");
+        setTimeout(() => hideCommitInline(), 800);
+      } catch (err) {
+        console.error("❌ Save error:", err.message || err);
+        showToast?.(`❌ ${err.message || err}`, "error");
+        showCommitInline("Save failed ❌");
+        setTimeout(() => hideCommitInline(), 1500);
+      } finally {
+        freshSaveBtn.disabled = false;
+        freshSaveBtn.classList.remove("locked-input");
+      }
+    });
+  }
+
+  // -----------------------------
+  // ✅ Commit button handler
+  // -----------------------------
+  const commitBtn = document.getElementById("commitOrderBtn");
+  if (!commitBtn) return;
+
+  commitBtn.replaceWith(commitBtn.cloneNode(true));
+  const freshCommitBtn = document.getElementById("commitOrderBtn");
+
+  freshCommitBtn.addEventListener("click", async () => {
+    const savedAuth = storageGet?.();
+    const token = savedAuth?.token;
+    if (!token) return (window.location.href = "/index.html");
+
+    freshCommitBtn.disabled = true;
+    freshCommitBtn.classList.add("locked-input");
+    showCommitInline("Committing…");
+
+    const { updates, headerUpdates } = buildPayloadFromUI();
 
     try {
       const res = await fetch(`/api/netsuite/salesorder/${tranId}/commit`, {
@@ -1051,25 +990,20 @@ function updateActionButton(orderStatusObj, tranId, so) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ updates }),
+        body: JSON.stringify({ updates, headerUpdates }),
       });
 
       const data = await res.json();
-      if (!res.ok || !data.ok) {
-        throw new Error(data.error || "Failed to commit order");
-      }
+      if (!res.ok || !data.ok) throw new Error(data.error || "Failed to commit order");
 
       showToast?.(`✅ Order ${tranId} approved!`, "success");
-
-      // Show success briefly
       showCommitInline("Committed ✅");
 
-      // ✅ Hide Commit button permanently after success
+      // ✅ Hide buttons after success
       setTimeout(() => {
         wrapper.innerHTML = "";
         hideCommitInline();
       }, 1000);
-
     } catch (err) {
       console.error("❌ Commit error:", err.message || err);
       showToast?.(`❌ ${err.message || err}`, "error");
@@ -1077,9 +1011,8 @@ function updateActionButton(orderStatusObj, tranId, so) {
       showCommitInline("Commit failed ❌");
       setTimeout(() => hideCommitInline(), 2000);
 
-      // Re-enable button on failure
-      freshBtn.disabled = false;
-      freshBtn.classList.remove("locked-input");
+      freshCommitBtn.disabled = false;
+      freshCommitBtn.classList.remove("locked-input");
     }
   });
 }
