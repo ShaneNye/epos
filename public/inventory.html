@@ -2,664 +2,764 @@
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
-    <title>Inventory Detail</title>
-    <style>
-        body {
-            font-family: "Segoe UI", Roboto, sans-serif;
-            padding: 20px;
-            background: #f9fafb;
-            color: #333;
-        }
+  <meta charset="UTF-8">
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>Inventory Detail</title>
+  <style>
+    body {
+      font-family: "Segoe UI", Roboto, sans-serif;
+      padding: 20px;
+      background: #f9fafb;
+      color: #333;
+    }
 
-        h2 {
-            margin-top: 0;
-            font-size: 1.5rem;
-            color: #0081ab;
-        }
+    h2 {
+      margin-top: 0;
+      font-size: 1.5rem;
+      color: #0081ab;
+    }
 
-        h2+div table {
-            width: auto;
-            margin-bottom: 15px;
-            border: 1px solid #d1d5db;
-            border-radius: 6px;
-            background: #ffffff;
-        }
+    h2+div table {
+      width: auto;
+      margin-bottom: 15px;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #ffffff;
+    }
 
-        h2+div th {
-            background: #ffd700;
-            color: #000;
-            font-weight: 600;
-            padding: 6px 12px;
-            border-right: 1px solid #d1d5db;
-        }
+    h2+div th {
+      background: #ffd700;
+      color: #000;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-right: 1px solid #d1d5db;
+    }
 
-        h2+div td {
-            padding: 6px 12px;
-            font-weight: 500;
-        }
+    h2+div td {
+      padding: 6px 12px;
+      font-weight: 500;
+    }
 
-        table {
-            border-collapse: collapse;
-            width: 100%;
-            margin-top: 15px;
-            background: #ffffff;
-            border-radius: 6px;
-            overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
-        }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 15px;
+      background: #ffffff;
+      border-radius: 6px;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+    }
 
-        th {
-            background: #0081ab;
-            color: #fff;
-            text-align: left;
-            padding: 10px;
-            font-weight: 600;
-        }
+    th {
+      background: #0081ab;
+      color: #fff;
+      text-align: left;
+      padding: 10px;
+      font-weight: 600;
+    }
 
-        td {
-            border-bottom: 1px solid #e5e7eb;
-            padding: 8px;
-            vertical-align: middle;
-        }
+    td {
+      border-bottom: 1px solid #e5e7eb;
+      padding: 8px;
+      vertical-align: middle;
+    }
 
-        select,
-        input[type=number] {
-            padding: 6px;
-            border: 1px solid #d1d5db;
-            border-radius: 4px;
-            font-size: 0.9rem;
-            width: 100%;
-            box-sizing: border-box;
-        }
+    select,
+    input[type=number] {
+      padding: 6px;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      font-size: 0.9rem;
+      width: 100%;
+      box-sizing: border-box;
+    }
 
-        select:focus,
-        input[type=number]:focus {
-            outline: none;
-            border-color: #0081ab;
-            box-shadow: 0 0 0 2px rgba(0, 129, 171, 0.2);
-        }
+    select:focus,
+    input[type=number]:focus {
+      outline: none;
+      border-color: #0081ab;
+      box-shadow: 0 0 0 2px rgba(0, 129, 171, 0.2);
+    }
 
-        input[type=number] {
-            width: 80px;
-            text-align: right;
-        }
+    input[type=number] {
+      width: 80px;
+      text-align: right;
+    }
 
-        .btns {
-            margin-top: 20px;
-        }
+    .btns {
+      margin-top: 20px;
+    }
 
-        button {
-            padding: 8px 16px;
-            border: none;
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 0.9rem;
-            font-weight: 600;
-            transition: background 0.2s ease;
-        }
+    button {
+      padding: 8px 16px;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      transition: background 0.2s ease;
+    }
 
-        #addRow {
-            background: #ffd700;
-            color: #000;
-        }
+    #addRow {
+      background: #ffd700;
+      color: #000;
+    }
 
-        #addRow:hover {
-            background: #e6c200;
-        }
+    #addRow:hover {
+      background: #e6c200;
+    }
 
-        #saveBtn {
-            background: #0081ab;
-            color: white;
-        }
+    #saveBtn {
+      background: #0081ab;
+      color: white;
+    }
 
-        #saveBtn:hover {
-            background: #006d8f;
-        }
+    #saveBtn:hover {
+      background: #006d8f;
+    }
 
-        #cancelBtn {
-            background: #f3f4f6;
-            color: #333;
-        }
+    #cancelBtn {
+      background: #f3f4f6;
+      color: #333;
+    }
 
-        #cancelBtn:hover {
-            background: #e5e7eb;
-        }
+    #cancelBtn:hover {
+      background: #e5e7eb;
+    }
 
-        .notice-ok {
-            color: green;
-            font-weight: bold;
-        }
+    .notice-ok {
+      color: green;
+      font-weight: bold;
+    }
 
-        .notice-transfer {
-            color: #b91c1c;
-            font-size: 0.85rem;
-        }
-    </style>
+    .notice-transfer {
+      color: #b91c1c;
+      font-size: 0.85rem;
+    }
+
+    /* ==========================
+       Loading overlay + spinner
+       ========================== */
+    .loading-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(249, 250, 251, 0.85);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 9999;
+    }
+
+    .loading-card {
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 16px 18px;
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.08);
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      min-width: 220px;
+    }
+
+    .spinner {
+      width: 22px;
+      height: 22px;
+      border: 3px solid #d1d5db;
+      border-top-color: #0081ab;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      flex: 0 0 auto;
+    }
+
+    .loading-text {
+      font-weight: 600;
+      color: #111827;
+      font-size: 0.95rem;
+      line-height: 1.2;
+    }
+
+    .loading-sub {
+      font-weight: 500;
+      color: #6b7280;
+      font-size: 0.85rem;
+      margin-top: 2px;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+  </style>
 </head>
 
 <body>
-    <h2>Allocate Inventory</h2>
-    <table id="invTable">
-        <thead>
-            <tr>
-                <th>Location</th>
-                <th>Status</th>
-                <th>Inventory #</th>
-                <th>Available</th>
-                <th>Quantity</th>
-                <th>Notice</th>
-            </tr>
-        </thead>
-        <tbody></tbody>
-    </table>
-    <button type="button" id="addRow">➕ Add Row</button>
-    <div class="btns">
-        <button type="button" id="saveBtn">Save</button>
-        <button type="button" id="cancelBtn" onclick="window.close()">Cancel</button>
+  <!-- Loading overlay -->
+  <div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-card">
+      <div class="spinner"></div>
+      <div>
+        <div class="loading-text">Loading stock…</div>
+        <div class="loading-sub">Fetching inventory availability</div>
+      </div>
     </div>
+  </div>
 
-<script>
-  /* ============================================================
-     Inventory Detail Popup Script
-  ============================================================ */
+  <h2>Allocate Inventory</h2>
 
-  async function getInventoryNumbers(itemId) {
-    try {
-      const res = await fetch(`/api/netsuite/invoice-numbers`);
-      const data = await res.json();
-      if (!data.ok || !data.results) return [];
-      return data.results.filter(r => String(r["Item Id"]) === String(itemId));
-    } catch (err) {
-      console.error("❌ Failed to fetch invoice numbers:", err);
-      return [];
-    }
-  }
+  <table id="invTable">
+    <thead>
+      <tr>
+        <th>Location</th>
+        <th>Status</th>
+        <th>Inventory #</th>
+        <th>Available</th>
+        <th>Quantity</th>
+        <th>Notice</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
 
-  async function getInventoryStatuses() {
-    try {
-      const res = await fetch(`/api/netsuite/inventory-status`);
-      const data = await res.json();
-      if (!data.ok || !data.results) return [];
-      return data.results.map(s => ({
-        name: s["Name"],
-        id: s["Internal ID"],
-      }));
-    } catch (err) {
-      console.error("❌ Failed to fetch inventory statuses:", err);
-      return [];
-    }
-  }
+  <button type="button" id="addRow">➕ Add Row</button>
 
-  function getQueryParams() {
-    const params = {};
-    new URLSearchParams(window.location.search).forEach(
-      (v, k) => (params[k] = decodeURIComponent(v))
-    );
-    return params;
-  }
+  <div class="btns">
+    <button type="button" id="saveBtn">Save</button>
+    <button type="button" id="cancelBtn" onclick="window.close()">Cancel</button>
+  </div>
 
-  /* ------------------------------------------------------------
-     Setup and Initialization
-  ------------------------------------------------------------ */
-  const rawQuery = window.location.search;
-  const params = getQueryParams();
+  <script>
+    /* ============================================================
+       Inventory Detail Popup Script (SalesNew + SalesView compatible)
+       - Uses opener.inventoryCache if available (SalesNew)
+       - Falls back to /api/netsuite/inventorybalance (SalesView)
+    ============================================================ */
 
-  const itemId = params.itemId || "";
-  const detail = params.detail || "";
-  let lineQty = parseInt(params.qty || "0", 10) || 0;
-  const lineIndex = params.line || "0";
-
-  const qtyCache = window.opener?.document.querySelector(
-    `.item-qty-cache[data-line="${lineIndex}"]`
-  )?.value;
-
-  if (lineQty === 0 && qtyCache) {
-    lineQty = parseInt(qtyCache, 10);
-  }
-
-  const tbody = document.querySelector("#invTable tbody");
-  const addRowBtn = document.getElementById("addRow");
-  const saveBtn = document.getElementById("saveBtn");
-
-  const inventoryCache = window.opener?.inventoryCache || {};
-  let stock = inventoryCache[itemId] || [];
-
-  const selectedWarehouseId = window.opener?.selectedWarehouseId || "";
-  const selectedWarehouseName = window.opener?.selectedWarehouseName || "";
-
-  // helper
-  function safeInt(v) {
-    const n = parseInt(v, 10);
-    return Number.isFinite(n) ? n : 0;
-  }
-
-  function pickDefaultStatusId(statuses) {
-    const list = Array.isArray(statuses) ? statuses : [];
-    if (!list.length) return { name: "", id: "" };
-
-    // prefers "available", else first status
-    const preferred =
-      list.find(s => String(s.name || "").toLowerCase().includes("available")) ||
-      list[0];
-
-    return preferred || { name: "", id: "" };
-  }
-
-  /* ============================================================
-     🔁 Merge live availability feed + load statuses
-  ============================================================ */
-  (async () => {
-    const [liveFeed, statuses] = await Promise.all([
-      getInventoryNumbers(itemId),
-      getInventoryStatuses(),
-    ]);
-
-    const inventoryStatusList = statuses || [];
-    const defaultStatus = pickDefaultStatusId(inventoryStatusList);
-
-    // ✅ If the opener cache is empty (Sales View), build stock from the live feed
-    if ((!Array.isArray(stock) || stock.length === 0) && Array.isArray(liveFeed) && liveFeed.length) {
-      stock = liveFeed.map(l => ({
-        inventoryNumber: (l["Number"] || "").trim(),
-        inventoryNumberId: l["inv number id"] || l["Internal ID"] || "",
-        onHand: safeInt(l["On Hand"]),
-        qty: safeInt(l["Available"]),
-        location: (l["Location"] || "").trim(),
-        locationId: (l["Location ID"] || "").trim(),
-
-        // live feed doesn't include status -> default one so UI can filter properly
-        status: defaultStatus.name || "",
-        statusId: defaultStatus.id || "",
-      }));
+    async function getInventoryNumbers(itemId) {
+      try {
+        const res = await fetch(`/api/netsuite/invoice-numbers`);
+        const data = await res.json();
+        if (!data.ok || !data.results) return [];
+        return data.results.filter(r => String(r["Item Id"]) === String(itemId));
+      } catch (err) {
+        console.error("❌ Failed to fetch invoice numbers:", err);
+        return [];
+      }
     }
 
-    // ✅ If cache exists (Sales New), merge availability into cached rows
-    if (Array.isArray(liveFeed) && liveFeed.length && Array.isArray(stock) && stock.length) {
-      stock = stock.map((s) => {
-        const sNum = (s.inventoryNumber || "").trim().toLowerCase();
-        const match = liveFeed.find(
-          (l) => (l["Number"] || "").trim().toLowerCase() === sNum
-        );
-
-        if (match) {
-          const invId = match["inv number id"] || match["Internal ID"] || "";
-          return {
-            ...s,
-            onHand: match["On Hand"] ?? s.onHand,
-            qty: match["Available"] ?? s.qty,
-            location: match["Location"] ?? s.location,
-            locationId: match["Location ID"] ?? s.locationId ?? "",
-            inventoryNumber: match["Number"] ?? s.inventoryNumber,
-            inventoryNumberId: invId,
-            status: s.status || defaultStatus.name || "",
-            statusId: s.statusId || defaultStatus.id || "",
-          };
-        }
-        return {
-          ...s,
-          status: s.status || defaultStatus.name || "",
-          statusId: s.statusId || defaultStatus.id || "",
-        };
-      });
+    async function getInventoryStatuses() {
+      try {
+        const res = await fetch(`/api/netsuite/inventory-status`);
+        const data = await res.json();
+        if (!data.ok || !data.results) return [];
+        return data.results.map(s => ({
+          name: s["Name"],
+          id: s["Internal ID"],
+        }));
+      } catch (err) {
+        console.error("❌ Failed to fetch inventory statuses:", err);
+        return [];
+      }
     }
+
+    // ✅ Same feed SalesNew uses to build inventoryCache
+    async function getInventoryBalanceRows(itemId) {
+      try {
+        const res = await fetch(`/api/netsuite/inventorybalance`);
+        const data = await res.json();
+        if (!data.ok || !data.results) return [];
+        return (data.results || []).filter(r => String(r["Item ID"]) === String(itemId));
+      } catch (err) {
+        console.error("❌ Failed to fetch inventory balance:", err);
+        return [];
+      }
+    }
+
+    function getQueryParams() {
+      const params = {};
+      new URLSearchParams(window.location.search).forEach(
+        (v, k) => (params[k] = decodeURIComponent(v))
+      );
+      return params;
+    }
+
+    const safeInt = (v) => {
+      const n = parseInt(v, 10);
+      return Number.isFinite(n) ? n : 0;
+    };
+
+    // Loading overlay helpers
+    const loadingOverlay = document.getElementById("loadingOverlay");
+    function showLoading(msg = "Loading stock…") {
+      const title = loadingOverlay?.querySelector(".loading-text");
+      if (title) title.textContent = msg;
+      loadingOverlay?.classList.remove("hidden");
+    }
+    function hideLoading() {
+      loadingOverlay?.classList.add("hidden");
+    }
+
+    /* ------------------------------------------------------------
+       Setup and Initialization
+    ------------------------------------------------------------ */
+    const params = getQueryParams();
+
+    const itemId = params.itemId || "";
+    const detail = params.detail || "";
+    let lineQty = safeInt(params.qty || "0");
+    const lineIndex = params.line || "0";
+
+    // Try qty cache from opener (works on both pages)
+    const qtyCache = window.opener?.document.querySelector(
+      `.item-qty-cache[data-line="${lineIndex}"]`
+    )?.value;
+    if (lineQty === 0 && qtyCache) lineQty = safeInt(qtyCache);
+
+    const tbody = document.querySelector("#invTable tbody");
+    const addRowBtn = document.getElementById("addRow");
+    const saveBtn = document.getElementById("saveBtn");
+
+    const selectedWarehouseName = window.opener?.selectedWarehouseName || "";
+
+    // This is what SalesNew fills; SalesView usually doesn't
+    const openerInvCache = window.opener?.inventoryCache || {};
+    let stock = openerInvCache[itemId] || [];
+
+    // Disable controls until loaded
+    addRowBtn.disabled = true;
+    saveBtn.disabled = true;
+    showLoading("Loading stock…");
 
     /* ============================================================
-       🚫 Filter out rows where Available = 0
+       🔁 Build stock base + merge live invoice-number IDs + init
     ============================================================ */
-    stock = (stock || []).filter(s => (safeInt(s.qty) > 0));
-
-    initInventoryPopup(inventoryStatusList);
-  })();
-
-  /* ============================================================
-     🧩 Main Popup Logic
-  ============================================================ */
-  function initInventoryPopup(inventoryStatusList = []) {
-
-    function getAllocatedTotal() {
-      return [...tbody.querySelectorAll(".qtyInput")].reduce((sum, inp) => {
-        const v = parseInt(inp.value || "0", 10);
-        return sum + (isNaN(v) ? 0 : v);
-      }, 0);
-    }
-
-    function remainingToAllocate() {
-      return Math.max(lineQty - getAllocatedTotal(), 0);
-    }
-
-    function remainingExcludingRow(row) {
-      const totalOther = [...tbody.querySelectorAll(".qtyInput")].reduce(
-        (sum, inp) => {
-          if (inp.closest("tr") === row) return sum;
-          const v = parseInt(inp.value || "0", 10);
-          return sum + (isNaN(v) ? 0 : v);
-        },
-        0
-      );
-      return Math.max(lineQty - totalOther, 0);
-    }
-
-    function updateAddRowState() {
-      const alloc = getAllocatedTotal();
-      const hasAnyStock = stock.some((s) => safeInt(s.qty) > 0);
-      if (addRowBtn) addRowBtn.disabled = alloc >= lineQty || !hasAnyStock;
-    }
-
-    /* ---------------------------------------------------------
-       Row Builder
-    --------------------------------------------------------- */
-    function addRow(location = "", status = "", invNum = "", quantity = "") {
-      const tr = document.createElement("tr");
-
-      const locSel = document.createElement("select");
-      locSel.className = "locSel";
-
-      const statusSel = document.createElement("select");
-      statusSel.className = "statusSel";
-
-      const invNumSel = document.createElement("select");
-      invNumSel.className = "invNumSel";
-
-      const availCell = document.createElement("td");
-      availCell.className = "availCell";
-
-      const qtyInput = document.createElement("input");
-      qtyInput.type = "number";
-      qtyInput.min = 0;
-      qtyInput.value = quantity;
-      qtyInput.className = "qtyInput";
-
-      const noticeCell = document.createElement("td");
-      noticeCell.className = "noticeCell";
-
-      const firstLocSel = tbody.querySelector("tr:first-child .locSel");
-      let lockedLocation =
-        firstLocSel && firstLocSel.value ? firstLocSel.value : "";
-
-      function populate(select, records, placeholder, selectedVal) {
-        select.innerHTML = `<option value="">${placeholder}</option>`;
-        records.forEach((r) => {
-          const opt = document.createElement("option");
-          opt.value = r.name || r;
-          opt.textContent = r.name || r;
-          if (r.id) opt.dataset.internalid = r.id;
-          if (selectedVal && (r.name === selectedVal || r === selectedVal))
-            opt.selected = true;
-          select.appendChild(opt);
-        });
-      }
-
-      // 1️⃣ Locations
-      function populateLocations() {
-        const uniqueLocs = [];
-        const seen = new Set();
-        stock.forEach((s) => {
-          if (s.location && !seen.has(s.location)) {
-            uniqueLocs.push({ name: s.location, id: s.locationId || "" });
-            seen.add(s.location);
-          }
-        });
-        populate(locSel, uniqueLocs, "Select location...", location || lockedLocation);
-      }
-
-      // 2️⃣ Statuses — ONLY those that exist in stock for that location
-      function populateStatuses() {
-        const locVal = locSel.value;
-        const filtered = stock.filter((s) => s.location === locVal);
-
-        const uniqueStatuses = [];
-        const seen = new Set();
-
-        filtered.forEach((s) => {
-          const st = (s.status || "").trim();
-          if (st && !seen.has(st)) {
-            uniqueStatuses.push({ name: st, id: s.statusId || "" });
-            seen.add(st);
-          }
-        });
-
-        populate(statusSel, uniqueStatuses, "Select status...", status);
-
-        // auto-select if only one exists
-        if (uniqueStatuses.length === 1) statusSel.value = uniqueStatuses[0].name;
-
-        // if nothing selected but statuses exist, pick first
-        if (!statusSel.value && uniqueStatuses.length) statusSel.value = uniqueStatuses[0].name;
-      }
-
-      // 3️⃣ Inventory Numbers — filtered by selected status (strict)
-      function populateInventoryNumbers() {
-        const locVal = locSel.value;
-        const statusVal = statusSel.value;
-
-        const filtered = stock.filter(
-          (s) =>
-            (!locVal || s.location === locVal) &&
-            (!statusVal || s.status === statusVal)
-        );
-
-        const seen = new Set();
-        const invList = [];
-        filtered.forEach((s) => {
-          const key = s.inventoryNumber?.trim().toLowerCase();
-          if (key && !seen.has(key)) {
-            seen.add(key);
-            invList.push({
-              name: s.inventoryNumber,
-              id: s.inventoryNumberId || "",
-              available: parseInt(s.qty || 0, 10) || 0,
-              onHand: parseInt(s.onHand || 0, 10) || 0,
-            });
-          }
-        });
-
-        populate(invNumSel, invList, "Select inventory #...", invNum);
-        if (invList.length === 1) {
-          invNumSel.value = invList[0].name;
-          updateAvailable();
+    (async () => {
+      try {
+        if (!itemId) {
+          console.warn("⚠️ Popup opened without itemId. URL params:", params);
         }
+
+        const [liveFeed, statuses, balanceRows] = await Promise.all([
+          getInventoryNumbers(itemId),
+          getInventoryStatuses(),
+          // only fetch balance if cache missing/empty
+          (!Array.isArray(stock) || stock.length === 0)
+            ? getInventoryBalanceRows(itemId)
+            : Promise.resolve([]),
+        ]);
+
+        // Map status name -> id (so we can store statusId when we build from inventorybalance)
+        const statusMap = {};
+        (statuses || []).forEach(s => {
+          const key = String(s.name || "").trim().toLowerCase();
+          if (key) statusMap[key] = String(s.id || "");
+        });
+
+        // ✅ If opener cache is missing (SalesView), build stock from inventorybalance (same as SalesNew)
+        if (!Array.isArray(stock) || stock.length === 0) {
+          stock = (balanceRows || []).map(r => {
+            const statusName = String(r["Status"] || "").trim();
+            const statusKey = statusName.toLowerCase();
+
+            return {
+              location: String(r["Location"] || "").trim(),
+              locationId: String(r["Location ID"] || "").trim(),
+              qty: safeInt(r["Available"]),
+              onHand: safeInt(r["On Hand"]),
+              bin: String(r["Bin Number"] || "").trim(),
+              status: statusName,
+              statusId: statusMap[statusKey] || "",
+              inventoryNumber: String(r["Inventory Number"] || "").trim(),
+              inventoryNumberId: "", // will be merged from liveFeed if available
+            };
+          });
+
+          // optional: cache it back on opener so subsequent popups are instant
+          try {
+            window.opener.inventoryCache = window.opener.inventoryCache || {};
+            window.opener.inventoryCache[itemId] = stock;
+          } catch { }
+        }
+
+        // ✅ Merge liveFeed invoice number IDs / freshest availability if it matches by inventory number
+        if (Array.isArray(liveFeed) && liveFeed.length && Array.isArray(stock) && stock.length) {
+          stock = stock.map(s => {
+            const sNum = (s.inventoryNumber || "").trim().toLowerCase();
+            const match = liveFeed.find(l => (l["Number"] || "").trim().toLowerCase() === sNum);
+            if (!match) return s;
+
+            const invId = match["inv number id"] || match["Internal ID"] || "";
+
+            return {
+              ...s,
+              // keep your inventorybalance status as source-of-truth
+              qty: match["Available"] ?? s.qty,
+              onHand: match["On Hand"] ?? s.onHand,
+              location: match["Location"] ?? s.location,
+              locationId: match["Location ID"] ?? s.locationId,
+              inventoryNumber: match["Number"] ?? s.inventoryNumber,
+              inventoryNumberId: invId || s.inventoryNumberId || "",
+            };
+          });
+        }
+
+        // 🚫 Filter out rows where Available = 0
+        stock = (stock || []).filter(s => safeInt(s.qty) > 0);
+
+        initInventoryPopup(statuses || []);
+      } catch (err) {
+        console.error("❌ Inventory popup init failed:", err);
+        alert("Failed to load inventory. Please try again.");
+      } finally {
+        // Enable controls once loaded (even if stock empty)
+        addRowBtn.disabled = false;
+        saveBtn.disabled = false;
+        hideLoading();
+      }
+    })();
+
+    /* ============================================================
+       🧩 Main Popup Logic
+    ============================================================ */
+    function initInventoryPopup(inventoryStatusList = []) {
+
+      function getAllocatedTotal() {
+        return [...tbody.querySelectorAll(".qtyInput")].reduce((sum, inp) => {
+          const v = safeInt(inp.value || "0");
+          return sum + v;
+        }, 0);
       }
 
-      // 4️⃣ Available display
-      function updateAvailable() {
-        const match = stock.find(
-          (s) =>
-            (!locSel.value || s.location === locSel.value) &&
-            (!statusSel.value || s.status === statusSel.value) &&
-            (!invNumSel.value || s.inventoryNumber === invNumSel.value)
-        );
-
-        const available = match ? parseInt(match.qty || 0, 10) : 0;
-        const onHand = match ? parseInt(match.onHand || 0, 10) : 0;
-        availCell.textContent = `${available} out of ${onHand}`;
-
-        const remaining = remainingExcludingRow(tr);
-        const maxForRow = Math.min(available, remaining);
-        qtyInput.max = maxForRow;
-        if (parseInt(qtyInput.value || "0", 10) > maxForRow)
-          qtyInput.value = maxForRow;
-
-        updateAddRowState();
+      function remainingToAllocate() {
+        return Math.max(lineQty - getAllocatedTotal(), 0);
       }
 
-      function updateNotice() {
-        const locSelVal = locSel.value;
-        if (!locSelVal) {
+      function remainingExcludingRow(row) {
+        const totalOther = [...tbody.querySelectorAll(".qtyInput")].reduce((sum, inp) => {
+          if (inp.closest("tr") === row) return sum;
+          return sum + safeInt(inp.value || "0");
+        }, 0);
+        return Math.max(lineQty - totalOther, 0);
+      }
+
+      function updateAddRowState() {
+        const alloc = getAllocatedTotal();
+        const hasAnyStock = stock.some((s) => safeInt(s.qty) > 0);
+        if (addRowBtn) addRowBtn.disabled = alloc >= lineQty || !hasAnyStock;
+      }
+
+      /* ---------------------------------------------------------
+         Row Builder
+      --------------------------------------------------------- */
+      function addRow(location = "", status = "", invNum = "", quantity = "") {
+        const tr = document.createElement("tr");
+
+        const locSel = document.createElement("select");
+        locSel.className = "locSel";
+
+        const statusSel = document.createElement("select");
+        statusSel.className = "statusSel";
+
+        const invNumSel = document.createElement("select");
+        invNumSel.className = "invNumSel";
+
+        const availCell = document.createElement("td");
+        availCell.className = "availCell";
+
+        const qtyInput = document.createElement("input");
+        qtyInput.type = "number";
+        qtyInput.min = 0;
+        qtyInput.value = quantity;
+        qtyInput.className = "qtyInput";
+
+        const noticeCell = document.createElement("td");
+        noticeCell.className = "noticeCell";
+
+        const firstLocSel = tbody.querySelector("tr:first-child .locSel");
+        let lockedLocation = firstLocSel && firstLocSel.value ? firstLocSel.value : "";
+
+        function populate(select, records, placeholder, selectedVal) {
+          select.innerHTML = `<option value="">${placeholder}</option>`;
+          records.forEach((r) => {
+            const opt = document.createElement("option");
+            opt.value = r.name || r;
+            opt.textContent = r.name || r;
+            if (r.id) opt.dataset.internalid = r.id;
+            if (selectedVal && (r.name === selectedVal || r === selectedVal)) opt.selected = true;
+            select.appendChild(opt);
+          });
+        }
+
+        // 1️⃣ Locations (from stock)
+        function populateLocations() {
+          const uniqueLocs = [];
+          const seen = new Set();
+          stock.forEach((s) => {
+            if (s.location && !seen.has(s.location)) {
+              uniqueLocs.push({ name: s.location, id: s.locationId || "" });
+              seen.add(s.location);
+            }
+          });
+          populate(locSel, uniqueLocs, "Select location...", location || lockedLocation);
+        }
+
+        // 2️⃣ Statuses (ONLY statuses that exist for that item at that location)
+        function populateStatuses() {
+          const locVal = locSel.value;
+          const filtered = stock.filter((s) => s.location === locVal);
+
+          const uniqueStatuses = [];
+          const seen = new Set();
+          filtered.forEach((s) => {
+            const st = String(s.status || "").trim();
+            if (st && !seen.has(st)) {
+              uniqueStatuses.push({ name: st, id: s.statusId || "" });
+              seen.add(st);
+            }
+          });
+
+          populate(statusSel, uniqueStatuses, "Select status...", status);
+
+          // auto-pick first/only
+          if (uniqueStatuses.length === 1) statusSel.value = uniqueStatuses[0].name;
+          if (!statusSel.value && uniqueStatuses.length) statusSel.value = uniqueStatuses[0].name;
+        }
+
+        // 3️⃣ Inventory Numbers filtered strictly by status
+        function populateInventoryNumbers() {
+          const locVal = locSel.value;
+          const statusVal = statusSel.value;
+
+          const filtered = stock.filter(
+            (s) =>
+              (!locVal || s.location === locVal) &&
+              (!statusVal || s.status === statusVal)
+          );
+
+          const seen = new Set();
+          const invList = [];
+          filtered.forEach((s) => {
+            const key = (s.inventoryNumber || "").trim().toLowerCase();
+            if (key && !seen.has(key)) {
+              seen.add(key);
+              invList.push({
+                name: s.inventoryNumber,
+                id: s.inventoryNumberId || "",
+                available: safeInt(s.qty),
+                onHand: safeInt(s.onHand),
+              });
+            }
+          });
+
+          populate(invNumSel, invList, "Select inventory #...", invNum);
+          if (invList.length === 1) {
+            invNumSel.value = invList[0].name;
+            updateAvailable();
+          }
+        }
+
+        // 4️⃣ Available display
+        function updateAvailable() {
+          const match = stock.find(
+            (s) =>
+              (!locSel.value || s.location === locSel.value) &&
+              (!statusSel.value || s.status === statusSel.value) &&
+              (!invNumSel.value || s.inventoryNumber === invNumSel.value)
+          );
+
+          const available = match ? safeInt(match.qty) : 0;
+          const onHand = match ? safeInt(match.onHand) : 0;
+          availCell.textContent = `${available} out of ${onHand}`;
+
+          const remaining = remainingExcludingRow(tr);
+          const maxForRow = Math.min(available, remaining);
+          qtyInput.max = maxForRow;
+          if (safeInt(qtyInput.value || "0") > maxForRow) qtyInput.value = maxForRow;
+
+          updateAddRowState();
+        }
+
+        function updateNotice() {
+          const locSelVal = locSel.value;
+          if (!locSelVal) {
+            noticeCell.textContent = "";
+            noticeCell.className = "noticeCell";
+            return;
+          }
+
+          let fulfilmentMethod = "";
+          try {
+            const lineIdx = parseInt(params.line || "0", 10);
+            const fulfilSelects = window.opener?.document.querySelectorAll(".item-fulfilment, .fulfilmentSelect");
+            const fulfilSelect = fulfilSelects ? fulfilSelects[lineIdx] : null;
+            fulfilmentMethod = fulfilSelect?.value || "";
+          } catch { }
+
+          const fulfilId = String(fulfilmentMethod).trim();
+
+          const storeSelect = window.opener?.document.getElementById("store");
+          const storeName = storeSelect?.selectedOptions?.[0]?.textContent?.trim() || "";
+          const storeLower = storeName.toLowerCase();
+
+          const warehouseName = selectedWarehouseName || "";
+          const warehouseLower = warehouseName.toLowerCase();
+
+          const locLower = locSelVal.toLowerCase();
+
+          if (fulfilId === "1") {
+            const isStore =
+              locLower === storeLower ||
+              locLower.includes(storeLower) ||
+              storeLower.includes(locLower);
+
+            if (isStore) {
+              noticeCell.textContent = "✅ OK";
+              noticeCell.className = "noticeCell notice-ok";
+            } else {
+              noticeCell.textContent =
+                `⚠️ Goods from ${locSel.value} will trigger a transfer to ${storeName}`;
+              noticeCell.className = "noticeCell notice-transfer";
+            }
+            return;
+          }
+
+          if (fulfilId === "2") {
+            const isWarehouse =
+              locLower === warehouseLower ||
+              locLower.includes(warehouseLower) ||
+              warehouseLower.includes(locLower);
+
+            if (isWarehouse) {
+              noticeCell.textContent = "✅ OK";
+              noticeCell.className = "noticeCell notice-ok";
+            } else {
+              noticeCell.textContent =
+                `⚠️ Goods from ${locSel.value} will trigger a transfer to ${warehouseName}`;
+              noticeCell.className = "noticeCell notice-transfer";
+            }
+            return;
+          }
+
           noticeCell.textContent = "";
           noticeCell.className = "noticeCell";
-          return;
         }
 
-        let fulfilmentMethod = "";
-        try {
-          const lineIdx = parseInt(params.line || "0", 10);
-          const fulfilSelects = window.opener?.document.querySelectorAll(".item-fulfilment");
-          const fulfilSelect = fulfilSelects ? fulfilSelects[lineIdx] : null;
-          fulfilmentMethod = fulfilSelect?.value || "";
-        } catch { }
+        // Events
+        locSel.addEventListener("change", () => {
+          populateStatuses();
+          populateInventoryNumbers();
+          updateAvailable();
+          updateNotice();
+        });
 
-        const fulfilId = String(fulfilmentMethod).trim();
+        statusSel.addEventListener("change", () => {
+          populateInventoryNumbers();
+          updateAvailable();
+        });
 
-        const storeSelect = window.opener?.document.getElementById("store");
-        const storeName = storeSelect?.selectedOptions?.[0]?.textContent?.trim() || "";
-        const storeLower = storeName.toLowerCase();
+        invNumSel.addEventListener("change", updateAvailable);
 
-        const warehouseName = selectedWarehouseName || "";
-        const warehouseLower = warehouseName.toLowerCase();
+        qtyInput.addEventListener("input", () => {
+          const max = safeInt(qtyInput.max || "0");
+          const val = safeInt(qtyInput.value || "0");
+          if (val > max) qtyInput.value = max;
+          updateAddRowState();
+        });
 
-        const locLower = locSelVal.toLowerCase();
+        // Build row
+        const tdLoc = document.createElement("td");
+        tdLoc.appendChild(locSel);
+        const tdStatus = document.createElement("td");
+        tdStatus.appendChild(statusSel);
+        const tdInv = document.createElement("td");
+        tdInv.appendChild(invNumSel);
+        const tdQty = document.createElement("td");
+        tdQty.appendChild(qtyInput);
 
-        if (fulfilId === "1") {
-          const isStore =
-            locLower === storeLower ||
-            locLower.includes(storeLower) ||
-            storeLower.includes(locLower);
+        tr.append(tdLoc, tdStatus, tdInv, availCell, tdQty, noticeCell);
+        tbody.appendChild(tr);
 
-          if (isStore) {
-            noticeCell.textContent = "✅ OK";
-            noticeCell.className = "noticeCell notice-ok";
-          } else {
-            noticeCell.textContent =
-              `⚠️ Goods from ${locSel.value} will trigger a transfer to ${storeName}`;
-            noticeCell.className = "noticeCell notice-transfer";
-          }
-          return;
+        // Init
+        populateLocations();
+        if (lockedLocation && tbody.querySelectorAll("tr").length > 1) {
+          locSel.value = lockedLocation;
+          locSel.disabled = true;
         }
-
-        if (fulfilId === "2") {
-          const isWarehouse =
-            locLower === warehouseLower ||
-            locLower.includes(warehouseLower) ||
-            warehouseLower.includes(locLower);
-
-          if (isWarehouse) {
-            noticeCell.textContent = "✅ OK";
-            noticeCell.className = "noticeCell notice-ok";
-          } else {
-            noticeCell.textContent =
-              `⚠️ Goods from ${locSel.value} will trigger a transfer to ${warehouseName}`;
-            noticeCell.className = "noticeCell notice-transfer";
-          }
-          return;
-        }
-
-        noticeCell.textContent = "";
-        noticeCell.className = "noticeCell";
-      }
-
-      // Events
-      locSel.addEventListener("change", () => {
         populateStatuses();
         populateInventoryNumbers();
         updateAvailable();
         updateNotice();
-      });
 
-      statusSel.addEventListener("change", () => {
-        populateInventoryNumbers();
-        updateAvailable();
-      });
+        if (tbody.querySelectorAll("tr").length === 1) locSel.focus();
+      }
 
-      invNumSel.addEventListener("change", updateAvailable);
+      // Load existing detail (edit mode)
+      if (detail) {
+        detail.split(";").forEach((part) => {
+          const tokens = part.trim().split("|");
+          if (tokens.length >= 2) {
+            const q = safeInt(tokens[0]);
+            const loc = tokens[1] || "";
+            const status = tokens[3] || "";
+            const invNum = tokens[5] || "";
+            addRow(loc, status, invNum, q);
+          }
+        });
+      } else {
+        addRow();
+      }
 
-      qtyInput.addEventListener("input", () => {
-        const max = parseInt(qtyInput.max || "0", 10) || 0;
-        const val = parseInt(qtyInput.value || "0", 10) || 0;
-        if (val > max) qtyInput.value = max;
+      addRowBtn.addEventListener("click", () => {
+        if (remainingToAllocate() <= 0) return;
+        addRow();
         updateAddRowState();
       });
 
-      // Build row
-      const tdLoc = document.createElement("td");
-      tdLoc.appendChild(locSel);
-      const tdStatus = document.createElement("td");
-      tdStatus.appendChild(statusSel);
-      const tdInv = document.createElement("td");
-      tdInv.appendChild(invNumSel);
-      const tdQty = document.createElement("td");
-      tdQty.appendChild(qtyInput);
+      // Save handler
+      saveBtn.addEventListener("click", () => {
+        const parts = [];
+        tbody.querySelectorAll("tr").forEach((tr) => {
+          const q = tr.querySelector(".qtyInput").value.trim();
 
-      tr.append(tdLoc, tdStatus, tdInv, availCell, tdQty, noticeCell);
-      tbody.appendChild(tr);
+          const locSel = tr.querySelector(".locSel");
+          const statusSel = tr.querySelector(".statusSel");
+          const invSel = tr.querySelector(".invNumSel");
 
-      // Init dropdowns
-      populateLocations();
-      if (lockedLocation && tbody.querySelectorAll("tr").length > 1) {
-        locSel.value = lockedLocation;
-        locSel.disabled = true;
-      }
-      populateStatuses();
-      populateInventoryNumbers();
-      updateAvailable();
-      updateNotice();
+          const locName = locSel?.value || "";
+          const locId = locSel?.selectedOptions[0]?.dataset.internalid || "";
+          const statusName = statusSel?.value || "";
+          const statusId = statusSel?.selectedOptions[0]?.dataset.internalid || "";
+          const invName = invSel?.value || "";
+          const invId = invSel?.selectedOptions[0]?.dataset.internalid || "";
 
-      if (tbody.querySelectorAll("tr").length === 1) locSel.focus();
-    }
+          if (q && locName) {
+            parts.push([q, locName, locId, statusName, statusId, invName, invId].join("|"));
+          }
+        });
 
-    // Load existing detail (edit mode)
-    if (detail) {
-      detail.split(";").forEach((part) => {
-        const tokens = part.trim().split("|");
-        if (tokens.length >= 2) {
-          const q = parseInt(tokens[0], 10) || 0;
-          const loc = tokens[1] || "";
-          const status = tokens[3] || "";
-          const invNum = tokens[5] || "";
-          addRow(loc, status, invNum, q);
+        const detailString = parts.join("; ");
+        if (!detailString.trim()) {
+          alert("❌ Please select inventory before saving.");
+          return;
         }
-      });
-    } else {
-      addRow();
-    }
 
-    addRowBtn.addEventListener("click", () => {
-      if (remainingToAllocate() <= 0) return;
-      addRow();
+        const line = getQueryParams().line;
+        const lineIndex = parseInt(line || "-1", 10);
+
+        if (window.opener?.onInventorySaved) {
+          window.opener.onInventorySaved(itemId, detailString, lineIndex);
+        }
+        window.close();
+      });
+
       updateAddRowState();
-    });
-
-    // Save Handler
-    saveBtn.addEventListener("click", () => {
-      const parts = [];
-      tbody.querySelectorAll("tr").forEach((tr) => {
-        const q = tr.querySelector(".qtyInput").value.trim();
-
-        const locSel = tr.querySelector(".locSel");
-        const statusSel = tr.querySelector(".statusSel");
-        const invSel = tr.querySelector(".invNumSel");
-
-        const locName = locSel?.value || "";
-        const locId = locSel?.selectedOptions[0]?.dataset.internalid || "";
-        const statusName = statusSel?.value || "";
-        const statusId = statusSel?.selectedOptions[0]?.dataset.internalid || "";
-        const invName = invSel?.value || "";
-        const invId = invSel?.selectedOptions[0]?.dataset.internalid || "";
-
-        if (q && locName) {
-          parts.push([q, locName, locId, statusName, statusId, invName, invId].join("|"));
-        }
-      });
-
-      const detailString = parts.join("; ");
-      if (!detailString.trim()) {
-        alert("❌ Please select inventory before saving.");
-        return;
-      }
-
-      const line = getQueryParams().line;
-      const lineIndex = parseInt(line || "-1", 10);
-
-      if (window.opener?.onInventorySaved) {
-        window.opener.onInventorySaved(itemId, detailString, lineIndex);
-      }
-      window.close();
-    });
-
-    updateAddRowState();
-  }
-</script>
+    }
+  </script>
 
 </body>
 

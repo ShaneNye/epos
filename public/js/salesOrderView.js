@@ -963,6 +963,49 @@ function updateActionButton(orderStatusObj, tranId, so) {
     });
   }
 
+  // =====================================================
+// ✅ Inventory saved callback (used by inventory popup)
+// =====================================================
+window.onInventorySaved = function (itemId, detailString, lineIndex) {
+  try {
+    const row = document.querySelector(`#orderItemsBody tr.order-line[data-line="${lineIndex}"]`);
+    if (!row) return console.warn("⚠️ onInventorySaved: row not found", { lineIndex });
+
+    // set hidden field (Sales View uses this in Save/Commit payload)
+    const invInp = row.querySelector(".item-inv-detail");
+    if (invInp) invInp.value = detailString || "";
+
+    // update visible summary text
+    const summary = row.querySelector(".inv-summary");
+    if (summary) summary.textContent = detailString || "";
+
+    // update button icon based on qty match
+    const btn = row.querySelector(".open-inventory");
+    const qty =
+      parseInt(row.querySelector(".item-qty")?.value || row.querySelector(".item-qty-cache")?.value || "0", 10) || 0;
+
+    const allocated = (detailString || "")
+      .split(";")
+      .map(p => parseInt(p.trim().split("|")[0], 10) || 0)
+      .reduce((a, b) => a + b, 0);
+
+    if (btn) btn.textContent = (qty > 0 && allocated === qty) ? "✅" : "📦";
+
+    // if you have any validation hooks, run them
+    const fulfilSel = row.querySelector(".item-fulfilment") || row.querySelector(".fulfilmentSelect");
+    if (fulfilSel && window.SalesLineUI?.validateInventoryForRow) {
+      window.SalesLineUI.validateInventoryForRow(row);
+    }
+
+    // optional: recompute summary panel if needed
+    if (typeof updateOrderSummaryFromTable === "function") updateOrderSummaryFromTable();
+
+    console.log("✅ Inventory saved into Sales View row", { lineIndex, itemId });
+  } catch (err) {
+    console.error("❌ onInventorySaved failed:", err.message || err);
+  }
+};
+
   // -----------------------------
   // ✅ Commit button handler
   // -----------------------------

@@ -1424,7 +1424,10 @@ router.post("/:id/save", async (req, res) => {
     // ✅ IMPORTANT: tell RESTlet NOT to approve
     const payload = { id, updates, headerUpdates, commit: false };
 
-    console.log("📡 Calling NetSuite RESTlet (save-only) with payload:", JSON.stringify(payload, null, 2));
+    console.log(
+      "📡 Calling NetSuite RESTlet (save-only) with payload:",
+      JSON.stringify(payload, null, 2)
+    );
 
     const response = await fetch(restletUrl, {
       method: "POST",
@@ -1451,6 +1454,15 @@ router.post("/:id/save", async (req, res) => {
 
     console.log(`✅ Sales Order ${id} patched via RESTlet (save-only)`);
 
+    // ✅ Invalidate cached SO payload so next view is always fresh
+    try {
+      const key = cacheKey(id);
+      soCache.delete(key);
+      console.log("🧹 Cleared SO cache after save:", key);
+    } catch (e) {
+      console.warn("⚠️ Failed to clear SO cache after save:", e.message);
+    }
+
     return res.json({
       ok: true,
       message: data.message || "Sales Order saved (not committed)",
@@ -1463,6 +1475,6 @@ router.post("/:id/save", async (req, res) => {
       error: err.message || "Unexpected server error",
     });
   }
-});
+});''
 
 module.exports = router;
