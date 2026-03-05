@@ -150,16 +150,32 @@ function insertAfter(newNode, referenceNode) {
   referenceNode.parentNode.insertBefore(newNode, referenceNode.nextSibling);
 }
 
+// ✅ safe querySelector wrapper (prevents crashes on invalid selectors)
+function safeQuery(row, selector) {
+  try {
+    return row.querySelector(selector);
+  } catch (err) {
+    console.warn("⚠️ Invalid selector skipped:", selector, err);
+    return null;
+  }
+}
+
 function findExisting60NTSelect(row) {
-  let sel =
-    row.querySelector("select.sixty-night-select") ||
-    row.querySelector("select#60ntSelect") ||
-    row.querySelector('select[name="60nt"]') ||
-    row.querySelector('select[name="sixtyNightTrial"]') ||
-    row.querySelector('select[name="sixty_night_trial"]');
+  // Try known selectors safely (won't crash if one is malformed)
+  const selectors = [
+    "select.sixty-night-select",
+    "#60ntSelect", // safer than "select#60ntSelect"
+    'select[name="60nt"]',
+    'select[name="sixtyNightTrial"]',
+    'select[name="sixty_night_trial"]',
+  ];
 
-  if (sel) return sel;
+  for (const sel of selectors) {
+    const el = safeQuery(row, sel);
+    if (el) return el;
+  }
 
+  // Fallback: infer by option values
   const selects = row.querySelectorAll("select");
   for (const s of selects) {
     const opts = [...s.options].map((o) =>
@@ -282,18 +298,13 @@ function openOptionsWindow(row) {
   const itemId = row.querySelector(".item-internal-id")?.value;
   if (!itemId) return alert("⚠️ Please select an item first.");
 
-  const existingSelections =
-    row.querySelector(".item-options-json")?.value || "{}";
+  const existingSelections = row.querySelector(".item-options-json")?.value || "{}";
 
-  const url = `/options.html?itemId=${encodeURIComponent(
-    itemId
-  )}&selections=${encodeURIComponent(existingSelections)}`;
+  const url = `/options.html?itemId=${encodeURIComponent(itemId)}&selections=${encodeURIComponent(
+    existingSelections
+  )}`;
 
-  const win = window.open(
-    url,
-    "ItemOptions",
-    "width=600,height=500,resizable=yes,scrollbars=yes"
-  );
+  const win = window.open(url, "ItemOptions", "width=600,height=500,resizable=yes,scrollbars=yes");
   win?.focus();
 }
 
@@ -377,34 +388,23 @@ function setupAutocomplete(lineIndex) {
     const query = input.value.trim().toLowerCase();
     if (!query) return hideSuggestions();
 
-    const selectedSize = (
-      document.getElementById("sizeFilter")?.value || ""
-    ).toLowerCase();
-    const selectedBaseOption = (
-      document.getElementById("baseOptionFilter")?.value || ""
-    ).toLowerCase();
-    const selectedType = (
-      document.getElementById("typeFilter")?.value || ""
-    ).toLowerCase();
+    const selectedSize = (document.getElementById("sizeFilter")?.value || "").toLowerCase();
+    const selectedBaseOption = (document.getElementById("baseOptionFilter")?.value || "").toLowerCase();
+    const selectedType = (document.getElementById("typeFilter")?.value || "").toLowerCase();
 
     const matches = items
       .filter((it) => {
         const name = (it["Name"] || "").toLowerCase();
         if (!name.includes(query)) return false;
 
-        // Size logic copied from SalesNew behaviour (best-effort by name)
         const sizeMatch = (() => {
           if (selectedSize === "") return true;
 
-          if (selectedSize === "double") {
-            return name.includes("double") && !name.includes("small double");
-          }
+          if (selectedSize === "double") return name.includes("double") && !name.includes("small double");
 
           if (selectedSize === "king") {
             return (
-              (name.includes(" king") ||
-                name.startsWith("king") ||
-                name.includes("(king")) &&
+              (name.includes(" king") || name.startsWith("king") || name.includes("(king")) &&
               !name.includes("super king") &&
               !name.includes("zip and link") &&
               !name.includes("zip & link")
@@ -413,9 +413,7 @@ function setupAutocomplete(lineIndex) {
 
           if (selectedSize === "single") {
             return (
-              (name.includes(" single") ||
-                name.startsWith("single") ||
-                name.includes("(single")) &&
+              (name.includes(" single") || name.startsWith("single") || name.includes("(single")) &&
               !name.includes("small single") &&
               !name.includes("euro single")
             );
@@ -426,18 +424,14 @@ function setupAutocomplete(lineIndex) {
 
         if (!sizeMatch) return false;
 
-        // Base option filter (uses field if present on row object, else fallback to name match)
         if (selectedBaseOption) {
-          const baseOpt =
-            (it["Base Option"] || it["Base Options"] || it["base options"] || "")
-              .toString()
-              .toLowerCase();
-          const baseOk =
-            baseOpt.includes(selectedBaseOption) || name.includes(selectedBaseOption);
+          const baseOpt = (it["Base Option"] || it["Base Options"] || it["base options"] || "")
+            .toString()
+            .toLowerCase();
+          const baseOk = baseOpt.includes(selectedBaseOption) || name.includes(selectedBaseOption);
           if (!baseOk) return false;
         }
 
-        // Type filter (if you have it)
         if (selectedType) {
           const cls = (it["Class"] || "").toString().toLowerCase();
           const typ = (it["Type"] || "").toString().toLowerCase();
@@ -452,8 +446,28 @@ function setupAutocomplete(lineIndex) {
     showSuggestions(input, matches, lineIndex);
   });
 
-  // Close dropdown on blur (with slight delay so click registers)
   input.addEventListener("blur", () => setTimeout(hideSuggestions, 120));
+}
+
+/* =========================================================
+   Ensure there's always a blank row ready (robust)
+========================================================= */
+function ensureNextEmptyRowAndFocus() {
+  const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
+
+  // empty = any row not marked as having an item yet
+  const hasEmpty = rows.some((r) => (r.dataset.hasItem || "0") !== "1");
+
+  if (!hasEmpty) addNewRow();
+
+  const updatedRows = [...document.querySelectorAll("#orderItemsBody .order-line")];
+  const emptyRow = updatedRows.find((r) => (r.dataset.hasItem || "0") !== "1");
+
+  const input = emptyRow?.querySelector(".item-search");
+  if (input) {
+    input.focus();
+    input.select?.();
+  }
 }
 
 /* =========================================================
@@ -462,9 +476,7 @@ function setupAutocomplete(lineIndex) {
 async function selectItem(item) {
   if (!activeInput) return;
 
-  const line = document.querySelector(
-    `.order-line[data-line="${activeLineIndex}"]`
-  );
+  const line = document.querySelector(`.order-line[data-line="${activeLineIndex}"]`);
   if (!line) return;
 
   const hiddenId = line.querySelector(".item-internal-id");
@@ -472,15 +484,30 @@ async function selectItem(item) {
   const discountField = line.querySelector(".item-discount");
 
   activeInput.value = item["Name"] || "";
-  if (hiddenId) hiddenId.value = item["Internal ID"] || "";
+
+  // ✅ Internal ID mapping (handles payload differences)
+  const internalId =
+    item["Internal ID"] ??
+    item["InternalId"] ??
+    item["InternalID"] ??
+    item["internalid"] ??
+    item["internal id"] ??
+    item["Id"] ??
+    item["id"] ??
+    "";
+
+  if (hiddenId) hiddenId.value = (internalId || "").toString();
   if (hiddenBase) hiddenBase.value = item["Base Price"] || "";
 
   const base = parseFloat(item["Base Price"] || 0);
-  const retailPerUnit = (base / 100) * 120; // keeps your existing pricing convention
+  const retailPerUnit = (base / 100) * 120;
   if (discountField) discountField.value = 0;
 
   if (!line.setUnitRetail) setupPriceSync(line);
   if (line.setUnitRetail) line.setUnitRetail(retailPerUnit);
+
+  // ✅ Mark this row as filled (drives auto-new-line)
+  line.dataset.hasItem = "1";
 
   const itemId = (hiddenId?.value || "").trim();
 
@@ -519,17 +546,12 @@ async function selectItem(item) {
         <input type="hidden" class="item-options-json" />
         <div class="options-summary"></div>
       `;
-      optCell
-        .querySelector(".open-options")
-        ?.addEventListener("click", () => openOptionsWindow(line));
+      optCell.querySelector(".open-options")?.addEventListener("click", () => openOptionsWindow(line));
     }
   }
 
-  // ✅ Automatically add a new empty item row (same UX as SalesNew)
-  setTimeout(() => {
-    const addBtn = document.getElementById("addItemBtn");
-    if (addBtn) addBtn.click();
-  }, 50);
+  // ✅ Ensure a blank row exists immediately after selecting
+  setTimeout(() => ensureNextEmptyRowAndFocus(), 0);
 
   hideSuggestions();
   recalcTotals();
@@ -546,6 +568,9 @@ function addNewRow() {
   const tr = document.createElement("tr");
   tr.className = "order-line";
   tr.setAttribute("data-line", newLine);
+
+  // mark as empty until selected
+  tr.dataset.hasItem = "0";
 
   tr.innerHTML = `
     <td>
@@ -574,17 +599,15 @@ function addNewRow() {
 
   tbody.appendChild(tr);
 
-  // Ensure correct position + adopt legacy if needed
   ensure60NightTrialCell(tr);
   update60NightTrialColumnVisibility();
 
   setupAutocomplete(newLine);
   setupPriceSync(tr);
 
-  // Delete row
   tr.querySelector(".delete-row")?.addEventListener("click", () => {
     tr.remove();
-    update60NightTrialColumnVisibility(); // mattress column may need to hide
+    update60NightTrialColumnVisibility();
     recalcTotals();
   });
 
@@ -600,28 +623,38 @@ document.addEventListener("DOMContentLoaded", async () => {
   populateBaseOptionFilter();
 
   createGlobalSuggestions();
+
+  // 🔧 Derive lineCounter from DOM (prevents duplicates)
+  const existingLines = [...document.querySelectorAll("#orderItemsBody .order-line")]
+    .map((r) => parseInt(r.getAttribute("data-line") || "0", 10))
+    .filter((n) => !isNaN(n));
+  lineCounter = (existingLines.length ? Math.max(...existingLines) : 0) + 1;
+
   setupAutocomplete(0);
 
   // 🔧 Handle the hard-coded first row (line 0)
   const firstRow = document.querySelector(`.order-line[data-line="0"]`);
   if (firstRow) {
+    firstRow.dataset.hasItem = "0";
     setupPriceSync(firstRow);
 
-    // adopt/reposition 60NT if your HTML already had it
     ensure60NightTrialCell(firstRow);
     update60NightTrialColumnVisibility();
 
-    // ensure options button wires if present
     const optBtn = firstRow.querySelector(".open-options");
-    if (optBtn) {
-      optBtn.addEventListener("click", () => openOptionsWindow(firstRow));
-    }
+    if (optBtn) optBtn.addEventListener("click", () => openOptionsWindow(firstRow));
+
+    // ✅ Wire delete on the hard-coded first row too
+    firstRow.querySelector(".delete-row")?.addEventListener("click", () => {
+      firstRow.remove();
+      update60NightTrialColumnVisibility();
+      recalcTotals();
+    });
   }
 
   const addBtn = document.getElementById("addItemBtn");
   if (addBtn) addBtn.addEventListener("click", addNewRow);
 
-  // Click-away close for suggestions
   document.addEventListener("click", (e) => {
     const t = e.target;
     if (!globalSuggestions) return;

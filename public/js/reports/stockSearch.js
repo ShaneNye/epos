@@ -14,6 +14,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const tbody = document.getElementById("stockTableBody");
   const scrollWrap = document.querySelector(".stock-table-scroll");
 
+  // ✅ NEW: bin filter
+  let binSelect = document.getElementById("stockBinSelect");
+
   // ✅ table header references (so we can add/remove columns)
   const tableEl = tbody?.closest("table") || document.querySelector(".stock-table");
   const thead = tableEl ? tableEl.querySelector("thead") : null;
@@ -55,6 +58,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (statusSelect) statusSelect.disabled = !!isLoading;
     if (classSelect) classSelect.disabled = !!isLoading;
     if (sizeSelect) sizeSelect.disabled = !!isLoading;
+    if (binSelect) binSelect.disabled = !!isLoading;
     if (filterInput) filterInput.disabled = !!isLoading;
     if (presetSelect) presetSelect.disabled = !!isLoading;
 
@@ -122,6 +126,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     return norm(r?.sizeName || r?.Size || r?.size || r?.["Size"] || "");
   }
 
+  function getBin(r) {
+    return norm(r?.bin || r?.["Bin Number"] || "");
+  }
+
   function isAllLocationsSelected() {
     return (locSelect?.value || "") === ALL_LOC_VALUE;
   }
@@ -176,6 +184,75 @@ document.addEventListener("DOMContentLoaded", async () => {
           : ``
       }
     `;
+  }
+
+  /* =====================================================
+     BIN FILTER UI
+  ===================================================== */
+  function injectBinDropdown() {
+    if (binSelect) return;
+
+    const host =
+      document.querySelector(".stock-filters") ||
+      document.querySelector("#stockFiltersWrap") ||
+      document.querySelector(".stock-controls") ||
+      (filterInput ? filterInput.parentElement : null) ||
+      document.body;
+
+    const wrap = document.createElement("div");
+    wrap.className = "stock-bin-wrap";
+    wrap.style.margin = "0 0 10px 0";
+
+    wrap.innerHTML = `
+      <label for="stockBinSelect" style="display:block; font-weight:600; margin-bottom:6px;">
+        Bin
+      </label>
+      <select id="stockBinSelect" style="min-width:240px;">
+        <option value="">All Bins</option>
+      </select>
+    `;
+
+    if (host && host.prepend) host.prepend(wrap);
+    else document.body.prepend(wrap);
+
+    binSelect = document.getElementById("stockBinSelect");
+  }
+
+  function getAvailableOnlyRows(records) {
+    return (records || []).filter((r) => (parseInt(r.available, 10) || 0) > 0);
+  }
+
+  function extractBins(records) {
+    const bins = [
+      ...new Set(
+        getAvailableOnlyRows(records)
+          .map((r) => getBin(r))
+          .filter((b) => b && b !== "-" && b.trim())
+      ),
+    ].sort((a, b) => a.localeCompare(b));
+
+    return bins;
+  }
+
+  function updateBinOptions(records, preserveValue = true) {
+    if (!binSelect) return;
+
+    const currentValue = preserveValue ? binSelect.value : "";
+    const bins = extractBins(records);
+
+    binSelect.innerHTML = `<option value="">All Bins</option>`;
+    bins.forEach((b) => {
+      const opt = document.createElement("option");
+      opt.value = b;
+      opt.textContent = b;
+      binSelect.appendChild(opt);
+    });
+
+    if (currentValue && bins.includes(currentValue)) {
+      binSelect.value = currentValue;
+    } else {
+      binSelect.value = "";
+    }
   }
 
   /* =====================================================
@@ -261,10 +338,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       if (presetSelect) presetSelect.value = String(idx);
 
-      if (m.location != null) safeSetSelectValue(locSelect, m.location); // supports "All Locations" by text match
+      if (m.location != null) safeSetSelectValue(locSelect, m.location);
       if (m.status != null) safeSetSelectValue(statusSelect, m.status);
       if (classSelect && m.class != null) safeSetSelectValue(classSelect, m.class);
       if (sizeSelect && m.size != null) safeSetSelectValue(sizeSelect, m.size);
+
+      // optional support if you later add bin to presets
+      if (binSelect && m.bin != null) safeSetSelectValue(binSelect, m.bin);
 
       if (filterInput) filterInput.value = "";
 
@@ -274,9 +354,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           : locSelect.value;
       }
 
-      // Header can change depending on location selection (All Locations)
       syncTableHeader(isAllLocationsSelected(), showInboundCols);
-
       applyFilters();
     } finally {
       setTimeout(() => {
@@ -444,7 +522,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         const v = replMap.get(itemId);
         v.totalQty += qty;
 
-        // earliest non-null date
         const d = ddmmyyyyToDate(bookedStr);
         if (d) {
           const cur = ddmmyyyyToDate(v.earliestDateStr);
@@ -463,7 +540,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         backMap.set(itemId, backMap.get(itemId) + qty);
       }
 
-      // Should we show the extra columns at all?
       let any = false;
       for (const [, v] of replMap) {
         if ((parseInt(v.totalQty, 10) || 0) !== 0) {
@@ -550,14 +626,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         );
       });
 
-      // ✅ inbound/backorder summary values (do NOT touch detail lines)
       const repl = replenishmentByItemId.get(g.itemId) || { totalQty: 0, earliestDateStr: "" };
       const back = backorderByItemId.get(g.itemId) || 0;
 
       const dueIn = parseInt(repl.totalQty, 10) || 0;
       const backQty = parseInt(back, 10) || 0;
 
-      // "Due In (Net)" = dueIn - backorder (not below 0)
       const dueInNet = Math.max(0, dueIn - backQty);
 
       return {
@@ -568,7 +642,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         totalOnHand: g.totalOnHand,
         lines,
 
-        // ✅ new summary-only fields
         dueInNet,
         bookedInDate: repl.earliestDateStr || "",
       };
@@ -588,10 +661,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   /* =====================================================
      START LOADING
   ===================================================== */
-  // initial spinner (we’ll correct colspan after we know columns)
   setLoading(true, 3);
 
-  // Fetch everything
   const [mergedData, inbound] = await Promise.all([
     fetchInventoryData(),
     fetchInboundAndBackorder(),
@@ -649,7 +720,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     ];
     locSelect.innerHTML = locOptions.join("");
 
-    // default to primary store if available, else first store, else All
     if (defaultLocName && locations.includes(defaultLocName)) locSelect.value = defaultLocName;
     else if (locations.length) locSelect.value = locations[0];
     else locSelect.value = ALL_LOC_VALUE;
@@ -695,6 +765,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  // ✅ inject bin dropdown before presets
+  injectBinDropdown();
+
+  // ✅ populate initial bin list based on current location
+  updateBinOptions(getBaseDataForCurrentLocation(), false);
+
   // Inject presets dropdown
   injectPresetDropdown();
   if (presetSelect) {
@@ -703,10 +779,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // ✅ Sync header now that we know whether inbound cols exist + current location mode
+  if (binSelect) {
+    binSelect.addEventListener("change", applyFilters);
+  }
+
   syncTableHeader(isAllLocationsSelected(), showInboundCols);
 
-  // Title
   if (titleEl) {
     titleEl.textContent = isAllLocationsSelected()
       ? "All Locations"
@@ -732,7 +810,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     locSelect.addEventListener("change", () => {
       const showAll = isAllLocationsSelected();
 
-      // header changes when switching all-locations mode
       syncTableHeader(showAll, showInboundCols);
 
       if (titleEl) titleEl.textContent = showAll ? "All Locations" : locSelect.value;
@@ -742,13 +819,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
 
-      // User-driven change: reset other filters + preset
       if (filterInput) filterInput.value = "";
       if (statusSelect) statusSelect.value = "";
       if (classSelect) classSelect.value = "";
       if (sizeSelect) sizeSelect.value = "";
+      if (binSelect) binSelect.value = "";
       if (presetSelect) presetSelect.value = "";
 
+      updateBinOptions(getBaseDataForCurrentLocation(), false);
       renderTable(getBaseDataForCurrentLocation());
     });
   }
@@ -765,7 +843,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     const status = statusSelect?.value || "";
     const cls = classSelect ? classSelect.value : "";
     const size = sizeSelect ? sizeSelect.value : "";
+    const selectedBin = binSelect ? binSelect.value : "";
 
+    // Apply all filters except bin first
     if (text) {
       data = data.filter((r) =>
         Object.values(r).join(" ").toLowerCase().includes(text)
@@ -782,6 +862,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (size) {
       data = data.filter((r) => getSize(r) === norm(size));
+    }
+
+    // ✅ rebuild bin options from currently filtered rows
+    updateBinOptions(data, true);
+
+    // ✅ apply selected bin last
+    if (selectedBin) {
+      data = data.filter((r) => clean(getBin(r)) === clean(selectedBin));
     }
 
     renderTable(data);
@@ -834,7 +922,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         ${bookedTd}
       `;
 
-      // Details row (hidden) - unchanged columns inside
       const detailTr = document.createElement("tr");
       detailTr.className = "stock-detail-row";
       detailTr.dataset.itemId = g.itemId;
