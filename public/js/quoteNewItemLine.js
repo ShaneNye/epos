@@ -16,19 +16,32 @@ function recalcTotals() {
   if (typeof window.updateQuoteSummary === "function") return window.updateQuoteSummary();
   if (typeof window.updateOrderSummary === "function") return window.updateOrderSummary();
 }
-
 /* =========================================================
-   Load items from proxy
+   Load items from shared cache / proxy
 ========================================================= */
-async function loadItems() {
+async function loadItems(forceRefresh = false) {
   try {
+    if (window.nsItemFeedCache?.getItems) {
+      items = await window.nsItemFeedCache.getItems({ forceRefresh });
+      window.items = items;
+      console.log("✅ Loaded items from shared cache:", items.length, "records");
+      return;
+    }
+
+    console.warn("⚠️ nsItemFeedCache not found - falling back to direct fetch");
+
     const res = await fetch("/api/netsuite/items");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
     const data = await res.json();
     items = data.results || [];
-    console.log("✅ Loaded items:", items.length, "records");
+    window.items = items;
+
+    console.log("✅ Loaded items from API fallback:", items.length, "records");
   } catch (err) {
     console.error("❌ Failed to load items:", err);
+    items = [];
+    window.items = [];
   }
 }
 

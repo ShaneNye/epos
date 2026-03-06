@@ -9,33 +9,26 @@ window.addEventListener("unhandledrejection", e =>
 );
 
 /* =====================================================
-   Item cache (sessionStorage) – shared with other pages
+   Shared item cache loader
    ===================================================== */
 async function loadItemCache() {
   try {
-    const cached = sessionStorage.getItem("nsItemCache");
-    if (cached) {
-      const parsed = JSON.parse(cached);
-      if (Array.isArray(parsed)) {
-        window.items = parsed;
-        console.log("✅ Items loaded from cache:", parsed.length);
-        return parsed;
-      }
+    if (window.nsItemFeedCache?.getItems) {
+      const items = await window.nsItemFeedCache.getItems();
+      window.items = items;
+      console.log("✅ Items loaded from shared cache:", items.length);
+      return items;
     }
 
+    console.warn("⚠️ nsItemFeedCache missing - falling back to direct fetch");
     const res = await fetch("/api/netsuite/items");
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
     const data = await res.json();
     const items = data.results || [];
     window.items = items;
 
-    try {
-      sessionStorage.setItem("nsItemCache", JSON.stringify(items));
-    } catch {
-      // ignore storage errors (quota etc.)
-    }
-
-    console.log("✅ Items loaded from API:", items.length);
+    console.log("✅ Items loaded from API fallback:", items.length);
     return items;
   } catch (err) {
     console.error("❌ Failed to load items cache:", err.message || err);

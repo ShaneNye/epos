@@ -337,26 +337,37 @@
 
 
             <script>
-                document.getElementById("openIntercompanyBtn")?.addEventListener("click", () => {
-                    const base = window.NS_ACCOUNT_DASH || "7972741-sb1";
-                    const url = `https://7972741-sb1.app.netsuite.com/app/site/hosting/scriptlet.nl?script=4404&deploy=1`;
+document.getElementById("openIntercompanyBtn")?.addEventListener("click", async () => {
+    try {
+        const res = await fetch("/api/config/intercompany-url");
+        const data = await res.json();
 
-                    const w = 1300, h = 850;
-                    const left = (window.screen.width / 2) - (w / 2);
-                    const top = (window.screen.height / 2) - (h / 2);
+        const url = data?.url;
+        if (!url) {
+            alert("Intercompany URL is not configured.");
+            return;
+        }
 
-                    const popup = window.open(
-                        url,
-                        "IntercompanyConsole",
-                        `width=${w},height=${h},top=${top},left=${left},resizable=yes,scrollbars=yes`
-                    );
+        const w = 1300, h = 850;
+        const left = (window.screen.width / 2) - (w / 2);
+        const top = (window.screen.height / 2) - (h / 2);
 
-                    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-                        document.getElementById("popupWarning").style.display = "block";
-                    } else {
-                        popup.focus();
-                    }
-                });
+        const popup = window.open(
+            url,
+            "IntercompanyConsole",
+            `width=${w},height=${h},top=${top},left=${left},resizable=yes,scrollbars=yes`
+        );
+
+        if (!popup || popup.closed || typeof popup.closed === "undefined") {
+            document.getElementById("popupWarning").style.display = "block";
+        } else {
+            popup.focus();
+        }
+    } catch (err) {
+        console.error("❌ Failed to load intercompany URL:", err);
+        alert("Failed to load Intercompany URL.");
+    }
+});
             </script>
 
 

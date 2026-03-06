@@ -593,6 +593,13 @@ app.get("/api/netsuite/supplier-lead-time", async (req, res) => {
   }
 });
 
+app.get("/api/config/intercompany-url", (req, res) => {
+  res.json({
+    ok: true,
+    url: process.env.INTERCOMPANY_URL || ""
+  });
+});
+
 
 
 /****************************************************

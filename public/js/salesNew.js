@@ -324,74 +324,80 @@ window.updateOrderSummary();
     }, 3000);
   }
 
-  /* =========================================================
-     ✅ Mandatory validations before save
-  ========================================================= */
-  function validateOrderBeforeSave() {
-    const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
+/* =========================================================
+   ✅ Mandatory validations before save
+========================================================= */
+function validateOrderBeforeSave() {
+  const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
 
-    const itemRows = rows.filter((r) =>
-      (r.querySelector(".item-internal-id")?.value || "").trim()
-    );
+  const itemRows = rows.filter((r) =>
+    (r.querySelector(".item-internal-id")?.value || "").trim()
+  );
 
-    if (itemRows.length === 0) {
-      alert("⚠️ Please add at least one item to the sales order before saving.");
-      return false;
-    }
-
-    rows.forEach((r) => r.classList.remove("row-error"));
-    rows.forEach((r) => {
-      r.querySelectorAll(".field-error").forEach((el) => el.classList.remove("field-error"));
-    });
-
-    let ok = true;
-    const errors = [];
-
-    itemRows.forEach((row, idx) => {
-      const lineNo = row.getAttribute("data-line") ?? String(idx + 1);
-
-      const fulfilSel = row.querySelector(".item-fulfilment");
-      const fulfilId = (fulfilSel?.value || "").trim();
-      const fulfilText =
-        fulfilSel?.options?.[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() || "";
-
-      if (!fulfilId) {
-        ok = false;
-        errors.push(`• Line ${lineNo}: Fulfilment Method is required.`);
-        row.classList.add("row-error");
-        if (fulfilSel) fulfilSel.classList.add("field-error");
-      }
-
-      const requiresInv = fulfilText === "warehouse" || fulfilText === "in store";
-
-      if (requiresInv) {
-        const invHidden = row.querySelector(".item-inv-detail");
-        const invHasValue = !!(invHidden?.value || "").trim();
-
-        const hasLot = !!(row.dataset.lotnumber || "").trim();
-        const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
-
-        if (!invHasValue && !hasLot && !hasMeta) {
-          ok = false;
-          errors.push(
-            `• Line ${lineNo}: Inventory Detail is required for "${
-              fulfilText === "warehouse" ? "Warehouse" : "In Store"
-            }".`
-          );
-          row.classList.add("row-error");
-
-          const invCell = row.querySelector(".inventory-cell");
-          if (invCell) invCell.classList.add("field-error");
-        }
-      }
-    });
-
-    if (!ok) {
-      alert("Please fix the following before saving:\n\n" + errors.join("\n"));
-    }
-
-    return ok;
+  if (itemRows.length === 0) {
+    alert("⚠️ Please add at least one item to the sales order before saving.");
+    return false;
   }
+
+  rows.forEach((r) => r.classList.remove("row-error"));
+  rows.forEach((r) => {
+    r.querySelectorAll(".field-error").forEach((el) => el.classList.remove("field-error"));
+  });
+
+  let ok = true;
+  const errors = [];
+
+  itemRows.forEach((row, idx) => {
+    const lineNo = row.getAttribute("data-line") ?? String(idx + 1);
+
+    const itemClass = (row.dataset.itemClass || "").trim().toLowerCase();
+    const isService = itemClass === "service";
+
+    const fulfilSel = row.querySelector(".item-fulfilment");
+    const fulfilId = (fulfilSel?.value || "").trim();
+    const fulfilText =
+      fulfilSel?.options?.[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() || "";
+
+    // ✅ Service lines do not require fulfilment method
+    if (!isService && !fulfilId) {
+      ok = false;
+      errors.push(`• Line ${lineNo}: Fulfilment Method is required.`);
+      row.classList.add("row-error");
+      if (fulfilSel) fulfilSel.classList.add("field-error");
+    }
+
+    // ✅ Only non-service lines should require inventory detail
+    const requiresInv =
+      !isService && (fulfilText === "warehouse" || fulfilText === "in store");
+
+    if (requiresInv) {
+      const invHidden = row.querySelector(".item-inv-detail");
+      const invHasValue = !!(invHidden?.value || "").trim();
+
+      const hasLot = !!(row.dataset.lotnumber || "").trim();
+      const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
+
+      if (!invHasValue && !hasLot && !hasMeta) {
+        ok = false;
+        errors.push(
+          `• Line ${lineNo}: Inventory Detail is required for "${
+            fulfilText === "warehouse" ? "Warehouse" : "In Store"
+          }".`
+        );
+        row.classList.add("row-error");
+
+        const invCell = row.querySelector(".inventory-cell");
+        if (invCell) invCell.classList.add("field-error");
+      }
+    }
+  });
+
+  if (!ok) {
+    alert("Please fix the following before saving:\n\n" + errors.join("\n"));
+  }
+
+  return ok;
+}
 
   /* === SAVE ORDER HANDLER (simple spinner only) === */
   document.addEventListener("click", async (e) => {

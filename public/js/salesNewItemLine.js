@@ -8,16 +8,25 @@ window.optionsCache = {};   // itemId -> options payload
 window.inventoryCache = {}; // itemId -> [{location, qty, bin, status, inventoryNumber}, ...]
 window.selectedWarehouse = ""; // order header warehouse
 
-// === Load items from proxy ===
+// === Load items from shared cache ===
 async function loadItems() {
   try {
-    const res = await fetch("/api/netsuite/items");
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    items = data.results || [];
+    if (window.nsItemFeedCache?.getItems) {
+      items = await window.nsItemFeedCache.getItems();
+    } else {
+      console.warn("⚠️ nsItemFeedCache missing - falling back to direct fetch");
+      const res = await fetch("/api/netsuite/items");
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      items = data.results || [];
+    }
+
+    window.items = items;
     console.log("✅ Loaded items:", items.length, "records");
   } catch (err) {
     console.error("❌ Failed to load items:", err);
+    items = [];
+    window.items = [];
   }
 }
 
