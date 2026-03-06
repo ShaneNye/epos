@@ -7,13 +7,68 @@
     <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
     <title>Forgot Password | Sussex Beds Epos</title>
     <link rel="stylesheet" href="./css/index.css" />
+
+    <style>
+        .loading-overlay {
+            position: fixed;
+            inset: 0;
+            background: rgba(15, 23, 42, 0.45);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            backdrop-filter: blur(2px);
+        }
+
+        .loading-overlay.hidden {
+            display: none;
+        }
+
+        .loading-card {
+            background: #fff;
+            border-radius: 14px;
+            padding: 20px 24px;
+            min-width: 260px;
+            box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+
+        .loading-spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid #d1d5db;
+            border-top-color: #0081ab;
+            border-radius: 50%;
+            animation: spin 0.8s linear infinite;
+            flex: 0 0 auto;
+        }
+
+        .loading-text {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #1f2937;
+        }
+
+        .btn-primary[disabled] {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
 </head>
 
 <body>
     <main class="auth-wrap">
         <section class="brand-side">
             <div class="brand-content">
-                <img class="brand-logo" src="./assets/moon-man-logo.png" alt="Sussex Beds logo" />
+                <img class="brand-logo" src="/assets/moon-man-logo-in-circle.png" alt="Sussex Beds logo" />
                 <h1 class="brand-title">Sussex Beds</h1>
                 <p class="brand-sub">Password Reset</p>
             </div>
@@ -31,7 +86,7 @@
                     <span class="label">Email</span>
                     <input name="email" type="email" placeholder="you@sussexbeds.co.uk" required />
                 </label>
-                <button class="btn-primary" type="submit">Send Reset Link</button>
+                <button id="forgotSubmitBtn" class="btn-primary" type="submit">Send Reset Link</button>
             </form>
 
             <footer class="portal-foot">
@@ -40,11 +95,37 @@
         </section>
     </main>
 
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" class="loading-overlay hidden" aria-hidden="true">
+        <div class="loading-card" role="status" aria-live="polite">
+            <div class="loading-spinner"></div>
+            <div class="loading-text">Sending reset link…</div>
+        </div>
+    </div>
+
     <script>
-        document.getElementById("forgotForm").addEventListener("submit", async (e) => {
+        const forgotForm = document.getElementById("forgotForm");
+        const loadingOverlay = document.getElementById("loadingOverlay");
+        const submitBtn = document.getElementById("forgotSubmitBtn");
+
+        function setLoading(isLoading) {
+            loadingOverlay.classList.toggle("hidden", !isLoading);
+            submitBtn.disabled = isLoading;
+
+            if (isLoading) {
+                submitBtn.textContent = "Sending...";
+            } else {
+                submitBtn.textContent = "Send Reset Link";
+            }
+        }
+
+        forgotForm.addEventListener("submit", async (e) => {
             e.preventDefault();
+
             const email = e.target.email.value.trim();
             if (!email) return alert("Please enter your email address");
+
+            setLoading(true);
 
             try {
                 const res = await fetch("/api/forgot-password", {
@@ -52,10 +133,13 @@
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ email })
                 });
+
                 const data = await res.json();
                 alert(data.message || "Check your inbox for the reset link.");
             } catch {
                 alert("Error sending reset email. Please try again.");
+            } finally {
+                setLoading(false);
             }
         });
     </script>

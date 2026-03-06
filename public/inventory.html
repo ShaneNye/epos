@@ -137,9 +137,6 @@
       font-size: 0.85rem;
     }
 
-    /* ==========================
-       Loading overlay + spinner
-       ========================== */
     .loading-overlay {
       position: fixed;
       inset: 0;
@@ -199,7 +196,6 @@
 </head>
 
 <body>
-  <!-- Loading overlay -->
   <div id="loadingOverlay" class="loading-overlay">
     <div class="loading-card">
       <div class="spinner"></div>
@@ -235,17 +231,23 @@
 
   <script>
     /* ============================================================
-       Inventory Detail Popup Script (SalesNew + SalesView compatible)
-       - Uses opener.inventoryCache if available (SalesNew)
-       - Falls back to /api/netsuite/inventorybalance (SalesView)
+       Inventory Detail Popup Script
+       Updated to match stockSearch.js availability logic:
+       - merge inventorybalance + invoice-numbers
+       - aggregate invoice numbers by item + inv number + location
+       - collapse duplicate inventorybalance rows
+       - use invoice-number available qty as source of truth
     ============================================================ */
 
     async function getInventoryNumbers(itemId) {
       try {
-        const res = await fetch(`/api/netsuite/invoice-numbers`);
+        const res = await fetch("/api/netsuite/invoice-numbers");
         const data = await res.json();
         if (!data.ok || !data.results) return [];
-        return data.results.filter(r => String(r["Item Id"]) === String(itemId));
+        return data.results.filter(r => {
+          const rowItemId = String(r["Item Id"] || r["Item ID"] || r["itemid"] || "").trim();
+          return rowItemId === String(itemId).trim();
+        });
       } catch (err) {
         console.error("❌ Failed to fetch invoice numbers:", err);
         return [];
@@ -254,7 +256,7 @@
 
     async function getInventoryStatuses() {
       try {
-        const res = await fetch(`/api/netsuite/inventory-status`);
+        const res = await fetch("/api/netsuite/inventory-status");
         const data = await res.json();
         if (!data.ok || !data.results) return [];
         return data.results.map(s => ({
@@ -267,13 +269,12 @@
       }
     }
 
-    // ✅ Same feed SalesNew uses to build inventoryCache
     async function getInventoryBalanceRows(itemId) {
       try {
-        const res = await fetch(`/api/netsuite/inventorybalance`);
+        const res = await fetch(`/api/netsuite/inventorybalance?id=${encodeURIComponent(itemId)}`);
         const data = await res.json();
         if (!data.ok || !data.results) return [];
-        return (data.results || []).filter(r => String(r["Item ID"]) === String(itemId));
+        return data.results || [];
       } catch (err) {
         console.error("❌ Failed to fetch inventory balance:", err);
         return [];
@@ -293,20 +294,117 @@
       return Number.isFinite(n) ? n : 0;
     };
 
-    // Loading overlay helpers
+    const clean = (v) => String(v || "").trim().toLowerCase();
+    const idStr = (v) => (v == null ? "" : String(v).trim());
+
     const loadingOverlay = document.getElementById("loadingOverlay");
+
     function showLoading(msg = "Loading stock…") {
       const title = loadingOverlay?.querySelector(".loading-text");
       if (title) title.textContent = msg;
       loadingOverlay?.classList.remove("hidden");
     }
+
     function hideLoading() {
       loadingOverlay?.classList.add("hidden");
     }
 
-    /* ------------------------------------------------------------
-       Setup and Initialization
-    ------------------------------------------------------------ */
+    function buildMergedStock(balanceRows, liveFeed, statuses) {
+      const statusMap = {};
+      (statuses || []).forEach(s => {
+        const key = clean(s.name);
+        if (key) statusMap[key] = String(s.id || "");
+      });
+
+      // 1) Aggregate invoice-number rows by item + inventory number + location
+      const numberAgg = {};
+
+      for (const row of (liveFeed || [])) {
+        const numItemId = idStr(row["Item Id"] || row["Item ID"] || row["itemid"]);
+        const inv = clean(row["Number"]);
+        const loc = clean(row["Location"]);
+        if (!numItemId || !inv || !loc) continue;
+
+        const key = `${numItemId}||${inv}||${loc}`;
+
+        if (!numberAgg[key]) {
+          numberAgg[key] = {
+            available: 0,
+            onHand: 0,
+            itemId: numItemId,
+            itemName: row["Item"] || "",
+            invNumberId: row["inv number id"] || row["Internal ID"] || "",
+            location: String(row["Location"] || "").trim(),
+            locationId: String(row["Location ID"] || "").trim(),
+          };
+        }
+
+        numberAgg[key].available += safeInt(row["Available"]);
+        numberAgg[key].onHand += safeInt(row["On Hand"]);
+
+        if (!numberAgg[key].invNumberId) {
+          numberAgg[key].invNumberId = row["inv number id"] || row["Internal ID"] || "";
+        }
+        if (!numberAgg[key].location) {
+          numberAgg[key].location = String(row["Location"] || "").trim();
+        }
+        if (!numberAgg[key].locationId) {
+          numberAgg[key].locationId = String(row["Location ID"] || "").trim();
+        }
+      }
+
+      // 2) Collapse duplicate inventorybalance rows by item + inventory number + location
+      const collapsed = {};
+
+      for (const bal of (balanceRows || [])) {
+        const balItemId = idStr(bal["Item ID"] || bal["Item Id"] || bal["itemid"] || bal["Item"]);
+        const inv = clean(bal["Inventory Number"]);
+        const loc = clean(bal["Location"]);
+        if (!balItemId || !inv || !loc) continue;
+
+        const key = `${balItemId}||${inv}||${loc}`;
+        if (!collapsed[key]) collapsed[key] = bal;
+      }
+
+      // 3) Merge and use invoice-number aggregate as source of truth
+      const merged = Object.values(collapsed).map((bal) => {
+        const balItemId = idStr(bal["Item ID"] || bal["Item Id"] || bal["itemid"] || bal["Item"]);
+        const invClean = clean(bal["Inventory Number"]);
+        const locClean = clean(bal["Location"]);
+        const key = `${balItemId}||${invClean}||${locClean}`;
+
+        const agg = numberAgg[key] || {
+          available: 0,
+          onHand: 0,
+          itemId: balItemId,
+          itemName: "",
+          invNumberId: "",
+          location: "",
+          locationId: "",
+        };
+
+        const statusName = String(bal["Status"] || "").trim();
+        const statusKey = clean(statusName);
+
+        return {
+          itemId: agg.itemId || balItemId,
+          itemName: agg.itemName || bal["Name"] || bal["Item"] || "",
+          location: agg.location || String(bal["Location"] || "").trim(),
+          locationId: agg.locationId || String(bal["Location ID"] || "").trim(),
+          qty: safeInt(agg.available),
+          onHand: safeInt(agg.onHand),
+          bin: String(bal["Bin Number"] || "").trim(),
+          status: statusName,
+          statusId: statusMap[statusKey] || "",
+          inventoryNumber: String(bal["Inventory Number"] || "").trim(),
+          inventoryNumberId: String(agg.invNumberId || "").trim(),
+        };
+      });
+
+      // 4) Match stockSearch.js behaviour: only rows with available > 0
+      return merged.filter(s => safeInt(s.qty) > 0);
+    }
+
     const params = getQueryParams();
 
     const itemId = params.itemId || "";
@@ -314,7 +412,6 @@
     let lineQty = safeInt(params.qty || "0");
     const lineIndex = params.line || "0";
 
-    // Try qty cache from opener (works on both pages)
     const qtyCache = window.opener?.document.querySelector(
       `.item-qty-cache[data-line="${lineIndex}"]`
     )?.value;
@@ -326,18 +423,12 @@
 
     const selectedWarehouseName = window.opener?.selectedWarehouseName || "";
 
-    // This is what SalesNew fills; SalesView usually doesn't
-    const openerInvCache = window.opener?.inventoryCache || {};
-    let stock = openerInvCache[itemId] || [];
+    let stock = [];
 
-    // Disable controls until loaded
     addRowBtn.disabled = true;
     saveBtn.disabled = true;
     showLoading("Loading stock…");
 
-    /* ============================================================
-       🔁 Build stock base + merge live invoice-number IDs + init
-    ============================================================ */
     (async () => {
       try {
         if (!itemId) {
@@ -347,85 +438,32 @@
         const [liveFeed, statuses, balanceRows] = await Promise.all([
           getInventoryNumbers(itemId),
           getInventoryStatuses(),
-          // only fetch balance if cache missing/empty
-          (!Array.isArray(stock) || stock.length === 0)
-            ? getInventoryBalanceRows(itemId)
-            : Promise.resolve([]),
+          getInventoryBalanceRows(itemId),
         ]);
 
-        // Map status name -> id (so we can store statusId when we build from inventorybalance)
-        const statusMap = {};
-        (statuses || []).forEach(s => {
-          const key = String(s.name || "").trim().toLowerCase();
-          if (key) statusMap[key] = String(s.id || "");
-        });
+        stock = buildMergedStock(balanceRows, liveFeed, statuses);
 
-        // ✅ If opener cache is missing (SalesView), build stock from inventorybalance (same as SalesNew)
-        if (!Array.isArray(stock) || stock.length === 0) {
-          stock = (balanceRows || []).map(r => {
-            const statusName = String(r["Status"] || "").trim();
-            const statusKey = statusName.toLowerCase();
-
-            return {
-              location: String(r["Location"] || "").trim(),
-              locationId: String(r["Location ID"] || "").trim(),
-              qty: safeInt(r["Available"]),
-              onHand: safeInt(r["On Hand"]),
-              bin: String(r["Bin Number"] || "").trim(),
-              status: statusName,
-              statusId: statusMap[statusKey] || "",
-              inventoryNumber: String(r["Inventory Number"] || "").trim(),
-              inventoryNumberId: "", // will be merged from liveFeed if available
-            };
-          });
-
-          // optional: cache it back on opener so subsequent popups are instant
-          try {
+        // cache the merged version back to opener so subsequent popups are consistent
+        try {
+          if (window.opener) {
             window.opener.inventoryCache = window.opener.inventoryCache || {};
             window.opener.inventoryCache[itemId] = stock;
-          } catch { }
+          }
+        } catch (err) {
+          console.warn("⚠️ Could not write merged inventory cache back to opener:", err);
         }
-
-        // ✅ Merge liveFeed invoice number IDs / freshest availability if it matches by inventory number
-        if (Array.isArray(liveFeed) && liveFeed.length && Array.isArray(stock) && stock.length) {
-          stock = stock.map(s => {
-            const sNum = (s.inventoryNumber || "").trim().toLowerCase();
-            const match = liveFeed.find(l => (l["Number"] || "").trim().toLowerCase() === sNum);
-            if (!match) return s;
-
-            const invId = match["inv number id"] || match["Internal ID"] || "";
-
-            return {
-              ...s,
-              // keep your inventorybalance status as source-of-truth
-              qty: match["Available"] ?? s.qty,
-              onHand: match["On Hand"] ?? s.onHand,
-              location: match["Location"] ?? s.location,
-              locationId: match["Location ID"] ?? s.locationId,
-              inventoryNumber: match["Number"] ?? s.inventoryNumber,
-              inventoryNumberId: invId || s.inventoryNumberId || "",
-            };
-          });
-        }
-
-        // 🚫 Filter out rows where Available = 0
-        stock = (stock || []).filter(s => safeInt(s.qty) > 0);
 
         initInventoryPopup(statuses || []);
       } catch (err) {
         console.error("❌ Inventory popup init failed:", err);
         alert("Failed to load inventory. Please try again.");
       } finally {
-        // Enable controls once loaded (even if stock empty)
         addRowBtn.disabled = false;
         saveBtn.disabled = false;
         hideLoading();
       }
     })();
 
-    /* ============================================================
-       🧩 Main Popup Logic
-    ============================================================ */
     function initInventoryPopup(inventoryStatusList = []) {
 
       function getAllocatedTotal() {
@@ -453,9 +491,6 @@
         if (addRowBtn) addRowBtn.disabled = alloc >= lineQty || !hasAnyStock;
       }
 
-      /* ---------------------------------------------------------
-         Row Builder
-      --------------------------------------------------------- */
       function addRow(location = "", status = "", invNum = "", quantity = "") {
         const tr = document.createElement("tr");
 
@@ -495,42 +530,46 @@
           });
         }
 
-        // 1️⃣ Locations (from stock)
         function populateLocations() {
           const uniqueLocs = [];
           const seen = new Set();
+
           stock.forEach((s) => {
-            if (s.location && !seen.has(s.location)) {
-              uniqueLocs.push({ name: s.location, id: s.locationId || "" });
-              seen.add(s.location);
+            const name = String(s.location || "").trim();
+            if (name && !seen.has(name.toLowerCase())) {
+              uniqueLocs.push({ name, id: s.locationId || "" });
+              seen.add(name.toLowerCase());
             }
           });
+
           populate(locSel, uniqueLocs, "Select location...", location || lockedLocation);
         }
 
-        // 2️⃣ Statuses (ONLY statuses that exist for that item at that location)
         function populateStatuses() {
           const locVal = locSel.value;
-          const filtered = stock.filter((s) => s.location === locVal);
+
+          const filtered = stock.filter((s) =>
+            !locVal || s.location === locVal
+          );
 
           const uniqueStatuses = [];
           const seen = new Set();
+
           filtered.forEach((s) => {
             const st = String(s.status || "").trim();
-            if (st && !seen.has(st)) {
+            const key = st.toLowerCase();
+            if (st && !seen.has(key)) {
               uniqueStatuses.push({ name: st, id: s.statusId || "" });
-              seen.add(st);
+              seen.add(key);
             }
           });
 
           populate(statusSel, uniqueStatuses, "Select status...", status);
 
-          // auto-pick first/only
           if (uniqueStatuses.length === 1) statusSel.value = uniqueStatuses[0].name;
           if (!statusSel.value && uniqueStatuses.length) statusSel.value = uniqueStatuses[0].name;
         }
 
-        // 3️⃣ Inventory Numbers filtered strictly by status
         function populateInventoryNumbers() {
           const locVal = locSel.value;
           const statusVal = statusSel.value;
@@ -543,9 +582,10 @@
 
           const seen = new Set();
           const invList = [];
+
           filtered.forEach((s) => {
-            const key = (s.inventoryNumber || "").trim().toLowerCase();
-            if (key && !seen.has(key)) {
+            const key = `${clean(s.inventoryNumber)}||${clean(s.location)}||${clean(s.status)}`;
+            if (s.inventoryNumber && !seen.has(key)) {
               seen.add(key);
               invList.push({
                 name: s.inventoryNumber,
@@ -557,13 +597,13 @@
           });
 
           populate(invNumSel, invList, "Select inventory #...", invNum);
+
           if (invList.length === 1) {
             invNumSel.value = invList[0].name;
             updateAvailable();
           }
         }
 
-        // 4️⃣ Available display
         function updateAvailable() {
           const match = stock.find(
             (s) =>
@@ -579,7 +619,10 @@
           const remaining = remainingExcludingRow(tr);
           const maxForRow = Math.min(available, remaining);
           qtyInput.max = maxForRow;
-          if (safeInt(qtyInput.value || "0") > maxForRow) qtyInput.value = maxForRow;
+
+          if (safeInt(qtyInput.value || "0") > maxForRow) {
+            qtyInput.value = maxForRow;
+          }
 
           updateAddRowState();
         }
@@ -649,7 +692,6 @@
           noticeCell.className = "noticeCell";
         }
 
-        // Events
         locSel.addEventListener("change", () => {
           populateStatuses();
           populateInventoryNumbers();
@@ -671,25 +713,28 @@
           updateAddRowState();
         });
 
-        // Build row
         const tdLoc = document.createElement("td");
         tdLoc.appendChild(locSel);
+
         const tdStatus = document.createElement("td");
         tdStatus.appendChild(statusSel);
+
         const tdInv = document.createElement("td");
         tdInv.appendChild(invNumSel);
+
         const tdQty = document.createElement("td");
         tdQty.appendChild(qtyInput);
 
         tr.append(tdLoc, tdStatus, tdInv, availCell, tdQty, noticeCell);
         tbody.appendChild(tr);
 
-        // Init
         populateLocations();
+
         if (lockedLocation && tbody.querySelectorAll("tr").length > 1) {
           locSel.value = lockedLocation;
           locSel.disabled = true;
         }
+
         populateStatuses();
         populateInventoryNumbers();
         updateAvailable();
@@ -698,7 +743,6 @@
         if (tbody.querySelectorAll("tr").length === 1) locSel.focus();
       }
 
-      // Load existing detail (edit mode)
       if (detail) {
         detail.split(";").forEach((part) => {
           const tokens = part.trim().split("|");
@@ -720,9 +764,9 @@
         updateAddRowState();
       });
 
-      // Save handler
       saveBtn.addEventListener("click", () => {
         const parts = [];
+
         tbody.querySelectorAll("tr").forEach((tr) => {
           const q = tr.querySelector(".qtyInput").value.trim();
 
@@ -743,6 +787,7 @@
         });
 
         const detailString = parts.join("; ");
+
         if (!detailString.trim()) {
           alert("❌ Please select inventory before saving.");
           return;
@@ -754,6 +799,7 @@
         if (window.opener?.onInventorySaved) {
           window.opener.onInventorySaved(itemId, detailString, lineIndex);
         }
+
         window.close();
       });
 
