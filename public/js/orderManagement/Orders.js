@@ -120,8 +120,8 @@ const res = await fetch("/api/netsuite/order-management", { headers });
           o => o.Store && o.Store.trim().toLowerCase() === selectedStore.trim().toLowerCase()
         );
 
-    const ready = filtered.filter(o => o["Ready For Delivery"] === "Ready for Fulfilment" || "Ready For Fulfilment");
-    const pending = filtered.filter(o => o["Ready For Delivery"] !== "Ready for Fulfilment" || "Ready For Fulfilment");
+    const ready = filtered.filter(o => o["Ready For Delivery"] === "ready for fulfilment");
+    const pending = filtered.filter(o => o["Ready For Delivery"] !== "ready for fulfilment");
 
     // === READY TABLE (updated: Document Number as anchor) ===
     const renderReadyRow = (o) => {
