@@ -71,7 +71,7 @@ if (window.location.pathname.includes("/sales/view/")) {
           const salesExecs = data.users.filter(
             (u) =>
               Array.isArray(u.roles) &&
-              u.roles.some((r) => r.name === "Sales Executive")
+              u.roles.some((r) => r.name === "Sales Executive" || "Store Manager")
           );
 
           salesExecs.forEach((u) => {
