@@ -249,6 +249,98 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ==================================================
     document.getElementById("orderNumber").textContent = so.tranId || tranId;
 
+    function formatOrderStatus(so) {
+      console.log("📦 Raw sales order object for status check:", so);
+      console.log("📦 so.status:", so?.status, "| type:", typeof so?.status);
+      console.log("📦 so.statusRef:", so?.statusRef, "| type:", typeof so?.statusRef);
+      console.log("📦 so.orderStatus:", so?.orderStatus);
+      console.log("📦 so.orderStatus?.id:", so?.orderStatus?.id);
+      console.log("📦 so.orderStatus?.refName:", so?.orderStatus?.refName);
+
+      // 1) Best case: NetSuite already gave the display text
+      if (typeof so?.status === "string" && so.status.trim()) {
+        console.log("✅ Using so.status:", so.status.trim());
+        return so.status.trim();
+      }
+
+      // 1b) Sometimes status may arrive as an object
+      if (
+        so?.status &&
+        typeof so.status === "object" &&
+        typeof so.status.refName === "string" &&
+        so.status.refName.trim()
+      ) {
+        console.log("✅ Using so.status.refName:", so.status.refName.trim());
+        return so.status.refName.trim();
+      }
+
+      // 2) Next best: statusRef like pendingFulfillment / pendingApproval / billed
+      const statusRef =
+        (typeof so?.statusRef === "string" && so.statusRef.trim()) ||
+        (typeof so?.orderStatus?.refName === "string" && so.orderStatus.refName.trim()) ||
+        "";
+
+      console.log("📦 Derived statusRef candidate:", statusRef);
+
+      if (statusRef) {
+        const normalized = statusRef.trim();
+
+        const explicitMap = {
+          pendingApproval: "Pending Approval",
+          pendingFulfillment: "Pending Fulfillment",
+          billed: "Billed",
+          cancelled: "Cancelled",
+          closed: "Closed",
+          pendingBilling: "Pending Billing",
+          partiallyFulfilled: "Partially Fulfilled",
+          pendingBillingPartFulfilled: "Pending Billing / Partially Fulfilled",
+        };
+
+        if (explicitMap[normalized]) {
+          console.log("✅ Using explicit statusRef map:", normalized, "→", explicitMap[normalized]);
+          return explicitMap[normalized];
+        }
+
+        const prettyStatus = normalized
+          .replace(/([a-z])([A-Z])/g, "$1 $2")
+          .replace(/\b\w/g, (c) => c.toUpperCase());
+
+        console.log("✅ Using formatted statusRef fallback:", normalized, "→", prettyStatus);
+        return prettyStatus;
+      }
+
+      // 3) Last fallback: orderStatus single-letter NetSuite code
+      const statusId = String(so?.orderStatus?.id || "").trim().toUpperCase();
+      console.log("📦 Falling back to orderStatus.id:", statusId);
+
+      const codeMap = {
+        A: "Pending Approval",
+        B: "Pending Fulfillment",
+        C: "Partially Fulfilled",
+        D: "Pending Billing",
+        E: "Billed",
+        F: "Closed",
+        G: "Cancelled",
+      };
+
+      if (codeMap[statusId]) {
+        console.log("✅ Using orderStatus.id map:", statusId, "→", codeMap[statusId]);
+        return codeMap[statusId];
+      }
+
+      console.warn("⚠️ Could not map order status cleanly, returning raw fallback:", statusId || "-");
+      return statusId || "-";
+    }
+
+    const orderStatusEl = document.getElementById("orderStatus");
+    if (orderStatusEl) {
+      const resolvedStatus = formatOrderStatus(so);
+      console.log("🧾 Final resolved order status for UI:", resolvedStatus);
+      orderStatusEl.textContent = resolvedStatus;
+    } else {
+      console.warn("⚠️ orderStatus element not found in DOM");
+    }
+    
     // --- Customer / address ---
     try {
       const addressLines = so.billingAddress_text
