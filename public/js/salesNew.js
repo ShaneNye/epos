@@ -160,100 +160,126 @@ if (window.location.pathname.includes("/sales/view/")) {
       }
     }
 
-    /* === ORDER SUMMARY CALCULATIONS === */
-    window.updateOrderSummary = function () {
-      let grossTotal = 0;
-      let discountTotal = 0;
+/* === ORDER SUMMARY CALCULATIONS === */
+window.updateOrderSummary = function () {
+  let grossTotal = 0;
+  let discountTotal = 0;
 
-      document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
-        const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
-        const baseNet = parseFloat(tr.querySelector(".item-baseprice")?.value || 0); // NET
-        const salePriceGrossPerUnit = parseFloat(
-          tr.querySelector(".item-saleprice")?.value || 0
-        ); // GROSS inc VAT
-        const discountPct = parseFloat(tr.querySelector(".item-discount")?.value || 0);
+  document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
+    const itemId = (tr.querySelector(".item-internal-id")?.value || "").trim();
+    if (!itemId) return; // ✅ ignore empty placeholder row
 
-        if (!qty) return;
+    const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
+    const amountGrossLine = parseFloat(
+      tr.querySelector(".item-amount")?.value || 0
+    ); // already full line total
+    const salePriceGrossLine = parseFloat(
+      tr.querySelector(".item-saleprice")?.value || 0
+    ); // already full line total
+    const discountPct = parseFloat(
+      tr.querySelector(".item-discount")?.value || 0
+    );
 
-        const defaultGrossPerUnit = baseNet ? baseNet * 1.2 : salePriceGrossPerUnit;
-        const defaultGrossTotal = defaultGrossPerUnit * qty;
+    if (!qty) return;
 
-        let actualGrossTotal;
+    let actualGrossTotal = 0;
+    let defaultGrossTotal = 0;
 
-        if (discountPct > 0) {
-          const discountedGrossPerUnit = defaultGrossPerUnit * (1 - discountPct / 100);
-          actualGrossTotal = discountedGrossPerUnit * qty;
-        } else if (salePriceGrossPerUnit > 0) {
-          actualGrossTotal = salePriceGrossPerUnit * qty;
-        } else {
-          actualGrossTotal = defaultGrossTotal;
-        }
-
-        grossTotal += actualGrossTotal;
-
-        const discountValue = Math.max(0, defaultGrossTotal - actualGrossTotal);
-        discountTotal += discountValue;
-      });
-
-      const netTotal = grossTotal / 1.2;
-      const taxTotal = grossTotal - netTotal;
-
-      const totalDeposits = deposits.reduce(
-        (sum, d) => sum + (parseFloat(d.amount) || 0),
-        0
-      );
-
-      const outstandingBalance = grossTotal - totalDeposits;
-
-      document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
-      document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
-      document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
-      document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
-
-      const depositsTotalCell = document.getElementById("depositsTotal");
-      const balanceCell = document.getElementById("outstandingBalance");
-      if (depositsTotalCell) depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
-      if (balanceCell) balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
-
-      // ✅ globals for deposit popup
-      window.__grossTotal = grossTotal;
-      window.__outstandingBalance = outstandingBalance;
-    };
-
-    // Recalc triggers
-    document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
-      if (
-        e.target.classList.contains("item-qty") ||
-        e.target.classList.contains("item-discount") ||
-        e.target.classList.contains("item-saleprice")
-      ) {
-        window.updateOrderSummary();
-      }
-    });
-
-    const orderBody = document.getElementById("orderItemsBody");
-    if (orderBody) {
-      const bodyObserver = new MutationObserver(() => window.updateOrderSummary());
-      bodyObserver.observe(orderBody, { childList: true });
+    // ✅ item-amount is already the gross line total maintained by setupPriceSync()
+    if (Number.isFinite(amountGrossLine) && amountGrossLine > 0) {
+      defaultGrossTotal = amountGrossLine;
+    } else if (Number.isFinite(salePriceGrossLine) && salePriceGrossLine > 0) {
+      defaultGrossTotal = salePriceGrossLine;
     }
+
+    // ✅ item-saleprice is already the gross line total, so do NOT multiply by qty again
+    if (Number.isFinite(salePriceGrossLine) && salePriceGrossLine > 0) {
+      actualGrossTotal = salePriceGrossLine;
+    } else if (discountPct > 0 && defaultGrossTotal > 0) {
+      actualGrossTotal = defaultGrossTotal * (1 - discountPct / 100);
+    } else {
+      actualGrossTotal = defaultGrossTotal;
+    }
+
+    // ✅ round per line before summing to avoid float creep
+    actualGrossTotal = Number(actualGrossTotal.toFixed(2));
+    defaultGrossTotal = Number(defaultGrossTotal.toFixed(2));
+
+    grossTotal += actualGrossTotal;
+
+    const discountValue = Math.max(0, defaultGrossTotal - actualGrossTotal);
+    discountTotal += discountValue;
+  });
+
+  grossTotal = Number(grossTotal.toFixed(2));
+  discountTotal = Number(discountTotal.toFixed(2));
+
+  const netTotal = Number((grossTotal / 1.2).toFixed(2));
+  const taxTotal = Number((grossTotal - netTotal).toFixed(2));
+
+  const totalDeposits = deposits.reduce(
+    (sum, d) => sum + (parseFloat(d.amount) || 0),
+    0
+  );
+
+  const outstandingBalance = Number((grossTotal - totalDeposits).toFixed(2));
+
+  document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
+  document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
+  document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
+  document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
+
+  const depositsTotalCell = document.getElementById("depositsTotal");
+  const balanceCell = document.getElementById("outstandingBalance");
+  if (depositsTotalCell) depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
+  if (balanceCell) balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
+
+  // ✅ globals for deposit popup
+  window.__grossTotal = grossTotal;
+  window.__outstandingBalance = outstandingBalance;
+
+  console.log("📊 Summary recalculated", {
+    grossTotal,
+    netTotal,
+    taxTotal,
+    discountTotal,
+    totalDeposits,
+    outstandingBalance,
+  });
+};
+
+// Recalc triggers
+document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
+  if (
+    e.target.classList.contains("item-qty") ||
+    e.target.classList.contains("item-discount") ||
+    e.target.classList.contains("item-saleprice")
+  ) {
+    window.updateOrderSummary();
+  }
+});
+
+const orderBody = document.getElementById("orderItemsBody");
+if (orderBody) {
+  const bodyObserver = new MutationObserver(() => window.updateOrderSummary());
+  bodyObserver.observe(orderBody, { childList: true });
+}
 
 // ✅ bind deposit popup (inside guard)
 const addDepositBtn = document.getElementById("addDepositBtn");
 
 function moneyToNumber(val) {
   if (val == null) return 0;
-  const cleaned = String(val).replace(/[^0-9.-]/g, ""); // strips £, commas, spaces etc.
+  const cleaned = String(val).replace(/[^0-9.-]/g, "");
   const n = parseFloat(cleaned);
   return Number.isFinite(n) ? n : 0;
 }
 
 if (addDepositBtn) {
-  // prevent accidental multiple bindings
   addDepositBtn.onclick = (e) => {
     e.preventDefault();
     e.stopPropagation();
 
-    // ✅ Read totals directly from DOM at click-time (most reliable)
     const outstandingText =
       document.getElementById("outstandingBalance")?.textContent || "";
     const grandTotalText =
@@ -262,7 +288,6 @@ if (addDepositBtn) {
     let amount = moneyToNumber(outstandingText);
     if (!(amount > 0)) amount = moneyToNumber(grandTotalText);
 
-    // ✅ Final fallback to globals if DOM is missing
     if (!(amount > 0)) {
       amount =
         Number(window.__outstandingBalance) > 0
