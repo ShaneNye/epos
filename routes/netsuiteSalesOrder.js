@@ -295,11 +295,77 @@ router.post("/create", async (req, res) => {
         (match = newCustomer._location.match(/customer\/(\d+)/))
       ) {
         customerId = match[1];
-      } else if (newCustomer.id) customerId = newCustomer.id;
+      } else if (newCustomer.id) {
+        customerId = newCustomer.id;
+      }
 
       if (!customerId) throw new Error("Failed to resolve new customer ID");
 
       console.log("✅ Created new customer, resolved ID:", customerId);
+    } else {
+      // Existing matched customer → update phone fields if they differ
+      try {
+        const normalizePhone = (value) =>
+          String(value || "")
+            .replace(/[^\d+]/g, "")
+            .replace(/^00/, "+")
+            .trim();
+
+        const hasMeaningfulValue = (value) => String(value || "").trim() !== "";
+
+        console.log(`📞 Existing customer detected (${customerId}) — checking phone fields`);
+
+        const existingCustomer = await nsGet(
+          `/customer/${customerId}?fields=${encodeURIComponent("id,phone,altPhone")}`,
+          userId,
+          "sb"
+        );
+
+        const existingPhoneRaw = existingCustomer?.phone || "";
+        const existingAltPhoneRaw = existingCustomer?.altPhone || "";
+
+        const incomingPhoneRaw = customer?.contactNumber || "";
+        const incomingAltPhoneRaw = customer?.altContactNumber || "";
+
+        const existingPhone = normalizePhone(existingPhoneRaw);
+        const existingAltPhone = normalizePhone(existingAltPhoneRaw);
+        const incomingPhone = normalizePhone(incomingPhoneRaw);
+        const incomingAltPhone = normalizePhone(incomingAltPhoneRaw);
+
+        const patchBody = {};
+
+        if (hasMeaningfulValue(incomingPhoneRaw) && incomingPhone !== existingPhone) {
+          patchBody.phone = incomingPhoneRaw.trim();
+        }
+
+        if (
+          hasMeaningfulValue(incomingAltPhoneRaw) &&
+          incomingAltPhone !== existingAltPhone
+        ) {
+          patchBody.altPhone = incomingAltPhoneRaw.trim();
+        }
+
+        if (Object.keys(patchBody).length > 0) {
+          console.log("🛠 Customer phone update required:", {
+            customerId,
+            before: {
+              phone: existingPhoneRaw,
+              altPhone: existingAltPhoneRaw,
+            },
+            after: patchBody,
+          });
+
+          await nsPatch(`/customer/${customerId}`, patchBody, userId, "sb");
+          console.log(`✅ Customer ${customerId} phone fields updated`);
+        } else {
+          console.log(`ℹ️ Customer ${customerId} phone fields already up to date`);
+        }
+      } catch (patchErr) {
+        console.error(
+          `⚠️ Customer ${customerId} phone patch failed, continuing with order creation:`,
+          patchErr.message
+        );
+      }
     }
 
     console.log("🧩 Using Customer ID:", customerId);
