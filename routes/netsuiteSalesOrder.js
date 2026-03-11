@@ -366,68 +366,68 @@ router.post("/create", async (req, res) => {
       custbody_sb_paymentinfo: { id: order.paymentInfo },
       custbody_sb_warehouse: { id: order.warehouse },
 
-item: {
-  items: items.map((i, idx) => {
-    console.log(`🧪 RAW FRONTEND LINE ${idx + 1}:`, i);
+      item: {
+        items: items.map((i, idx) => {
+          console.log(`🧪 RAW FRONTEND LINE ${idx + 1}:`, i);
 
-    const line = {
-      item: { id: i.item },
-      quantity: i.quantity,
-      amount: i.amount / 1.2,
-      custcol_sb_itemoptionsdisplay: i.options || "",
-    };
+          const line = {
+            item: { id: i.item },
+            quantity: i.quantity,
+            amount: i.amount / 1.2,
+            custcol_sb_itemoptionsdisplay: i.options || "",
+          };
 
-    // ✅ 60 Night Trial → custcol_sb_30nighttrialoption (List/Record)
-    // accepted = 1, declined = 2, n/a = 3
-    const trial = String(i.trialOption || "").trim().toLowerCase();
-    if (trial === "accepted") {
-      line.custcol_sb_30nighttrialoption = { id: "1" };
-    } else if (trial === "declined") {
-      line.custcol_sb_30nighttrialoption = { id: "2" };
-    } else if (trial === "n/a" || trial === "na") {
-      line.custcol_sb_30nighttrialoption = { id: "3" };
-    }
-    // (optional default if blank)
-    // else {
-    //   line.custcol_sb_30nighttrialoption = { id: "3" };
-    // }
+          // ✅ 60 Night Trial → custcol_sb_30nighttrialoption (List/Record)
+          // accepted = 1, declined = 2, n/a = 3
+          const trial = String(i.trialOption || "").trim().toLowerCase();
+          if (trial === "accepted") {
+            line.custcol_sb_30nighttrialoption = { id: "1" };
+          } else if (trial === "declined") {
+            line.custcol_sb_30nighttrialoption = { id: "2" };
+          } else if (trial === "n/a" || trial === "na") {
+            line.custcol_sb_30nighttrialoption = { id: "3" };
+          }
+          // (optional default if blank)
+          // else {
+          //   line.custcol_sb_30nighttrialoption = { id: "3" };
+          // }
 
-    // Fulfilment Method → custcol_sb_fulfilmentlocation
-    if (i.fulfilmentMethod && i.class !== "service") {
-      line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
-    }
+          // Fulfilment Method → custcol_sb_fulfilmentlocation
+          if (i.fulfilmentMethod && i.class !== "service") {
+            line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
+          }
 
-    /* ======================================================
-       createpo logic — ONLY for subsidiary 6
-    ====================================================== */
-    const fulfilId = String(i.fulfilmentMethod || "").trim();
+          /* ======================================================
+             createpo logic — ONLY for subsidiary 6
+          ====================================================== */
+          const fulfilId = String(i.fulfilmentMethod || "").trim();
 
-    if (String(storeNsId) === "6") {
-      if (fulfilId === "3") {
-        line.createpo = "SpecOrd";
-        console.log(`🟦 Line ${idx + 1} createpo = SpecOrd (Special Order)`);
-      } else {
-        line.createpo = "";
-        console.log(`⬜ Line ${idx + 1} createpo = "" (default/warehouse)`);
-      }
-    } else {
-      console.log(`🚫 Subsidiary ${storeNsId} → createpo removed`);
-    }
+          if (String(storeNsId) === "6") {
+            if (fulfilId === "3") {
+              line.createpo = "SpecOrd";
+              console.log(`🟦 Line ${idx + 1} createpo = SpecOrd (Special Order)`);
+            } else {
+              line.createpo = "";
+              console.log(`⬜ Line ${idx + 1} createpo = "" (default/warehouse)`);
+            }
+          } else {
+            console.log(`🚫 Subsidiary ${storeNsId} → createpo removed`);
+          }
 
-    /* ======================================================
-       LOT / META ALLOCATION
-    ====================================================== */
-    if (i.lotnumber) {
-      line.custcol_sb_lotnumber = { id: i.lotnumber };
-    } else if (i.inventoryMeta) {
-      line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
-      line.orderallocationstrategy = null;
-    }
+          /* ======================================================
+             LOT / META ALLOCATION
+          ====================================================== */
+          if (i.lotnumber) {
+            line.custcol_sb_lotnumber = { id: i.lotnumber };
+          } else if (i.inventoryMeta) {
+            line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
+            line.orderallocationstrategy = null;
+          }
 
-    console.log(`🧾 Final Line ${idx + 1}:`, line);
-    return line;
-  }),
-},
+          console.log(`🧾 Final Line ${idx + 1}:`, line);
+          return line;
+        }),
+      },
     };
 
     /* ======================================================
@@ -464,6 +464,7 @@ item: {
 
     // ==========================================================
     // 💰 Create Customer Deposit(s) if provided in payload
+    //    via NetSuite RESTlet instead of /customerDeposit REST Record
     // ==========================================================
     const allDeposits = Array.isArray(order?.deposits)
       ? order.deposits
@@ -473,7 +474,7 @@ item: {
 
     if (Array.isArray(allDeposits) && allDeposits.length > 0) {
       console.log(
-        `💰 Found ${allDeposits.length} deposit(s) in payload — creating in NetSuite...`
+        `💰 Found ${allDeposits.length} deposit(s) in payload — creating via RESTlet...`
       );
       console.table(
         allDeposits.map((d) => ({
@@ -489,9 +490,9 @@ item: {
       try {
         const accResult = await pool.query(
           `SELECT current_account, petty_cash_account 
-           FROM locations 
-           WHERE id = $1 
-           LIMIT 1`,
+       FROM locations 
+       WHERE id = $1 
+       LIMIT 1`,
           [order.store]
         );
         const accRows = accResult.rows;
@@ -499,7 +500,10 @@ item: {
         if (accRows.length) {
           currentAccountId = accRows[0].current_account || null;
           pettyCashAccountId = accRows[0].petty_cash_account || null;
-          console.log("🏦 Store account mapping →", { currentAccountId, pettyCashAccountId });
+          console.log("🏦 Store account mapping →", {
+            currentAccountId,
+            pettyCashAccountId,
+          });
         } else {
           console.warn("⚠️ No account mapping found for store:", order.store);
         }
@@ -514,38 +518,87 @@ item: {
 
           if (!selectedAccountId) {
             console.warn(
-              `⚠️ [Deposit ${index + 1}] No ${isCash ? "petty cash" : "current"
-              } account ID found — skipping account assignment.`
+              `⚠️ [Deposit ${index + 1}] No ${isCash ? "petty cash" : "current"} account ID found — skipping account assignment.`
             );
           }
 
-          const depositBody = {
-            entity: { id: String(customerId) },
-            subsidiary: storeNsId ? { id: String(storeNsId) } : undefined,
-            trandate: new Date().toISOString().split("T")[0],
-            salesorder: { id: String(salesOrderId) },
+          const restletBody = {
+            salesOrderId: String(salesOrderId),
+            customerId: String(customerId),
+            subsidiaryId: storeNsId ? String(storeNsId) : "",
             payment: parseFloat(dep.amount || 0),
-            paymentmethod: { id: String(dep.id) },
-            undepfunds: false,
+            paymentMethodId: String(dep.id || ""),
+            paymentMethodName: dep.name || "",
+            accountId: selectedAccountId ? String(selectedAccountId) : "",
+            tranDate: new Date().toISOString().split("T")[0],
             memo: dep.name || "",
-            ...(selectedAccountId && { account: { id: String(selectedAccountId) } }),
+            undepfunds: false,
+            debug: true,
           };
 
-          console.log(`🧾 [Deposit ${index + 1}] Creating Customer Deposit:`);
-          console.dir(depositBody, { depth: null });
+          console.log(`🧾 [Deposit ${index + 1}] Creating Customer Deposit via RESTlet:`);
+          console.dir(restletBody, { depth: null });
 
-          const depositRes = await nsPost("/customerDeposit", depositBody, userId, "sb");
-
-          let depositId = depositRes?.id || null;
-          if (!depositId && depositRes?._location) {
-            const match = depositRes._location.match(/customerDeposit\/(\d+)/i);
-            if (match) depositId = match[1];
+          const restletUrl = process.env.NS_CUSTOMER_DEPOSIT_RESTLET_URL;
+          if (!restletUrl) {
+            throw new Error("Missing NS_CUSTOMER_DEPOSIT_RESTLET_URL in environment.");
           }
+
+          const authHeader = await getAuthHeader(restletUrl, "POST", userId, "sb");
+          const depositResRaw = await fetch(restletUrl, {
+            method: "POST",
+            headers: {
+              ...authHeader,
+              "Content-Type": "application/json",
+              Accept: "application/json",
+            },
+            body: JSON.stringify(restletBody),
+          });
+
+          const depositResText = await depositResRaw.text();
+
+          let depositRes;
+          try {
+            depositRes = depositResText ? JSON.parse(depositResText) : {};
+          } catch {
+            throw new Error(
+              `RESTlet returned non-JSON response (${depositResRaw.status}): ${depositResText}`
+            );
+          }
+
+          if (!depositResRaw.ok || depositRes?.success === false) {
+            throw new Error(
+              depositRes?.error?.message ||
+              depositRes?.message ||
+              `RESTlet call failed with HTTP ${depositResRaw.status}`
+            );
+          }
+
+          const depositId = depositRes?.depositId || null;
+          const requestedMethodId = depositRes?.requested?.paymentMethodId || "";
+          const requestedMethodName = depositRes?.requested?.paymentMethodName || "";
+          const savedMethodId = depositRes?.saved?.paymentMethodId || "";
+          const savedMethodText = depositRes?.saved?.paymentMethodText || "";
+          const matched = depositRes?.matched === true;
 
           if (depositId) {
             console.log(`✅ Deposit ${index + 1} created successfully → ID ${depositId}`);
           } else {
-            console.warn(`⚠️ Deposit ${index + 1} created but no ID returned:`, depositRes);
+            console.warn(`⚠️ Deposit ${index + 1} created but no depositId returned.`);
+          }
+
+          console.log(`💳 [Deposit ${index + 1}] Payment Method Check →`, {
+            requestedMethodId,
+            requestedMethodName,
+            savedMethodId,
+            savedMethodText,
+            matched,
+          });
+
+          if (!matched) {
+            console.warn(
+              `⚠️ [Deposit ${index + 1}] Requested payment method "${requestedMethodName}" (${requestedMethodId}) but NetSuite saved "${savedMethodText}" (${savedMethodId}).`
+            );
           }
         } catch (err) {
           console.error(`❌ Failed to create Customer Deposit ${index + 1}:`, err.message);
@@ -1226,7 +1279,7 @@ router.post("/:id/commit", async (req, res) => {
 });
 
 // ==========================================================
-// 💰 Add Deposit from Popup (Frontend -> REST -> NetSuite)
+// 💰 Add Deposit from Popup (Frontend -> RESTlet -> NetSuite)
 // ==========================================================
 router.post("/:id/add-deposit", async (req, res) => {
   try {
@@ -1242,6 +1295,7 @@ router.post("/:id/add-deposit", async (req, res) => {
     const auth = req.headers.authorization || "";
     const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
     let userId = null;
+
     if (token) {
       try {
         const session = await getSession(token);
@@ -1252,18 +1306,22 @@ router.post("/:id/add-deposit", async (req, res) => {
       }
     }
 
+    // ==========================================================
+    // 🔎 Load Sales Order first so RESTlet gets full context
+    // ==========================================================
+    let so = null;
+    try {
+      so = await nsGet(`/salesOrder/${id}`, userId, "sb");
+    } catch (err) {
+      console.warn("⚠️ Could not fetch Sales Order from NetSuite:", err.message);
+    }
+
     // 🔍 Determine store ID
     let storeId = dep.storeId || null;
 
-    if (!storeId && id) {
-      try {
-        // If you want this faster too: use lite fields once confirmed
-        const so = await nsGet(`/salesOrder/${id}`, userId, "sb");
-        storeId = so?.location?.id || so?.custbody_sb_primarystore?.id || null;
-        console.log("🏬 Store determined from NetSuite SO:", storeId);
-      } catch (err) {
-        console.warn("⚠️ Could not fetch store from NetSuite:", err.message);
-      }
+    if (!storeId && so) {
+      storeId = so?.location?.id || so?.custbody_sb_primarystore?.id || null;
+      console.log("🏬 Store determined from NetSuite SO:", storeId);
     }
 
     if (!storeId) {
@@ -1287,7 +1345,10 @@ router.post("/:id/add-deposit", async (req, res) => {
       const result = await pool.query(query, [String(storeId)]);
       accRows = result.rows || [];
 
-      if (accRows.length && accRows[0].invoice_location_id?.toString() === String(storeId)) {
+      if (
+        accRows.length &&
+        accRows[0].invoice_location_id?.toString() === String(storeId)
+      ) {
         const realStoreNsId = accRows[0].netsuite_internal_id;
         console.log(
           `🔁 Matched invoice location ${storeId}, resolving real store netsuite_internal_id → ${realStoreNsId}`
@@ -1302,6 +1363,7 @@ router.post("/:id/add-deposit", async (req, res) => {
           `,
           [String(realStoreNsId)]
         );
+
         if (storeRes.rows.length) accRows = storeRes.rows;
       }
 
@@ -1313,12 +1375,14 @@ router.post("/:id/add-deposit", async (req, res) => {
 
     const currentAccountId = accRows?.[0]?.current_account || null;
     const pettyCashAccountId = accRows?.[0]?.petty_cash_account || null;
+    const storeNsId = accRows?.[0]?.netsuite_internal_id || null;
 
     const isCash = /cash/i.test(dep.name || dep.method || "");
     const selectedAccountId = isCash ? pettyCashAccountId : currentAccountId;
 
     console.log("🏦 Account mapping resolved →", {
       storeId,
+      storeNsId,
       currentAccountId,
       pettyCashAccountId,
       selectedAccountId,
@@ -1326,29 +1390,95 @@ router.post("/:id/add-deposit", async (req, res) => {
     });
 
     // ==========================================================
-    // ✅ Build NetSuite deposit body
+    // ✅ Build RESTlet body
     // ==========================================================
-    const depositBody = {
-      salesorder: { id: String(id) },
+    const restletBody = {
+      salesOrderId: String(id),
+      customerId: String(
+        so?.entity?.id ||
+        so?.customer?.id ||
+        so?.entity ||
+        ""
+      ),
+      subsidiaryId: String(
+        so?.subsidiary?.id ||
+        storeNsId ||
+        ""
+      ),
       payment: parseFloat(dep.amount || 0),
-      paymentmethod: { id: String(dep.id) },
-      undepfunds: false,
+      paymentMethodId: String(dep.id || ""),
+      paymentMethodName: dep.name || "",
+      accountId: selectedAccountId ? String(selectedAccountId) : "",
+      tranDate: new Date().toISOString().split("T")[0],
       memo: dep.name || "",
-      ...(selectedAccountId && { account: { id: String(selectedAccountId) } }),
+      undepfunds: false,
+      debug: true,
     };
 
-    console.log("🧾 [AddDeposit] Payload to NetSuite:", depositBody);
+    console.log("🧾 [AddDeposit] Creating Customer Deposit via RESTlet:");
+    console.dir(restletBody, { depth: null });
 
-    const depositRes = await nsPost("/customerDeposit", depositBody, userId, "sb");
-    console.log("💰 NetSuite Deposit response:", depositRes);
-
-    let depositId = depositRes?.id || null;
-    if (!depositId && depositRes?._location) {
-      const match = depositRes._location.match(/customerDeposit\/(\d+)/i);
-      if (match) depositId = match[1];  
+    const restletUrl = process.env.NS_CUSTOMER_DEPOSIT_RESTLET_URL;
+    if (!restletUrl) {
+      throw new Error("Missing NS_CUSTOMER_DEPOSIT_RESTLET_URL in environment.");
     }
 
-    if (!depositId) throw new Error("Deposit created but ID not returned");
+    const authHeader = await getAuthHeader(restletUrl, "POST", userId, "sb");
+    const restletResRaw = await fetch(restletUrl, {
+      method: "POST",
+      headers: {
+        ...authHeader,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify(restletBody),
+    });
+
+    const restletText = await restletResRaw.text();
+
+    let restletRes;
+    try {
+      restletRes = restletText ? JSON.parse(restletText) : {};
+    } catch {
+      throw new Error(
+        `RESTlet returned non-JSON response (${restletResRaw.status}): ${restletText}`
+      );
+    }
+
+    console.log("💰 RESTlet Deposit response:", restletRes);
+
+    if (!restletResRaw.ok || restletRes?.success === false) {
+      throw new Error(
+        restletRes?.error?.message ||
+        restletRes?.message ||
+        `RESTlet call failed with HTTP ${restletResRaw.status}`
+      );
+    }
+
+    const depositId = restletRes?.depositId || null;
+    const requestedMethodId = restletRes?.requested?.paymentMethodId || "";
+    const requestedMethodName = restletRes?.requested?.paymentMethodName || "";
+    const savedMethodId = restletRes?.saved?.paymentMethodId || "";
+    const savedMethodText = restletRes?.saved?.paymentMethodText || "";
+    const matched = restletRes?.matched === true;
+
+    console.log("💳 [AddDeposit] Payment Method Check →", {
+      requestedMethodId,
+      requestedMethodName,
+      savedMethodId,
+      savedMethodText,
+      matched,
+    });
+
+    if (!matched) {
+      console.warn(
+        `⚠️ [AddDeposit] Requested payment method "${requestedMethodName}" (${requestedMethodId}) but NetSuite saved "${savedMethodText}" (${savedMethodId}).`
+      );
+    }
+
+    if (!depositId) {
+      throw new Error("Deposit created but depositId not returned by RESTlet");
+    }
 
     const accountDash = process.env.NS_ACCOUNT_DASH;
     const depositLink = `https://${accountDash}.app.netsuite.com/app/accounting/transactions/custdep.nl?id=${depositId}`;
@@ -1356,6 +1486,11 @@ router.post("/:id/add-deposit", async (req, res) => {
     return res.json({
       ok: true,
       id: depositId,
+      matched,
+      requestedPaymentMethodId: requestedMethodId,
+      requestedPaymentMethodName: requestedMethodName,
+      savedPaymentMethodId: savedMethodId,
+      savedPaymentMethodText: savedMethodText,
       link: `<a href="${depositLink}" target="_blank">CD${depositId}</a>`,
     });
   } catch (err) {
@@ -1475,6 +1610,6 @@ router.post("/:id/save", async (req, res) => {
       error: err.message || "Unexpected server error",
     });
   }
-});''
+}); ''
 
 module.exports = router;
