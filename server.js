@@ -218,10 +218,11 @@ app.use("/api/eod", eodSubmissionsRoutes);
 
 app.use("/api/logistics", require("./routes/logistics"));
 
-
 const deliveryScheduleRoutes = require("./routes/deliverySchedule");
 app.use("/api/delivery-schedule", deliveryScheduleRoutes);
 
+const dispatchTrackRoutes = require("./routes/DispatchTrack");
+app.use("/", dispatchTrackRoutes);
 
 
 
@@ -274,6 +275,7 @@ app.use(async (req, res, next) => {
       "/api/netsuite/quote",
       "/api/netsuite/order-management",
       "/api/netsuite/quote-management",
+      "/api/dispatchtrack/open-jobs",
     ];
 
     if (alwaysAllowed.some((prefix) => req.path.startsWith(prefix))) {
