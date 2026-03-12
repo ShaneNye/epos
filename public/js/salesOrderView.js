@@ -804,21 +804,21 @@ function updateOrderSummaryFromTable() {
   let discountTotal = 0;
 
   rows.forEach((row, idx) => {
-    // ==================================================
-    // Pending approval / editable mode
-    // ==================================================
+    // ================================
+    // Editable / pending-approval rows
+    // ================================
     const itemId = (row.querySelector(".item-internal-id")?.value || "").trim();
     const qtyInp = row.querySelector(".item-qty");
     const discInp = row.querySelector(".item-discount");
     const saleInp = row.querySelector(".item-saleprice");
     const amountInp = row.querySelector(".item-amount");
 
-    if (itemId && qtyInp && saleInp && discInp && amountInp) {
+    if (itemId && qtyInp && discInp && saleInp && amountInp) {
       const qty = parseFloat(qtyInp.value || 0) || 0;
       if (!qty) return;
 
-      const amountGrossLine = parseFloat(amountInp.value || 0) || 0;   // already line total
-      const saleGrossLine = parseFloat(saleInp.value || 0) || 0;       // already line total
+      const amountGrossLine = parseFloat(amountInp.value || 0) || 0;
+      const saleGrossLine = parseFloat(saleInp.value || 0) || 0;
       const discountPct = parseFloat(discInp.value || 0) || 0;
 
       let defaultGrossTotal = 0;
@@ -830,7 +830,7 @@ function updateOrderSummaryFromTable() {
         defaultGrossTotal = saleGrossLine;
       }
 
-      // ✅ sale price is already the row total — do NOT multiply by qty again
+      // sale price is already the full line total
       if (Number.isFinite(saleGrossLine) && saleGrossLine > 0) {
         actualGrossTotal = saleGrossLine;
       } else if (discountPct > 0 && defaultGrossTotal > 0) {
@@ -861,9 +861,9 @@ function updateOrderSummaryFromTable() {
       return;
     }
 
-    // ==================================================
-    // Committed / read-only mode
-    // ==================================================
+    // ================================
+    // Read-only / committed rows
+    // ================================
     const amountEl = row.querySelector(".amount");
     const saleEl = row.querySelector(".saleprice");
 
@@ -892,19 +892,25 @@ function updateOrderSummaryFromTable() {
   const netTotal = Number((grossTotal / 1.2).toFixed(2));
   const taxTotal = Number((grossTotal - netTotal).toFixed(2));
 
-  document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
-  document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
-  document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
-  document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
+  const subTotalEl = document.getElementById("subTotal");
+  const discountEl = document.getElementById("discountTotal");
+  const taxEl = document.getElementById("taxTotal");
+  const grandEl = document.getElementById("grandTotal");
 
-  if (window._currentDeposits?.length > 0) {
-    const totalDeposits = window._currentDeposits.reduce(
-      (sum, d) => sum + (parseFloat(d.amount) || 0),
-      0
-    );
+  if (subTotalEl) subTotalEl.textContent = `£${netTotal.toFixed(2)}`;
+  if (discountEl) discountEl.textContent = `£${discountTotal.toFixed(2)}`;
+  if (taxEl) taxEl.textContent = `£${taxTotal.toFixed(2)}`;
+  if (grandEl) grandEl.textContent = `£${grossTotal.toFixed(2)}`;
+
+  if (typeof updateDepositTotals === "function") {
+    const totalDeposits = Array.isArray(window._currentDeposits)
+      ? window._currentDeposits.reduce(
+          (sum, d) => sum + (parseFloat(d.amount) || 0),
+          0
+        )
+      : 0;
+
     updateDepositTotals(totalDeposits);
-  } else {
-    updateDepositTotals(0);
   }
 
   console.log("📊 Summary recalculated", {
@@ -914,6 +920,55 @@ function updateOrderSummaryFromTable() {
     discountTotal
   });
 }
+
+document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
+  if (
+    e.target.classList.contains("item-qty") ||
+    e.target.classList.contains("item-discount") ||
+    e.target.classList.contains("item-saleprice") ||
+    e.target.classList.contains("item-amount")
+  ) {
+    updateOrderSummaryFromTable();
+  }
+});
+
+/* =====================================================
+   Print receipt
+   ===================================================== */
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest("#printBtn");
+  if (!btn) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  console.log("🖨️ Print button clicked");
+
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  const tranId = parts[parts.length - 1];
+
+  console.log("🖨️ URL path parts:", parts);
+  console.log("🖨️ Derived tranId:", tranId);
+
+  if (!tranId) {
+    console.error("❌ No tranId found in URL");
+    alert("⚠️ Could not determine receipt transaction ID.");
+    return;
+  }
+
+  const url = `/sales/reciept/${tranId}`;
+  console.log("🖨️ Opening receipt URL:", url);
+
+  const receiptWin = window.open(url, "_blank");
+
+  if (!receiptWin) {
+    console.warn("⚠️ Popup blocked - redirecting in same tab");
+    window.location.href = url;
+    return;
+  }
+
+  receiptWin.focus();
+});
 
 
 
