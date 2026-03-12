@@ -795,107 +795,125 @@ window.onDepositSaved = async (deposit) => {
    Summary from table
    ===================================================== */
 function updateOrderSummaryFromTable() {
+  console.log("🧮 updateOrderSummaryFromTable()");
+
   const rows = document.querySelectorAll("#orderItemsBody tr.order-line");
   if (!rows.length) return;
-
-  const isPending = document.querySelector("#orderActionWrapper #commitOrderBtn") != null
-    || (window.__soStatusId === "A"); // optional fallback if you store status globally
 
   let grossTotal = 0;
   let discountTotal = 0;
 
-  rows.forEach(row => {
-    // Pending approval (Sales New style inputs)
+  rows.forEach((row, idx) => {
+    // ==================================================
+    // Pending approval / editable mode
+    // ==================================================
+    const itemId = (row.querySelector(".item-internal-id")?.value || "").trim();
     const qtyInp = row.querySelector(".item-qty");
     const discInp = row.querySelector(".item-discount");
     const saleInp = row.querySelector(".item-saleprice");
-    const baseNetInp = row.querySelector(".item-baseprice");
+    const amountInp = row.querySelector(".item-amount");
 
-    if (qtyInp && saleInp && discInp && baseNetInp) {
+    if (itemId && qtyInp && saleInp && discInp && amountInp) {
       const qty = parseFloat(qtyInp.value || 0) || 0;
       if (!qty) return;
 
-      const baseNet = parseFloat(baseNetInp.value || 0) || 0; // NET per unit
-      const defaultGrossPerUnit = baseNet * 1.2;
-
-      const defaultGrossTotal = defaultGrossPerUnit * qty;
-
+      const amountGrossLine = parseFloat(amountInp.value || 0) || 0;   // already line total
+      const saleGrossLine = parseFloat(saleInp.value || 0) || 0;       // already line total
       const discountPct = parseFloat(discInp.value || 0) || 0;
-      const saleGrossPerUnit = parseFloat(saleInp.value || 0) || 0;
 
-      let actualGrossTotal;
+      let defaultGrossTotal = 0;
+      let actualGrossTotal = 0;
 
-      if (discountPct > 0) {
-        actualGrossTotal = defaultGrossPerUnit * (1 - discountPct / 100) * qty;
-      } else if (saleGrossPerUnit > 0) {
-        actualGrossTotal = saleGrossPerUnit * qty;
+      if (Number.isFinite(amountGrossLine) && amountGrossLine > 0) {
+        defaultGrossTotal = amountGrossLine;
+      } else if (Number.isFinite(saleGrossLine) && saleGrossLine > 0) {
+        defaultGrossTotal = saleGrossLine;
+      }
+
+      // ✅ sale price is already the row total — do NOT multiply by qty again
+      if (Number.isFinite(saleGrossLine) && saleGrossLine > 0) {
+        actualGrossTotal = saleGrossLine;
+      } else if (discountPct > 0 && defaultGrossTotal > 0) {
+        actualGrossTotal = defaultGrossTotal * (1 - discountPct / 100);
       } else {
         actualGrossTotal = defaultGrossTotal;
       }
 
+      defaultGrossTotal = Number(defaultGrossTotal.toFixed(2));
+      actualGrossTotal = Number(actualGrossTotal.toFixed(2));
+
       grossTotal += actualGrossTotal;
-      discountTotal += Math.max(0, defaultGrossTotal - actualGrossTotal);
+
+      const lineDiscount = Math.max(0, defaultGrossTotal - actualGrossTotal);
+      discountTotal += lineDiscount;
+
+      console.log(`🧾 Editable row ${idx}`, {
+        itemId,
+        qty,
+        amountGrossLine,
+        saleGrossLine,
+        discountPct,
+        defaultGrossTotal,
+        actualGrossTotal,
+        lineDiscount
+      });
+
       return;
     }
 
-    // Committed / read-only (table text)
+    // ==================================================
+    // Committed / read-only mode
+    // ==================================================
     const amountEl = row.querySelector(".amount");
     const saleEl = row.querySelector(".saleprice");
 
     if (!saleEl) return;
 
-    const sale = parseFloat(saleEl.textContent.replace(/[£,]/g, "")) || 0;
+    const sale = parseFloat((saleEl.textContent || "").replace(/[£,]/g, "")) || 0;
     const amount = amountEl
-      ? parseFloat(amountEl.textContent.replace(/[£,]/g, "")) || 0
+      ? parseFloat((amountEl.textContent || "").replace(/[£,]/g, "")) || 0
       : sale;
 
     grossTotal += sale;
-    discountTotal += Math.max(0, amount - sale);
+
+    const lineDiscount = Math.max(0, amount - sale);
+    discountTotal += lineDiscount;
+
+    console.log(`🧾 Read-only row ${idx}`, {
+      amount,
+      sale,
+      lineDiscount
+    });
   });
 
-  const netTotal = grossTotal / 1.2;
-  const taxTotal = grossTotal - netTotal;
+  grossTotal = Number(grossTotal.toFixed(2));
+  discountTotal = Number(discountTotal.toFixed(2));
+
+  const netTotal = Number((grossTotal / 1.2).toFixed(2));
+  const taxTotal = Number((grossTotal - netTotal).toFixed(2));
 
   document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
   document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
   document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
   document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
 
-  // deposits / outstanding balance
   if (window._currentDeposits?.length > 0) {
     const totalDeposits = window._currentDeposits.reduce(
       (sum, d) => sum + (parseFloat(d.amount) || 0),
       0
     );
     updateDepositTotals(totalDeposits);
+  } else {
+    updateDepositTotals(0);
   }
+
+  console.log("📊 Summary recalculated", {
+    grossTotal,
+    netTotal,
+    taxTotal,
+    discountTotal
+  });
 }
-
-document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
-  if (
-    e.target.classList.contains("item-qty") ||
-    e.target.classList.contains("item-discount") ||
-    e.target.classList.contains("item-saleprice")
-  ) {
-    updateOrderSummaryFromTable();
-  }
-});
-
-
-document.getElementById("printBtn").addEventListener("click", () => {
-  const parts = window.location.pathname.split("/").filter(Boolean);
-  const tranId = parts[parts.length - 1];
-
-  if (!tranId) {
-    console.error("❌ No tranId found in URL");
-    return;
-  }
-
-  const url = `/sales/reciept/${tranId}`;
-  window.open(url, "_blank");
-});
-
-
 
 
 
