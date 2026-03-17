@@ -391,6 +391,72 @@ router.get("/check-today", async (req, res) => {
   }
 });
 
+/* ============================================================
+   GET EOD REPORT BY ID
+   ============================================================ */
+router.get("/report/:id", async (req, res) => {
+  try {
+    const eodId = Number(req.params.id);
+
+    if (!eodId) {
+      return res.status(400).json({ ok: false, error: "Invalid EOD id" });
+    }
+
+    const sql = `
+      SELECT 
+        e.id,
+        e.store_name,
+        e.location_id,
+        e.date,
+        e.signoff_user_id,
+        e.confirmation,
+        e.deposits,
+        e.cashflow,
+        e.adjustments,
+        e.total_safe,
+        e.total_float,
+        u.firstname,
+        u.lastname
+      FROM end_of_day e
+      LEFT JOIN users u
+        ON u.id = e.signoff_user_id
+      WHERE e.id = $1
+      LIMIT 1
+    `;
+
+    const result = await pool.query(sql, [eodId]);
+
+    if (!result.rows.length) {
+      return res.status(404).json({ ok: false, error: "EOD report not found" });
+    }
+
+    const row = result.rows[0];
+
+    return res.json({
+      ok: true,
+      report: {
+        id: row.id,
+        store: row.store_name,
+        locationId: row.location_id,
+        date: row.date,
+        confirmation: row.confirmation || "",
+        signoffUserId: row.signoff_user_id,
+        signoffName: [row.firstname, row.lastname].filter(Boolean).join(" ") || "",
+        deposits: row.deposits || {},
+        cashflow: row.cashflow || {},
+        adjustments: row.adjustments || {},
+        totals: {
+          safe: Number(row.total_safe || 0),
+          float: Number(row.total_float || 0),
+        },
+      },
+    });
+  } catch (err) {
+    console.error("❌ /api/eod/report/:id error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 
 
 

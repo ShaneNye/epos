@@ -349,3 +349,11 @@
 .signoff-status--error {
     color: #e74c3c;
 }
+.cashflow-current-float {
+  margin: 12px 0 14px;
+  padding: 10px 12px;
+  background: #f5f7fa;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  font-size: 0.95rem;
+}

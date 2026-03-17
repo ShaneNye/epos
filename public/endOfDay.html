@@ -108,7 +108,10 @@
                             <button class="eod-btn eod-btn-secondary" id="openAdjustmentBtn">
                                 Adjustment
                             </button>
-
+                            <div class="cashflow-current-float">
+                                <strong>Current Float Balance:</strong>
+                                <span id="currentFloatBalance">£0.00</span>
+                            </div>
                             <div class="cashflow-table-wrapper">
                                 <table class="cashflow-table">
                                     <thead>
@@ -169,7 +172,8 @@
                                 <button id="signoffSubmitBtn" class="eod-btn eod-btn-secondary" disabled>
                                     Submit End Of Day
                                 </button>
-                                <span id="signoffStatus" class="signoff-status"></span>
+                                <button type="button" id="printEodBtn">🖨 Print EOD Report</button> <span
+                                    id="signoffStatus" class="signoff-status"></span>
                             </div>
 
                         </div>
