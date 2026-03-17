@@ -34,13 +34,25 @@ document.addEventListener("DOMContentLoaded", async () => {
   console.log("🔐 Using auth token");
   console.log("Waiting for Netsuite Response");
 
-  // Small helper
   const setText = (id, value) => {
     const el = document.getElementById(id);
     if (!el) return;
     const v = value === null || value === undefined ? "" : String(value);
     el.textContent = v.trim() ? v : "-";
   };
+
+  const escapeHtml = (str) =>
+    String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const hasRealValue = (v) =>
+    v !== null &&
+    v !== undefined &&
+    String(v).trim() !== "";
 
   /* ============================
      3️⃣ Fetch Sales Order
@@ -78,7 +90,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     console.log("🏬 Store NS ID resolved from SO:", storeNsId);
 
-    // Fetch locations and match store
     try {
       const locRes = await fetch("/api/meta/locations", { headers }).catch(() =>
         fetch("/api/meta/locations")
@@ -102,7 +113,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         } else {
           console.log("✅ Matched store record:", match);
 
-          // Populate receipt header
           setText("storeName", match.name);
           setText("storeTel", match.location_phone_number);
           setText("storeEmail", match.location_email || match.email);
@@ -146,30 +156,31 @@ document.addEventListener("DOMContentLoaded", async () => {
     const paymentMethod = so.custbody_sb_paymentinfo?.refName || "";
     const salesRep = so.custbody_sb_bedspecialist?.refName || "";
 
-    // CUSTOMER DETAILS
-    document.getElementById("customerName").innerHTML = customerName;
-    document.getElementById("custadd1").innerHTML = customerAddressLine1;
-    document.getElementById("custadd2").innerHTML = customerAddressLine2;
-    document.getElementById("custadd3").innerHTML = customerAddressLine3;
-    document.getElementById("custzip").innerHTML = customerPostcode;
-    document.getElementById("custEmail").innerHTML = customerEmail;
-    document.getElementById("custTel").innerHTML = customerTel;
+    document.getElementById("customerName").innerHTML = escapeHtml(customerName);
+    document.getElementById("custadd1").innerHTML = escapeHtml(customerAddressLine1);
+    document.getElementById("custadd2").innerHTML = escapeHtml(customerAddressLine2);
+    document.getElementById("custadd3").innerHTML = escapeHtml(customerAddressLine3);
+    document.getElementById("custzip").innerHTML = escapeHtml(customerPostcode);
+    document.getElementById("custEmail").innerHTML = escapeHtml(customerEmail);
+    document.getElementById("custTel").innerHTML = escapeHtml(customerTel);
 
-    // ORDER DETAILS
-    document.getElementById("salesOrd").innerHTML = salesOrdNo;
-    document.getElementById("salesDate").innerHTML = salesDate;
+    document.getElementById("salesOrd").innerHTML = escapeHtml(salesOrdNo);
+    document.getElementById("salesDate").innerHTML = escapeHtml(salesDate);
 
     const formPaymentMethod = document.getElementById("pymtMthd");
-    formPaymentMethod.style.verticalAlign = "middle";
-    formPaymentMethod.innerHTML = paymentMethod;
+    if (formPaymentMethod) {
+      formPaymentMethod.style.verticalAlign = "middle";
+      formPaymentMethod.innerHTML = escapeHtml(paymentMethod);
+    }
 
-    document.getElementById("salesRep").innerHTML = salesRep;
+    document.getElementById("salesRep").innerHTML = escapeHtml(salesRep);
 
     /* ============================
        6️⃣ PRODUCT TABLE
        ============================ */
     const items = so.item?.items || [];
     const tableBody = document.getElementById("productTableBody");
+    const productTable = document.getElementById("productTable");
 
     if (!tableBody) {
       console.error("❌ productTableBody not found");
@@ -178,34 +189,65 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     tableBody.innerHTML = "";
 
+    const hasAnyOptions = items.some((line) =>
+      String(line.custcol_sb_itemoptionsdisplay || "").trim()
+    );
+
+    if (productTable) {
+      const rows = productTable.querySelectorAll("tr");
+      rows.forEach((row) => {
+        const cells = row.children;
+        if (cells[1]) {
+          cells[1].style.display = hasAnyOptions ? "" : "none";
+        }
+      });
+    }
+
     items.forEach((line) => {
       const itemName = line.item?.refName || "";
-      const optionsRaw = line.custcol_sb_itemoptionsdisplay || "";
-      const options = optionsRaw.replace(/\n/g, "<br>");
+      const optionsRaw = String(line.custcol_sb_itemoptionsdisplay || "").trim();
+      const options = escapeHtml(optionsRaw).replace(/\n/g, "<br>");
 
-      const qty = Number(line.quantity || 0);
+      const qty = Number(line.quantity || 0) || 0;
 
-      // Amount = original price (gross)
-      const price = Number(line.amount || 0);
+      const unitPrice = Number(line.amount || 0) || 0;
+      const originalLineTotal = unitPrice * qty;
 
-      // Sale price = actual charged total
-      const total = Number(line.saleprice || 0);
+      const actualLineTotal = hasRealValue(line.saleprice)
+        ? Number(line.saleprice || 0)
+        : originalLineTotal;
 
-      // Discount %
       let discountPct = 0;
-      if (price > 0 && total > 0 && total < price) {
-        discountPct = ((price - total) / price) * 100;
+      if (
+        originalLineTotal > 0 &&
+        actualLineTotal >= 0 &&
+        actualLineTotal < originalLineTotal
+      ) {
+        discountPct =
+          ((originalLineTotal - actualLineTotal) / originalLineTotal) * 100;
       }
 
       const tr = document.createElement("tr");
-      tr.innerHTML = `
-        <td>${itemName}</td>
-        <td>${options}</td>
-        <td>${qty}</td>
-        <td>£${price.toFixed(2)}</td>
-        <td>${discountPct.toFixed(1)}%</td>
-        <td>£${total.toFixed(2)}</td>
-      `;
+
+      if (hasAnyOptions) {
+        tr.innerHTML = `
+          <td>${escapeHtml(itemName)}</td>
+          <td>${options || "-"}</td>
+          <td>${qty}</td>
+          <td>£${unitPrice.toFixed(2)}</td>
+          <td>${discountPct.toFixed(1)}%</td>
+          <td>£${actualLineTotal.toFixed(2)}</td>
+        `;
+      } else {
+        tr.innerHTML = `
+          <td>${escapeHtml(itemName)}</td>
+          <td>${qty}</td>
+          <td>£${unitPrice.toFixed(2)}</td>
+          <td>${discountPct.toFixed(1)}%</td>
+          <td>£${actualLineTotal.toFixed(2)}</td>
+        `;
+      }
+
       tableBody.appendChild(tr);
     });
 
@@ -239,7 +281,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${linkHtml}</td>
-          <td>${method}</td>
+          <td>${escapeHtml(method)}</td>
           <td>£${amount.toFixed(2)}</td>
         `;
         depositTableBody.appendChild(tr);
@@ -247,11 +289,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     /* ==========================================
-      8️⃣ ORDER SUMMARY TABLE
-      =========================================== */
+       8️⃣ ORDER SUMMARY TABLE
+       =========================================== */
     const vatAmounts = so.item?.items || [];
 
-    // ✅ Sum deposits from API response (more reliable than custbody)
     const depositTotal = (deposits || []).reduce(
       (sum, d) => sum + (Number(d.amount || 0) || 0),
       0
@@ -264,13 +305,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     let totalOrdDiscount = 0;
 
     vatAmounts.forEach((line) => {
-      const vat = Number(line.vat || 0);
-      const amount = Number(line.saleprice || 0);
-      const retail = Number(line.amount || 0);
+      const qty = Number(line.quantity || 0) || 0;
+      const vat = Number(line.vat || 0) || 0;
+
+      const unitRetail = Number(line.amount || 0) || 0;
+      const retailLineTotal = unitRetail * qty;
+
+      const lineTotal = hasRealValue(line.saleprice)
+        ? Number(line.saleprice || 0)
+        : retailLineTotal;
 
       vatTotal += vat;
-      salesTotal += amount;
-      totalRetail += retail;
+      salesTotal += lineTotal;
+      totalRetail += retailLineTotal;
     });
 
     totalOrdDiscount = totalRetail - salesTotal;
@@ -281,13 +328,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("balance").innerHTML = `£${remainingBalance.toFixed(2)}`;
 
     /* ===========================================
-      9️⃣ DISCOUNT SUMMARY
-      ============================================= */
+       9️⃣ DISCOUNT SUMMARY
+       ============================================= */
     document.getElementById("originalPrice").innerHTML = `£${totalRetail.toFixed(2)}`;
     document.getElementById("discAmount").innerHTML = `£${totalOrdDiscount.toFixed(2)}`;
 
     let totalDiscountPct = 0;
-    if (totalRetail > 0) totalDiscountPct = ((totalRetail - salesTotal) / totalRetail) * 100;
+    if (totalRetail > 0) {
+      totalDiscountPct = ((totalRetail - salesTotal) / totalRetail) * 100;
+    }
 
     document.getElementById("totalDiscPerc").innerHTML = `${totalDiscountPct.toFixed(2)}%`;
   } catch (err) {
