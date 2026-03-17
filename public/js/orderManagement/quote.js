@@ -126,7 +126,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const renderRow = (q) => {
       const docNum = q["Document Number"]
-        ? `<a href="/sales/view/${q["Internal ID"]}" class="doc-link">${q["Document Number"]}</a>`
+        ? `<a href="quote/view/${q["Internal ID"]}" class="doc-link">${q["Document Number"]}</a>`
         : "";
       return `
         <tr>

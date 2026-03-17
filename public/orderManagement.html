@@ -247,45 +247,109 @@
                 </div>
             </section>
 
-            <!-- TRANSFER ORDER MANAGEMENT PANEL -->
-            <section id="transferOrders" class="tab-panel hidden">
-                <div class="panel-header">
-                    <h2>Transfer Order Management</h2>
-                </div>
-                <p>Track transfer orders across all stores and warehouses.</p>
+<!-- TRANSFER ORDER MANAGEMENT PANEL -->
+<section id="transferOrders" class="tab-panel hidden">
+    <div class="panel-header">
+        <h2>Transfer Order Management</h2>
+    </div>
+    <p>Track transfer orders across all stores and warehouses.</p>
 
-                <!-- === FILTER BAR === -->
-                <div class="toolbar">
-                    <label for="toStoreFilter">Store:</label>
-                    <select id="toStoreFilter">
-                        <option value="all">All Stores</option>
-                    </select>
-                </div>
+    <!-- === FILTER BAR === -->
+    <div class="toolbar">
+        <label for="toStoreFilter">Store:</label>
+        <select id="toStoreFilter">
+            <option value="all">All Stores</option>
+        </select>
+    </div>
 
-                <!-- === TRANSFER ORDERS TABLE === -->
-                <div class="table-container">
-                    <table class="data-table fixed-header">
-                        <thead>
-                            <tr>
-                                <th>Transfer #</th>
-                                <th>Coming From</th>
-                                <th>Going To</th>
-                                <th>Needed By</th>
-                                <th>Related Sale</th>
-                            </tr>
-                        </thead>
-                    </table>
-                    <div class="table-scroll">
-                        <table class="data-table" id="toTable">
-                            <tbody>
-                                <tr>
-                                    <td colspan="5">Loading transfer orders...</td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-            </section>
+    <!-- === SUBTABS === -->
+    <div class="subtabs" id="transferOrderSubtabs">
+        <div class="subtab active" data-subtab="toSalesOrders">Sales Orders</div>
+        <div class="subtab" data-subtab="toPendingFulfilment">Pending Fulfilment</div>
+        <div class="subtab" data-subtab="toPendingReceipt">Pending Receipt</div>
+    </div>
+
+    <!-- === SUBTAB CONTENT: SALES ORDERS === -->
+    <div class="subtab-content" id="toSalesOrders">
+        <div class="table-container">
+            <table class="data-table fixed-header">
+                <thead>
+                    <tr>
+                        <th>Transfer #</th>
+                        <th>Coming From</th>
+                        <th>Going To</th>
+                        <th>Needed By</th>
+                        <th>Related Sale</th>
+                    </tr>
+                </thead>
+            </table>
+
+            <div class="table-scroll">
+                <table class="data-table" id="toSalesOrdersTable">
+                    <tbody>
+                        <tr>
+                            <td colspan="5">Loading sales order transfer orders...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- === SUBTAB CONTENT: PENDING FULFILMENT === -->
+    <div class="subtab-content hidden" id="toPendingFulfilment">
+        <div class="table-container">
+            <table class="data-table fixed-header">
+                <thead>
+                    <tr>
+                        <th>Transfer #</th>
+                        <th>Coming From</th>
+                        <th>Going To</th>
+                        <th>Needed By</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+            </table>
+
+            <div class="table-scroll">
+                <table class="data-table" id="toPendingFulfilmentTable">
+                    <tbody>
+                        <tr>
+                            <td colspan="5">Loading pending fulfilment transfer orders...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- === SUBTAB CONTENT: PENDING RECEIPT === -->
+    <div class="subtab-content hidden" id="toPendingReceipt">
+        <div class="table-container">
+            <table class="data-table fixed-header">
+                <thead>
+                    <tr>
+                        <th>Transfer #</th>
+                        <th>Coming From</th>
+                        <th>Going To</th>
+                        <th>Shipped Date</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+            </table>
+
+            <div class="table-scroll">
+                <table class="data-table" id="toPendingReceiptTable">
+                    <tbody>
+                        <tr>
+                            <td colspan="5">Loading pending receipt transfer orders...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</section>
 
 
 
