@@ -647,34 +647,73 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (err) {
       console.error("❌ Warehouse cache failed:", err.message);
     }
+// ==================================================
+// 4️⃣ Normalise line signs + Render Item Lines
+// ==================================================
+if (typeof window.renderSalesViewLines !== "function") {
+  throw new Error("renderSalesViewLines() not found — did salesViewItemLine.js load?");
+}
 
-    // ==================================================
-    // 4️⃣ Render Item Lines
-    // ==================================================
-    if (typeof window.renderSalesViewLines !== "function") {
-      throw new Error("renderSalesViewLines() not found — did salesViewItemLine.js load?");
+// Normalise sign direction before external renderer consumes the payload.
+// This protects the UI even if renderSalesViewLines() still has old sign-flip logic.
+if (Array.isArray(so?.item?.items)) {
+  so.item.items = so.item.items.map((line) => {
+    const itemName = String(line?.item?.refName || "").toLowerCase();
+
+    const amount = Number(line.amount || 0);
+    const saleprice = Number(line.saleprice || 0);
+    const vat = Number(line.vat || 0);
+
+    // Heuristic: discount-style lines should be negative
+    const isDiscountLine =
+      itemName.includes("discount") ||
+      itemName.includes("blue light") ||
+      itemName.includes("promo") ||
+      itemName.includes("promotion") ||
+      itemName.includes("voucher");
+
+    let nextAmount = amount;
+    let nextSaleprice = saleprice;
+    let nextVat = vat;
+
+    if (isDiscountLine) {
+      // Discount lines should stay negative
+      if (nextAmount > 0) nextAmount = -nextAmount;
+      if (nextSaleprice > 0) nextSaleprice = -nextSaleprice;
+      if (nextVat > 0) nextVat = -nextVat;
+    } else {
+      // Normal stock / service lines should stay positive
+      if (nextAmount < 0) nextAmount = Math.abs(nextAmount);
+      if (nextSaleprice < 0) nextSaleprice = Math.abs(nextSaleprice);
+      if (nextVat < 0) nextVat = Math.abs(nextVat);
     }
 
-    window.renderSalesViewLines({
-      so,
-      fulfilmentMethods: window._fulfilmentMap || [],
-    });
+    return {
+      ...line,
+      amount: nextAmount,
+      saleprice: nextSaleprice,
+      vat: nextVat,
+    };
+  });
 
-    // ✅ Enhance existing rendered rows so options become clickable
-    enhancePendingApprovalOptions();
+  console.log(
+    "🧭 Normalised SO line signs before render:",
+    so.item.items.map((l) => ({
+      item: l?.item?.refName,
+      amount: l.amount,
+      vat: l.vat,
+      saleprice: l.saleprice,
+    }))
+  );
+}
 
-    // delegated options click support
-    document.getElementById("orderItemsBody")?.addEventListener("click", (e) => {
-      const btn = e.target.closest(".open-options");
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
+window.renderSalesViewLines({
+  so,
+  fulfilmentMethods: window._fulfilmentMap || [],
+});
 
-      const row = btn.closest("tr.order-line");
-      if (!row) return;
-
-      openOptionsWindow(row);
-    });
+// ✅ Enhance existing rendered rows so options become clickable
+enhancePendingApprovalOptions();
 
     // ==================================================
     // 6️⃣ Lock / unlock form depending on order status
@@ -1016,12 +1055,16 @@ function updateOrderSummaryFromTable() {
   let discountTotal = 0;
 
   rows.forEach((row, idx) => {
+    const itemName =
+      row.querySelector("td:first-child")?.textContent?.trim().toLowerCase() || "";
+
     const itemId = (row.querySelector(".item-internal-id")?.value || "").trim();
     const qtyInp = row.querySelector(".item-qty");
     const discInp = row.querySelector(".item-discount");
     const saleInp = row.querySelector(".item-saleprice");
     const amountInp = row.querySelector(".item-amount");
 
+    // Editable rows
     if (itemId && qtyInp && discInp && saleInp && amountInp) {
       const qty = parseFloat(qtyInp.value || 0) || 0;
       if (!qty) return;
@@ -1030,45 +1073,34 @@ function updateOrderSummaryFromTable() {
       const saleGrossLine = parseFloat(saleInp.value || 0) || 0;
       const discountPct = parseFloat(discInp.value || 0) || 0;
 
-      let defaultGrossTotal = 0;
-      let actualGrossTotal = 0;
+      grossTotal += saleGrossLine;
 
-      if (Number.isFinite(amountGrossLine) && amountGrossLine > 0) {
-        defaultGrossTotal = amountGrossLine;
-      } else if (Number.isFinite(saleGrossLine) && saleGrossLine > 0) {
-        defaultGrossTotal = saleGrossLine;
+      let lineDiscount = 0;
+
+      if (saleGrossLine < 0 || itemName.includes("discount")) {
+        lineDiscount = Math.abs(saleGrossLine);
+      } else if (amountGrossLine > 0 && saleGrossLine >= 0) {
+        lineDiscount = Math.max(0, amountGrossLine - saleGrossLine);
+      } else if (discountPct > 0 && amountGrossLine > 0) {
+        lineDiscount = amountGrossLine * (discountPct / 100);
       }
 
-      if (Number.isFinite(saleGrossLine) && saleGrossLine > 0) {
-        actualGrossTotal = saleGrossLine;
-      } else if (discountPct > 0 && defaultGrossTotal > 0) {
-        actualGrossTotal = defaultGrossTotal * (1 - discountPct / 100);
-      } else {
-        actualGrossTotal = defaultGrossTotal;
-      }
-
-      defaultGrossTotal = Number(defaultGrossTotal.toFixed(2));
-      actualGrossTotal = Number(actualGrossTotal.toFixed(2));
-
-      grossTotal += actualGrossTotal;
-
-      const lineDiscount = Math.max(0, defaultGrossTotal - actualGrossTotal);
       discountTotal += lineDiscount;
 
       console.log(`🧾 Editable row ${idx}`, {
         itemId,
+        itemName,
         qty,
         amountGrossLine,
         saleGrossLine,
         discountPct,
-        defaultGrossTotal,
-        actualGrossTotal,
         lineDiscount
       });
 
       return;
     }
 
+    // Read-only rows
     const amountEl = row.querySelector(".amount");
     const saleEl = row.querySelector(".saleprice");
 
@@ -1081,10 +1113,18 @@ function updateOrderSummaryFromTable() {
 
     grossTotal += sale;
 
-    const lineDiscount = Math.max(0, amount - sale);
+    let lineDiscount = 0;
+
+    if (sale < 0 || itemName.includes("discount")) {
+      lineDiscount = Math.abs(sale);
+    } else if (amount > 0 && sale >= 0) {
+      lineDiscount = Math.max(0, amount - sale);
+    }
+
     discountTotal += lineDiscount;
 
     console.log(`🧾 Read-only row ${idx}`, {
+      itemName,
       amount,
       sale,
       lineDiscount

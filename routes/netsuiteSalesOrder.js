@@ -1022,7 +1022,7 @@ router.get("/:id", async (req, res) => {
       console.log("🔥 Prewarm auth accepted. Using userId:", userId);
     }
 
-    // ✅ Load cached maps in parallel (big win: removes 2 suitelet calls per SO view)
+    // ✅ Load cached maps in parallel
     const [itemMap, fulfilmentMap] = await Promise.all([
       getItemMapCached(),
       getFulfilmentMapCached(),
@@ -1035,7 +1035,7 @@ router.get("/:id", async (req, res) => {
 
     const so = await nsGet(soPath, userId, "sb");
 
-    // 🔎 Fetch *minimal* entity/customer record (title + contact fields)
+    // 🔎 Fetch *minimal* entity/customer record
     let entityFull = null;
     if (so.entity?.id) {
       try {
@@ -1051,77 +1051,88 @@ router.get("/:id", async (req, res) => {
     }
     if (entityFull) so.entityFull = entityFull;
 
-    /* -----------------------------------------------------
-       3️⃣ Expand Item Lines via SuiteQL (only columns you need)
-    ----------------------------------------------------- */
-    {
-      const query = `
-        SELECT
-          id AS lineid,
-          item,
-          quantity,
-          netamount,
-          rate,
-          custcol_sb_itemoptionsdisplay AS options,
-          custcol_sb_fulfilmentlocation
-        FROM transactionline
-        WHERE transaction = ${id}
-          AND mainline = 'F'
-          AND taxline = 'F'
-        ORDER BY linesequencenumber
-      `;
+/* -----------------------------------------------------
+   3️⃣ Expand Item Lines via SuiteQL
+----------------------------------------------------- */
+{
+  const query = `
+    SELECT
+      id AS lineid,
+      item,
+      quantity,
+      netamount,
+      rate,
+      custcol_sb_itemoptionsdisplay AS options,
+      custcol_sb_fulfilmentlocation
+    FROM transactionline
+    WHERE transaction = ${id}
+      AND mainline = 'F'
+      AND taxline = 'F'
+    ORDER BY linesequencenumber
+  `;
 
-      const suiteql = await nsPostRaw(
-        `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
-        { q: query },
-        userId,
-        "sb"
-      );
+  const suiteql = await nsPostRaw(
+    `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
+    { q: query },
+    userId,
+    "sb"
+  );
 
-      if (suiteql && Array.isArray(suiteql.items)) {
-        const items = suiteql.items.map((r) => {
-          const itemId = String(r.item);
-          const lineId = String(r.lineid || "");
-          const info = itemMap[itemId] || {};
-          const itemName = info.name || `Item ${itemId}`;
+  if (suiteql && Array.isArray(suiteql.items)) {
+    const items = suiteql.items.map((r) => {
+      const itemId = String(r.item);
+      const lineId = String(r.lineid || "");
+      const info = itemMap[itemId] || {};
+      const itemName = info.name || `Item ${itemId}`;
 
-          const qty = Math.abs(Number(r.quantity) || 0);
-          const net = Math.abs(Number(r.netamount) || 0);
+      // Keep display qty positive
+      const qty = Math.abs(Number(r.quantity) || 0);
 
-          const retailNet = parseFloat(info.baseprice || 0);
-          const retailGross = +(retailNet * 1.2).toFixed(2);
+      // Preserve sign for discount-style lines
+      const rawNet = Number(r.netamount) || 0;
+      const rawRate = Number(r.rate) || 0;
 
-          const vat = net > 0 ? +(net * 0.2).toFixed(2) : 0;
-          const saleprice = net > 0 ? +(net + vat).toFixed(2) : 0;
-
-          const fulfilId =
-            r.fulfilmentlocation ||
-            r.custcol_sb_fulfilmentlocation ||
-            r.CUSTCOL_SB_FULFILMENTLOCATION ||
-            "";
-
-          return {
-            lineId,
-            item: { id: itemId, refName: itemName },
-            quantity: qty,
-            amount: retailGross,
-            vat,
-            saleprice,
-            discount: 0,
-            custcol_sb_itemoptionsdisplay: r.options || "",
-            custcol_sb_fulfilmentlocation: {
-              id: fulfilId || null,
-              refName: fulfilId ? (fulfilmentMap[fulfilId] || `ID ${fulfilId}`) : "",
-            },
-          };
-        });
-
-        so.item = { items };
-        console.log(`✅ Loaded ${items.length} item lines`);
-      } else {
-        so.item = { items: [] };
+      let net = rawNet;
+      if (rawRate < 0 && rawNet > 0) {
+        net = -rawNet;
       }
-    }
+
+      // Standard display amount from item feed / retail price
+      const retailNet = parseFloat(info.baseprice || 0);
+      const retailGross = +(retailNet * 1.2).toFixed(2);
+
+      // Signed transactional values
+      const vat = +(net * 0.2).toFixed(2);
+      const saleprice = +(net + vat).toFixed(2);
+
+      const fulfilId =
+        r.fulfilmentlocation ||
+        r.custcol_sb_fulfilmentlocation ||
+        r.CUSTCOL_SB_FULFILMENTLOCATION ||
+        "";
+
+      return {
+        lineId,
+        item: { id: itemId, refName: itemName },
+        quantity: qty,
+        amount: retailGross,
+        vat,
+        saleprice,
+        discount: 0,
+        custcol_sb_itemoptionsdisplay: r.options || "",
+        custcol_sb_fulfilmentlocation: {
+          id: fulfilId || null,
+          refName: fulfilId ? (fulfilmentMap[fulfilId] || `ID ${fulfilId}`) : "",
+        },
+      };
+    });
+
+    so.item = { items };
+    console.log(`✅ Loaded ${items.length} item lines`);
+  } else {
+    so.item = { items: [] };
+  }
+}
 
     /* -----------------------------------------------------
        💰 Fetch Customer Deposits (optional)
@@ -1133,8 +1144,6 @@ router.get("/:id", async (req, res) => {
           `💰 Fetching deposit data for Sales Order ${id} via /api/netsuite/customer-deposits...`
         );
 
-        // NOTE: this endpoint is currently public in your access middleware, so no auth header required.
-        // If you later secure it, pass through bearer/prewarm headers here.
         const depRes = await fetch(`${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`);
         if (!depRes.ok) throw new Error(`Deposit route returned ${depRes.status}`);
 
@@ -1187,7 +1196,6 @@ router.get("/:id", async (req, res) => {
   } catch (err) {
     console.error("❌ GET /salesorder/:id error:", err.message);
 
-    // if we created an inflight promise above, reject + clear cache entry
     try {
       if (typeof rejectInflight === "function") rejectInflight(err);
       if (key) soCache.delete(key);
