@@ -36,237 +36,6 @@ async function loadItemCache() {
     return [];
   }
 }
-
-/* =====================================================
-   Item options helpers (Sales View)
-   ===================================================== */
-window.optionsCache = window.optionsCache || {};
-
-function escapeHtml(str) {
-  return String(str ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
-
-function buildOptionsCacheForItem(itemData) {
-  const opts = {};
-  if (!itemData || typeof itemData !== "object") return opts;
-
-  Object.entries(itemData).forEach(([key, val]) => {
-    if (String(key).toLowerCase().startsWith("option :")) {
-      const fieldName = key.replace(/^option\s*:\s*/i, "").trim();
-      const values = val
-        ? String(val).split(",").map(v => v.trim()).filter(Boolean)
-        : [];
-
-      if (fieldName && values.length) {
-        opts[fieldName] = values;
-      }
-    }
-  });
-
-  return opts;
-}
-
-function parseOptionsDisplayText(text) {
-  const out = {};
-  const raw = String(text || "")
-    .replace(/<br\s*\/?>/gi, "\n")
-    .trim();
-
-  if (!raw) return out;
-
-  raw.split("\n")
-    .map(s => s.trim())
-    .filter(Boolean)
-    .forEach(line => {
-      const parts = line.split(/\s*:\s*/);
-      if (parts.length < 2) return;
-
-      const field = parts.shift()?.trim();
-      const valueText = parts.join(":").trim();
-      if (!field || !valueText) return;
-
-      const values = valueText.split(",").map(v => v.trim()).filter(Boolean);
-      out[field] = values.length > 1 ? values : (values[0] || "");
-    });
-
-  return out;
-}
-
-function selectionsToSummary(selections) {
-  const parts = [];
-
-  Object.entries(selections || {}).forEach(([field, value]) => {
-    if (Array.isArray(value) && value.length) {
-      parts.push(`${field} : ${value.join(", ")}`);
-    } else if (value) {
-      parts.push(`${field} : ${value}`);
-    }
-  });
-
-  return parts.join("<br>");
-}
-
-function getOptionsSummaryText(row) {
-  const summaryEl = row?.querySelector(".options-summary");
-  if (!summaryEl) return "";
-  return summaryEl.innerHTML?.trim() || summaryEl.textContent?.trim() || "";
-}
-
-function openOptionsWindow(row) {
-  const itemId =
-    row.querySelector(".item-internal-id")?.value?.trim() ||
-    row.dataset.itemid ||
-    "";
-
-  const lineIndex = row.dataset.line || "";
-
-  if (!itemId) {
-    alert("⚠️ No item selected for this row.");
-    return;
-  }
-
-  const existingSelections =
-    row.querySelector(".item-options-json")?.value || "{}";
-
-  const url =
-    `/options.html?itemId=${encodeURIComponent(itemId)}` +
-    `&line=${encodeURIComponent(lineIndex)}` +
-    `&selections=${encodeURIComponent(existingSelections)}`;
-
-  const win = window.open(
-    url,
-    "ItemOptions",
-    "width=600,height=500,resizable=yes,scrollbars=yes"
-  );
-
-  if (!win) {
-    alert("⚠️ Please allow popups for item options.");
-    return;
-  }
-
-  win.focus();
-}
-
-function enhancePendingApprovalOptions() {
-  const isPendingApproval =
-    String(window.__soStatusId || "").toUpperCase() === "A";
-
-  if (!isPendingApproval) return;
-
-  const rows = document.querySelectorAll("#orderItemsBody tr.order-line");
-  if (!rows.length) return;
-
-  rows.forEach((row, idx) => {
-    const itemId =
-      row.querySelector(".item-internal-id")?.value?.trim() ||
-      row.dataset.itemid ||
-      "";
-
-    if (!itemId) return;
-
-    const itemData = (window.items || []).find(
-      it => String(it["Internal ID"] || "") === String(itemId)
-    );
-
-    const optionDefs = buildOptionsCacheForItem(itemData);
-    window.optionsCache[itemId] = optionDefs;
-
-    const hasOptionDefs = Object.keys(optionDefs).length > 0;
-    if (!hasOptionDefs) return;
-
-    let optionsCell = row.querySelector(".options-cell");
-    if (!optionsCell) {
-      // fallback: second visible td in your table is typically options
-      const cells = row.querySelectorAll("td");
-      if (cells[1]) {
-        optionsCell = cells[1];
-        optionsCell.classList.add("options-cell");
-      }
-    }
-
-    if (!optionsCell) return;
-
-    // If already enhanced, just ensure row tracking attrs exist
-    if (optionsCell.querySelector(".open-options")) {
-      row.dataset.line = row.dataset.line || String(idx);
-      row.dataset.itemid = itemId;
-      return;
-    }
-
-    const existingHtml = optionsCell.innerHTML?.trim() || "";
-    const existingText = optionsCell.textContent?.trim() || "";
-    const startingSummary = existingHtml || escapeHtml(existingText);
-    const parsedSelections = parseOptionsDisplayText(existingText);
-
-    row.dataset.line = row.dataset.line || String(idx);
-    row.dataset.itemid = itemId;
-
-    optionsCell.innerHTML = `
-      <button type="button" class="open-options btn-secondary small-btn">⚙️ Options</button>
-      <input
-        type="hidden"
-        class="item-options-json"
-        value='${escapeHtml(JSON.stringify(parsedSelections || {}))}'
-      />
-      <div class="options-summary">${startingSummary}</div>
-    `;
-  });
-}
-
-// Supports popup callback from options.html
-window.onOptionsSaved = function (itemId, selections, lineIndex) {
-  try {
-    let row = null;
-
-    if (lineIndex !== undefined && lineIndex !== null && lineIndex !== "") {
-      row = document.querySelector(
-        `#orderItemsBody tr.order-line[data-line="${String(lineIndex)}"]`
-      );
-    }
-
-    if (!row && itemId) {
-      row = [...document.querySelectorAll("#orderItemsBody tr.order-line")].find(r => {
-        const rid =
-          r.querySelector(".item-internal-id")?.value?.trim() ||
-          r.dataset.itemid ||
-          "";
-        return String(rid) === String(itemId);
-      });
-    }
-
-    if (!row) {
-      console.warn("⚠️ onOptionsSaved: row not found", { itemId, lineIndex });
-      return;
-    }
-
-    const jsonInp = row.querySelector(".item-options-json");
-    const summaryEl = row.querySelector(".options-summary");
-
-    const safeSelections = selections || {};
-    const summaryHtml = selectionsToSummary(safeSelections);
-
-    if (jsonInp) jsonInp.value = JSON.stringify(safeSelections);
-    if (summaryEl) summaryEl.innerHTML = summaryHtml;
-
-    console.log("✅ Options saved into Sales View row", {
-      itemId,
-      lineIndex,
-      selections: safeSelections
-    });
-
-    if (typeof updateOrderSummaryFromTable === "function") {
-      updateOrderSummaryFromTable();
-    }
-  } catch (err) {
-    console.error("❌ onOptionsSaved failed:", err.message || err);
-  }
-};
-
 // ==========================================================
 // TOAST NOTIFICATION (Cloned from SalesNew.js)
 // ==========================================================
@@ -279,14 +48,18 @@ window.onOptionsSaved = function (itemId, selections, lineIndex) {
     toast.className = `order-toast ${type}`;
     toast.classList.remove("hidden");
 
+    // Delay triggers CSS animation
     requestAnimationFrame(() => toast.classList.add("show"));
 
+    // Auto-hide
     setTimeout(() => {
       toast.classList.remove("show");
       setTimeout(() => toast.classList.add("hidden"), 300);
     }, 3000);
   };
 })();
+
+
 
 /* =====================================================
    Main Sales Order View Loader
@@ -315,10 +88,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   populateSalesExecAndStore(headers);
 
+
   /* =====================================================
-     Populate Sales Executive & Store Dropdowns
-     ===================================================== */
+   Populate Sales Executive & Store Dropdowns (extracted from salesNew.js)
+   ===================================================== */
+
   async function populateSalesExecAndStore(headers) {
+    // Load Current User
     let currentUser = null;
     try {
       const meRes = await fetch("/api/me", { headers });
@@ -331,6 +107,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn("⚠️ Failed to load current user:", err);
     }
 
+    // Load Sales Executives
     try {
       const res = await fetch("/api/users", { headers });
       const data = await res.json();
@@ -351,6 +128,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             execSelect.appendChild(opt);
           });
 
+          // Auto-assign if user is a Sales Exec
           if (currentUser && salesExecs.some(u => u.id === currentUser.id)) {
             execSelect.value = currentUser.id;
             console.log("✔ Auto-set Sales Exec to current user");
@@ -361,6 +139,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("❌ Failed to load sales executives:", err);
     }
 
+    // Load Stores
     try {
       const res = await fetch("/api/meta/locations", { headers });
       const data = await res.json();
@@ -381,6 +160,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             storeSelect.appendChild(opt);
           });
 
+          // Default to user’s primary store
           if (currentUser && currentUser.primaryStore) {
             const match = filteredLocations.find(l =>
               String(l.id) === String(currentUser.primaryStore) ||
@@ -399,6 +179,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
+
   // ---- Sales Order ID from URL ----
   const pathParts = window.location.pathname.split("/");
   const tranId = pathParts.pop() || pathParts.pop();
@@ -409,20 +190,24 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   try {
+    // ==================================================
+    // 1️⃣ Load everything in parallel where possible
+    // ==================================================
     const [
-      _items,
+      _items,            // item cache (ignored variable, but ensures cache ready)
       soRes,
       locRes,
       userRes,
       fulfilRes
     ] = await Promise.all([
       loadItemCache(),
-      fetch(`/api/netsuite/salesorder/${tranId}`, { headers }),
+      fetch(`/api/netsuite/salesorder/${tranId}?refresh=1`, { headers }),
       fetch("/api/meta/locations", { headers }),
       fetch("/api/users", { headers }),
       fetch("/api/netsuite/fulfilmentmethods").catch(() => null)
     ]);
 
+    // --- Sales Order response ---
     const soJson = await soRes.json();
     if (!soRes.ok || !soJson || soJson.ok === false) {
       throw new Error(soJson?.error || `Server returned ${soRes.status}`);
@@ -432,8 +217,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!so) throw new Error("No salesOrder object in response");
     console.log("✅ Sales Order loaded:", so.tranId || tranId);
 
-    window.__soStatusId = String(so?.orderStatus?.id || "").toUpperCase();
-
+    // --- Locations, Users, Fulfilment Methods ---
     const locJson = locRes.ok ? await locRes.json() : {};
     const locations = locJson.locations || locJson.data || [];
 
@@ -451,7 +235,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }));
 
     // ==================================================
-    // 2️⃣ Render Deposits
+    // 2️⃣ Render Deposits (from backend aggregation)
     // ==================================================
     if (Array.isArray(soJson.deposits) && soJson.deposits.length) {
       window._currentDeposits = soJson.deposits;
@@ -473,11 +257,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("📦 so.orderStatus?.id:", so?.orderStatus?.id);
       console.log("📦 so.orderStatus?.refName:", so?.orderStatus?.refName);
 
+      // 1) Best case: NetSuite already gave the display text
       if (typeof so?.status === "string" && so.status.trim()) {
         console.log("✅ Using so.status:", so.status.trim());
         return so.status.trim();
       }
 
+      // 1b) Sometimes status may arrive as an object
       if (
         so?.status &&
         typeof so.status === "object" &&
@@ -488,6 +274,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         return so.status.refName.trim();
       }
 
+      // 2) Next best: statusRef like pendingFulfillment / pendingApproval / billed
       const statusRef =
         (typeof so?.statusRef === "string" && so.statusRef.trim()) ||
         (typeof so?.orderStatus?.refName === "string" && so.orderStatus.refName.trim()) ||
@@ -522,6 +309,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         return prettyStatus;
       }
 
+      // 3) Last fallback: orderStatus single-letter NetSuite code
       const statusId = String(so?.orderStatus?.id || "").trim().toUpperCase();
       console.log("📦 Falling back to orderStatus.id:", statusId);
 
@@ -552,7 +340,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     } else {
       console.warn("⚠️ orderStatus element not found in DOM");
     }
-
+    
     // --- Customer / address ---
     try {
       const addressLines = so.billingAddress_text
@@ -587,10 +375,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn("⚠️ Address population failed:", err.message);
     }
 
+    // --- Contact info ---
     document.querySelector('input[name="email"]').value = so.email || "";
     document.querySelector('input[name="contactNumber"]').value = so.custbody4 || so.phone || "";
     document.querySelector('input[name="altContactNumber"]').value = so.altPhone || "";
 
+    // --- Title (use entityFull if backend attached it) ---
     try {
       const entity = so.entityFull || {};
       const titleObj = entity.custentity_title || entity.title || null;
@@ -607,6 +397,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn("⚠️ Title population skipped:", err.message);
     }
 
+    // --- Order meta (Sales Exec, Store, Lead Source, Warehouse etc.) ---
     try {
       const nsExecId = so.custbody_sb_bedspecialist?.id || null;
       if (nsExecId && users.length) {
@@ -633,6 +424,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn("⚠️ Order meta population failed:", err.message);
     }
 
+    // --- Cache warehouse for inventory popup use ---
     try {
       const warehouseSelect = document.getElementById("warehouse");
       if (warehouseSelect) {
@@ -647,73 +439,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     } catch (err) {
       console.error("❌ Warehouse cache failed:", err.message);
     }
-// ==================================================
-// 4️⃣ Normalise line signs + Render Item Lines
-// ==================================================
-if (typeof window.renderSalesViewLines !== "function") {
-  throw new Error("renderSalesViewLines() not found — did salesViewItemLine.js load?");
-}
 
-// Normalise sign direction before external renderer consumes the payload.
-// This protects the UI even if renderSalesViewLines() still has old sign-flip logic.
-if (Array.isArray(so?.item?.items)) {
-  so.item.items = so.item.items.map((line) => {
-    const itemName = String(line?.item?.refName || "").toLowerCase();
-
-    const amount = Number(line.amount || 0);
-    const saleprice = Number(line.saleprice || 0);
-    const vat = Number(line.vat || 0);
-
-    // Heuristic: discount-style lines should be negative
-    const isDiscountLine =
-      itemName.includes("discount") ||
-      itemName.includes("blue light") ||
-      itemName.includes("promo") ||
-      itemName.includes("promotion") ||
-      itemName.includes("voucher");
-
-    let nextAmount = amount;
-    let nextSaleprice = saleprice;
-    let nextVat = vat;
-
-    if (isDiscountLine) {
-      // Discount lines should stay negative
-      if (nextAmount > 0) nextAmount = -nextAmount;
-      if (nextSaleprice > 0) nextSaleprice = -nextSaleprice;
-      if (nextVat > 0) nextVat = -nextVat;
-    } else {
-      // Normal stock / service lines should stay positive
-      if (nextAmount < 0) nextAmount = Math.abs(nextAmount);
-      if (nextSaleprice < 0) nextSaleprice = Math.abs(nextSaleprice);
-      if (nextVat < 0) nextVat = Math.abs(nextVat);
+    // ==================================================
+    // 4️⃣ Render Item Lines (delegated to salesViewItemLine.js)
+    // ==================================================
+    if (typeof window.renderSalesViewLines !== "function") {
+      throw new Error("renderSalesViewLines() not found — did salesViewItemLine.js load?");
     }
 
-    return {
-      ...line,
-      amount: nextAmount,
-      saleprice: nextSaleprice,
-      vat: nextVat,
-    };
-  });
+    window.renderSalesViewLines({
+      so,
+      fulfilmentMethods: window._fulfilmentMap || [],
+    });
 
-  console.log(
-    "🧭 Normalised SO line signs before render:",
-    so.item.items.map((l) => ({
-      item: l?.item?.refName,
-      amount: l.amount,
-      vat: l.vat,
-      saleprice: l.saleprice,
-    }))
-  );
-}
 
-window.renderSalesViewLines({
-  so,
-  fulfilmentMethods: window._fulfilmentMap || [],
-});
-
-// ✅ Enhance existing rendered rows so options become clickable
-enhancePendingApprovalOptions();
 
     // ==================================================
     // 6️⃣ Lock / unlock form depending on order status
@@ -724,23 +463,24 @@ enhancePendingApprovalOptions();
       console.log("🔓 Pending approval – Sales New style fields editable");
 
       document.querySelectorAll("input, select, textarea, button").forEach(el => {
+        // ✅ allow editing for Sales New style line UI + header fields you want editable
         if (
+          // line inputs
           el.classList.contains("item-qty") ||
           el.classList.contains("item-discount") ||
           el.classList.contains("item-saleprice") ||
-          el.classList.contains("item-amount") ||
 
+          // fulfilment / inventory
           el.classList.contains("item-fulfilment") ||
           el.classList.contains("fulfilmentSelect") ||
           el.classList.contains("open-inventory") ||
           el.classList.contains("item-inv-detail") ||
 
-          el.classList.contains("open-options") ||
-          el.classList.contains("item-options-json") ||
-
+          // header fields you said should remain editable
           el.name === "leadSource" ||
           el.id === "paymentInfo" ||
 
+          // always allowed actions
           el.id === "newMemoBtn" ||
           el.id === "printBtn" ||
           el.id === "addDepositBtn"
@@ -750,6 +490,7 @@ enhancePendingApprovalOptions();
           return;
         }
 
+        // lock everything else
         el.disabled = true;
         el.classList.add("locked-input");
       });
@@ -758,12 +499,14 @@ enhancePendingApprovalOptions();
       console.log("🔒 Not pending approval – lock everything (read-only)");
 
       document.querySelectorAll("input, select, textarea, button").forEach(el => {
+        // allow memo / print
         if (el.id === "newMemoBtn" || el.id === "printBtn") return;
 
         el.disabled = true;
         el.classList.add("locked-input");
       });
 
+      // but keep deposit disabled on committed orders (optional)
       const addDepositBtn = document.getElementById("addDepositBtn");
       if (addDepositBtn) {
         addDepositBtn.disabled = true;
@@ -771,17 +514,22 @@ enhancePendingApprovalOptions();
       }
     }
 
+
     // ==================================================
     // 7️⃣ Summary + Action button + Add Deposit
     // ==================================================
     updateOrderSummaryFromTable();
     updateActionButton(so.orderStatus || so.status || {}, tranId, so);
 
+
+
+
+    // Enable Add Deposit popup
     const addDepositBtn = document.getElementById("addDepositBtn");
 
     function cleanMoneyText(rawValue) {
       if (rawValue == null) return 0;
-      const cleaned = String(rawValue).replace(/[^0-9.-]/g, "");
+      const cleaned = String(rawValue).replace(/[^0-9.-]/g, ""); // strips £, commas, spaces etc.
       const n = parseFloat(cleaned);
       return Number.isFinite(n) ? n : 0;
     }
@@ -790,10 +538,12 @@ enhancePendingApprovalOptions();
       addDepositBtn.disabled = false;
       addDepositBtn.classList.remove("locked-input");
 
+      // prevent accidental multiple bindings
       addDepositBtn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
 
+        // Prefer outstanding balance, fallback to grand total
         const outstandingText =
           document.getElementById("outstandingBalance")?.textContent || "";
         const grandTotalText =
@@ -829,9 +579,8 @@ enhancePendingApprovalOptions();
     overlay?.classList.add("hidden");
   }
 });
-
 /* =====================================================
-   Memo Panel
+   Memo Panel (separate but lightweight)
    ===================================================== */
 document.addEventListener("DOMContentLoaded", () => {
   const auth = storageGet?.();
@@ -1055,16 +804,15 @@ function updateOrderSummaryFromTable() {
   let discountTotal = 0;
 
   rows.forEach((row, idx) => {
-    const itemName =
-      row.querySelector("td:first-child")?.textContent?.trim().toLowerCase() || "";
-
+    // ================================
+    // Editable / pending-approval rows
+    // ================================
     const itemId = (row.querySelector(".item-internal-id")?.value || "").trim();
     const qtyInp = row.querySelector(".item-qty");
     const discInp = row.querySelector(".item-discount");
     const saleInp = row.querySelector(".item-saleprice");
     const amountInp = row.querySelector(".item-amount");
 
-    // Editable rows
     if (itemId && qtyInp && discInp && saleInp && amountInp) {
       const qty = parseFloat(qtyInp.value || 0) || 0;
       if (!qty) return;
@@ -1073,34 +821,49 @@ function updateOrderSummaryFromTable() {
       const saleGrossLine = parseFloat(saleInp.value || 0) || 0;
       const discountPct = parseFloat(discInp.value || 0) || 0;
 
-      grossTotal += saleGrossLine;
+      let defaultGrossTotal = 0;
+      let actualGrossTotal = 0;
 
-      let lineDiscount = 0;
-
-      if (saleGrossLine < 0 || itemName.includes("discount")) {
-        lineDiscount = Math.abs(saleGrossLine);
-      } else if (amountGrossLine > 0 && saleGrossLine >= 0) {
-        lineDiscount = Math.max(0, amountGrossLine - saleGrossLine);
-      } else if (discountPct > 0 && amountGrossLine > 0) {
-        lineDiscount = amountGrossLine * (discountPct / 100);
+      if (Number.isFinite(amountGrossLine) && amountGrossLine > 0) {
+        defaultGrossTotal = amountGrossLine;
+      } else if (Number.isFinite(saleGrossLine) && saleGrossLine > 0) {
+        defaultGrossTotal = saleGrossLine;
       }
 
+      // sale price is already the full line total
+      if (Number.isFinite(saleGrossLine) && saleGrossLine > 0) {
+        actualGrossTotal = saleGrossLine;
+      } else if (discountPct > 0 && defaultGrossTotal > 0) {
+        actualGrossTotal = defaultGrossTotal * (1 - discountPct / 100);
+      } else {
+        actualGrossTotal = defaultGrossTotal;
+      }
+
+      defaultGrossTotal = Number(defaultGrossTotal.toFixed(2));
+      actualGrossTotal = Number(actualGrossTotal.toFixed(2));
+
+      grossTotal += actualGrossTotal;
+
+      const lineDiscount = Math.max(0, defaultGrossTotal - actualGrossTotal);
       discountTotal += lineDiscount;
 
       console.log(`🧾 Editable row ${idx}`, {
         itemId,
-        itemName,
         qty,
         amountGrossLine,
         saleGrossLine,
         discountPct,
+        defaultGrossTotal,
+        actualGrossTotal,
         lineDiscount
       });
 
       return;
     }
 
-    // Read-only rows
+    // ================================
+    // Read-only / committed rows
+    // ================================
     const amountEl = row.querySelector(".amount");
     const saleEl = row.querySelector(".saleprice");
 
@@ -1113,18 +876,10 @@ function updateOrderSummaryFromTable() {
 
     grossTotal += sale;
 
-    let lineDiscount = 0;
-
-    if (sale < 0 || itemName.includes("discount")) {
-      lineDiscount = Math.abs(sale);
-    } else if (amount > 0 && sale >= 0) {
-      lineDiscount = Math.max(0, amount - sale);
-    }
-
+    const lineDiscount = Math.max(0, amount - sale);
     discountTotal += lineDiscount;
 
     console.log(`🧾 Read-only row ${idx}`, {
-      itemName,
       amount,
       sale,
       lineDiscount
@@ -1215,6 +970,10 @@ document.addEventListener("click", (e) => {
   receiptWin.focus();
 });
 
+
+
+
+
 /* =====================================================
    Commit / fulfil buttons
    ===================================================== */
@@ -1235,6 +994,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
   wrapper.innerHTML = "";
 
+  // ---- Inline status helpers ----
   function showCommitInline(message = "Working…") {
     const wrap = document.getElementById("commitInlineStatus");
     const text = document.getElementById("commitInlineText");
@@ -1249,14 +1009,19 @@ function updateActionButton(orderStatusObj, tranId, so) {
   const statusId = (orderStatusObj?.id || "").toUpperCase();
   const statusName = (orderStatusObj?.refName || "").toLowerCase();
 
+  // =====================================================
+  // ✅ ONLY show buttons if Pending Approval
+  // =====================================================
   const isPendingApproval = statusId === "A" || statusName.includes("approval");
   if (!isPendingApproval) return;
 
+  // Render Save + Commit buttons
   wrapper.innerHTML = `
     <button id="saveOrderBtn" class="btn-secondary">Save</button>
     <button id="commitOrderBtn" class="btn-primary">Commit</button>
   `;
 
+  // Helper to build payload (shared by Save + Commit)
   function buildPayloadFromUI() {
     const headerUpdates = {
       leadSource: document.querySelector('select[name="leadSource"]')?.value || null,
@@ -1267,8 +1032,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
     document.querySelectorAll("#orderItemsBody tr.order-line").forEach((row) => {
       const lineId = row.dataset.lineid || "";
-      const itemId =
-        row.querySelector(".item-internal-id")?.value || row.dataset.itemid || "";
+      const itemId = row.querySelector(".item-internal-id")?.value || "";
 
       const qty = Number(
         row.querySelector(".item-qty")?.value ||
@@ -1280,6 +1044,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
         row.querySelector(".item-fulfilment") || row.querySelector(".fulfilmentSelect");
       let fulfilmentValue = fulfilSel?.value?.trim() || "";
 
+      // fallback map refName -> id if blank
       if (!fulfilmentValue) {
         const currentRef = row.querySelector(".fulfilment-cell")?.textContent?.trim() || "";
         if (currentRef && Array.isArray(window._fulfilmentMap)) {
@@ -1294,7 +1059,6 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
       const discountPct = Number(row.querySelector(".item-discount")?.value || 0);
       const saleGrossPerUnit = Number(row.querySelector(".item-saleprice")?.value || 0);
-      const optionsText = getOptionsSummaryText(row) || null;
 
       updates.push({
         lineId,
@@ -1304,13 +1068,15 @@ function updateActionButton(orderStatusObj, tranId, so) {
         inventoryDetail: invInp?.value || null,
         discountPct,
         saleGrossPerUnit,
-        options: optionsText,
       });
     });
 
     return { updates, headerUpdates };
   }
 
+  // -----------------------------
+  // ✅ Save Only button handler
+  // -----------------------------
   const saveBtn = document.getElementById("saveOrderBtn");
   if (saveBtn) {
     saveBtn.replaceWith(saveBtn.cloneNode(true));
@@ -1355,42 +1121,52 @@ function updateActionButton(orderStatusObj, tranId, so) {
     });
   }
 
-  // ✅ Inventory saved callback
-  window.onInventorySaved = function (itemId, detailString, lineIndex) {
-    try {
-      const row = document.querySelector(`#orderItemsBody tr.order-line[data-line="${lineIndex}"]`);
-      if (!row) return console.warn("⚠️ onInventorySaved: row not found", { lineIndex });
+  // =====================================================
+// ✅ Inventory saved callback (used by inventory popup)
+// =====================================================
+window.onInventorySaved = function (itemId, detailString, lineIndex) {
+  try {
+    const row = document.querySelector(`#orderItemsBody tr.order-line[data-line="${lineIndex}"]`);
+    if (!row) return console.warn("⚠️ onInventorySaved: row not found", { lineIndex });
 
-      const invInp = row.querySelector(".item-inv-detail");
-      if (invInp) invInp.value = detailString || "";
+    // set hidden field (Sales View uses this in Save/Commit payload)
+    const invInp = row.querySelector(".item-inv-detail");
+    if (invInp) invInp.value = detailString || "";
 
-      const summary = row.querySelector(".inv-summary");
-      if (summary) summary.textContent = detailString || "";
+    // update visible summary text
+    const summary = row.querySelector(".inv-summary");
+    if (summary) summary.textContent = detailString || "";
 
-      const btn = row.querySelector(".open-inventory");
-      const qty =
-        parseInt(row.querySelector(".item-qty")?.value || row.querySelector(".item-qty-cache")?.value || "0", 10) || 0;
+    // update button icon based on qty match
+    const btn = row.querySelector(".open-inventory");
+    const qty =
+      parseInt(row.querySelector(".item-qty")?.value || row.querySelector(".item-qty-cache")?.value || "0", 10) || 0;
 
-      const allocated = (detailString || "")
-        .split(";")
-        .map(p => parseInt(p.trim().split("|")[0], 10) || 0)
-        .reduce((a, b) => a + b, 0);
+    const allocated = (detailString || "")
+      .split(";")
+      .map(p => parseInt(p.trim().split("|")[0], 10) || 0)
+      .reduce((a, b) => a + b, 0);
 
-      if (btn) btn.textContent = (qty > 0 && allocated === qty) ? "✅" : "📦";
+    if (btn) btn.textContent = (qty > 0 && allocated === qty) ? "✅" : "📦";
 
-      const fulfilSel = row.querySelector(".item-fulfilment") || row.querySelector(".fulfilmentSelect");
-      if (fulfilSel && window.SalesLineUI?.validateInventoryForRow) {
-        window.SalesLineUI.validateInventoryForRow(row);
-      }
-
-      if (typeof updateOrderSummaryFromTable === "function") updateOrderSummaryFromTable();
-
-      console.log("✅ Inventory saved into Sales View row", { lineIndex, itemId });
-    } catch (err) {
-      console.error("❌ onInventorySaved failed:", err.message || err);
+    // if you have any validation hooks, run them
+    const fulfilSel = row.querySelector(".item-fulfilment") || row.querySelector(".fulfilmentSelect");
+    if (fulfilSel && window.SalesLineUI?.validateInventoryForRow) {
+      window.SalesLineUI.validateInventoryForRow(row);
     }
-  };
 
+    // optional: recompute summary panel if needed
+    if (typeof updateOrderSummaryFromTable === "function") updateOrderSummaryFromTable();
+
+    console.log("✅ Inventory saved into Sales View row", { lineIndex, itemId });
+  } catch (err) {
+    console.error("❌ onInventorySaved failed:", err.message || err);
+  }
+};
+
+  // -----------------------------
+  // ✅ Commit button handler
+  // -----------------------------
   const commitBtn = document.getElementById("commitOrderBtn");
   if (!commitBtn) return;
 
@@ -1424,6 +1200,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
       showToast?.(`✅ Order ${tranId} approved!`, "success");
       showCommitInline("Committed ✅");
 
+      // ✅ Hide buttons after success
       setTimeout(() => {
         wrapper.innerHTML = "";
         hideCommitInline();
