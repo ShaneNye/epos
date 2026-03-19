@@ -8,26 +8,31 @@
 
 /* --- Layout --- */
 html, body {
-  height: 100%;
+  min-height: 100%;
   margin: 0;
   font-family: "ProximaNova", "Segoe UI", sans-serif;
-  display: flex;
   background: #f5f7fa;
   color: #1a1f24;
 }
 
-#menu {
-  height: 100%;
-}
-
-.sidebar {
-  height: 100vh;
-  flex-shrink: 0;
+body {
+  margin: 0;
+  padding-left: 70px;   /* reserve space for collapsed sidebar */
+  box-sizing: border-box;
 }
 
 /* --- Sidebar --- */
 .sidebar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
   width: 70px;
+  z-index: 1000;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+
   background: linear-gradient(180deg, #006d8d, #0081ab);
   display: flex;
   flex-direction: column;
@@ -36,10 +41,24 @@ html, body {
   box-shadow: 2px 0 8px rgba(0,0,0,0.15), inset -2px 0 6px rgba(0,0,0,0.15);
   overflow: hidden;
 }
+
 .sidebar.expanded {
   width: 260px;
 }
 
+/* when sidebar is expanded, push page content over */
+body.sidebar-expanded {
+  padding-left: 260px;
+}
+
+/* --- Main Content --- */
+.content {
+  flex: 1;
+  min-width: 0;
+  width: auto;
+  padding: 2rem;
+  box-sizing: border-box;
+}
 
 
 /* --- Burger Button --- */
@@ -262,12 +281,7 @@ html, body {
   margin: 0;
 }
 
-/* --- Main Content --- */
-.content {
-  flex: 1;
-    width: 100%;   /* ✅ Add this */
-  padding: 2rem;
-}
+
 .content h1 {
   margin-top: 0;
   color: #0081ab;
