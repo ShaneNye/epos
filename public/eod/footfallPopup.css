@@ -113,42 +113,93 @@ select:focus {
 }
 
 /* =====================================================
-   TABLE STYLING
+   FOOTFALL TABLE — MAKE EACH ROW MORE LEGIBLE
    ===================================================== */
-
-.table-wrapper {
-  width: 100%;
-  overflow-x: auto;
-}
 
 #footfallTable {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   margin-top: 0.5rem;
-  font-size: 0.9rem;
+  font-size: 0.95rem;
 }
 
 #footfallTable thead th {
   background: #f3f7fb;
   border-bottom: 1px solid #d8e2eb;
-  padding: 0.6rem 0.5rem;
+  padding: 0.85rem 0.75rem;
   text-align: left;
-  font-weight: 600;
+  font-weight: 700;
   color: #273036;
   white-space: nowrap;
+  font-size: 0.95rem;
 }
 
 #footfallTable tbody td {
   border-bottom: 1px solid #eef2f6;
-  padding: 0.4rem 0.5rem;
+  padding: 0.75rem 0.65rem;
   vertical-align: middle;
+  background: #fff;
 }
 
-/* Make inputs fill cell nicely */
+/* zebra striping helps users track across a row */
+#footfallTable tbody tr:nth-child(even) td {
+  background: #fafcfd;
+}
+
+#footfallTable tbody tr:hover td {
+  background: #f2f9fc;
+}
+
+/* Make fields easier to read and click */
 #footfallTable input[type="number"],
 #footfallTable input[type="text"],
 #footfallTable select {
   width: 100%;
+  min-height: 44px;
+  padding: 0.7rem 0.75rem;
+  font-size: 1rem;
+  border-radius: 8px;
+  border: 1px solid #ccd8df;
+  box-sizing: border-box;
+  background: #fff;
+}
+
+/* clearer focus */
+#footfallTable input[type="number"]:focus,
+#footfallTable input[type="text"]:focus,
+#footfallTable select:focus {
+  outline: none;
+  border-color: #0081ab;
+  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.15);
+}
+
+/* if you have readonly cells in the row */
+#footfallTable .readonly-cell {
+  background: #f3f6f9 !important;
+  color: #555;
+  font-weight: 600;
+}
+
+/* Chrome / Edge / Safari */
+.table-wrapper::-webkit-scrollbar {
+  height: 33px; /* bigger click / drag area */
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+  background: #dfe7ec;
+  border-radius: 999px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+  background: linear-gradient(90deg, #007ea8, #0092c7);
+  border-radius: 999px;
+  border: 4px solid #dfe7ec; /* chunkier thumb */
+  min-width: 60px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(90deg, #008cb8, #00a4d6);
 }
 
 /* =====================================================
