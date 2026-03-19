@@ -54,6 +54,22 @@ document.addEventListener("DOMContentLoaded", async () => {
     v !== undefined &&
     String(v).trim() !== "";
 
+  const formatMoney = (value) => {
+    const n = Number(value || 0) || 0;
+    return `£${n.toFixed(2)}`;
+  };
+
+  const isDiscountStyleLine = (name = "") => {
+    const text = String(name || "").toLowerCase();
+    return (
+      text.includes("discount") ||
+      text.includes("blue light") ||
+      text.includes("promo") ||
+      text.includes("promotion") ||
+      text.includes("voucher")
+    );
+  };
+
   /* ============================
      3️⃣ Fetch Sales Order
      ============================ */
@@ -208,23 +224,32 @@ document.addEventListener("DOMContentLoaded", async () => {
       const optionsRaw = String(line.custcol_sb_itemoptionsdisplay || "").trim();
       const options = escapeHtml(optionsRaw).replace(/\n/g, "<br>");
 
-      const qty = Number(line.quantity || 0) || 0;
+      const qty = Math.abs(Number(line.quantity || 0)) || 0;
 
-      const unitPrice = Number(line.amount || 0) || 0;
-      const originalLineTotal = unitPrice * qty;
-
-      const actualLineTotal = hasRealValue(line.saleprice)
+      // amount + saleprice are both treated as line totals now
+      let originalLineTotal = Number(line.amount || 0) || 0;
+      let actualLineTotal = hasRealValue(line.saleprice)
         ? Number(line.saleprice || 0)
         : originalLineTotal;
 
+      const discountLine = isDiscountStyleLine(itemName);
+
+      if (discountLine) {
+        if (originalLineTotal > 0) originalLineTotal = -originalLineTotal;
+        if (actualLineTotal > 0) actualLineTotal = -actualLineTotal;
+      } else {
+        if (originalLineTotal < 0) originalLineTotal = Math.abs(originalLineTotal);
+        if (actualLineTotal < 0) actualLineTotal = Math.abs(actualLineTotal);
+      }
+
+      const displayUnitPrice = qty ? (originalLineTotal / qty) : originalLineTotal;
+
       let discountPct = 0;
-      if (
-        originalLineTotal > 0 &&
-        actualLineTotal >= 0 &&
-        actualLineTotal < originalLineTotal
-      ) {
-        discountPct =
-          ((originalLineTotal - actualLineTotal) / originalLineTotal) * 100;
+      if (!discountLine && originalLineTotal > 0) {
+        discountPct = Math.max(
+          0,
+          ((originalLineTotal - actualLineTotal) / originalLineTotal) * 100
+        );
       }
 
       const tr = document.createElement("tr");
@@ -234,17 +259,17 @@ document.addEventListener("DOMContentLoaded", async () => {
           <td>${escapeHtml(itemName)}</td>
           <td>${options || "-"}</td>
           <td>${qty}</td>
-          <td>£${unitPrice.toFixed(2)}</td>
+          <td>${formatMoney(displayUnitPrice)}</td>
           <td>${discountPct.toFixed(1)}%</td>
-          <td>£${actualLineTotal.toFixed(2)}</td>
+          <td>${formatMoney(actualLineTotal)}</td>
         `;
       } else {
         tr.innerHTML = `
           <td>${escapeHtml(itemName)}</td>
           <td>${qty}</td>
-          <td>£${unitPrice.toFixed(2)}</td>
+          <td>${formatMoney(displayUnitPrice)}</td>
           <td>${discountPct.toFixed(1)}%</td>
-          <td>£${actualLineTotal.toFixed(2)}</td>
+          <td>${formatMoney(actualLineTotal)}</td>
         `;
       }
 
@@ -282,7 +307,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         tr.innerHTML = `
           <td>${linkHtml}</td>
           <td>${escapeHtml(method)}</td>
-          <td>£${amount.toFixed(2)}</td>
+          <td>${formatMoney(amount)}</td>
         `;
         depositTableBody.appendChild(tr);
       });
@@ -305,15 +330,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     let totalOrdDiscount = 0;
 
     vatAmounts.forEach((line) => {
-      const qty = Number(line.quantity || 0) || 0;
-      const vat = Number(line.vat || 0) || 0;
+      const itemName = line.item?.refName || "";
+      const discountLine = isDiscountStyleLine(itemName);
 
-      const unitRetail = Number(line.amount || 0) || 0;
-      const retailLineTotal = unitRetail * qty;
-
-      const lineTotal = hasRealValue(line.saleprice)
+      let retailLineTotal = Number(line.amount || 0) || 0;
+      let lineTotal = hasRealValue(line.saleprice)
         ? Number(line.saleprice || 0)
         : retailLineTotal;
+
+      let vat = Number(line.vat || 0) || 0;
+
+      if (discountLine) {
+        if (retailLineTotal > 0) retailLineTotal = -retailLineTotal;
+        if (lineTotal > 0) lineTotal = -lineTotal;
+        if (vat > 0) vat = -vat;
+      } else {
+        if (retailLineTotal < 0) retailLineTotal = Math.abs(retailLineTotal);
+        if (lineTotal < 0) lineTotal = Math.abs(lineTotal);
+        if (vat < 0) vat = Math.abs(vat);
+      }
 
       vatTotal += vat;
       salesTotal += lineTotal;
@@ -323,15 +358,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     totalOrdDiscount = totalRetail - salesTotal;
     remainingBalance = salesTotal - depositTotal;
 
-    document.getElementById("vatTotal").innerHTML = `£${vatTotal.toFixed(2)}`;
-    document.getElementById("salesTotal").innerHTML = `£${salesTotal.toFixed(2)}`;
-    document.getElementById("balance").innerHTML = `£${remainingBalance.toFixed(2)}`;
+    document.getElementById("vatTotal").innerHTML = formatMoney(vatTotal);
+    document.getElementById("salesTotal").innerHTML = formatMoney(salesTotal);
+    document.getElementById("balance").innerHTML = formatMoney(remainingBalance);
 
     /* ===========================================
        9️⃣ DISCOUNT SUMMARY
        ============================================= */
-    document.getElementById("originalPrice").innerHTML = `£${totalRetail.toFixed(2)}`;
-    document.getElementById("discAmount").innerHTML = `£${totalOrdDiscount.toFixed(2)}`;
+    document.getElementById("originalPrice").innerHTML = formatMoney(totalRetail);
+    document.getElementById("discAmount").innerHTML = formatMoney(totalOrdDiscount);
 
     let totalDiscountPct = 0;
     if (totalRetail > 0) {
