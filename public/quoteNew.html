@@ -37,6 +37,62 @@
        If it's only VSA hooks, keep it. -->
   <script type="module" src="/assistant/salesNew.js"></script>
 </head>
+<style>
+  #global-suggestions {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    background: #fff;
+    border: 1px solid #d9e1e7;
+    border-radius: 8px;
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
+    max-height: 280px;
+    overflow-y: auto;
+  }
+
+  #global-suggestions li.suggestion-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.6rem 0.75rem;
+    cursor: pointer;
+    border-bottom: 1px solid #eef2f5;
+  }
+
+  #global-suggestions li.suggestion-row:last-child {
+    border-bottom: none;
+  }
+
+  #global-suggestions li.suggestion-row:hover {
+    background: #f7fafc;
+  }
+
+  .suggestion-name {
+    flex: 1;
+    min-width: 0;
+    font-size: 0.95rem;
+    color: #1f2937;
+  }
+
+  .suggestion-add-btn {
+    flex: 0 0 auto;
+    width: 26px;
+    height: 26px;
+    border: 1px solid #cfd8e3;
+    border-radius: 6px;
+    background: #fff;
+    color: #0f172a;
+    font-weight: 700;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+  }
+
+  .suggestion-add-btn:hover {
+    background: #eef6ff;
+  }
+</style>
 
 <body>
   <div id="menu"></div>
@@ -141,7 +197,7 @@
                   <option value="">Loading Lead Sources...</option>
                 </select>
               </label>
-<!--
+              <!--
               <label>
                 Payment Info
                 <select name="paymentInfo" id="paymentInfo">
@@ -239,8 +295,8 @@
             <tr class="order-line" data-line="0">
               <td>
                 <div class="autocomplete">
-                  <input type="text" id="itemSearch-0" class="item-search" placeholder="Product name"
-                    autocomplete="off" aria-autocomplete="list" />
+                  <input type="text" id="itemSearch-0" class="item-search" placeholder="Product name" autocomplete="off"
+                    aria-autocomplete="list" />
                   <input type="hidden" class="item-internal-id" />
                   <input type="hidden" class="item-baseprice" />
                 </div>
