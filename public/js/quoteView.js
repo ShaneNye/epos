@@ -11,7 +11,7 @@ window.addEventListener("unhandledrejection", (e) =>
 );
 
 /* =========================================================
-   Toast (same pattern as SalesNew / SalesOrderView)
+   Toast
 ========================================================= */
 (function () {
   const toast = document.getElementById("orderToast");
@@ -47,10 +47,14 @@ function safeText(el, text) {
   if (el) el.textContent = text ?? "";
 }
 
+function parseMoneyInput(val) {
+  return parseFloat(String(val || "0").replace(/[£,]/g, "")) || 0;
+}
+
 /* =========================================================
-   Convert spinner overlay
+   Convert / Save spinner overlay
 ========================================================= */
-function showConvertSpinner(show, message = "Converting quote to sales order...") {
+function showConvertSpinner(show, message = "Working...") {
   const overlay = document.getElementById("quoteConvertSpinner");
   if (!overlay) return;
   const p = overlay.querySelector("p");
@@ -59,12 +63,11 @@ function showConvertSpinner(show, message = "Converting quote to sales order..."
 }
 
 /* =========================================================
-   Populate Sales Exec + Store (copied from SalesOrderView pattern)
+   Populate Sales Exec + Store
 ========================================================= */
 async function populateSalesExecAndStore(headers) {
   let currentUser = null;
 
-  // Current user
   try {
     const meRes = await fetch("/api/me", { headers });
     const meData = await meRes.json();
@@ -73,7 +76,6 @@ async function populateSalesExecAndStore(headers) {
     console.warn("⚠️ Failed to load current user:", err);
   }
 
-  // Sales execs
   try {
     const res = await fetch("/api/users", { headers });
     const data = await res.json();
@@ -102,7 +104,6 @@ async function populateSalesExecAndStore(headers) {
     console.error("❌ Failed to load sales executives:", err);
   }
 
-  // Stores
   try {
     const res = await fetch("/api/meta/locations", { headers });
     const data = await res.json();
@@ -139,9 +140,7 @@ async function populateSalesExecAndStore(headers) {
 }
 
 /* =========================================================
-   Summary from table (Quote)
-   - Uses Sale Price column as gross total
-   - Discount = Amount (rrp gross) - Sale Price (gross)
+   Summary from editable table
 ========================================================= */
 function updateQuoteSummaryFromTable() {
   const rows = document.querySelectorAll("#orderItemsBody tr.order-line");
@@ -149,22 +148,21 @@ function updateQuoteSummaryFromTable() {
   let discountTotal = 0;
 
   rows.forEach((row) => {
-    const amountEl = row.querySelector(".amount"); // "£123.45"
-    const saleEl = row.querySelector(".saleprice");
+    const hasItem =
+      row.dataset.hasItem === "1" ||
+      row.querySelector(".item-internal-id")?.value?.trim();
 
-    if (!saleEl) return;
+    if (!hasItem) return;
 
-    const sale = parseFloat(String(saleEl.textContent || "").replace(/[£,]/g, "")) || 0;
-    const amount = amountEl
-      ? parseFloat(String(amountEl.textContent || "").replace(/[£,]/g, "")) || 0
-      : sale;
+    const amountInput = row.querySelector(".item-amount");
+    const saleInput = row.querySelector(".item-saleprice");
+
+    const amount = parseMoneyInput(amountInput?.value);
+    const sale = parseMoneyInput(saleInput?.value);
 
     grossTotal += sale;
-
-    // keep discount positive
     discountTotal += Math.max(0, amount - sale);
 
-    // if negative sale (returns), preserve old behaviour
     if (sale < 0) discountTotal += Math.abs(sale);
   });
 
@@ -177,27 +175,390 @@ function updateQuoteSummaryFromTable() {
   safeText(document.getElementById("grandTotal"), money(grossTotal));
 }
 
+window.updateQuoteSummary = updateQuoteSummaryFromTable;
+
 /* =========================================================
-   Convert to Sale action button
-   - shown always (or you can conditionally show by status)
-   - calls backend endpoint to transform estimate → sales order
-   - redirects to /sales/view/{tranId or id}
+   Editable quote line helpers
 ========================================================= */
-function updateActionButtonForQuote(quoteObj) {
+function buildOptionsSummaryHtml(optionsText = "") {
+  const clean = String(optionsText || "").trim();
+  if (!clean) return "";
+  if (clean.includes("<br")) return clean;
+
+  return clean
+    .split(/\r?\n/)
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join("<br>");
+}
+
+function guessOptionsJsonFromDisplay(optionsText = "") {
+  const out = {};
+  const raw = String(optionsText || "").trim();
+  if (!raw) return out;
+
+  raw.split(/\r?\n|<br\s*\/?>/i).forEach((part) => {
+    const clean = String(part).replace(/<[^>]+>/g, "").trim();
+    if (!clean.includes(":")) return;
+
+    const [field, ...rest] = clean.split(":");
+    const value = rest.join(":").trim();
+    if (!field.trim() || !value) return;
+
+    const vals = value
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+
+    out[field.trim()] = vals.length > 1 ? vals : value;
+  });
+
+  return out;
+}
+
+function buildOptionSchemaForItem(itemId) {
+  const itemData = (window.items || []).find((it) => {
+    const internalId =
+      it["Internal ID"] ??
+      it["InternalId"] ??
+      it["InternalID"] ??
+      it["internalid"] ??
+      it["internal id"] ??
+      it["Id"] ??
+      it["id"] ??
+      "";
+    return String(internalId) === String(itemId);
+  });
+
+  if (!itemData) return {};
+
+  const opts = {};
+  Object.entries(itemData).forEach(([key, val]) => {
+    if (!String(key).toLowerCase().startsWith("option :")) return;
+
+    const fieldName = String(key).replace(/^option\s*:\s*/i, "").trim();
+    const values = String(val || "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+
+    if (fieldName && values.length) {
+      opts[fieldName] = values;
+    }
+  });
+
+  return opts;
+}
+
+function collectEditableQuoteLines() {
+  return [...document.querySelectorAll("#orderItemsBody tr.order-line")]
+    .map((row) => {
+      const itemId = row.querySelector(".item-internal-id")?.value?.trim() || "";
+      const itemName = row.querySelector(".item-search")?.value?.trim() || "";
+      const quantity = parseFloat(row.querySelector(".item-qty")?.value || "0") || 0;
+      const amount = parseMoneyInput(row.querySelector(".item-amount")?.value);
+      const saleprice = parseMoneyInput(row.querySelector(".item-saleprice")?.value);
+      const discount = parseFloat(row.querySelector(".item-discount")?.value || "0") || 0;
+      const optionsText =
+        row.querySelector(".options-summary")?.innerHTML?.trim().replace(/<br\s*\/?>/gi, "\n") || "";
+      const optionsJson = row.querySelector(".item-options-json")?.value || "{}";
+      const trialOption = row.querySelector(".sixty-night-select")?.value || "N/A";
+
+      return {
+        lineId: row.dataset.lineid || "",
+        item: itemId,
+        itemName,
+        quantity,
+        amount,
+        saleprice,
+        discount,
+        options: optionsText,
+        optionsJson,
+        trialOption,
+        isNewLine: !row.dataset.lineid,
+      };
+    })
+    .filter((r) => r.item && r.quantity > 0);
+}
+
+window.collectEditableQuoteLines = collectEditableQuoteLines;
+
+function wireEditableQuoteRow(tr, line, idx) {
+  const itemId = String(line.item?.id || "");
+  const itemName = line.item?.refName || line.itemName || "—";
+  const quantity = Number(line.quantity || 1);
+
+  const grossRrp = Number(line.amount || 0);
+  const sale = Number(line.saleprice || 0);
+  const vat = Number(line.vat || 0);
+
+  const retailGrossPerUnit =
+    quantity > 0 && grossRrp > 0 ? grossRrp / quantity : 0;
+
+  const discountPct =
+    grossRrp > 0 ? Math.max(0, ((grossRrp - sale) / grossRrp) * 100) : 0;
+
+  const optsText = line.custcol_sb_itemoptionsdisplay || line.optionsDisplay || "";
+  const optsHtml = buildOptionsSummaryHtml(optsText);
+  const existingSelections = guessOptionsJsonFromDisplay(optsText);
+  const optionSchema = buildOptionSchemaForItem(itemId);
+
+  if (itemId && Object.keys(optionSchema).length) {
+    window.optionsCache[itemId] = optionSchema;
+  }
+
+  const itemData = (window.items || []).find((it) => {
+    const internalId =
+      it["Internal ID"] ??
+      it["InternalId"] ??
+      it["InternalID"] ??
+      it["internalid"] ??
+      it["internal id"] ??
+      it["Id"] ??
+      it["id"] ??
+      "";
+    return String(internalId) === String(itemId);
+  });
+
+  const className = String(itemData?.["Class"] || "").toLowerCase();
+
+  const hasExistingOptions =
+    !!optsHtml ||
+    (existingSelections && Object.keys(existingSelections).length > 0);
+
+  const canEditOptions =
+    Object.keys(optionSchema).length > 0 || hasExistingOptions;
+
+  tr.className = "order-line";
+  tr.dataset.line = idx;
+  tr.dataset.lineid = line.lineId || "";
+  tr.dataset.itemId = itemId;
+  tr.dataset.hasItem = itemId ? "1" : "0";
+  tr.dataset.itemClass = className;
+
+  tr.innerHTML = `
+    <td>
+      <div class="autocomplete">
+        <input
+          type="text"
+          id="itemSearch-${idx}"
+          class="item-search"
+          value="${String(itemName).replace(/"/g, "&quot;")}"
+          placeholder="Product name"
+          autocomplete="off"
+          aria-autocomplete="list"
+        />
+        <input type="hidden" class="item-internal-id" value="${itemId}" />
+        <input type="hidden" class="item-baseprice" value="${retailGrossPerUnit.toFixed(2)}" />
+      </div>
+    </td>
+
+    <td class="options-cell">
+      ${
+        canEditOptions
+          ? `
+        <button type="button" class="open-options btn-secondary small-btn">⚙️ Options</button>
+        <input
+          type="hidden"
+          class="item-options-json"
+          value='${JSON.stringify(existingSelections).replace(/'/g, "&apos;")}'
+        />
+        <div class="options-summary">${optsHtml}</div>
+      `
+          : `
+        <input
+          type="hidden"
+          class="item-options-json"
+          value='${JSON.stringify(existingSelections).replace(/'/g, "&apos;")}'
+        />
+        <div class="options-summary">${optsHtml}</div>
+      `
+      }
+    </td>
+
+    <td>
+      <input type="number" class="item-qty" value="${quantity}" min="1" step="1" />
+    </td>
+
+    <td>
+      <input
+        type="number"
+        class="item-amount"
+        value="${Number(grossRrp || 0).toFixed(2)}"
+        step="0.01"
+        readonly
+      />
+    </td>
+
+    <td>
+      <input
+        type="number"
+        class="item-discount"
+        value="${Number(discountPct || 0).toFixed(1)}"
+        min="0"
+        max="100"
+        step="0.1"
+      />
+    </td>
+
+    <td>
+      <input
+        type="number"
+        class="item-vat"
+        value="${Number(vat || 0).toFixed(2)}"
+        step="0.01"
+        readonly
+      />
+    </td>
+
+    <td>
+      <input
+        type="number"
+        class="item-saleprice"
+        value="${Number(sale || 0).toFixed(2)}"
+        step="0.01"
+      />
+    </td>
+
+    <td class="sixty-night-cell" style="display:none;"></td>
+
+    <td>
+      <button type="button" class="delete-row btn-secondary small-btn">🗑</button>
+    </td>
+  `;
+
+  const amountField = tr.querySelector(".item-amount");
+  if (amountField) {
+    amountField.dataset.unitRetail = retailGrossPerUnit.toFixed(2);
+  }
+
+  if (typeof window.setupAutocompleteForRow === "function") {
+    window.setupAutocompleteForRow(tr);
+  }
+
+  if (typeof window.setupPriceSync === "function") {
+    window.setupPriceSync(tr);
+  }
+
+  if (typeof window.ensure60NightTrialCell === "function") {
+    window.ensure60NightTrialCell(tr);
+  }
+
+  if (typeof window.update60NightTrialColumnVisibility === "function") {
+    window.update60NightTrialColumnVisibility();
+  }
+
+  const recalcVat = () => {
+    const saleVal = parseMoneyInput(tr.querySelector(".item-saleprice")?.value);
+    const vatField = tr.querySelector(".item-vat");
+    if (vatField) vatField.value = (saleVal - saleVal / 1.2).toFixed(2);
+  };
+
+  tr.querySelector(".item-qty")?.addEventListener("input", () => {
+    recalcVat();
+    updateQuoteSummaryFromTable();
+  });
+
+  tr.querySelector(".item-discount")?.addEventListener("input", () => {
+    recalcVat();
+    updateQuoteSummaryFromTable();
+  });
+
+  tr.querySelector(".item-saleprice")?.addEventListener("input", () => {
+    recalcVat();
+    updateQuoteSummaryFromTable();
+  });
+}
+
+function ensureQuoteAddButton() {
+  let btn = document.getElementById("addItemBtn");
+
+  if (!btn) {
+    const wrapper =
+      document.getElementById("quoteItemsToolbar") ||
+      document.getElementById("orderItemsToolbar") ||
+      document.getElementById("orderActionWrapper");
+
+    if (!wrapper) return;
+
+    btn = document.createElement("button");
+    btn.id = "addItemBtn";
+    btn.type = "button";
+    btn.className = "btn-secondary";
+    btn.textContent = "+ Add Item";
+
+    wrapper.prepend(btn);
+  }
+
+  if (btn.dataset.bound !== "1") {
+    btn.dataset.bound = "1";
+    btn.addEventListener("click", () => {
+      if (typeof window.addNewRow === "function") {
+        window.addNewRow();
+      } else {
+        console.warn("⚠️ addNewRow is not available on window");
+      }
+    });
+  }
+}
+
+function bindQuoteItemTableEvents() {
+  const tbody = document.getElementById("orderItemsBody");
+  if (!tbody || tbody.dataset.bound === "1") return;
+
+  tbody.dataset.bound = "1";
+
+  tbody.addEventListener("click", (e) => {
+    const optionsBtn = e.target.closest(".open-options");
+    if (optionsBtn) {
+      const row = optionsBtn.closest(".order-line");
+      console.log("⚙️ Options clicked", { rowLine: row?.dataset?.line });
+      if (row && typeof window.openOptionsWindow === "function") {
+        window.openOptionsWindow(row);
+      } else {
+        console.warn("⚠️ openOptionsWindow not available or row missing");
+      }
+      return;
+    }
+
+    const deleteBtn = e.target.closest(".delete-row");
+    if (deleteBtn) {
+      const row = deleteBtn.closest(".order-line");
+      console.log("🗑 Delete clicked", { rowLine: row?.dataset?.line });
+
+      if (row) {
+        row.remove();
+
+        if (typeof window.update60NightTrialColumnVisibility === "function") {
+          window.update60NightTrialColumnVisibility();
+        }
+
+        updateQuoteSummaryFromTable();
+
+        if (typeof window.ensureNextEmptyRowAndFocus === "function") {
+          window.ensureNextEmptyRowAndFocus();
+        }
+      }
+    }
+  });
+}
+
+/* =========================================================
+   Quote action buttons
+========================================================= */
+function updateActionButtonForQuote() {
   const wrapper = document.getElementById("orderActionWrapper");
   if (!wrapper) return;
 
-  wrapper.innerHTML = "";
+  wrapper.innerHTML = `
+    <button id="saveQuoteBtn" class="btn-secondary">Save Quote</button>
+    <button id="convertToSaleBtn" class="btn-primary">Convert to Sale</button>
+  `;
 
-  // If you want to hide conversion for already-converted quotes, add condition here.
-  // Example (best-effort): if (quoteObj?.status?.refName?.toLowerCase().includes("closed")) return;
+  const saveBtn = document.getElementById("saveQuoteBtn");
+  const convertBtn = document.getElementById("convertToSaleBtn");
 
-  wrapper.innerHTML = `<button id="convertToSaleBtn" class="btn-primary">Convert to Sale</button>`;
-
-  const btn = document.getElementById("convertToSaleBtn");
-  if (!btn) return;
-
-  btn.addEventListener("click", async () => {
+  saveBtn?.addEventListener("click", async () => {
     let savedAuth = storageGet?.();
     const token = savedAuth?.token;
     if (!token) return (window.location.href = "/index.html");
@@ -210,22 +571,94 @@ function updateActionButtonForQuote(quoteObj) {
     const quoteIdOrTran = getIdFromPath();
     if (!quoteIdOrTran) return alert("No Quote ID found in URL.");
 
-    // prevent double click
-    btn.disabled = true;
-    btn.classList.add("locked-input");
+    saveBtn.disabled = true;
+    if (convertBtn) convertBtn.disabled = true;
+    saveBtn.classList.add("locked-input");
+    convertBtn?.classList.add("locked-input");
+
+    try {
+      showConvertSpinner(true, "Saving quote...");
+      showToast?.("⏳ Saving quote...", "success");
+
+      const payload = {
+        customer: {
+          title: document.querySelector('select[name="title"]')?.value || "",
+          firstName: document.querySelector('input[name="firstName"]')?.value?.trim() || "",
+          lastName: document.querySelector('input[name="lastName"]')?.value?.trim() || "",
+          email: document.querySelector('input[name="email"]')?.value?.trim() || "",
+          contactNumber:
+            document.querySelector('input[name="contactNumber"]')?.value?.trim() || "",
+          altContactNumber:
+            document.querySelector('input[name="altContactNumber"]')?.value?.trim() || "",
+          address1: document.querySelector('input[name="address1"]')?.value?.trim() || "",
+          address2: document.querySelector('input[name="address2"]')?.value?.trim() || "",
+          address3: document.querySelector('input[name="address3"]')?.value?.trim() || "",
+          postcode: document.querySelector('input[name="postcode"]')?.value?.trim() || "",
+        },
+        order: {
+          salesExec: document.getElementById("salesExec")?.value || "",
+          store: document.getElementById("store")?.value || "",
+          leadSource: document.querySelector('select[name="leadSource"]')?.value || "",
+          paymentInfo: document.getElementById("paymentInfo")?.value || "",
+          warehouse: document.getElementById("warehouse")?.value || "",
+        },
+        items:
+          typeof window.collectEditableQuoteLines === "function"
+            ? window.collectEditableQuoteLines()
+            : [],
+      };
+
+      const res = await fetch(`/api/netsuite/quote/${encodeURIComponent(quoteIdOrTran)}`, {
+        method: "PATCH",
+        headers,
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data?.error || `Save failed (HTTP ${res.status})`);
+      }
+
+      showToast?.("✅ Quote saved successfully!", "success");
+    } catch (err) {
+      console.error("❌ Save quote error:", err.message || err);
+      showToast?.(`❌ ${err.message || err}`, "error");
+    } finally {
+      showConvertSpinner(false);
+      saveBtn.disabled = false;
+      if (convertBtn) convertBtn.disabled = false;
+      saveBtn.classList.remove("locked-input");
+      convertBtn?.classList.remove("locked-input");
+    }
+  });
+
+  convertBtn?.addEventListener("click", async () => {
+    let savedAuth = storageGet?.();
+    const token = savedAuth?.token;
+    if (!token) return (window.location.href = "/index.html");
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+
+    const quoteIdOrTran = getIdFromPath();
+    if (!quoteIdOrTran) return alert("No Quote ID found in URL.");
+
+    convertBtn.disabled = true;
+    if (saveBtn) saveBtn.disabled = true;
+    convertBtn.classList.add("locked-input");
+    saveBtn?.classList.add("locked-input");
 
     try {
       showConvertSpinner(true, "Converting quote to sales order...");
       showToast?.("⏳ Converting quote...", "success");
 
-      // ✅ IMPORTANT:
-      // This endpoint needs to exist server-side.
-      // Recommended: /api/netsuite/quote/{id}/convert
-      // Return: { ok:true, salesOrderId, tranId }
       const res = await fetch(`/api/netsuite/quote/${encodeURIComponent(quoteIdOrTran)}/convert`, {
         method: "POST",
         headers,
-        body: JSON.stringify({}), // keep payload empty for now
+        body: JSON.stringify({}),
       });
 
       const data = await res.json();
@@ -242,15 +675,16 @@ function updateActionButtonForQuote(quoteObj) {
       setTimeout(() => {
         if (soTranId) return (window.location.href = `/sales/view/${soTranId}`);
         if (soId) return (window.location.href = `/sales/view/${soId}`);
-        // fallback: if server only returns a link
         if (data.redirectUrl) return (window.location.href = data.redirectUrl);
         window.location.href = "/sales";
       }, 800);
     } catch (err) {
       console.error("❌ Convert error:", err.message || err);
       showToast?.(`❌ ${err.message || err}`, "error");
-      btn.disabled = false;
-      btn.classList.remove("locked-input");
+      convertBtn.disabled = false;
+      if (saveBtn) saveBtn.disabled = false;
+      convertBtn.classList.remove("locked-input");
+      saveBtn?.classList.remove("locked-input");
     } finally {
       showConvertSpinner(false);
     }
@@ -266,7 +700,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const overlay = document.getElementById("loadingOverlay");
   overlay?.classList.remove("hidden");
 
-  // ---- Auth / token ----
   let saved = storageGet?.();
   if (!saved || !saved.token) {
     await new Promise((r) => setTimeout(r, 300));
@@ -283,10 +716,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     Authorization: `Bearer ${saved.token}`,
   };
 
-  // dropdowns (even though disabled, they need options for correct selected display)
   populateSalesExecAndStore(headers);
 
-  // ---- Quote ID from URL ----
   const tranId = getIdFromPath();
   if (!tranId) {
     alert("No Quote ID found in URL.");
@@ -295,7 +726,20 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   try {
-    // 1) Load quote
+    if (typeof window.loadItems === "function") {
+      await window.loadItems();
+    }
+
+    if (
+      typeof window.createGlobalSuggestions === "function" &&
+      !document.getElementById("global-suggestions")
+    ) {
+      window.createGlobalSuggestions();
+    }
+
+    if (typeof window.populateSizeFilter === "function") await window.populateSizeFilter();
+    if (typeof window.populateBaseOptionFilter === "function") await window.populateBaseOptionFilter();
+
     const qRes = await fetch(`/api/netsuite/quote/${encodeURIComponent(tranId)}`, { headers });
     const qJson = await qRes.json();
 
@@ -303,17 +747,14 @@ document.addEventListener("DOMContentLoaded", async () => {
       throw new Error(qJson?.error || `Server returned ${qRes.status}`);
     }
 
-    // Your backend can return {quote:{...}} or {estimate:{...}} or direct object
     const quote = qJson.quote || qJson.estimate || qJson.estimateObj || qJson;
     if (!quote) throw new Error("No quote/estimate object in response");
 
     console.log("✅ Quote loaded:", quote.tranId || tranId);
 
-    // 2) Header
     safeText(document.getElementById("ordernumber"), quote.tranId || tranId);
     safeText(document.getElementById("orderNumber"), quote.tranId || tranId);
 
-    // 3) Customer / address (best-effort like SalesOrderView)
     try {
       const addressText = quote.billingAddress_text || quote.billaddress || "";
       const addressLines = addressText
@@ -331,7 +772,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           const townPart = line.replace(postcode, "").trim();
           if (townPart) cleanedAddress.push(townPart);
         } else if (/(United Kingdom|UK|England|Scotland|Wales|Northern Ireland)/i.test(line)) {
-          // ignore country line (optional)
+          // ignore country
         } else {
           cleanedAddress.push(line);
         }
@@ -343,131 +784,99 @@ document.addEventListener("DOMContentLoaded", async () => {
       const firstName = nameParts[1] || quote.firstName || "";
       const lastName = nameParts[2] || quote.lastName || "";
 
-      document.querySelector('input[name="firstName"]').value = firstName;
-      document.querySelector('input[name="lastName"]').value = lastName;
+      const firstNameEl = document.querySelector('input[name="firstName"]');
+      const lastNameEl = document.querySelector('input[name="lastName"]');
+      const address1El = document.querySelector('input[name="address1"]');
+      const address2El = document.querySelector('input[name="address2"]');
+      const address3El = document.querySelector('input[name="address3"]');
+      const postcodeEl = document.querySelector('input[name="postcode"]');
 
-      document.querySelector('input[name="address1"]').value = cleanedAddress[0] || "";
-      document.querySelector('input[name="address2"]').value = cleanedAddress[1] || "";
-      document.querySelector('input[name="address3"]').value = cleanedAddress[2] || "";
-      document.querySelector('input[name="postcode"]').value = postcode || "";
+      if (firstNameEl) firstNameEl.value = firstName;
+      if (lastNameEl) lastNameEl.value = lastName;
+      if (address1El) address1El.value = cleanedAddress[0] || "";
+      if (address2El) address2El.value = cleanedAddress[1] || "";
+      if (address3El) address3El.value = cleanedAddress[2] || "";
+      if (postcodeEl) postcodeEl.value = postcode || "";
     } catch (err) {
       console.warn("⚠️ Address population failed:", err.message || err);
     }
 
-    // 4) Contact info
-    document.querySelector('input[name="email"]').value = quote.email || "";
-    document.querySelector('input[name="contactNumber"]').value = quote.custbody4 || quote.phone || "";
-    document.querySelector('input[name="altContactNumber"]').value = quote.altPhone || "";
+    const emailEl = document.querySelector('input[name="email"]');
+    const contactEl = document.querySelector('input[name="contactNumber"]');
+    const altContactEl = document.querySelector('input[name="altContactNumber"]');
 
-    // 5) Order meta
+    if (emailEl) emailEl.value = quote.email || "";
+    if (contactEl) contactEl.value = quote.custbody4 || quote.phone || "";
+    if (altContactEl) altContactEl.value = quote.altPhone || "";
+
     try {
-      // lead source
-      document.querySelector('select[name="leadSource"]').value = quote.leadSource?.id || "";
-
-      // paymentInfo OPTIONAL on quote - still display if present
-      const paymentInfo = quote.custbody_sb_paymentinfo?.id || "";
+      const leadSourceEl = document.querySelector('select[name="leadSource"]');
       const paymentSelect = document.getElementById("paymentInfo");
+      const whSelect = document.getElementById("warehouse");
+
+      if (leadSourceEl) leadSourceEl.value = quote.leadSource?.id || "";
+
+      const paymentInfo = quote.custbody_sb_paymentinfo?.id || "";
       if (paymentSelect) paymentSelect.value = paymentInfo;
 
-      // warehouse
       const wh = quote.custbody_sb_warehouse?.id || "";
-      const whSelect = document.getElementById("warehouse");
       if (whSelect) whSelect.value = wh;
     } catch (err) {
       console.warn("⚠️ Quote meta population failed:", err.message || err);
     }
 
-    // 6) Render item lines
+    const storeEl = document.getElementById("store");
+if (storeEl) {
+  storeEl.disabled = true;
+  storeEl.classList.add("locked-input");
+}
+
     const tbody = document.getElementById("orderItemsBody");
     tbody.innerHTML = "";
 
     const lines = quote.item?.items || quote.items || quote.lines || [];
+
     if (Array.isArray(lines) && lines.length) {
       const frag = document.createDocumentFragment();
 
       lines.forEach((line, idx) => {
         const tr = document.createElement("tr");
-        tr.classList.add("order-line");
-        tr.dataset.line = idx;
-
-        const quantity = Number(line.quantity || 0);
-
-        // Many NS estimate payloads store net amount; saleprice may be custom.
-        // We'll follow your SalesOrderView convention:
-        const retailNet = Number(line.amount || 0); // per-unit net or line net depends on your backend
-        const grossRrp = retailNet * quantity || 0;
-
-        let sale = Number(line.saleprice || line.gross || line.rate_gross || 0);
-        if (!sale && line.rate && quantity) {
-          // fallback: if rate is net per unit
-          sale = Number(line.rate || 0) * quantity * 1.2;
-        }
-
-        // best-effort VAT
-        const vat = line.vat ?? (sale ? sale - sale / 1.2 : grossRrp * 0.2);
-
-        const discountPct = (() => {
-          const r = grossRrp || 0;
-          const s = sale || 0;
-          if (r <= 0) return 0;
-          return Math.max(0, ((r - s) / r) * 100);
-        })();
-
-        // Options display field
-        const opts = line.custcol_sb_itemoptionsdisplay || line.optionsDisplay || "";
-
-        // 60NT (if your backend puts it on the line, add it; otherwise blank)
-        const trial =
-          line.custcol_sb_60nighttrial ||
-          line.sixtyNightTrial ||
-          line.trialOption ||
-          "N/A";
-
-        tr.innerHTML = `
-          <td>${line.item?.refName || line.itemName || "—"}</td>
-          <td>${opts || ""}</td>
-          <td class="qty">${quantity}</td>
-          <td class="amount">${money(grossRrp)}</td>
-          <td class="discount">${discountPct.toFixed(1)}%</td>
-          <td class="vat">${money(Number(vat || 0))}</td>
-          <td class="saleprice">${money(sale || 0)}</td>
-          <td class="sixty-night-cell" style="display:none;">${trial}</td>
-          <td><span style="opacity:.4;">—</span></td>
-        `;
-
+        wireEditableQuoteRow(tr, line, idx);
         frag.appendChild(tr);
       });
 
       tbody.appendChild(frag);
-
-      // Show 60NT header if any line looks like a mattress OR has trial != N/A
-      const header60 = document.getElementById("60ntheader");
-      if (header60) {
-        const anyTrial = [...tbody.querySelectorAll("td.sixty-night-cell")].some(
-          (td) => String(td.textContent || "").trim().toUpperCase() !== "N/A"
-        );
-        header60.style.display = anyTrial ? "table-cell" : "none";
-        tbody.querySelectorAll("td.sixty-night-cell").forEach((td) => {
-          td.style.display = anyTrial ? "table-cell" : "none";
-        });
-      }
+    } else if (typeof window.addNewRow === "function") {
+      window.addNewRow();
     } else {
       const empty = document.createElement("tr");
       empty.innerHTML = `<td colspan="10" style="text-align:center; color:#888;">No item lines found.</td>`;
       tbody.appendChild(empty);
     }
 
-    // 7) Summary + Convert button
-    updateQuoteSummaryFromTable();
-    updateActionButtonForQuote(quote);
+    bindQuoteItemTableEvents();
+    ensureQuoteAddButton();
 
-    // 8) Back + Print
+    if (typeof window.update60NightTrialColumnVisibility === "function") {
+      window.update60NightTrialColumnVisibility();
+    }
+
+    if (typeof window.ensureNextEmptyRowAndFocus === "function") {
+      const hasEmpty = [...document.querySelectorAll("#orderItemsBody .order-line")].some(
+        (r) => (r.dataset.hasItem || "0") !== "1"
+      );
+      if (!hasEmpty && typeof window.addNewRow === "function") window.addNewRow();
+    }
+
+    updateQuoteSummaryFromTable();
+    updateActionButtonForQuote();
+    ensureQuoteAddButton();
+
     document.getElementById("backBtn")?.addEventListener("click", () => history.back());
 
     document.getElementById("printBtn")?.addEventListener("click", () => {
       const id = getIdFromPath();
       if (!id) return alert("No quote ID found in URL");
-      // Update if your receipt route differs for quotes:
       window.open(`/quote/reciept/${id}`, "_blank");
     });
   } catch (err) {
