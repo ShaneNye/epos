@@ -179,9 +179,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ---- FIXED FIRST COLUMNS ----
     const fixedCols = [
       "Internal ID",
-      "Team Leader",
-      "Bed Specialist",
-      "Bed Specialist 2",
+      "Sales Executive",
+      "Sales Executive",
+      "Sales Executive",
       "Team Footfall Count"
     ];
 
@@ -201,7 +201,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     tr.innerHTML += `<td><input readonly value="${currentRow["Internal ID"]}" /></td>`;
 
-    tr.innerHTML += `<td><select id="storeLeader" class="user-select"></select></td>`;
+    tr.innerHTML += `<td><select id="storeLeader" class="user-select" required></select></td>`;
     tr.innerHTML += `<td><select id="bedSpecialist" class="user-select"></select></td>`;
     tr.innerHTML += `<td><select id="bedSpecialist2" class="user-select"></select></td>`;
 
@@ -280,85 +280,91 @@ document.addEventListener("DOMContentLoaded", async () => {
   /* ============================================================================
       SAVE FOOTFALL
      ============================================================================ */
-document.getElementById("saveFootfallBtn").addEventListener("click", async () => {
-  if (!currentRow) return alert("No store selected.");
+  document.getElementById("saveFootfallBtn").addEventListener("click", async () => {
+    if (!currentRow) return alert("No store selected.");
 
-  const internalId = currentRow["Internal ID"];
-  const payload = {};
-
-  const overlay = document.getElementById("savingOverlay");
-
-  // 🔵 SHOW SPINNER
-  overlay.classList.remove("hidden");
-
-  /* ---- TEAM FOOTFALL COUNT ---- */
-  const teamFF = document.querySelector(`input[data-field="team footfall count"]`);
-  if (teamFF) payload[FIELD_MAP["team footfall count"]] = Number(teamFF.value);
-
-  /* ---- STORE LEADER ---- */
-  const sl = document.getElementById("storeLeader");
-  if (sl?.value) {
-    const user = users.find(u => String(u.id) === String(sl.value));
-    const nsId = user?.netsuiteId || user?.netsuiteid;
-    if (nsId) payload[FIELD_MAP["team leader"]] = String(nsId);
-  }
-
-  /* ---- BED SPECIALISTS ---- */
-  const bs1 = document.getElementById("bedSpecialist");
-  if (bs1?.value) {
-    const user = users.find(u => String(u.id) === String(bs1.value));
-    const nsId = user?.netsuiteId || user?.netsuiteid;
-    if (nsId) payload[FIELD_MAP["bed specialist"]] = String(nsId);
-  }
-
-  const bs2 = document.getElementById("bedSpecialist2");
-  if (bs2?.value) {
-    const user = users.find(u => String(u.id) === String(bs2.value));
-    const nsId = user?.netsuiteId || user?.netsuiteid;
-    if (nsId) payload[FIELD_MAP["bed specialist 2"]] = String(nsId);
-  }
-
-  /* ---- ALL DYNAMIC NUMBER FIELDS ---- */
-  document.querySelectorAll(".num-input[data-field]").forEach(input => {
-    const norm = normalizeLabel(input.dataset.field);
-    const mapped = FIELD_MAP[norm];
-    if (mapped) payload[mapped] = Number(input.value);
-  });
-
-  console.log("📤 Final PATCH Payload:", payload);
-
-  // ---- SEND PATCH ----
-  const res = await fetch("/api/eod/footfall/update", {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json",
-      ...headers
-    },
-    body: JSON.stringify({ internalId, values: payload })
-  });
-
-  const json = await res.json();
-  console.log("📥 Patch response:", json);
-
-  if (!json.ok) {
-    overlay.classList.add("hidden"); // hide overlay before showing error
-    return alert("❌ Update failed: " + json.error);
-  }
-
-  // 🌟 SUCCESS
-  setTimeout(() => {
-    // reload parent page
-    try {
-      if (window.opener && !window.opener.closed) {
-        window.opener.location.reload();
-      }
-    } catch (e) {
-      console.warn("⚠ Could not refresh opener:", e);
+    const sl = document.getElementById("storeLeader");
+    if (!sl?.value) {
+      return alert("Please select Sales Executive.");
     }
 
-    // close popup
-    window.close();
-  }, 400); // small delay feels smoother
-});
+    const internalId = currentRow["Internal ID"];
+    const payload = {};
 
+    const overlay = document.getElementById("savingOverlay");
+
+    // 🔵 SHOW SPINNER
+    overlay.classList.remove("hidden");
+
+    /* ---- TEAM FOOTFALL COUNT ---- */
+    const teamFF = document.querySelector(`input[data-field="team footfall count"]`);
+    if (teamFF) payload[FIELD_MAP["team footfall count"]] = Number(teamFF.value);
+
+    /* ---- STORE LEADER ---- */
+    if (sl.value) {
+      const user = users.find(u => String(u.id) === String(sl.value));
+      const nsId = user?.netsuiteId || user?.netsuiteid;
+      if (nsId) payload[FIELD_MAP["team leader"]] = String(nsId);
+    }
+
+    /* ---- BED SPECIALISTS ---- */
+    const bs1 = document.getElementById("bedSpecialist");
+    if (bs1?.value) {
+      const user = users.find(u => String(u.id) === String(bs1.value));
+      const nsId = user?.netsuiteId || user?.netsuiteid;
+      if (nsId) payload[FIELD_MAP["bed specialist"]] = String(nsId);
+    }
+
+    const bs2 = document.getElementById("bedSpecialist2");
+    if (bs2?.value) {
+      const user = users.find(u => String(u.id) === String(bs2.value));
+      const nsId = user?.netsuiteId || user?.netsuiteid;
+      if (nsId) payload[FIELD_MAP["bed specialist 2"]] = String(nsId);
+    }
+
+    /* ---- ALL DYNAMIC NUMBER FIELDS ---- */
+    document.querySelectorAll(".num-input[data-field]").forEach(input => {
+      const norm = normalizeLabel(input.dataset.field);
+      const mapped = FIELD_MAP[norm];
+      if (mapped) payload[mapped] = Number(input.value);
+    });
+
+    console.log("📤 Final PATCH Payload:", payload);
+
+    try {
+      const res = await fetch("/api/eod/footfall/update", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          ...headers
+        },
+        body: JSON.stringify({ internalId, values: payload })
+      });
+
+      const json = await res.json();
+      console.log("📥 Patch response:", json);
+
+      if (!json.ok) {
+        overlay.classList.add("hidden");
+        return alert("❌ Update failed: " + json.error);
+      }
+
+      // 🌟 SUCCESS
+      setTimeout(() => {
+        try {
+          if (window.opener && !window.opener.closed) {
+            window.opener.location.reload();
+          }
+        } catch (e) {
+          console.warn("⚠ Could not refresh opener:", e);
+        }
+
+        window.close();
+      }, 400);
+    } catch (err) {
+      console.error("❌ Save failed:", err);
+      overlay.classList.add("hidden");
+      alert("❌ Failed to save footfall record.");
+    }
+  });
 });
