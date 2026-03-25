@@ -59,8 +59,8 @@
 
                 <button class="btn-primary" type="submit">Login</button>
             </form>
-
-            <!-- Full Launch Countdown -->
+<!--
+            <-- Full Launch Countdown 
             <section class="launch-countdown" aria-labelledby="launchCountdownTitle">
                 <div class="launch-countdown-head">
                     <h3 id="launchCountdownTitle">Full Launch</h3>
@@ -88,6 +88,7 @@
 
                 <div id="launchCountdownMessage" class="launch-message"></div>
             </section>
+        -->
 
             <footer class="portal-foot">
                 <small>© Sussex Beds • Epos <br>
@@ -95,54 +96,6 @@
             </footer>
         </section>
     </main>
-
-    <script>
-        (function () {
-            // 16/02/2026 09:00 local time
-const launchDate = new Date(2026, 2, 17, 9, 0, 0);
-            const daysEl = document.getElementById("countDays");
-            const hoursEl = document.getElementById("countHours");
-            const minsEl = document.getElementById("countMinutes");
-            const secsEl = document.getElementById("countSeconds");
-            const messageEl = document.getElementById("launchCountdownMessage");
-            const gridEl = document.getElementById("launchCountdownGrid");
-
-            function pad(num) {
-                return String(num).padStart(2, "0");
-            }
-
-            function updateCountdown() {
-                const now = new Date();
-                const diff = launchDate - now;
-
-                if (diff <= 0) {
-                    daysEl.textContent = "00";
-                    hoursEl.textContent = "00";
-                    minsEl.textContent = "00";
-                    secsEl.textContent = "00";
-
-                    gridEl.classList.add("countdown-complete");
-                    messageEl.textContent = "Full Launch is live.";
-                    return;
-                }
-
-                const totalSeconds = Math.floor(diff / 1000);
-                const days = Math.floor(totalSeconds / (60 * 60 * 24));
-                const hours = Math.floor((totalSeconds % (60 * 60 * 24)) / (60 * 60));
-                const minutes = Math.floor((totalSeconds % (60 * 60)) / 60);
-                const seconds = totalSeconds % 60;
-
-                daysEl.textContent = pad(days);
-                hoursEl.textContent = pad(hours);
-                minsEl.textContent = pad(minutes);
-                secsEl.textContent = pad(seconds);
-                messageEl.textContent = "Countdown to Full Launch";
-            }
-
-            updateCountdown();
-            setInterval(updateCountdown, 1000);
-        })();
-    </script>
 </body>
 
 </html>

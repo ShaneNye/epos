@@ -498,7 +498,6 @@ function setupPriceSync(line) {
   const discountField = line.querySelector(".item-discount");
   const salePriceField = line.querySelector(".item-saleprice");
   const qtyField = line.querySelector(".item-qty");
-  const vatField = line.querySelector(".item-vat");
 
   if (!amountField || !discountField || !salePriceField || !qtyField) return;
 
@@ -512,11 +511,6 @@ function setupPriceSync(line) {
     const discount = parseFloat(discountField.value || 0);
     const saleTotal = retailTotal * (1 - discount / 100);
     salePriceField.value = saleTotal.toFixed(2);
-
-    if (vatField) {
-      const vatVal = saleTotal - saleTotal / 1.2;
-      vatField.value = vatVal.toFixed(2);
-    }
 
     recalcTotals();
   }
@@ -535,11 +529,6 @@ function setupPriceSync(line) {
     if (retailTotal > 0 && !isNaN(saleTotal)) {
       const discount = ((retailTotal - saleTotal) / retailTotal) * 100;
       discountField.value = discount.toFixed(1);
-    }
-
-    if (vatField) {
-      const vatVal = saleTotal - saleTotal / 1.2;
-      vatField.value = vatVal.toFixed(2);
     }
 
     recalcTotals();
@@ -796,8 +785,6 @@ function addNewRow() {
     <td><input type="number" class="item-amount" placeholder="£" step="0.01" readonly /></td>
 
     <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" /></td>
-
-    <td><input type="number" class="item-vat" placeholder="£" step="0.01" readonly /></td>
 
     <td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
 
