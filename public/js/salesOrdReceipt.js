@@ -71,6 +71,21 @@ document.addEventListener("DOMContentLoaded", async () => {
   };
 
   /* ============================
+     🖨 Auto Print Helper
+     ============================ */
+  let hasTriggeredPrint = false;
+
+  const triggerPrint = () => {
+    if (hasTriggeredPrint) return;
+    hasTriggeredPrint = true;
+
+    // small delay so DOM paints fully before print dialog opens
+    setTimeout(() => {
+      window.print();
+    }, 400);
+  };
+
+  /* ============================
      3️⃣ Fetch Sales Order
      ============================ */
   try {
@@ -226,7 +241,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const qty = Math.abs(Number(line.quantity || 0)) || 0;
 
-      // amount + saleprice are both treated as line totals now
       let originalLineTotal = Number(line.amount || 0) || 0;
       let actualLineTotal = hasRealValue(line.saleprice)
         ? Number(line.saleprice || 0)
@@ -374,6 +388,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     document.getElementById("totalDiscPerc").innerHTML = `${totalDiscountPct.toFixed(2)}%`;
+
+    /* ===========================================
+       🔟 Auto open print dialog
+       ============================================= */
+    triggerPrint();
+
   } catch (err) {
     console.error("💥 Fetch error:", err);
   }
