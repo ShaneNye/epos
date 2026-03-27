@@ -8,6 +8,8 @@
  * Update:
  *  - Payment Info is mandatory on Sales Order pages
  *  - Payment Info is OPTIONAL on Quote pages
+ *  - "No address required" skips postcode requirement
+ *  - "No address required" forces new customer and skips customer match lookup
  *
  * Fixes:
  *  - Cancel on store/warehouse now correctly reverts to the prior value (not null/blank)
@@ -21,7 +23,13 @@ document.addEventListener("DOMContentLoaded", () => {
   const orderDetailsSection = document.getElementById("orderDetailsSection");
   const orderItemsSection = document.querySelector(".order-items-section");
 
-  if (!confirmBtn || !customerSection || !contactSection || !orderDetailsSection || !orderItemsSection) return;
+  if (
+    !confirmBtn ||
+    !customerSection ||
+    !contactSection ||
+    !orderDetailsSection ||
+    !orderItemsSection
+  ) return;
 
   /* =========================================================
      Page detection (Sales vs Quote)
@@ -45,7 +53,9 @@ document.addEventListener("DOMContentLoaded", () => {
   // === Utility: lock/unlock a section's inputs (EXCLUDES confirm/edit button)
   const setSectionLocked = (section, locked, includeButtons = false) => {
     if (!section) return;
-    const selector = includeButtons ? "input, select, textarea, button" : "input, select, textarea";
+    const selector = includeButtons
+      ? "input, select, textarea, button"
+      : "input, select, textarea";
     const inputs = section.querySelectorAll(selector);
 
     inputs.forEach((el) => {
@@ -90,6 +100,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const validateRequiredFields = () => {
     const errors = [];
 
+    const noAddressRequired =
+      !!document.getElementById("noAddressRequired")?.checked;
+
     // Customer info mandatory
     const firstName = document.querySelector('input[name="firstName"]')?.value.trim() || "";
     const lastName = document.querySelector('input[name="lastName"]')?.value.trim() || "";
@@ -100,8 +113,12 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!firstName) errors.push("First Name is required");
     if (!lastName) errors.push("Last Name is required");
     if (!email) errors.push("Email is required");
-    if (!postcode) errors.push("Postcode is required");
     if (!titleVal) errors.push("Title is required");
+
+    // ✅ Only require postcode when no-address mode is OFF
+    if (!noAddressRequired && !postcode) {
+      errors.push("Postcode is required");
+    }
 
     // Order details mandatory
     const leadSource = document.querySelector('select[name="leadSource"]')?.value || "";
@@ -218,32 +235,41 @@ document.addEventListener("DOMContentLoaded", () => {
     matchStatus.innerHTML = `<div class="spinner"></div> Searching for customer match...`;
 
     // Gather data
+    const noAddressRequired =
+      !!document.getElementById("noAddressRequired")?.checked;
+
     const lastName = document.querySelector('input[name="lastName"]')?.value.trim() || "";
     const email = document.querySelector('input[name="email"]')?.value.trim() || "";
     const postcode = document.querySelector('input[name="postcode"]')?.value.trim() || "";
 
     try {
-      const qs = new URLSearchParams({ email, lastName, postcode }).toString();
-      const res = await fetch(`/api/netsuite/customermatch?${qs}`, { method: "GET" });
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-
-      if (data.ok && Array.isArray(data.results) && data.results.length > 0) {
-        const matched = data.results[0];
-        const id = matched["Internal ID"] || matched["ID"] || "—";
-        const name = matched["Name"] || matched["Last Name"] || "Unknown";
-        const custEmail = matched["Email"] || "";
-        const custPostcode = matched["Postal Code"] || "";
-
-        matchStatus.innerHTML = `
-          ✅ Existing customer found:
-          <strong>${id} — ${name}</strong>
-          ${custEmail ? `<span style="color:var(--muted)">(${custEmail}, ${custPostcode})</span>` : ""}
-        `;
-        window.currentCustomerId = id;
-      } else {
-        matchStatus.innerHTML = "🆕 New customer!";
+      if (noAddressRequired) {
+        matchStatus.innerHTML = "🆕 New customer (No address required selected)";
         window.currentCustomerId = null;
+      } else {
+        const qs = new URLSearchParams({ email, lastName, postcode }).toString();
+        const res = await fetch(`/api/netsuite/customermatch?${qs}`, { method: "GET" });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (data.ok && Array.isArray(data.results) && data.results.length > 0) {
+          const matched = data.results[0];
+          const id = matched["Internal ID"] || matched["ID"] || "—";
+          const name = matched["Name"] || matched["Last Name"] || "Unknown";
+          const custEmail = matched["Email"] || "";
+          const custPostcode = matched["Postal Code"] || "";
+
+          matchStatus.innerHTML = `
+            ✅ Existing customer found:
+            <strong>${id} — ${name}</strong>
+            ${custEmail ? `<span style="color:var(--muted)">(${custEmail}, ${custPostcode})</span>` : ""}
+          `;
+          window.currentCustomerId = id;
+        } else {
+          matchStatus.innerHTML = "🆕 New customer!";
+          window.currentCustomerId = null;
+        }
       }
     } catch (err) {
       console.error("❌ Customer match lookup failed:", err);

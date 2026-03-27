@@ -26,8 +26,6 @@ if (window.location.pathname.includes("/sales/view/")) {
     tbody.innerHTML = "";
     deposits.forEach((d) => {
       const tr = document.createElement("tr");
-      // NOTE: your deposit popup sends { id, name, amount } — not method
-      // so we use name safely here
       tr.innerHTML = `<td>${d.name || d.method || ""}</td><td>£${parseFloat(d.amount).toFixed(2)}</td>`;
       tbody.appendChild(tr);
     });
@@ -41,6 +39,75 @@ if (window.location.pathname.includes("/sales/view/")) {
 
     const headers = { Authorization: `Bearer ${saved.token}` };
     let currentUser = null;
+
+    /* =========================================================
+       ✅ No Address Required helpers
+    ========================================================= */
+    const noAddressCheckbox = document.getElementById("noAddressRequired");
+
+    function getAddressFields() {
+      return [
+        document.querySelector('input[name="postcode"]'),
+        document.querySelector('input[name="address1"]'),
+        document.querySelector('input[name="address2"]'),
+        document.querySelector('input[name="address3"]'),
+      ].filter(Boolean);
+    }
+
+function applyNoAddressMode() {
+  const enabled = !!noAddressCheckbox?.checked;
+
+  const postcodeField = document.querySelector('input[name="postcode"]');
+  const address1Field = document.querySelector('input[name="address1"]');
+  const address2Field = document.querySelector('input[name="address2"]');
+  const address3Field = document.querySelector('input[name="address3"]');
+
+  const addressFields = [
+    postcodeField,
+    address1Field,
+    address2Field,
+    address3Field,
+  ].filter(Boolean);
+
+  addressFields.forEach((field) => {
+    field.required = !enabled;
+    if (enabled) {
+      field.removeAttribute("required");
+      field.setCustomValidity("");
+    } else {
+      if (field === postcodeField || field === address1Field) {
+        field.setAttribute("required", "required");
+      }
+    }
+    field.classList.toggle("address-not-required", enabled);
+  });
+
+  const findBtn = document.getElementById("findAddressBtn");
+  const resultsSelect = document.getElementById("addressResults");
+
+  if (findBtn) {
+    findBtn.disabled = enabled;
+    findBtn.style.pointerEvents = enabled ? "none" : "";
+    findBtn.style.opacity = enabled ? "0.5" : "";
+  }
+
+  if (resultsSelect) {
+    resultsSelect.disabled = enabled;
+    if (enabled) {
+      resultsSelect.classList.add("hidden");
+      resultsSelect.innerHTML = '<option value="">Select an address</option>';
+    }
+  }
+
+  if (enabled) {
+    window.currentCustomerId = null;
+    console.log("🆕 No address required checked — forcing NEW customer creation");
+  }
+}
+
+    if (noAddressCheckbox) {
+      noAddressCheckbox.addEventListener("change", applyNoAddressMode);
+    }
 
     /* === Load Current User === */
     try {
@@ -71,7 +138,9 @@ if (window.location.pathname.includes("/sales/view/")) {
           const salesExecs = data.users.filter(
             (u) =>
               Array.isArray(u.roles) &&
-              u.roles.some((r) => r.name === "Sales Executive" || "Store Manager")
+              u.roles.some(
+                (r) => r.name === "Sales Executive" || r.name === "Store Manager"
+              )
           );
 
           salesExecs.forEach((u) => {
@@ -160,170 +229,171 @@ if (window.location.pathname.includes("/sales/view/")) {
       }
     }
 
-/* === ORDER SUMMARY CALCULATIONS === */
-window.updateOrderSummary = function () {
-  let grossTotal = 0;
-  let discountTotal = 0;
-
-  document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
-    const itemId = (tr.querySelector(".item-internal-id")?.value || "").trim();
-    if (!itemId) return; // ✅ ignore empty placeholder row
-
-    const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
-    const amountGrossLine = parseFloat(
-      tr.querySelector(".item-amount")?.value || 0
-    ); // already full line total
-    const salePriceGrossLine = parseFloat(
-      tr.querySelector(".item-saleprice")?.value || 0
-    ); // already full line total
-    const discountPct = parseFloat(
-      tr.querySelector(".item-discount")?.value || 0
-    );
-
-    if (!qty) return;
-
-    let actualGrossTotal = 0;
-    let defaultGrossTotal = 0;
-
-    // ✅ item-amount is already the gross line total maintained by setupPriceSync()
-    if (Number.isFinite(amountGrossLine) && amountGrossLine > 0) {
-      defaultGrossTotal = amountGrossLine;
-    } else if (Number.isFinite(salePriceGrossLine) && salePriceGrossLine > 0) {
-      defaultGrossTotal = salePriceGrossLine;
+    if (noAddressCheckbox) {
+      noAddressCheckbox.checked = false;
+      applyNoAddressMode();
     }
 
-    // ✅ item-saleprice is already the gross line total, so do NOT multiply by qty again
-    if (Number.isFinite(salePriceGrossLine) && salePriceGrossLine > 0) {
-      actualGrossTotal = salePriceGrossLine;
-    } else if (discountPct > 0 && defaultGrossTotal > 0) {
-      actualGrossTotal = defaultGrossTotal * (1 - discountPct / 100);
-    } else {
-      actualGrossTotal = defaultGrossTotal;
+    /* === ORDER SUMMARY CALCULATIONS === */
+    window.updateOrderSummary = function () {
+      let grossTotal = 0;
+      let discountTotal = 0;
+
+      document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
+        const itemId = (tr.querySelector(".item-internal-id")?.value || "").trim();
+        if (!itemId) return; // ✅ ignore empty placeholder row
+
+        const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
+        const amountGrossLine = parseFloat(
+          tr.querySelector(".item-amount")?.value || 0
+        ); // already full line total
+        const salePriceGrossLine = parseFloat(
+          tr.querySelector(".item-saleprice")?.value || 0
+        ); // already full line total
+        const discountPct = parseFloat(
+          tr.querySelector(".item-discount")?.value || 0
+        );
+
+        if (!qty) return;
+
+        let actualGrossTotal = 0;
+        let defaultGrossTotal = 0;
+
+        if (Number.isFinite(amountGrossLine) && amountGrossLine > 0) {
+          defaultGrossTotal = amountGrossLine;
+        } else if (Number.isFinite(salePriceGrossLine) && salePriceGrossLine > 0) {
+          defaultGrossTotal = salePriceGrossLine;
+        }
+
+        if (Number.isFinite(salePriceGrossLine) && salePriceGrossLine > 0) {
+          actualGrossTotal = salePriceGrossLine;
+        } else if (discountPct > 0 && defaultGrossTotal > 0) {
+          actualGrossTotal = defaultGrossTotal * (1 - discountPct / 100);
+        } else {
+          actualGrossTotal = defaultGrossTotal;
+        }
+
+        actualGrossTotal = Number(actualGrossTotal.toFixed(2));
+        defaultGrossTotal = Number(defaultGrossTotal.toFixed(2));
+
+        grossTotal += actualGrossTotal;
+
+        const discountValue = Math.max(0, defaultGrossTotal - actualGrossTotal);
+        discountTotal += discountValue;
+      });
+
+      grossTotal = Number(grossTotal.toFixed(2));
+      discountTotal = Number(discountTotal.toFixed(2));
+
+      const netTotal = Number((grossTotal / 1.2).toFixed(2));
+      const taxTotal = Number((grossTotal - netTotal).toFixed(2));
+
+      const totalDeposits = deposits.reduce(
+        (sum, d) => sum + (parseFloat(d.amount) || 0),
+        0
+      );
+
+      const outstandingBalance = Number((grossTotal - totalDeposits).toFixed(2));
+
+      document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
+      document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
+      document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
+      document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
+
+      const depositsTotalCell = document.getElementById("depositsTotal");
+      const balanceCell = document.getElementById("outstandingBalance");
+      if (depositsTotalCell) depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
+      if (balanceCell) balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
+
+      window.__grossTotal = grossTotal;
+      window.__outstandingBalance = outstandingBalance;
+
+      console.log("📊 Summary recalculated", {
+        grossTotal,
+        netTotal,
+        taxTotal,
+        discountTotal,
+        totalDeposits,
+        outstandingBalance,
+      });
+    };
+
+    // Recalc triggers
+    document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
+      if (
+        e.target.classList.contains("item-qty") ||
+        e.target.classList.contains("item-discount") ||
+        e.target.classList.contains("item-saleprice")
+      ) {
+        window.updateOrderSummary();
+      }
+    });
+
+    const orderBody = document.getElementById("orderItemsBody");
+    if (orderBody) {
+      const bodyObserver = new MutationObserver(() => window.updateOrderSummary());
+      bodyObserver.observe(orderBody, { childList: true });
     }
 
-    // ✅ round per line before summing to avoid float creep
-    actualGrossTotal = Number(actualGrossTotal.toFixed(2));
-    defaultGrossTotal = Number(defaultGrossTotal.toFixed(2));
+    // ✅ bind deposit popup (inside guard)
+    const addDepositBtn = document.getElementById("addDepositBtn");
 
-    grossTotal += actualGrossTotal;
+    function moneyToNumber(val) {
+      if (val == null) return 0;
+      const cleaned = String(val).replace(/[^0-9.-]/g, "");
+      const n = parseFloat(cleaned);
+      return Number.isFinite(n) ? n : 0;
+    }
 
-    const discountValue = Math.max(0, defaultGrossTotal - actualGrossTotal);
-    discountTotal += discountValue;
-  });
+    if (addDepositBtn) {
+      addDepositBtn.onclick = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
 
-  grossTotal = Number(grossTotal.toFixed(2));
-  discountTotal = Number(discountTotal.toFixed(2));
+        const outstandingText =
+          document.getElementById("outstandingBalance")?.textContent || "";
+        const grandTotalText =
+          document.getElementById("grandTotal")?.textContent || "";
 
-  const netTotal = Number((grossTotal / 1.2).toFixed(2));
-  const taxTotal = Number((grossTotal - netTotal).toFixed(2));
+        let amount = moneyToNumber(outstandingText);
+        if (!(amount > 0)) amount = moneyToNumber(grandTotalText);
 
-  const totalDeposits = deposits.reduce(
-    (sum, d) => sum + (parseFloat(d.amount) || 0),
-    0
-  );
+        if (!(amount > 0)) {
+          amount =
+            Number(window.__outstandingBalance) > 0
+              ? Number(window.__outstandingBalance)
+              : Number(window.__grossTotal) || 0;
+        }
 
-  const outstandingBalance = Number((grossTotal - totalDeposits).toFixed(2));
+        console.log("🧾 outstandingText:", outstandingText);
+        console.log("🧾 grandTotalText:", grandTotalText);
+        console.log("🧾 amount used:", amount);
 
-  document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
-  document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
-  document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
-  document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
+        const url =
+          `${window.location.origin}/deposit.html?amount=` +
+          encodeURIComponent(amount.toFixed(2));
 
-  const depositsTotalCell = document.getElementById("depositsTotal");
-  const balanceCell = document.getElementById("outstandingBalance");
-  if (depositsTotalCell) depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
-  if (balanceCell) balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
+        console.log("🧾 Opening deposit popup:", url);
 
-  // ✅ globals for deposit popup
-  window.__grossTotal = grossTotal;
-  window.__outstandingBalance = outstandingBalance;
+        const win = window.open(
+          url,
+          "AddDeposit",
+          "width=420,height=520,resizable=yes,scrollbars=no"
+        );
 
-  console.log("📊 Summary recalculated", {
-    grossTotal,
-    netTotal,
-    taxTotal,
-    discountTotal,
-    totalDeposits,
-    outstandingBalance,
-  });
-};
+        if (!win) alert("⚠️ Please allow popups for this site to add deposits.");
+        else win.focus();
+      };
+    }
 
-// Recalc triggers
-document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
-  if (
-    e.target.classList.contains("item-qty") ||
-    e.target.classList.contains("item-discount") ||
-    e.target.classList.contains("item-saleprice")
-  ) {
     window.updateOrderSummary();
-  }
-});
-
-const orderBody = document.getElementById("orderItemsBody");
-if (orderBody) {
-  const bodyObserver = new MutationObserver(() => window.updateOrderSummary());
-  bodyObserver.observe(orderBody, { childList: true });
-}
-
-// ✅ bind deposit popup (inside guard)
-const addDepositBtn = document.getElementById("addDepositBtn");
-
-function moneyToNumber(val) {
-  if (val == null) return 0;
-  const cleaned = String(val).replace(/[^0-9.-]/g, "");
-  const n = parseFloat(cleaned);
-  return Number.isFinite(n) ? n : 0;
-}
-
-if (addDepositBtn) {
-  addDepositBtn.onclick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-
-    const outstandingText =
-      document.getElementById("outstandingBalance")?.textContent || "";
-    const grandTotalText =
-      document.getElementById("grandTotal")?.textContent || "";
-
-    let amount = moneyToNumber(outstandingText);
-    if (!(amount > 0)) amount = moneyToNumber(grandTotalText);
-
-    if (!(amount > 0)) {
-      amount =
-        Number(window.__outstandingBalance) > 0
-          ? Number(window.__outstandingBalance)
-          : Number(window.__grossTotal) || 0;
-    }
-
-    console.log("🧾 outstandingText:", outstandingText);
-    console.log("🧾 grandTotalText:", grandTotalText);
-    console.log("🧾 amount used:", amount);
-
-    const url =
-      `${window.location.origin}/deposit.html?amount=` +
-      encodeURIComponent(amount.toFixed(2));
-
-    console.log("🧾 Opening deposit popup:", url);
-
-    const win = window.open(
-      url,
-      "AddDeposit",
-      "width=420,height=520,resizable=yes,scrollbars=no"
-    );
-
-    if (!win) alert("⚠️ Please allow popups for this site to add deposits.");
-    else win.focus();
-  };
-}
-
-window.updateOrderSummary();
-});
+  });
 
   /* === Spinner + Toast Controls (simple) === */
   const form = document.querySelector(".form-scroll");
   const spinner = document.getElementById("orderSpinner");
   const toast = document.getElementById("orderToast");
-  const spinnerText = document.getElementById("orderSpinnerTitle"); // ✅ matches your HTML
+  const spinnerText = document.getElementById("orderSpinnerTitle");
 
   function lockForm() {
     if (form) form.classList.add("locked");
@@ -349,80 +419,101 @@ window.updateOrderSummary();
     }, 3000);
   }
 
-/* =========================================================
-   ✅ Mandatory validations before save
-========================================================= */
-function validateOrderBeforeSave() {
-  const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
+  /* =========================================================
+     ✅ Mandatory validations before save
+  ========================================================= */
+  function validateCustomerBeforeSave() {
+    const firstName = document.querySelector('input[name="firstName"]')?.value.trim() || "";
+    const lastName = document.querySelector('input[name="lastName"]')?.value.trim() || "";
+    const noAddressRequired = !!document.getElementById("noAddressRequired")?.checked;
 
-  const itemRows = rows.filter((r) =>
-    (r.querySelector(".item-internal-id")?.value || "").trim()
-  );
-
-  if (itemRows.length === 0) {
-    alert("⚠️ Please add at least one item to the sales order before saving.");
-    return false;
-  }
-
-  rows.forEach((r) => r.classList.remove("row-error"));
-  rows.forEach((r) => {
-    r.querySelectorAll(".field-error").forEach((el) => el.classList.remove("field-error"));
-  });
-
-  let ok = true;
-  const errors = [];
-
-  itemRows.forEach((row, idx) => {
-    const lineNo = row.getAttribute("data-line") ?? String(idx + 1);
-
-    const itemClass = (row.dataset.itemClass || "").trim().toLowerCase();
-    const isService = itemClass === "service";
-
-    const fulfilSel = row.querySelector(".item-fulfilment");
-    const fulfilId = (fulfilSel?.value || "").trim();
-    const fulfilText =
-      fulfilSel?.options?.[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() || "";
-
-    // ✅ Service lines do not require fulfilment method
-    if (!isService && !fulfilId) {
-      ok = false;
-      errors.push(`• Line ${lineNo}: Fulfilment Method is required.`);
-      row.classList.add("row-error");
-      if (fulfilSel) fulfilSel.classList.add("field-error");
+    if (!firstName || !lastName) {
+      alert("⚠️ First Name and Last Name are required.");
+      return false;
     }
 
-    // ✅ Only non-service lines should require inventory detail
-    const requiresInv =
-      !isService && (fulfilText === "warehouse" || fulfilText === "in store");
+    if (!noAddressRequired) {
+      const postcode = document.querySelector('input[name="postcode"]')?.value.trim() || "";
+      const address1 = document.querySelector('input[name="address1"]')?.value.trim() || "";
 
-    if (requiresInv) {
-      const invHidden = row.querySelector(".item-inv-detail");
-      const invHasValue = !!(invHidden?.value || "").trim();
-
-      const hasLot = !!(row.dataset.lotnumber || "").trim();
-      const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
-
-      if (!invHasValue && !hasLot && !hasMeta) {
-        ok = false;
-        errors.push(
-          `• Line ${lineNo}: Inventory Detail is required for "${
-            fulfilText === "warehouse" ? "Warehouse" : "In Store"
-          }".`
-        );
-        row.classList.add("row-error");
-
-        const invCell = row.querySelector(".inventory-cell");
-        if (invCell) invCell.classList.add("field-error");
+      if (!postcode || !address1) {
+        alert("⚠️ Postcode and Address Line 1 are required unless 'No address required' is checked.");
+        return false;
       }
     }
-  });
 
-  if (!ok) {
-    alert("Please fix the following before saving:\n\n" + errors.join("\n"));
+    return true;
   }
 
-  return ok;
-}
+  function validateOrderBeforeSave() {
+    const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
+
+    const itemRows = rows.filter((r) =>
+      (r.querySelector(".item-internal-id")?.value || "").trim()
+    );
+
+    if (itemRows.length === 0) {
+      alert("⚠️ Please add at least one item to the sales order before saving.");
+      return false;
+    }
+
+    rows.forEach((r) => r.classList.remove("row-error"));
+    rows.forEach((r) => {
+      r.querySelectorAll(".field-error").forEach((el) => el.classList.remove("field-error"));
+    });
+
+    let ok = true;
+    const errors = [];
+
+    itemRows.forEach((row, idx) => {
+      const lineNo = row.getAttribute("data-line") ?? String(idx + 1);
+
+      const itemClass = (row.dataset.itemClass || "").trim().toLowerCase();
+      const isService = itemClass === "service";
+
+      const fulfilSel = row.querySelector(".item-fulfilment");
+      const fulfilId = (fulfilSel?.value || "").trim();
+      const fulfilText =
+        fulfilSel?.options?.[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() || "";
+
+      if (!isService && !fulfilId) {
+        ok = false;
+        errors.push(`• Line ${lineNo}: Fulfilment Method is required.`);
+        row.classList.add("row-error");
+        if (fulfilSel) fulfilSel.classList.add("field-error");
+      }
+
+      const requiresInv =
+        !isService && (fulfilText === "warehouse" || fulfilText === "in store");
+
+      if (requiresInv) {
+        const invHidden = row.querySelector(".item-inv-detail");
+        const invHasValue = !!(invHidden?.value || "").trim();
+
+        const hasLot = !!(row.dataset.lotnumber || "").trim();
+        const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
+
+        if (!invHasValue && !hasLot && !hasMeta) {
+          ok = false;
+          errors.push(
+            `• Line ${lineNo}: Inventory Detail is required for "${
+              fulfilText === "warehouse" ? "Warehouse" : "In Store"
+            }".`
+          );
+          row.classList.add("row-error");
+
+          const invCell = row.querySelector(".inventory-cell");
+          if (invCell) invCell.classList.add("field-error");
+        }
+      }
+    });
+
+    if (!ok) {
+      alert("Please fix the following before saving:\n\n" + errors.join("\n"));
+    }
+
+    return ok;
+  }
 
   /* === SAVE ORDER HANDLER (simple spinner only) === */
   document.addEventListener("click", async (e) => {
@@ -432,16 +523,30 @@ function validateOrderBeforeSave() {
     ) {
       e.preventDefault();
 
+      if (!validateCustomerBeforeSave()) return;
       if (!validateOrderBeforeSave()) return;
 
+      const noAddressRequired =
+        !!document.getElementById("noAddressRequired")?.checked;
+
+      if (noAddressRequired) {
+        const confirmed = window.confirm(
+          "You are opting create this sale without an Address - This will create a new customer for this sale"
+        );
+
+        if (!confirmed) return;
+      }
+
       const customer = {
-        id: window.currentCustomerId || null,
+        id: noAddressRequired ? null : window.currentCustomerId || null,
+        noAddressRequired,
         title: document.querySelector('select[name="title"]').value,
         firstName: document.querySelector('input[name="firstName"]').value,
         lastName: document.querySelector('input[name="lastName"]').value,
         postcode: document.querySelector('input[name="postcode"]').value,
         address1: document.querySelector('input[name="address1"]').value,
         address2: document.querySelector('input[name="address2"]').value,
+        address3: document.querySelector('input[name="address3"]').value,
         contactNumber: document.querySelector('input[name="contactNumber"]').value,
         altContactNumber: document.querySelector('input[name="altContactNumber"]').value,
         email: document.querySelector('input[name="email"]').value,
@@ -468,7 +573,6 @@ function validateOrderBeforeSave() {
           const lotnumber = tr.dataset.lotnumber || "";
           const inventoryMeta = tr.dataset.inventoryMeta || "";
 
-          // ✅ 60 Night Trial (per-line)
           const trialSel = tr.querySelector(".sixty-night-select");
           const trialOption = (trialSel?.value || "").trim();
 
@@ -486,12 +590,12 @@ function validateOrderBeforeSave() {
         .filter((line) => line !== null);
 
       const body = { customer, order, items, deposits };
+      console.log("🏷 noAddressRequired:", noAddressRequired);
       console.log("💰 Including deposits in payload:", deposits);
       await submitOrder(body);
     }
   });
 
-  // public/js/salesNew.js
   async function submitOrder(orderPayload) {
     try {
       lockForm();

@@ -253,15 +253,17 @@ router.post("/create", async (req, res) => {
     }
 
     const { customer, order, items } = req.body;
-    let customerId = customer?.id || null;
+    let customerId = customer?.noAddressRequired ? null : customer?.id || null;
 
     /* ======================================================
        1️⃣ CREATE CUSTOMER IF NEEDED
     ====================================================== */
     if (!customerId) {
+      const noAddressRequired = customer?.noAddressRequired === true;
+
       const custBody = {
         entityStatus: { id: "13" },
-        companyName: `${customer.firstName} ${customer.lastName}`,
+        companyName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
         custentity_title: customer.title,
         firstName: customer.firstName,
         lastName: customer.lastName,
@@ -270,21 +272,29 @@ router.post("/create", async (req, res) => {
         altPhone: customer.altContactNumber,
         subsidiary: { id: "1" },
         isPerson: true,
-        addressbook: {
+      };
+
+      if (!noAddressRequired) {
+        custBody.addressbook = {
           items: [
             {
               defaultShipping: true,
               defaultBilling: true,
               label: "Main Address",
               addressbookAddress: {
-                addr1: customer.address1,
-                addr2: customer.address2,
-                zip: customer.postcode,
+                addr1: customer.address1 || "",
+                addr2: customer.address2 || "",
+                addr3: customer.address3 || "",
+                zip: customer.postcode || "",
               },
             },
           ],
-        },
-      };
+        };
+      } else {
+        console.log(
+          "🏷 No address required enabled — creating NEW customer without addressbook"
+        );
+      }
 
       console.log("🧾 Creating new customer:", JSON.stringify(custBody, null, 2));
       const newCustomer = await nsPost("/customer", custBody, userId, "sb");
