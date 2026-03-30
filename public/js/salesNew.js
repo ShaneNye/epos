@@ -445,75 +445,109 @@ function applyNoAddressMode() {
     return true;
   }
 
-  function validateOrderBeforeSave() {
-    const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
+function validateOrderBeforeSave() {
+  const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
 
-    const itemRows = rows.filter((r) =>
-      (r.querySelector(".item-internal-id")?.value || "").trim()
-    );
+  const itemRows = rows.filter((r) =>
+    (r.querySelector(".item-internal-id")?.value || "").trim()
+  );
 
-    if (itemRows.length === 0) {
-      alert("⚠️ Please add at least one item to the sales order before saving.");
-      return false;
+  if (itemRows.length === 0) {
+    alert("⚠️ Please add at least one item to the sales order before saving.");
+    return false;
+  }
+
+  rows.forEach((r) => r.classList.remove("row-error"));
+  rows.forEach((r) => {
+    r.querySelectorAll(".field-error").forEach((el) => el.classList.remove("field-error"));
+  });
+
+  let ok = true;
+  const errors = [];
+
+  itemRows.forEach((row, idx) => {
+    const lineNo = row.getAttribute("data-line") ?? String(idx + 1);
+
+    const itemClass = (row.dataset.itemClass || "").trim().toLowerCase();
+    const isService = itemClass === "service";
+
+    const fulfilSel = row.querySelector(".item-fulfilment");
+    const fulfilId = (fulfilSel?.value || "").trim();
+    const fulfilText =
+      fulfilSel?.options?.[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() || "";
+
+    if (!isService && !fulfilId) {
+      ok = false;
+      errors.push(`• Line ${lineNo}: Fulfilment Method is required.`);
+      row.classList.add("row-error");
+      if (fulfilSel) fulfilSel.classList.add("field-error");
     }
 
-    rows.forEach((r) => r.classList.remove("row-error"));
-    rows.forEach((r) => {
-      r.querySelectorAll(".field-error").forEach((el) => el.classList.remove("field-error"));
-    });
+    // ✅ If the row has an Options button, require some saved options value
+    const hasOptionsButton = !!row.querySelector(".open-options");
 
-    let ok = true;
-    const errors = [];
+    if (hasOptionsButton) {
+      const optionsJson = (row.querySelector(".item-options-json")?.value || "").trim();
+      const optionsSummary = (row.querySelector(".options-summary")?.innerText || "").trim();
 
-    itemRows.forEach((row, idx) => {
-      const lineNo = row.getAttribute("data-line") ?? String(idx + 1);
+      let hasJsonValue = false;
 
-      const itemClass = (row.dataset.itemClass || "").trim().toLowerCase();
-      const isService = itemClass === "service";
+      if (optionsJson && optionsJson !== "{}") {
+        try {
+          const parsed = JSON.parse(optionsJson);
 
-      const fulfilSel = row.querySelector(".item-fulfilment");
-      const fulfilId = (fulfilSel?.value || "").trim();
-      const fulfilText =
-        fulfilSel?.options?.[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() || "";
-
-      if (!isService && !fulfilId) {
-        ok = false;
-        errors.push(`• Line ${lineNo}: Fulfilment Method is required.`);
-        row.classList.add("row-error");
-        if (fulfilSel) fulfilSel.classList.add("field-error");
-      }
-
-      const requiresInv =
-        !isService && (fulfilText === "warehouse" || fulfilText === "in store");
-
-      if (requiresInv) {
-        const invHidden = row.querySelector(".item-inv-detail");
-        const invHasValue = !!(invHidden?.value || "").trim();
-
-        const hasLot = !!(row.dataset.lotnumber || "").trim();
-        const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
-
-        if (!invHasValue && !hasLot && !hasMeta) {
-          ok = false;
-          errors.push(
-            `• Line ${lineNo}: Inventory Detail is required for "${
-              fulfilText === "warehouse" ? "Warehouse" : "In Store"
-            }".`
-          );
-          row.classList.add("row-error");
-
-          const invCell = row.querySelector(".inventory-cell");
-          if (invCell) invCell.classList.add("field-error");
+          hasJsonValue = Object.values(parsed).some((val) => {
+            if (Array.isArray(val)) return val.length > 0;
+            return !!String(val || "").trim();
+          });
+        } catch (err) {
+          hasJsonValue = false;
         }
       }
-    });
 
-    if (!ok) {
-      alert("Please fix the following before saving:\n\n" + errors.join("\n"));
+      const hasSummaryValue = !!optionsSummary;
+
+      if (!hasJsonValue && !hasSummaryValue) {
+        ok = false;
+        errors.push(`• Line ${lineNo}: Item Options must be selected.`);
+        row.classList.add("row-error");
+
+        const optCell = row.querySelector(".options-cell");
+        if (optCell) optCell.classList.add("field-error");
+      }
     }
 
-    return ok;
+    const requiresInv =
+      !isService && (fulfilText === "warehouse" || fulfilText === "in store");
+
+    if (requiresInv) {
+      const invHidden = row.querySelector(".item-inv-detail");
+      const invHasValue = !!(invHidden?.value || "").trim();
+
+      const hasLot = !!(row.dataset.lotnumber || "").trim();
+      const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
+
+      if (!invHasValue && !hasLot && !hasMeta) {
+        ok = false;
+        errors.push(
+          `• Line ${lineNo}: Inventory Detail is required for "${
+            fulfilText === "warehouse" ? "Warehouse" : "In Store"
+          }".`
+        );
+        row.classList.add("row-error");
+
+        const invCell = row.querySelector(".inventory-cell");
+        if (invCell) invCell.classList.add("field-error");
+      }
+    }
+  });
+
+  if (!ok) {
+    alert("Please fix the following before saving:\n\n" + errors.join("\n"));
   }
+
+  return ok;
+}
 
   /* === SAVE ORDER HANDLER (simple spinner only) === */
   document.addEventListener("click", async (e) => {
