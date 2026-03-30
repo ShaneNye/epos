@@ -4,6 +4,7 @@ const router = express.Router();
 const pool = require("../db");
 const { getSession } = require("../sessions");
 const { nsPost, nsGet, nsPostRaw, nsPatch } = require("../netsuiteClient");
+const fetch = require("node-fetch");
 
 /* =====================================================
    Helpers
@@ -141,10 +142,18 @@ router.post("/create", async (req, res) => {
       subsidiary: storeNsId ? { id: String(storeNsId) } : undefined,
       location: invoiceLocationId ? { id: String(invoiceLocationId) } : undefined,
       leadsource: order?.leadSource ? { id: String(order.leadSource) } : undefined,
-      custbody_sb_paymentinfo: order?.paymentInfo ? { id: String(order.paymentInfo) } : undefined,
-      custbody_sb_bedspecialist: salesExecNsId ? { id: String(salesExecNsId) } : undefined,
-      custbody_sb_warehouse: order?.warehouse ? { id: String(order.warehouse) } : undefined,
-      custbody_sb_primarystore: storeNsId ? { id: String(storeNsId) } : undefined,
+      custbody_sb_paymentinfo: order?.paymentInfo
+        ? { id: String(order.paymentInfo) }
+        : undefined,
+      custbody_sb_bedspecialist: salesExecNsId
+        ? { id: String(salesExecNsId) }
+        : undefined,
+      custbody_sb_warehouse: order?.warehouse
+        ? { id: String(order.warehouse) }
+        : undefined,
+      custbody_sb_primarystore: storeNsId
+        ? { id: String(storeNsId) }
+        : undefined,
       item: {
         items: (items || []).map((i) => ({
           item: { id: String(i.item) },
@@ -154,11 +163,18 @@ router.post("/create", async (req, res) => {
           ...(i.fulfilmentMethod && {
             custcol_sb_fulfilmentlocation: { id: String(i.fulfilmentMethod) },
           }),
+          ...(i.taxCode && {
+            taxCode: { id: String(i.taxCode) },
+          }),
         })),
       },
     };
 
-    console.log("🧾 Quote payload for NetSuite:", JSON.stringify(estimateBody, null, 2));
+    console.log(
+      "🧾 Quote payload for NetSuite:",
+      JSON.stringify(estimateBody, null, 2)
+    );
+
     const quoteRes = await nsPost("/estimate", estimateBody, userId, "sb");
     console.log("✅ Quote created successfully:", quoteRes);
 
@@ -224,7 +240,10 @@ router.get("/:id", async (req, res) => {
           title: expandedEntity.custentity_title,
         });
       } catch (err) {
-        console.warn(`⚠️ Could not expand entity ${quote.entity.id}:`, err.message);
+        console.warn(
+          `⚠️ Could not expand entity ${quote.entity.id}:`,
+          err.message
+        );
       }
     }
 
@@ -234,7 +253,7 @@ router.get("/:id", async (req, res) => {
 
     /* -----------------------------------------------------
        Expand Item Lines via SuiteQL
-       Use only fields exposed to SuiteQL SEARCH
+       Preserve tax code so PATCH replace=item can resend it
     ----------------------------------------------------- */
     const query = `
       SELECT
@@ -246,6 +265,7 @@ router.get("/:id", async (req, res) => {
         t.grossamt,
         t.tax1amt,
         t.rate,
+        t.taxcode,
         t.custcol_sb_itemoptionsdisplay AS options,
         t.custcol_sb_fulfilmentlocation
       FROM transactionline t
@@ -271,8 +291,7 @@ router.get("/:id", async (req, res) => {
 
         const saleNet = Math.abs(Number(r.netamount) || 0);
         const saleGross =
-          Math.abs(Number(r.grossamt) || 0) ||
-          +(saleNet * 1.2).toFixed(2);
+          Math.abs(Number(r.grossamt) || 0) || +(saleNet * 1.2).toFixed(2);
 
         const vat =
           Math.abs(Number(r.tax1amt) || 0) ||
@@ -289,6 +308,7 @@ router.get("/:id", async (req, res) => {
           vat,
           saleprice: +saleGross.toFixed(2),
           retailNetPerUnit: +retailNetPerUnit.toFixed(2),
+          taxCode: r.taxcode ? String(r.taxcode) : "",
           custcol_sb_itemoptionsdisplay: r.options || "",
           custcol_sb_fulfilmentlocation: r.custcol_sb_fulfilmentlocation || null,
         };
@@ -306,6 +326,89 @@ router.get("/:id", async (req, res) => {
   }
 });
 
+
+/* =====================================================
+   === SAVE QUOTE (RESTlet, NO replace=item) ===========
+===================================================== */
+router.post("/:id/save", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { updates = [], headerUpdates = {} } = req.body;
+
+    console.log(`💾 Saving Quote ${id} via NetSuite RESTlet`);
+    console.log("📦 Incoming updates:", JSON.stringify(updates, null, 2));
+    console.log("🧾 Incoming headerUpdates:", JSON.stringify(headerUpdates, null, 2));
+
+    if (!id || !Array.isArray(updates)) {
+      return res
+        .status(400)
+        .json({ ok: false, error: "Missing Quote ID or updates array." });
+    }
+
+    const userId = await resolveUserIdFromAuth(req);
+    console.log("🔐 Quote save request for user:", userId);
+
+  const restletUrl =
+  `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl` +
+  `?script=${process.env.NS_QUOTE_SAVE_RESTLET_SCRIPT}` +
+  `&deploy=${process.env.NS_QUOTE_SAVE_RESTLET_DEPLOY}`;
+
+    if (!process.env.NS_QUOTE_SAVE_RESTLET_SCRIPT || !process.env.NS_QUOTE_SAVE_RESTLET_DEPLOY) {
+      throw new Error("Missing NS_QUOTE_SAVE_RESTLET_SCRIPT or NS_QUOTE_SAVE_RESTLET_DEPLOY in environment");
+    }
+
+    const { getAuthHeader } = require("../netsuiteClient");
+    const authHeader = await getAuthHeader(restletUrl, "POST", userId, "sb");
+
+    const response = await fetch(restletUrl, {
+      method: "POST",
+      headers: {
+        ...authHeader,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        id: String(id),
+        updates,
+        headerUpdates,
+        commit: false,
+      }),
+    });
+
+    const text = await response.text();
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = { raw: text };
+    }
+
+    if (!response.ok || !data.ok) {
+      console.error("❌ Quote RESTlet returned error:", text);
+      return res.status(500).json({
+        ok: false,
+        error: data?.error || "NetSuite Quote RESTlet call failed",
+        raw: text,
+      });
+    }
+
+    console.log(`✅ Quote ${id} saved via RESTlet`);
+
+    return res.json({
+      ok: true,
+      message: data.message || "Quote saved successfully",
+      restletResult: data,
+    });
+  } catch (err) {
+    console.error("❌ Save Quote failed:", err);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Unexpected server error",
+    });
+  }
+});
+
+
 /* =====================================================
    === UPDATE QUOTE (Estimate) ==========================
 ===================================================== */
@@ -322,49 +425,129 @@ router.patch("/:id", async (req, res) => {
     const existingQuote = await nsGet(`/estimate/${id}`, userId, "sb");
     if (!existingQuote) throw new Error("Quote not found");
 
+    /* -----------------------------------------------------
+       Pull current line metadata from NetSuite so we can
+       preserve required fields like taxCode when doing
+       PATCH ?replace=item
+    ----------------------------------------------------- */
+    const existingLinesQuery = `
+      SELECT
+        t.id AS lineid,
+        t.item,
+        t.taxcode,
+        t.custcol_sb_itemoptionsdisplay AS options,
+        t.custcol_sb_fulfilmentlocation
+      FROM transactionline t
+      WHERE t.transaction = ${id}
+        AND t.mainline = 'F'
+        AND t.taxline = 'F'
+      ORDER BY t.linesequencenumber
+    `;
+
+    const existingLinesRes = await nsPostRaw(
+      `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
+      { q: existingLinesQuery },
+      userId,
+      "sb"
+    );
+
+    const existingLines = Array.isArray(existingLinesRes?.items)
+      ? existingLinesRes.items
+      : [];
+
+    const existingByIndex = existingLines.map((line) => ({
+      lineId: line.lineid ? String(line.lineid) : "",
+      itemId: line.item ? String(line.item) : "",
+      taxCode: line.taxcode ? String(line.taxcode) : "",
+      options: line.options || "",
+      fulfilmentMethod: line.custcol_sb_fulfilmentlocation
+        ? String(line.custcol_sb_fulfilmentlocation)
+        : "",
+    }));
+
     const salesExecNsId = await resolveSalesExecNsId(order.salesExec);
     const { storeNsId, invoiceLocationId } = await resolveStoreData(order.store);
 
-const patchBody = {
-  leadsource: order.leadSource ? { id: String(order.leadSource) } : undefined,
-  custbody_sb_paymentinfo: order.paymentInfo ? { id: String(order.paymentInfo) } : undefined,
-  custbody_sb_bedspecialist: salesExecNsId ? { id: String(salesExecNsId) } : undefined,
-  custbody_sb_warehouse: order.warehouse ? { id: String(order.warehouse) } : undefined,
-  custbody_sb_primarystore: storeNsId ? { id: String(storeNsId) } : undefined,
-  location: invoiceLocationId ? { id: String(invoiceLocationId) } : undefined,
-  subsidiary: storeNsId ? { id: String(storeNsId) } : undefined,
-  item: {
-    items: (items || []).map((i) => {
-      const qty = Number(i.quantity) || 1;
+    const patchBody = {
+      leadsource: order.leadSource
+        ? { id: String(order.leadSource) }
+        : undefined,
+      custbody_sb_paymentinfo: order.paymentInfo
+        ? { id: String(order.paymentInfo) }
+        : undefined,
+      custbody_sb_bedspecialist: salesExecNsId
+        ? { id: String(salesExecNsId) }
+        : undefined,
+      custbody_sb_warehouse: order.warehouse
+        ? { id: String(order.warehouse) }
+        : undefined,
+      custbody_sb_primarystore: storeNsId
+        ? { id: String(storeNsId) }
+        : undefined,
+      location: invoiceLocationId
+        ? { id: String(invoiceLocationId) }
+        : undefined,
+      subsidiary: storeNsId
+        ? { id: String(storeNsId) }
+        : undefined,
+      item: {
+        items: (items || []).map((i, index) => {
+          const qty = Number(i.quantity) || 1;
 
-      const grossToSave =
-        i.saleprice !== undefined &&
-        i.saleprice !== null &&
-        i.saleprice !== ""
-          ? Number(i.saleprice)
-          : Number(i.amount || 0);
+          const grossToSave =
+            i.saleprice !== undefined &&
+            i.saleprice !== null &&
+            i.saleprice !== ""
+              ? Number(i.saleprice)
+              : Number(i.amount || 0);
 
-      const netLineTotal = +(grossToSave / 1.2).toFixed(2);
-      const netUnitRate = qty > 0 ? +(netLineTotal / qty).toFixed(2) : 0;
+          const netLineTotal = +(grossToSave / 1.2).toFixed(2);
+          const netUnitRate =
+            qty > 0 ? +(netLineTotal / qty).toFixed(2) : 0;
 
-      return {
-        item: { id: String(i.item) },
-        quantity: qty,
-        price: { id: "-1" },
-        rate: netUnitRate,
-        amount: netLineTotal,
-        custcol_sb_itemoptionsdisplay: i.options || "",
-        ...(i.fulfilmentMethod && {
-          custcol_sb_fulfilmentlocation: { id: String(i.fulfilmentMethod) },
+          const existingLine = existingByIndex[index] || null;
+
+          const taxCode =
+            i.taxCode ||
+            existingLine?.taxCode ||
+            "";
+
+          const fulfilmentMethod =
+            i.fulfilmentMethod ||
+            existingLine?.fulfilmentMethod ||
+            "";
+
+          const optionsValue =
+            i.options !== undefined
+              ? i.options
+              : existingLine?.options || "";
+
+          return {
+            item: { id: String(i.item) },
+            quantity: qty,
+            price: { id: "-1" },
+            rate: netUnitRate,
+            amount: netLineTotal,
+            ...(taxCode && {
+              taxCode: { id: String(taxCode) },
+            }),
+            custcol_sb_itemoptionsdisplay: optionsValue || "",
+            ...(fulfilmentMethod && {
+              custcol_sb_fulfilmentlocation: { id: String(fulfilmentMethod) },
+            }),
+          };
         }),
-      };
-    }),
-  },
-};
+      },
+    };
 
     console.log("🧾 Quote PATCH payload:", JSON.stringify(patchBody, null, 2));
 
-    const result = await nsPatch(`/estimate/${id}?replace=item`, patchBody, userId, "sb");
+    const result = await nsPatch(
+      `/estimate/${id}?replace=item`,
+      patchBody,
+      userId,
+      "sb"
+    );
 
     return res.json({
       ok: true,
@@ -396,6 +579,7 @@ router.post("/:id/convert", async (req, res) => {
         item,
         quantity,
         rate,
+        taxcode,
         custcol_sb_itemoptionsdisplay AS options,
         custcol_sb_fulfilmentlocation
       FROM transactionline
@@ -419,9 +603,14 @@ router.post("/:id/convert", async (req, res) => {
       item: { id: String(line.item) },
       quantity: Number(line.quantity) || 1,
       rate: Number(line.rate) || 0,
+      ...(line.taxcode && {
+        taxCode: { id: String(line.taxcode) },
+      }),
       custcol_sb_itemoptionsdisplay: line.options || "",
       ...(line.custcol_sb_fulfilmentlocation && {
-        custcol_sb_fulfilmentlocation: { id: String(line.custcol_sb_fulfilmentlocation) },
+        custcol_sb_fulfilmentlocation: {
+          id: String(line.custcol_sb_fulfilmentlocation),
+        },
       }),
     }));
 

@@ -544,6 +544,75 @@ function bindQuoteItemTableEvents() {
 }
 
 /* =========================================================
+   Build RESTlet save payload
+========================================================= */
+function buildQuoteSavePayload() {
+  const items =
+    typeof window.collectEditableQuoteLines === "function"
+      ? window.collectEditableQuoteLines()
+      : [];
+
+  const qtySafe = (v) => {
+    const n = Number(v);
+    return Number.isFinite(n) && n > 0 ? n : 1;
+  };
+
+  const storeSelect = document.getElementById("store");
+  const salesExecSelect = document.getElementById("salesExec");
+
+  const updates = items.map((i) => {
+    const qty = qtySafe(i.quantity);
+
+    const grossToSave =
+      i.saleprice !== undefined &&
+      i.saleprice !== null &&
+      i.saleprice !== ""
+        ? Number(i.saleprice)
+        : Number(i.amount || 0);
+
+    const netLineTotal = +(grossToSave / 1.2).toFixed(2);
+    const netUnitRate = qty > 0 ? +(netLineTotal / qty).toFixed(2) : 0;
+
+    let optionsText = i.options || "";
+
+    if (!optionsText && i.optionsJson) {
+      try {
+        const parsed = JSON.parse(i.optionsJson || "{}");
+        const parts = [];
+        Object.entries(parsed).forEach(([k, v]) => {
+          if (Array.isArray(v)) parts.push(`${k}: ${v.join(", ")}`);
+          else if (v) parts.push(`${k}: ${v}`);
+        });
+        optionsText = parts.join("\n");
+      } catch {
+        // ignore bad JSON
+      }
+    }
+
+    return {
+      lineId: i.lineId || "",
+      itemId: String(i.item),
+      quantity: qty,
+      rate: netUnitRate,
+      amount: netLineTotal,
+      options: optionsText || "",
+      trialOption: i.trialOption || "N/A",
+    };
+  });
+
+  return {
+    updates,
+    headerUpdates: {
+      salesExec: salesExecSelect?.value || "",
+      store: storeSelect?.value || "",
+      leadSource: document.querySelector('select[name="leadSource"]')?.value || "",
+      paymentInfo: document.getElementById("paymentInfo")?.value || "",
+      warehouse: document.getElementById("warehouse")?.value || "",
+    },
+  };
+}
+
+/* =========================================================
    Quote action buttons
 ========================================================= */
 function updateActionButtonForQuote() {
@@ -580,39 +649,17 @@ function updateActionButtonForQuote() {
       showConvertSpinner(true, "Saving quote...");
       showToast?.("⏳ Saving quote...", "success");
 
-      const payload = {
-        customer: {
-          title: document.querySelector('select[name="title"]')?.value || "",
-          firstName: document.querySelector('input[name="firstName"]')?.value?.trim() || "",
-          lastName: document.querySelector('input[name="lastName"]')?.value?.trim() || "",
-          email: document.querySelector('input[name="email"]')?.value?.trim() || "",
-          contactNumber:
-            document.querySelector('input[name="contactNumber"]')?.value?.trim() || "",
-          altContactNumber:
-            document.querySelector('input[name="altContactNumber"]')?.value?.trim() || "",
-          address1: document.querySelector('input[name="address1"]')?.value?.trim() || "",
-          address2: document.querySelector('input[name="address2"]')?.value?.trim() || "",
-          address3: document.querySelector('input[name="address3"]')?.value?.trim() || "",
-          postcode: document.querySelector('input[name="postcode"]')?.value?.trim() || "",
-        },
-        order: {
-          salesExec: document.getElementById("salesExec")?.value || "",
-          store: document.getElementById("store")?.value || "",
-          leadSource: document.querySelector('select[name="leadSource"]')?.value || "",
-          paymentInfo: document.getElementById("paymentInfo")?.value || "",
-          warehouse: document.getElementById("warehouse")?.value || "",
-        },
-        items:
-          typeof window.collectEditableQuoteLines === "function"
-            ? window.collectEditableQuoteLines()
-            : [],
-      };
+      const payload = buildQuoteSavePayload();
+      console.log("🧾 Quote save payload:", payload);
 
-      const res = await fetch(`/api/netsuite/quote/${encodeURIComponent(quoteIdOrTran)}`, {
-        method: "PATCH",
-        headers,
-        body: JSON.stringify(payload),
-      });
+      const res = await fetch(
+        `/api/netsuite/quote/${encodeURIComponent(quoteIdOrTran)}/save`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+        }
+      );
 
       const data = await res.json();
 
@@ -826,10 +873,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     const storeEl = document.getElementById("store");
-if (storeEl) {
-  storeEl.disabled = true;
-  storeEl.classList.add("locked-input");
-}
+    if (storeEl) {
+      storeEl.disabled = true;
+      storeEl.classList.add("locked-input");
+    }
 
     const tbody = document.getElementById("orderItemsBody");
     tbody.innerHTML = "";

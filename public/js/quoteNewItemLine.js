@@ -780,15 +780,31 @@ function addNewRow() {
 
     <td class="options-cell"></td>
 
-    <td><input type="number" class="item-qty" value="1" min="1" step="1" /></td>
+    <td>
+      <input type="number" class="item-qty" value="1" min="1" step="1" />
+    </td>
 
-    <td><input type="number" class="item-amount" placeholder="£" step="0.01" readonly /></td>
+    <td>
+      <input type="number" class="item-amount" placeholder="£" step="0.01" readonly />
+    </td>
 
-    <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" /></td>
+    <td>
+      <input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" />
+    </td>
 
-    <td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
+    <td>
+      <input type="number" class="item-vat" placeholder="£" step="0.01" readonly />
+    </td>
 
-    <td><button type="button" class="delete-row btn-secondary small-btn">🗑</button></td>
+    <td>
+      <input type="number" class="item-saleprice" placeholder="£" step="0.01" />
+    </td>
+
+    <td class="sixty-night-cell" style="display:none;"></td>
+
+    <td>
+      <button type="button" class="delete-row btn-secondary small-btn">🗑</button>
+    </td>
   `;
 
   tbody.appendChild(tr);
@@ -799,12 +815,34 @@ function addNewRow() {
   setupAutocompleteForRow(tr);
   setupPriceSync(tr);
 
+  const recalcVat = () => {
+    const saleVal = parseMoneyInput(tr.querySelector(".item-saleprice")?.value);
+    const vatField = tr.querySelector(".item-vat");
+    if (vatField) vatField.value = (saleVal - saleVal / 1.2).toFixed(2);
+  };
+
+  tr.querySelector(".item-qty")?.addEventListener("input", () => {
+    recalcVat();
+    recalcTotals();
+  });
+
+  tr.querySelector(".item-discount")?.addEventListener("input", () => {
+    recalcVat();
+    recalcTotals();
+  });
+
+  tr.querySelector(".item-saleprice")?.addEventListener("input", () => {
+    recalcVat();
+    recalcTotals();
+  });
+
   tr.querySelector(".delete-row")?.addEventListener("click", () => {
     tr.remove();
     update60NightTrialColumnVisibility();
     recalcTotals();
   });
 
+  recalcVat();
   recalcTotals();
 }
 
