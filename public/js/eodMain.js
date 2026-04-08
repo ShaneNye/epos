@@ -313,33 +313,38 @@ async function initDailyBalancing() {
     });
   }
 
-  function setEodReadOnly(locked) {
-    isEodLocked = locked;
+function setEodReadOnly(locked) {
+  isEodLocked = locked;
 
-    document.getElementById("openFootfallBtn")?.toggleAttribute("disabled", locked);
-    document.getElementById("completeFootfallBtn")?.toggleAttribute("disabled", locked);
-    storeSelect?.toggleAttribute("disabled", locked);
-    document.getElementById("openAdjustmentBtn")?.toggleAttribute("disabled", locked);
+  document.getElementById("openFootfallBtn")?.toggleAttribute("disabled", locked);
+  document.getElementById("completeFootfallBtn")?.toggleAttribute("disabled", locked);
 
-    document.querySelectorAll(".safe-input, .float-input").forEach((el) => {
-      el.toggleAttribute("disabled", locked);
-    });
-
-    signoffUserSelect?.toggleAttribute("disabled", locked);
-    signoffConfirm?.toggleAttribute("disabled", locked);
-
-    if (signoffSubmitBtn) {
-      if (locked) {
-        signoffSubmitBtn.disabled = true;
-      } else {
-        updateSubmitState();
-      }
-    }
-
-    document.body.classList.toggle("eod-readonly", locked);
-
-    refreshPrintButton();
+  // ✅ Keep store selector available even when current store is locked
+  if (storeSelect) {
+    storeSelect.removeAttribute("disabled");
   }
+
+  document.getElementById("openAdjustmentBtn")?.toggleAttribute("disabled", locked);
+
+  document.querySelectorAll(".safe-input, .float-input").forEach((el) => {
+    el.toggleAttribute("disabled", locked);
+  });
+
+  signoffUserSelect?.toggleAttribute("disabled", locked);
+  signoffConfirm?.toggleAttribute("disabled", locked);
+
+  if (signoffSubmitBtn) {
+    if (locked) {
+      signoffSubmitBtn.disabled = true;
+    } else {
+      updateSubmitState();
+    }
+  }
+
+  document.body.classList.toggle("eod-readonly", locked);
+
+  refreshPrintButton();
+}
 
   async function checkTodayLock(storeId) {
     if (!storeId) return { ok: true, exists: false };
