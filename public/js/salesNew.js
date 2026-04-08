@@ -51,6 +51,7 @@ if (window.location.pathname.includes("/sales/view/")) {
         document.querySelector('input[name="address1"]'),
         document.querySelector('input[name="address2"]'),
         document.querySelector('input[name="address3"]'),
+        document.querySelector('input[name="county"]'),
       ].filter(Boolean);
     }
 
@@ -61,12 +62,15 @@ function applyNoAddressMode() {
   const address1Field = document.querySelector('input[name="address1"]');
   const address2Field = document.querySelector('input[name="address2"]');
   const address3Field = document.querySelector('input[name="address3"]');
+  const countyField = document.querySelector('input[name="county"]');
+
 
   const addressFields = [
     postcodeField,
     address1Field,
     address2Field,
     address3Field,
+    countyField,
   ].filter(Boolean);
 
   addressFields.forEach((field) => {
@@ -581,6 +585,7 @@ function validateOrderBeforeSave() {
         address1: document.querySelector('input[name="address1"]').value,
         address2: document.querySelector('input[name="address2"]').value,
         address3: document.querySelector('input[name="address3"]').value,
+        county: document.querySelector('input[name="county"]').value,
         contactNumber: document.querySelector('input[name="contactNumber"]').value,
         altContactNumber: document.querySelector('input[name="altContactNumber"]').value,
         email: document.querySelector('input[name="email"]').value,

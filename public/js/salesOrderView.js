@@ -341,68 +341,121 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn("⚠️ orderStatus element not found in DOM");
     }
     
-    // --- Customer / address ---
-    try {
-      const fullName = (
-        so.entityFull?.firstName && so.entityFull?.lastName
-          ? `${so.entityFull.firstName} ${so.entityFull.lastName}`
-          : so.entity?.refName || ""
-      ).trim();
+// --- Customer / address ---
+try {
+  const fullName = (
+    so.entityFull?.firstName && so.entityFull?.lastName
+      ? `${so.entityFull.firstName} ${so.entityFull.lastName}`
+      : so.entity?.refName || ""
+  ).trim();
 
-      const rawAddress =
-        so.shipAddress ||
-        so.shippingAddress_text ||
-        so.billAddress ||
-        so.billingAddress_text ||
-        "";
+  document.querySelector('input[name="firstName"]').value =
+    so.entityFull?.firstName || fullName.split(" ")[0] || "";
 
-      let addressLines = rawAddress
-        ? String(rawAddress).split("\n").map(l => l.trim()).filter(Boolean)
-        : [];
+  document.querySelector('input[name="lastName"]').value =
+    so.entityFull?.lastName || fullName.split(" ").slice(1).join(" ") || "";
 
-      // Remove customer name if NetSuite includes it as first line
-      if (addressLines.length && fullName) {
-        const firstLine = addressLines[0].toLowerCase().replace(/\s+/g, " ").trim();
-        const compareName = fullName.toLowerCase().replace(/\s+/g, " ").trim();
+  // ✅ Prefer structured addressbook data first
+  const addressItems = so.entityFull?.addressbook?.items || [];
+  const defaultAddress =
+    addressItems.find((a) => a.defaultShipping) ||
+    addressItems.find((a) => a.defaultBilling) ||
+    addressItems[0] ||
+    null;
 
-        if (firstLine === compareName) {
-          addressLines.shift();
-        }
-      }
+  const addr = defaultAddress?.addressbookAddress || {};
 
-      const postcodeRegex = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
-      let postcode = "";
-      let countryLine = "";
-      const cleanedAddress = [];
+  if (defaultAddress && addr) {
+    console.log("🏠 Using structured NetSuite addressbook address:", addr);
 
-      for (const line of addressLines) {
-        if (postcodeRegex.test(line)) {
-          const match = line.match(postcodeRegex);
-          if (match) postcode = match[0].toUpperCase();
+    document.querySelector('input[name="address1"]').value = addr.addr1 || "";
+    document.querySelector('input[name="address2"]').value = addr.addr2 || "";
+    document.querySelector('input[name="address3"]').value = addr.city || "";
+    document.querySelector('input[name="county"]').value = addr.state || "";
+    document.querySelector('input[name="postcode"]').value = addr.zip || "";
+    document.querySelector('input[name="country"]').value =
+      addr.country?.refName ||
+      addr.country ||
+      "United Kingdom";
+  } else {
+  // ✅ Fallback to parsing raw address text if addressbook not present
+  const rawAddress =
+    so.shipAddress ||
+    so.shippingAddress_text ||
+    so.billAddress ||
+    so.billingAddress_text ||
+    "";
 
-          const townPart = line.replace(postcodeRegex, "").trim();
-          if (townPart) cleanedAddress.push(townPart);
-        } else if (/(United Kingdom|UK|England|Scotland|Wales|Northern Ireland)/i.test(line)) {
-          countryLine = line;
-        } else {
-          cleanedAddress.push(line);
-        }
-      }
+  let addressLines = rawAddress
+    ? String(rawAddress).split("\n").map((l) => l.trim()).filter(Boolean)
+    : [];
 
-      document.querySelector('input[name="firstName"]').value =
-        so.entityFull?.firstName || fullName.split(" ")[0] || "";
+  // Remove customer name if NetSuite includes it as first line
+  if (addressLines.length && fullName) {
+    const firstLine = addressLines[0].toLowerCase().replace(/\s+/g, " ").trim();
+    const compareName = fullName.toLowerCase().replace(/\s+/g, " ").trim();
 
-      document.querySelector('input[name="lastName"]').value =
-        so.entityFull?.lastName || fullName.split(" ").slice(1).join(" ") || "";
-
-      document.querySelector('input[name="address1"]').value = cleanedAddress[0] || "";
-      document.querySelector('input[name="address2"]').value = cleanedAddress[1] || "";
-      document.querySelector('input[name="address3"]').value = cleanedAddress[2] || "";
-      document.querySelector('input[name="postcode"]').value = postcode || "";
-      document.querySelector('input[name="country"]').value = countryLine || "United Kingdom";
-    } catch (err) {
-      console.warn("⚠️ Address population failed:", err.message);
+    if (firstLine === compareName) {
+      addressLines.shift();
     }
+  }
+
+  const postcodeRegex = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
+  let postcode = "";
+  let countryLine = "";
+  const cleanedAddress = [];
+
+  for (const line of addressLines) {
+    if (postcodeRegex.test(line)) {
+      const match = line.match(postcodeRegex);
+      if (match) postcode = match[0].toUpperCase();
+
+      const townPart = line.replace(postcodeRegex, "").trim();
+      if (townPart) cleanedAddress.push(townPart);
+    } else if (/(United Kingdom|UK|England|Scotland|Wales|Northern Ireland)/i.test(line)) {
+      countryLine = line;
+    } else {
+      cleanedAddress.push(line);
+    }
+  }
+
+  let address1 = cleanedAddress[0] || "";
+  let address2 = cleanedAddress[1] || "";
+  let address3 = cleanedAddress[2] || "";
+  let county = "";
+
+  // ✅ If final line looks like "TOWN COUNTY", split county out
+  if (address3) {
+    const countyMatch = address3.match(
+      /\b(East Sussex|West Sussex|Kent|Surrey|Essex|Hampshire|London|Greater London|Devon|Cornwall|Dorset|Somerset|Norfolk|Suffolk|Yorkshire|North Yorkshire|South Yorkshire|West Yorkshire|Lancashire|Cheshire)\b$/i
+    );
+
+    if (countyMatch) {
+      county = countyMatch[1].trim();
+      address3 = address3.slice(0, address3.length - county.length).trim();
+    }
+  }
+
+  console.log("🏠 Falling back to parsed raw address:", {
+    cleanedAddress,
+    address1,
+    address2,
+    address3,
+    county,
+    postcode,
+    countryLine,
+  });
+
+  document.querySelector('input[name="address1"]').value = address1;
+  document.querySelector('input[name="address2"]').value = address2;
+  document.querySelector('input[name="address3"]').value = address3;
+  document.querySelector('input[name="county"]').value = county;
+  document.querySelector('input[name="postcode"]').value = postcode || "";
+  document.querySelector('input[name="country"]').value = countryLine || "United Kingdom";
+}
+} catch (err) {
+  console.warn("⚠️ Address population failed:", err.message);
+}
 
     // --- Contact info ---
     document.querySelector('input[name="email"]').value = so.email || "";

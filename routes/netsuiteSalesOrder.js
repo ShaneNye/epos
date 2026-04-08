@@ -256,129 +256,65 @@ router.post("/create", async (req, res) => {
     let customerId = customer?.noAddressRequired ? null : customer?.id || null;
 
     /* ======================================================
-       1️⃣ CREATE CUSTOMER IF NEEDED
-    ====================================================== */
-    if (!customerId) {
-      const noAddressRequired = customer?.noAddressRequired === true;
+   1️⃣ CREATE CUSTOMER IF NEEDED
+====================================================== */
+if (!customerId) {
+  const noAddressRequired = customer?.noAddressRequired === true;
 
-      const custBody = {
-        entityStatus: { id: "13" },
-        companyName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
-        custentity_title: customer.title,
-        firstName: customer.firstName,
-        lastName: customer.lastName,
-        email: customer.email,
-        phone: customer.contactNumber,
-        altPhone: customer.altContactNumber,
-        subsidiary: { id: "1" },
-        isPerson: true,
-      };
+  const custBody = {
+    entityStatus: { id: "13" },
+    companyName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
+    custentity_title: customer.title,
+    firstName: customer.firstName,
+    lastName: customer.lastName,
+    email: customer.email,
+    phone: customer.contactNumber,
+    altPhone: customer.altContactNumber,
+    subsidiary: { id: "1" },
+    isPerson: true,
+  };
 
-      if (!noAddressRequired) {
-        custBody.addressbook = {
-          items: [
-            {
-              defaultShipping: true,
-              defaultBilling: true,
-              label: "Main Address",
-              addressbookAddress: {
-                addr1: customer.address1 || "",
-                addr2: customer.address2 || "",
-                addr3: customer.address3 || "",
-                zip: customer.postcode || "",
-              },
-            },
-          ],
-        };
-      } else {
-        console.log(
-          "🏷 No address required enabled — creating NEW customer without addressbook"
-        );
-      }
+  if (!noAddressRequired) {
+    custBody.addressbook = {
+      items: [
+        {
+          defaultShipping: true,
+          defaultBilling: true,
+          label: "Main Address",
+          addressbookAddress: {
+            addr1: customer.address1 || "",
+            addr2: customer.address2 || "",
+            city: customer.address3 || "",
+            state: customer.county || "",
+            zip: customer.postcode || "",
+            //country: "United Kingdom",//
+          },
+        },
+      ],
+    };
+  } else {
+    console.log(
+      "🏷 No address required enabled — creating NEW customer without addressbook"
+    );
+  }
 
-      console.log("🧾 Creating new customer:", JSON.stringify(custBody, null, 2));
-      const newCustomer = await nsPost("/customer", custBody, userId, "sb");
+  console.log("🧾 Creating new customer:", JSON.stringify(custBody, null, 2));
+  const newCustomer = await nsPost("/customer", custBody, userId, "sb");
 
-      let match;
-      if (
-        newCustomer._location &&
-        (match = newCustomer._location.match(/customer\/(\d+)/))
-      ) {
-        customerId = match[1];
-      } else if (newCustomer.id) {
-        customerId = newCustomer.id;
-      }
+  let match;
+  if (
+    newCustomer._location &&
+    (match = newCustomer._location.match(/customer\/(\d+)/))
+  ) {
+    customerId = match[1];
+  } else if (newCustomer.id) {
+    customerId = newCustomer.id;
+  }
 
-      if (!customerId) throw new Error("Failed to resolve new customer ID");
+  if (!customerId) throw new Error("Failed to resolve new customer ID");
 
-      console.log("✅ Created new customer, resolved ID:", customerId);
-    } else {
-      // Existing matched customer → update phone fields if they differ
-      try {
-        const normalizePhone = (value) =>
-          String(value || "")
-            .replace(/[^\d+]/g, "")
-            .replace(/^00/, "+")
-            .trim();
-
-        const hasMeaningfulValue = (value) => String(value || "").trim() !== "";
-
-        console.log(`📞 Existing customer detected (${customerId}) — checking phone fields`);
-
-        const existingCustomer = await nsGet(
-          `/customer/${customerId}?fields=${encodeURIComponent("id,phone,altPhone")}`,
-          userId,
-          "sb"
-        );
-
-        const existingPhoneRaw = existingCustomer?.phone || "";
-        const existingAltPhoneRaw = existingCustomer?.altPhone || "";
-
-        const incomingPhoneRaw = customer?.contactNumber || "";
-        const incomingAltPhoneRaw = customer?.altContactNumber || "";
-
-        const existingPhone = normalizePhone(existingPhoneRaw);
-        const existingAltPhone = normalizePhone(existingAltPhoneRaw);
-        const incomingPhone = normalizePhone(incomingPhoneRaw);
-        const incomingAltPhone = normalizePhone(incomingAltPhoneRaw);
-
-        const patchBody = {};
-
-        if (hasMeaningfulValue(incomingPhoneRaw) && incomingPhone !== existingPhone) {
-          patchBody.phone = incomingPhoneRaw.trim();
-        }
-
-        if (
-          hasMeaningfulValue(incomingAltPhoneRaw) &&
-          incomingAltPhone !== existingAltPhone
-        ) {
-          patchBody.altPhone = incomingAltPhoneRaw.trim();
-        }
-
-        if (Object.keys(patchBody).length > 0) {
-          console.log("🛠 Customer phone update required:", {
-            customerId,
-            before: {
-              phone: existingPhoneRaw,
-              altPhone: existingAltPhoneRaw,
-            },
-            after: patchBody,
-          });
-
-          await nsPatch(`/customer/${customerId}`, patchBody, userId, "sb");
-          console.log(`✅ Customer ${customerId} phone fields updated`);
-        } else {
-          console.log(`ℹ️ Customer ${customerId} phone fields already up to date`);
-        }
-      } catch (patchErr) {
-        console.error(
-          `⚠️ Customer ${customerId} phone patch failed, continuing with order creation:`,
-          patchErr.message
-        );
-      }
-    }
-
-    console.log("🧩 Using Customer ID:", customerId);
+  console.log("✅ Created new customer, resolved ID:", customerId);
+}
 
     /* ======================================================
        2️⃣ LOOKUP SALES EXEC NETSUITE ID
