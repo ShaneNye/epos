@@ -343,17 +343,44 @@ document.addEventListener("DOMContentLoaded", async () => {
     
     // --- Customer / address ---
     try {
-      const addressLines = so.billingAddress_text
-        ? so.billingAddress_text.split("\n").map(l => l.trim()).filter(Boolean)
+      const fullName = (
+        so.entityFull?.firstName && so.entityFull?.lastName
+          ? `${so.entityFull.firstName} ${so.entityFull.lastName}`
+          : so.entity?.refName || ""
+      ).trim();
+
+      const rawAddress =
+        so.shipAddress ||
+        so.shippingAddress_text ||
+        so.billAddress ||
+        so.billingAddress_text ||
+        "";
+
+      let addressLines = rawAddress
+        ? String(rawAddress).split("\n").map(l => l.trim()).filter(Boolean)
         : [];
+
+      // Remove customer name if NetSuite includes it as first line
+      if (addressLines.length && fullName) {
+        const firstLine = addressLines[0].toLowerCase().replace(/\s+/g, " ").trim();
+        const compareName = fullName.toLowerCase().replace(/\s+/g, " ").trim();
+
+        if (firstLine === compareName) {
+          addressLines.shift();
+        }
+      }
+
       const postcodeRegex = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
-      let postcode = "", countryLine = "", cleanedAddress = [];
+      let postcode = "";
+      let countryLine = "";
+      const cleanedAddress = [];
 
       for (const line of addressLines) {
         if (postcodeRegex.test(line)) {
           const match = line.match(postcodeRegex);
           if (match) postcode = match[0].toUpperCase();
-          const townPart = line.replace(postcode, "").trim();
+
+          const townPart = line.replace(postcodeRegex, "").trim();
           if (townPart) cleanedAddress.push(townPart);
         } else if (/(United Kingdom|UK|England|Scotland|Wales|Northern Ireland)/i.test(line)) {
           countryLine = line;
@@ -362,10 +389,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       }
 
-      const fullName = so.entity?.refName || "";
-      const nameParts = fullName.split(" ");
-      document.querySelector('input[name="firstName"]').value = nameParts[1] || "";
-      document.querySelector('input[name="lastName"]').value = nameParts[2] || "";
+      document.querySelector('input[name="firstName"]').value =
+        so.entityFull?.firstName || fullName.split(" ")[0] || "";
+
+      document.querySelector('input[name="lastName"]').value =
+        so.entityFull?.lastName || fullName.split(" ").slice(1).join(" ") || "";
+
       document.querySelector('input[name="address1"]').value = cleanedAddress[0] || "";
       document.querySelector('input[name="address2"]').value = cleanedAddress[1] || "";
       document.querySelector('input[name="address3"]').value = cleanedAddress[2] || "";
@@ -824,14 +853,15 @@ function updateOrderSummaryFromTable() {
       let defaultGrossTotal = 0;
       let actualGrossTotal = 0;
 
-      if (Number.isFinite(amountGrossLine) && amountGrossLine > 0) {
+      // ✅ keep signed values, not just positives
+      if (Number.isFinite(amountGrossLine) && amountGrossLine !== 0) {
         defaultGrossTotal = amountGrossLine;
-      } else if (Number.isFinite(saleGrossLine) && saleGrossLine > 0) {
+      } else if (Number.isFinite(saleGrossLine) && saleGrossLine !== 0) {
         defaultGrossTotal = saleGrossLine;
       }
 
-      // sale price is already the full line total
-      if (Number.isFinite(saleGrossLine) && saleGrossLine > 0) {
+      // ✅ sale price is already the full signed line total
+      if (Number.isFinite(saleGrossLine) && saleGrossLine !== 0) {
         actualGrossTotal = saleGrossLine;
       } else if (discountPct > 0 && defaultGrossTotal > 0) {
         actualGrossTotal = defaultGrossTotal * (1 - discountPct / 100);
@@ -844,7 +874,12 @@ function updateOrderSummaryFromTable() {
 
       grossTotal += actualGrossTotal;
 
-      const lineDiscount = Math.max(0, defaultGrossTotal - actualGrossTotal);
+      // ✅ only calculate discount from positive retail lines
+      const lineDiscount =
+        defaultGrossTotal > 0 && actualGrossTotal >= 0
+          ? Math.max(0, defaultGrossTotal - actualGrossTotal)
+          : 0;
+
       discountTotal += lineDiscount;
 
       console.log(`🧾 Editable row ${idx}`, {
@@ -876,7 +911,11 @@ function updateOrderSummaryFromTable() {
 
     grossTotal += sale;
 
-    const lineDiscount = Math.max(0, amount - sale);
+    const lineDiscount =
+      amount > 0 && sale >= 0
+        ? Math.max(0, amount - sale)
+        : 0;
+
     discountTotal += lineDiscount;
 
     console.log(`🧾 Read-only row ${idx}`, {

@@ -35,26 +35,29 @@ window.renderSalesViewLines = function renderSalesViewLines({
     if (!Number.isFinite(retailGrossLineTotal)) retailGrossLineTotal = 0;
     if (!Number.isFinite(saleGrossLineTotal)) saleGrossLineTotal = 0;
 
-    // ✅ Only fallback retail from sale if retail is missing
-    if (retailGrossLineTotal <= 0 && saleGrossLineTotal > 0) {
+    // Only fallback retail from sale if retail is actually missing
+    if (retailGrossLineTotal === 0 && saleGrossLineTotal !== 0) {
       retailGrossLineTotal = saleGrossLineTotal;
     }
 
-    // ❌ DO NOT do the reverse fallback
-    // A sale price of 0 is valid and must stay 0
-
     const itemName = String(line.item?.refName || "").toLowerCase();
-    const isDiscountLine =
+
+    // Lines that should display as negative values
+    const isNegativeValueLine =
       itemName.includes("discount") ||
       itemName.includes("blue light") ||
       itemName.includes("promo") ||
       itemName.includes("promotion") ||
-      itemName.includes("voucher");
+      itemName.includes("voucher") ||
+      itemName.includes("trade in") ||
+      itemName.includes("trade-in");
 
-    if (isDiscountLine) {
+    if (isNegativeValueLine) {
+      // force known negative-value lines negative
       if (retailGrossLineTotal > 0) retailGrossLineTotal = -retailGrossLineTotal;
       if (saleGrossLineTotal > 0) saleGrossLineTotal = -saleGrossLineTotal;
     } else {
+      // force standard sale lines positive
       if (retailGrossLineTotal < 0) retailGrossLineTotal = Math.abs(retailGrossLineTotal);
       if (saleGrossLineTotal < 0) saleGrossLineTotal = Math.abs(saleGrossLineTotal);
     }

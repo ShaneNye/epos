@@ -1095,23 +1095,26 @@ router.get("/:id", async (req, res) => {
       const info = itemMap[itemId] || {};
       const itemName = info.name || `Item ${itemId}`;
 
-      // Keep display qty positive
+      // ✅ Keep display quantity positive
       const qty = Math.abs(Number(r.quantity) || 0);
 
-      // Preserve sign for discount-style lines
       const rawNet = Number(r.netamount) || 0;
       const rawRate = Number(r.rate) || 0;
 
+      // ✅ Financial sign comes from the transaction values, not qty
       let net = rawNet;
       if (rawRate < 0 && rawNet > 0) {
         net = -rawNet;
       }
 
-      // Standard display amount from item feed / retail price
+      const sign = (net < 0 || rawRate < 0) ? -1 : 1;
+
+      // ✅ amount is already the FULL displayed line amount
+      // based on item feed retail, but signed
       const retailNet = parseFloat(info.baseprice || 0);
       const retailGross = +(retailNet * 1.2).toFixed(2);
+      const amount = +(retailGross * sign).toFixed(2);
 
-      // Signed transactional values
       const vat = +(net * 0.2).toFixed(2);
       const saleprice = +(net + vat).toFixed(2);
 
@@ -1125,7 +1128,7 @@ router.get("/:id", async (req, res) => {
         lineId,
         item: { id: itemId, refName: itemName },
         quantity: qty,
-        amount: retailGross,
+        amount,
         vat,
         saleprice,
         discount: 0,
