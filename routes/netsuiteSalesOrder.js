@@ -258,63 +258,63 @@ router.post("/create", async (req, res) => {
     /* ======================================================
    1️⃣ CREATE CUSTOMER IF NEEDED
 ====================================================== */
-if (!customerId) {
-  const noAddressRequired = customer?.noAddressRequired === true;
+    if (!customerId) {
+      const noAddressRequired = customer?.noAddressRequired === true;
 
-  const custBody = {
-    entityStatus: { id: "13" },
-    companyName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
-    custentity_title: customer.title,
-    firstName: customer.firstName,
-    lastName: customer.lastName,
-    email: customer.email,
-    phone: customer.contactNumber,
-    altPhone: customer.altContactNumber,
-    subsidiary: { id: "1" },
-    isPerson: true,
-  };
+      const custBody = {
+        entityStatus: { id: "13" },
+        companyName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
+        custentity_title: customer.title,
+        firstName: customer.firstName,
+        lastName: customer.lastName,
+        email: customer.email,
+        phone: customer.contactNumber,
+        altPhone: customer.altContactNumber,
+        subsidiary: { id: "1" },
+        isPerson: true,
+      };
 
-  if (!noAddressRequired) {
-    custBody.addressbook = {
-      items: [
-        {
-          defaultShipping: true,
-          defaultBilling: true,
-          label: "Main Address",
-          addressbookAddress: {
-            addr1: customer.address1 || "",
-            addr2: customer.address2 || "",
-            city: customer.address3 || "",
-            state: customer.county || "",
-            zip: customer.postcode || "",
-            //country: "United Kingdom",//
-          },
-        },
-      ],
-    };
-  } else {
-    console.log(
-      "🏷 No address required enabled — creating NEW customer without addressbook"
-    );
-  }
+      if (!noAddressRequired) {
+        custBody.addressbook = {
+          items: [
+            {
+              defaultShipping: true,
+              defaultBilling: true,
+              label: "Main Address",
+              addressbookAddress: {
+                addr1: customer.address1 || "",
+                addr2: customer.address2 || "",
+                city: customer.address3 || "",
+                state: customer.county || "",
+                zip: customer.postcode || "",
+                //country: "United Kingdom",//
+              },
+            },
+          ],
+        };
+      } else {
+        console.log(
+          "🏷 No address required enabled — creating NEW customer without addressbook"
+        );
+      }
 
-  console.log("🧾 Creating new customer:", JSON.stringify(custBody, null, 2));
-  const newCustomer = await nsPost("/customer", custBody, userId, "sb");
+      console.log("🧾 Creating new customer:", JSON.stringify(custBody, null, 2));
+      const newCustomer = await nsPost("/customer", custBody, userId, "sb");
 
-  let match;
-  if (
-    newCustomer._location &&
-    (match = newCustomer._location.match(/customer\/(\d+)/))
-  ) {
-    customerId = match[1];
-  } else if (newCustomer.id) {
-    customerId = newCustomer.id;
-  }
+      let match;
+      if (
+        newCustomer._location &&
+        (match = newCustomer._location.match(/customer\/(\d+)/))
+      ) {
+        customerId = match[1];
+      } else if (newCustomer.id) {
+        customerId = newCustomer.id;
+      }
 
-  if (!customerId) throw new Error("Failed to resolve new customer ID");
+      if (!customerId) throw new Error("Failed to resolve new customer ID");
 
-  console.log("✅ Created new customer, resolved ID:", customerId);
-}
+      console.log("✅ Created new customer, resolved ID:", customerId);
+    }
 
     /* ======================================================
        2️⃣ LOOKUP SALES EXEC NETSUITE ID
@@ -904,12 +904,17 @@ router.get("/:id", async (req, res) => {
     key = cacheKey(id);
 
     // Optional: lite mode (still returns lines via suiteql; just reduces base record payload)
-    const lite = String(req.query.lite || "") === "1" || String(req.query.lite || "") === "true";
+    const lite =
+      String(req.query.lite || "") === "1" ||
+      String(req.query.lite || "") === "true";
 
     // Optional: allow skipping deposits fetch for faster initial paint
     // Default true to avoid breaking existing UI
     const includeDeposits =
-      !(String(req.query.deposits || "") === "0" || String(req.query.deposits || "") === "false");
+      !(
+        String(req.query.deposits || "") === "0" ||
+        String(req.query.deposits || "") === "false"
+      );
 
     if (!refresh) {
       const cached = cacheGet(key);
@@ -936,7 +941,11 @@ router.get("/:id", async (req, res) => {
       resolveInflight = resolve;
       rejectInflight = reject;
     });
-    soCache.set(key, { inFlight, expiresAt: Date.now() + SO_CACHE_TTL_MS, data: null });
+    soCache.set(key, {
+      inFlight,
+      expiresAt: Date.now() + SO_CACHE_TTL_MS,
+      data: null,
+    });
 
     // 🔐 Resolve user session for per-user NetSuite token
     const auth = req.headers.authorization || "";
@@ -985,11 +994,15 @@ router.get("/:id", async (req, res) => {
     let entityFull = null;
     if (so.entity?.id) {
       try {
-        const custPath = `/customer/${so.entity.id}?fields=${encodeURIComponent(buildCustomerFields())}`;
+        const custPath = `/customer/${so.entity.id}?fields=${encodeURIComponent(
+          buildCustomerFields()
+        )}`;
         entityFull = await nsGet(custPath, userId, "sb");
         console.log("✅ Entity fetched for SO:", {
           id: entityFull.id,
-          title: entityFull.custentity_title?.refName || entityFull.custentity_title?.text,
+          title:
+            entityFull.custentity_title?.refName ||
+            entityFull.custentity_title?.text,
         });
       } catch (err) {
         console.warn("⚠️ Could not fetch full entity:", err.message);
@@ -997,91 +1010,142 @@ router.get("/:id", async (req, res) => {
     }
     if (entityFull) so.entityFull = entityFull;
 
-/* -----------------------------------------------------
-   3️⃣ Expand Item Lines via SuiteQL
------------------------------------------------------ */
-{
-  const query = `
-    SELECT
-      id AS lineid,
-      item,
-      quantity,
-      netamount,
-      rate,
-      custcol_sb_itemoptionsdisplay AS options,
-      custcol_sb_fulfilmentlocation
-    FROM transactionline
-    WHERE transaction = ${id}
-      AND mainline = 'F'
-      AND taxline = 'F'
-    ORDER BY linesequencenumber
-  `;
+    /* -----------------------------------------------------
+       3️⃣ Expand Item Lines via SuiteQL
+    ----------------------------------------------------- */
+    {
+      const query = `
+        SELECT
+          id AS lineid,
+          item,
+          quantity,
+          netamount,
+          rate,
+          custcol_sb_itemoptionsdisplay AS options,
+          custcol_sb_fulfilmentlocation,
+          custcol_sb_epos_inventory_meta,
+          custcol_sb_lotnumber,
+          custcol_sb_30nighttrialoption
+        FROM transactionline
+        WHERE transaction = ${id}
+          AND mainline = 'F'
+          AND taxline = 'F'
+        ORDER BY linesequencenumber
+      `;
 
-  const suiteql = await nsPostRaw(
-    `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
-    { q: query },
-    userId,
-    "sb"
-  );
+      const suiteql = await nsPostRaw(
+        `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
+        { q: query },
+        userId,
+        "sb"
+      );
 
-  if (suiteql && Array.isArray(suiteql.items)) {
-    const items = suiteql.items.map((r) => {
-      const itemId = String(r.item);
-      const lineId = String(r.lineid || "");
-      const info = itemMap[itemId] || {};
-      const itemName = info.name || `Item ${itemId}`;
+      if (suiteql && Array.isArray(suiteql.items)) {
+        const items = suiteql.items.map((r) => {
+          const itemId = String(r.item);
+          const lineId = String(r.lineid || "");
+          const info = itemMap[itemId] || {};
+          const itemName = info.name || `Item ${itemId}`;
 
-      // ✅ Keep display quantity positive
-      const qty = Math.abs(Number(r.quantity) || 0);
+          // ✅ Keep display quantity positive
+          const qty = Math.abs(Number(r.quantity) || 0);
 
-      const rawNet = Number(r.netamount) || 0;
-      const rawRate = Number(r.rate) || 0;
+          const rawNet = Number(r.netamount) || 0;
+          const rawRate = Number(r.rate) || 0;
 
-      // ✅ Financial sign comes from the transaction values, not qty
-      let net = rawNet;
-      if (rawRate < 0 && rawNet > 0) {
-        net = -rawNet;
+          // ✅ Financial sign comes from the transaction values, not qty
+          let net = rawNet;
+          if (rawRate < 0 && rawNet > 0) {
+            net = -rawNet;
+          }
+
+          const sign = net < 0 || rawRate < 0 ? -1 : 1;
+
+          // ✅ amount is the full displayed retail gross line amount, signed
+          const retailNet = parseFloat(info.baseprice || 0);
+          const retailGross = +(retailNet * 1.2).toFixed(2);
+          const amount = +(retailGross * sign).toFixed(2);
+
+          const vat = +(net * 0.2).toFixed(2);
+          const saleprice = +(net + vat).toFixed(2);
+
+          const fulfilId =
+            r.fulfilmentlocation ||
+            r.custcol_sb_fulfilmentlocation ||
+            r.CUSTCOL_SB_FULFILMENTLOCATION ||
+            "";
+
+          const inventoryMeta =
+            r.custcol_sb_epos_inventory_meta ||
+            r.CUSTCOL_SB_EPOS_INVENTORY_META ||
+            "";
+
+          const lotNumber =
+            r.custcol_sb_lotnumber ||
+            r.CUSTCOL_SB_LOTNUMBER ||
+            "";
+
+          const trialOptionId =
+            r.custcol_sb_30nighttrialoption ||
+            r.CUSTCOL_SB_30NIGHTTRIALOPTION ||
+            "";
+
+          let trialOption = { id: null, refName: "" };
+          if (String(trialOptionId) === "1") {
+            trialOption = { id: "1", refName: "Accepted" };
+          } else if (String(trialOptionId) === "2") {
+            trialOption = { id: "2", refName: "Declined" };
+          } else if (String(trialOptionId) === "3") {
+            trialOption = { id: "3", refName: "N/A" };
+          }
+
+          let inventoryDetail = "";
+
+          if (inventoryMeta) {
+            inventoryDetail = String(inventoryMeta).trim();
+          } else if (lotNumber) {
+            const warehouseId =
+              so?.custbody_sb_warehouse?.id ||
+              so?.location?.id ||
+              "";
+
+            const warehouseName =
+              so?.custbody_sb_warehouse?.refName ||
+              so?.custbody_sb_warehouse?.name ||
+              so?.location?.refName ||
+              "";
+
+            inventoryDetail = `${qty || 1}|${warehouseName}|${warehouseId}|||LOT|${lotNumber}`;
+          }
+
+          return {
+            lineId,
+            item: { id: itemId, refName: itemName },
+            quantity: qty,
+            amount,
+            vat,
+            saleprice,
+            discount: 0,
+            inventoryDetail,
+            custcol_sb_epos_inventory_meta: inventoryMeta || "",
+            custcol_sb_lotnumber: lotNumber || "",
+            custcol_sb_30nighttrialoption: trialOption,
+            custcol_sb_itemoptionsdisplay: r.options || "",
+            custcol_sb_fulfilmentlocation: {
+              id: fulfilId || null,
+              refName: fulfilId
+                ? fulfilmentMap[fulfilId] || `ID ${fulfilId}`
+                : "",
+            },
+          };
+        });
+
+        so.item = { items };
+        console.log(`✅ Loaded ${items.length} item lines`);
+      } else {
+        so.item = { items: [] };
       }
-
-      const sign = (net < 0 || rawRate < 0) ? -1 : 1;
-
-      // ✅ amount is already the FULL displayed line amount
-      // based on item feed retail, but signed
-      const retailNet = parseFloat(info.baseprice || 0);
-      const retailGross = +(retailNet * 1.2).toFixed(2);
-      const amount = +(retailGross * sign).toFixed(2);
-
-      const vat = +(net * 0.2).toFixed(2);
-      const saleprice = +(net + vat).toFixed(2);
-
-      const fulfilId =
-        r.fulfilmentlocation ||
-        r.custcol_sb_fulfilmentlocation ||
-        r.CUSTCOL_SB_FULFILMENTLOCATION ||
-        "";
-
-      return {
-        lineId,
-        item: { id: itemId, refName: itemName },
-        quantity: qty,
-        amount,
-        vat,
-        saleprice,
-        discount: 0,
-        custcol_sb_itemoptionsdisplay: r.options || "",
-        custcol_sb_fulfilmentlocation: {
-          id: fulfilId || null,
-          refName: fulfilId ? (fulfilmentMap[fulfilId] || `ID ${fulfilId}`) : "",
-        },
-      };
-    });
-
-    so.item = { items };
-    console.log(`✅ Loaded ${items.length} item lines`);
-  } else {
-    so.item = { items: [] };
-  }
-}
+    }
 
     /* -----------------------------------------------------
        💰 Fetch Customer Deposits (optional)
@@ -1093,7 +1157,9 @@ router.get("/:id", async (req, res) => {
           `💰 Fetching deposit data for Sales Order ${id} via /api/netsuite/customer-deposits...`
         );
 
-        const depRes = await fetch(`${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`);
+        const depRes = await fetch(
+          `${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`
+        );
         if (!depRes.ok) throw new Error(`Deposit route returned ${depRes.status}`);
 
         const depJson = await depRes.json();
@@ -1113,7 +1179,8 @@ router.get("/:id", async (req, res) => {
           .filter((d) => String(d["SO Id"]) === String(id))
           .map((d) => ({
             link: d["Document Number"] || "-",
-            amount: parseFloat(String(d["Amount"] || "0").replace(/[^\d.-]/g, "")) || 0,
+            amount:
+              parseFloat(String(d["Amount"] || "0").replace(/[^\d.-]/g, "")) || 0,
             method: d["Payment Method"] || "-",
             soId: String(d["SO Id"] || ""),
           }));
@@ -1148,7 +1215,7 @@ router.get("/:id", async (req, res) => {
     try {
       if (typeof rejectInflight === "function") rejectInflight(err);
       if (key) soCache.delete(key);
-    } catch { }
+    } catch {}
 
     return res.status(500).json({ ok: false, error: err.message });
   }
@@ -1160,16 +1227,22 @@ router.get("/:id", async (req, res) => {
 router.post("/:id/commit", async (req, res) => {
   try {
     const { id } = req.params;
-    const { updates = [], headerUpdates = {} } = req.body;
+    const {
+      lines = [],
+      headerUpdates = {},
+      deletedLineIds = [],
+    } = req.body;
 
     console.log(`🔁 Approving Sales Order ${id} via NetSuite RESTlet`);
-    console.log("📦 Incoming updates:", JSON.stringify(updates, null, 2));
+    console.log("📦 Incoming lines:", JSON.stringify(lines, null, 2));
+    console.log("🗑 Incoming deletedLineIds:", JSON.stringify(deletedLineIds, null, 2));
     console.log("🧾 Incoming headerUpdates:", JSON.stringify(headerUpdates, null, 2));
 
-    if (!id || !Array.isArray(updates)) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing Sales Order ID or updates array." });
+    if (!id || !Array.isArray(lines) || !Array.isArray(deletedLineIds)) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing Sales Order ID, lines array, or deletedLineIds array.",
+      });
     }
 
     // 🔐 Get session from Authorization header
@@ -1209,7 +1282,7 @@ router.post("/:id/commit", async (req, res) => {
     }
     global._recentCommits[id] = now;
 
-    const payload = { id, updates, headerUpdates };
+    const payload = { id, lines, headerUpdates, deletedLineIds, commit: true };
     console.log("📡 Calling NetSuite RESTlet with payload:", JSON.stringify(payload, null, 2));
 
     const response = await fetch(restletUrl, {
@@ -1530,16 +1603,22 @@ router.post("/:id/add-deposit", async (req, res) => {
 router.post("/:id/save", async (req, res) => {
   try {
     const { id } = req.params;
-    const { updates = [], headerUpdates = {} } = req.body;
+    const {
+      lines = [],
+      headerUpdates = {},
+      deletedLineIds = [],
+    } = req.body;
 
     console.log(`💾 Saving (patch only) Sales Order ${id} via NetSuite RESTlet`);
-    console.log("📦 Incoming updates:", JSON.stringify(updates, null, 2));
+    console.log("📦 Incoming lines:", JSON.stringify(lines, null, 2));
+    console.log("🗑 Incoming deletedLineIds:", JSON.stringify(deletedLineIds, null, 2));
     console.log("🧾 Incoming headerUpdates:", JSON.stringify(headerUpdates, null, 2));
 
-    if (!id || !Array.isArray(updates)) {
-      return res
-        .status(400)
-        .json({ ok: false, error: "Missing Sales Order ID or updates array." });
+    if (!id || !Array.isArray(lines) || !Array.isArray(deletedLineIds)) {
+      return res.status(400).json({
+        ok: false,
+        error: "Missing Sales Order ID, lines array, or deletedLineIds array.",
+      });
     }
 
     // 🔐 Get session from Authorization header
@@ -1580,7 +1659,13 @@ router.post("/:id/save", async (req, res) => {
     global._recentSaves[id] = now;
 
     // ✅ IMPORTANT: tell RESTlet NOT to approve
-    const payload = { id, updates, headerUpdates, commit: false };
+    const payload = {
+      id,
+      lines,
+      headerUpdates,
+      deletedLineIds,
+      commit: false,
+    };
 
     console.log(
       "📡 Calling NetSuite RESTlet (save-only) with payload:",
@@ -1633,6 +1718,6 @@ router.post("/:id/save", async (req, res) => {
       error: err.message || "Unexpected server error",
     });
   }
-}); ''
+});
 
 module.exports = router;

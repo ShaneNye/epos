@@ -235,6 +235,7 @@
                             <th>Discount %</th>
                             <th>Tax (20%)</th> <!-- 🆕 added -->
                             <th>Sale Price</th>
+                            <th style="display: none;" id="60ntheader">60 Night Trial</th>
                             <th>Fulfilment Method</th>
                             <th>Inventory Detail</th>
                             <th></th>
@@ -257,6 +258,16 @@
                             <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" />
                             </td>
                             <td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
+                             <!-- ✅ UPDATED: 60 Night Trial cell uses class (NOT id) and includes placeholder -->
+                        <td class="sixty-night-cell" style="display:none;">
+                            <select class="sixty-night-select" style="display:none;">
+                                <option selected disabled hidden>Select</option>
+                                <option>Accepted</option>
+                                <option>Declined</option>
+                                <option>N/A</option>
+                            </select>
+                            <span class="sixty-night-placeholder">—</span>
+                        </td>
                             <td>
                                 <select name="fulfilmentMethod" class="item-fulfilment">
                                     <option value="">Loading fulfilment methods...</option>

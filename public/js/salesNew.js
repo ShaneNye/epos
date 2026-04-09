@@ -239,99 +239,108 @@ function applyNoAddressMode() {
     }
 
     /* === ORDER SUMMARY CALCULATIONS === */
-    window.updateOrderSummary = function () {
-      let grossTotal = 0;
-      let discountTotal = 0;
+window.updateOrderSummary = function () {
+  let grossTotal = 0;
+  let discountTotal = 0;
 
-      document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
-        const itemId = (tr.querySelector(".item-internal-id")?.value || "").trim();
-        if (!itemId) return; // ✅ ignore empty placeholder row
+  document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
+    const itemId = (tr.querySelector(".item-internal-id")?.value || "").trim();
+    if (!itemId) return; // ignore empty placeholder row
 
-        const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
-        const amountGrossLine = parseFloat(
-          tr.querySelector(".item-amount")?.value || 0
-        ); // already full line total
-        const salePriceGrossLine = parseFloat(
-          tr.querySelector(".item-saleprice")?.value || 0
-        ); // already full line total
-        const discountPct = parseFloat(
-          tr.querySelector(".item-discount")?.value || 0
-        );
+    const qty = parseFloat(tr.querySelector(".item-qty")?.value || 0);
+    const amountGrossLine = parseFloat(tr.querySelector(".item-amount")?.value || 0);
+    const salePriceGrossLine = parseFloat(tr.querySelector(".item-saleprice")?.value || 0);
+    const discountPct = parseFloat(tr.querySelector(".item-discount")?.value || 0);
 
-        if (!qty) return;
+    if (!Number.isFinite(qty) || qty === 0) return;
 
-        let actualGrossTotal = 0;
-        let defaultGrossTotal = 0;
+    let actualGrossTotal = 0;
+    let defaultGrossTotal = 0;
 
-        if (Number.isFinite(amountGrossLine) && amountGrossLine > 0) {
-          defaultGrossTotal = amountGrossLine;
-        } else if (Number.isFinite(salePriceGrossLine) && salePriceGrossLine > 0) {
-          defaultGrossTotal = salePriceGrossLine;
-        }
+    const hasAmount =
+      tr.querySelector(".item-amount") &&
+      tr.querySelector(".item-amount").value !== "" &&
+      Number.isFinite(amountGrossLine);
 
-        if (Number.isFinite(salePriceGrossLine) && salePriceGrossLine > 0) {
-          actualGrossTotal = salePriceGrossLine;
-        } else if (discountPct > 0 && defaultGrossTotal > 0) {
-          actualGrossTotal = defaultGrossTotal * (1 - discountPct / 100);
-        } else {
-          actualGrossTotal = defaultGrossTotal;
-        }
+    const hasSalePrice =
+      tr.querySelector(".item-saleprice") &&
+      tr.querySelector(".item-saleprice").value !== "" &&
+      Number.isFinite(salePriceGrossLine);
 
-        actualGrossTotal = Number(actualGrossTotal.toFixed(2));
-        defaultGrossTotal = Number(defaultGrossTotal.toFixed(2));
+    // allow negative values too
+    if (hasAmount) {
+      defaultGrossTotal = amountGrossLine;
+    } else if (hasSalePrice) {
+      defaultGrossTotal = salePriceGrossLine;
+    }
 
-        grossTotal += actualGrossTotal;
+    if (hasSalePrice) {
+      actualGrossTotal = salePriceGrossLine;
+    } else if (discountPct > 0) {
+      actualGrossTotal = defaultGrossTotal * (1 - discountPct / 100);
+    } else {
+      actualGrossTotal = defaultGrossTotal;
+    }
 
-        const discountValue = Math.max(0, defaultGrossTotal - actualGrossTotal);
-        discountTotal += discountValue;
-      });
+    actualGrossTotal = Number(actualGrossTotal.toFixed(2));
+    defaultGrossTotal = Number(defaultGrossTotal.toFixed(2));
 
-      grossTotal = Number(grossTotal.toFixed(2));
-      discountTotal = Number(discountTotal.toFixed(2));
+    grossTotal += actualGrossTotal;
 
-      const netTotal = Number((grossTotal / 1.2).toFixed(2));
-      const taxTotal = Number((grossTotal - netTotal).toFixed(2));
+    const discountValue =
+      defaultGrossTotal > actualGrossTotal
+        ? Number((defaultGrossTotal - actualGrossTotal).toFixed(2))
+        : 0;
 
-      const totalDeposits = deposits.reduce(
-        (sum, d) => sum + (parseFloat(d.amount) || 0),
-        0
-      );
+    discountTotal += discountValue;
+  });
 
-      const outstandingBalance = Number((grossTotal - totalDeposits).toFixed(2));
+  grossTotal = Number(grossTotal.toFixed(2));
+  discountTotal = Number(discountTotal.toFixed(2));
 
-      document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
-      document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
-      document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
-      document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
+  const netTotal = Number((grossTotal / 1.2).toFixed(2));
+  const taxTotal = Number((grossTotal - netTotal).toFixed(2));
 
-      const depositsTotalCell = document.getElementById("depositsTotal");
-      const balanceCell = document.getElementById("outstandingBalance");
-      if (depositsTotalCell) depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
-      if (balanceCell) balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
+  const totalDeposits = deposits.reduce(
+    (sum, d) => sum + (parseFloat(d.amount) || 0),
+    0
+  );
 
-      window.__grossTotal = grossTotal;
-      window.__outstandingBalance = outstandingBalance;
+  const outstandingBalance = Number((grossTotal - totalDeposits).toFixed(2));
 
-      console.log("📊 Summary recalculated", {
-        grossTotal,
-        netTotal,
-        taxTotal,
-        discountTotal,
-        totalDeposits,
-        outstandingBalance,
-      });
-    };
+  document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
+  document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
+  document.getElementById("taxTotal").textContent = `£${taxTotal.toFixed(2)}`;
+  document.getElementById("grandTotal").textContent = `£${grossTotal.toFixed(2)}`;
 
-    // Recalc triggers
-    document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
-      if (
-        e.target.classList.contains("item-qty") ||
-        e.target.classList.contains("item-discount") ||
-        e.target.classList.contains("item-saleprice")
-      ) {
-        window.updateOrderSummary();
-      }
-    });
+  const depositsTotalCell = document.getElementById("depositsTotal");
+  const balanceCell = document.getElementById("outstandingBalance");
+  if (depositsTotalCell) depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
+  if (balanceCell) balanceCell.textContent = `£${outstandingBalance.toFixed(2)}`;
+
+  window.__grossTotal = grossTotal;
+  window.__outstandingBalance = outstandingBalance;
+
+  console.log("📊 Summary recalculated", {
+    grossTotal,
+    netTotal,
+    taxTotal,
+    discountTotal,
+    totalDeposits,
+    outstandingBalance,
+  });
+};
+
+document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
+  if (
+    e.target.classList.contains("item-qty") ||
+    e.target.classList.contains("item-discount") ||
+    e.target.classList.contains("item-saleprice") ||
+    e.target.classList.contains("item-amount")
+  ) {
+    window.updateOrderSummary();
+  }
+});
 
     const orderBody = document.getElementById("orderItemsBody");
     if (orderBody) {

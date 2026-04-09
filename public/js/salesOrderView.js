@@ -1,16 +1,16 @@
 // public/js/salesOrderView.js
 
 // Lightweight global crash sniffers
-window.addEventListener("error", e =>
+window.addEventListener("error", (e) =>
   console.error("💥 Uncaught error:", e.error || e.message)
 );
-window.addEventListener("unhandledrejection", e =>
+window.addEventListener("unhandledrejection", (e) =>
   console.error("💥 Unhandled Promise rejection:", e.reason)
 );
 
 /* =====================================================
    Shared item cache loader
-   ===================================================== */
+===================================================== */
 async function loadItemCache() {
   try {
     if (window.nsItemFeedCache?.getItems) {
@@ -36,9 +36,10 @@ async function loadItemCache() {
     return [];
   }
 }
-// ==========================================================
-// TOAST NOTIFICATION (Cloned from SalesNew.js)
-// ==========================================================
+
+/* ==========================================================
+   TOAST NOTIFICATION
+========================================================== */
 (function () {
   const toast = document.getElementById("orderToast");
   if (!toast) return;
@@ -48,10 +49,8 @@ async function loadItemCache() {
     toast.className = `order-toast ${type}`;
     toast.classList.remove("hidden");
 
-    // Delay triggers CSS animation
     requestAnimationFrame(() => toast.classList.add("show"));
 
-    // Auto-hide
     setTimeout(() => {
       toast.classList.remove("show");
       setTimeout(() => toast.classList.add("hidden"), 300);
@@ -59,11 +58,9 @@ async function loadItemCache() {
   };
 })();
 
-
-
 /* =====================================================
    Main Sales Order View Loader
-   ===================================================== */
+===================================================== */
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("💡 SalesOrderView init");
 
@@ -73,7 +70,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ---- Auth / token ----
   let saved = storageGet?.();
   if (!saved || !saved.token) {
-    await new Promise(r => setTimeout(r, 300));
+    await new Promise((r) => setTimeout(r, 300));
     saved = storageGet?.();
   }
   if (!saved || !saved.token) {
@@ -88,14 +85,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   populateSalesExecAndStore(headers);
 
-
   /* =====================================================
-   Populate Sales Executive & Store Dropdowns (extracted from salesNew.js)
-   ===================================================== */
-
+     Populate Sales Executive & Store Dropdowns
+  ===================================================== */
   async function populateSalesExecAndStore(headers) {
-    // Load Current User
     let currentUser = null;
+
     try {
       const meRes = await fetch("/api/me", { headers });
       const meData = await meRes.json();
@@ -107,7 +102,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn("⚠️ Failed to load current user:", err);
     }
 
-    // Load Sales Executives
     try {
       const res = await fetch("/api/users", { headers });
       const data = await res.json();
@@ -118,18 +112,17 @@ document.addEventListener("DOMContentLoaded", async () => {
           execSelect.innerHTML = '<option value="">Select Sales Executive</option>';
 
           const salesExecs = data.users.filter(
-            u => Array.isArray(u.roles) && u.roles.some(r => r.name === "Sales Executive")
+            (u) => Array.isArray(u.roles) && u.roles.some((r) => r.name === "Sales Executive")
           );
 
-          salesExecs.forEach(u => {
+          salesExecs.forEach((u) => {
             const opt = document.createElement("option");
-            opt.value = u.id;
+            opt.value = u.id; // app user id
             opt.textContent = `${u.firstName} ${u.lastName}`;
             execSelect.appendChild(opt);
           });
 
-          // Auto-assign if user is a Sales Exec
-          if (currentUser && salesExecs.some(u => u.id === currentUser.id)) {
+          if (currentUser && salesExecs.some((u) => u.id === currentUser.id)) {
             execSelect.value = currentUser.id;
             console.log("✔ Auto-set Sales Exec to current user");
           }
@@ -139,7 +132,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("❌ Failed to load sales executives:", err);
     }
 
-    // Load Stores
     try {
       const res = await fetch("/api/meta/locations", { headers });
       const data = await res.json();
@@ -150,21 +142,21 @@ document.addEventListener("DOMContentLoaded", async () => {
           storeSelect.innerHTML = '<option value="">Select Store</option>';
 
           const filteredLocations = data.locations.filter(
-            loc => !/warehouse/i.test(loc.name)
+            (loc) => !/warehouse/i.test(loc.name)
           );
 
-          filteredLocations.forEach(loc => {
+          filteredLocations.forEach((loc) => {
             const opt = document.createElement("option");
             opt.value = String(loc.id);
             opt.textContent = loc.name;
             storeSelect.appendChild(opt);
           });
 
-          // Default to user’s primary store
           if (currentUser && currentUser.primaryStore) {
-            const match = filteredLocations.find(l =>
-              String(l.id) === String(currentUser.primaryStore) ||
-              l.name === currentUser.primaryStore
+            const match = filteredLocations.find(
+              (l) =>
+                String(l.id) === String(currentUser.primaryStore) ||
+                l.name === currentUser.primaryStore
             );
 
             if (match) {
@@ -179,7 +171,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-
   // ---- Sales Order ID from URL ----
   const pathParts = window.location.pathname.split("/");
   const tranId = pathParts.pop() || pathParts.pop();
@@ -193,21 +184,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ==================================================
     // 1️⃣ Load everything in parallel where possible
     // ==================================================
-    const [
-      _items,            // item cache (ignored variable, but ensures cache ready)
-      soRes,
-      locRes,
-      userRes,
-      fulfilRes
-    ] = await Promise.all([
+    const [_items, soRes, locRes, userRes, fulfilRes] = await Promise.all([
       loadItemCache(),
       fetch(`/api/netsuite/salesorder/${tranId}?refresh=1`, { headers }),
       fetch("/api/meta/locations", { headers }),
       fetch("/api/users", { headers }),
-      fetch("/api/netsuite/fulfilmentmethods").catch(() => null)
+      fetch("/api/netsuite/fulfilmentmethods").catch(() => null),
     ]);
 
-    // --- Sales Order response ---
     const soJson = await soRes.json();
     if (!soRes.ok || !soJson || soJson.ok === false) {
       throw new Error(soJson?.error || `Server returned ${soRes.status}`);
@@ -217,25 +201,26 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!so) throw new Error("No salesOrder object in response");
     console.log("✅ Sales Order loaded:", so.tranId || tranId);
 
-    // --- Locations, Users, Fulfilment Methods ---
     const locJson = locRes.ok ? await locRes.json() : {};
     const locations = locJson.locations || locJson.data || [];
 
     const userJson = userRes.ok ? await userRes.json() : {};
     const users = userJson.users || userJson.data || [];
+    window._salesUsers = users;
 
     let fulfilmentMethods = [];
     if (fulfilRes && fulfilRes.ok) {
       const fJson = await fulfilRes.json();
       fulfilmentMethods = fJson.results || [];
     }
-    window._fulfilmentMap = fulfilmentMethods.map(f => ({
+
+    window._fulfilmentMap = fulfilmentMethods.map((f) => ({
       id: String(f["Internal ID"] || f.id),
       name: f["Name"] || f.name,
     }));
 
     // ==================================================
-    // 2️⃣ Render Deposits (from backend aggregation)
+    // 2️⃣ Render Deposits
     // ==================================================
     if (Array.isArray(soJson.deposits) && soJson.deposits.length) {
       window._currentDeposits = soJson.deposits;
@@ -250,37 +235,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("orderNumber").textContent = so.tranId || tranId;
 
     function formatOrderStatus(so) {
-      console.log("📦 Raw sales order object for status check:", so);
-      console.log("📦 so.status:", so?.status, "| type:", typeof so?.status);
-      console.log("📦 so.statusRef:", so?.statusRef, "| type:", typeof so?.statusRef);
-      console.log("📦 so.orderStatus:", so?.orderStatus);
-      console.log("📦 so.orderStatus?.id:", so?.orderStatus?.id);
-      console.log("📦 so.orderStatus?.refName:", so?.orderStatus?.refName);
-
-      // 1) Best case: NetSuite already gave the display text
       if (typeof so?.status === "string" && so.status.trim()) {
-        console.log("✅ Using so.status:", so.status.trim());
         return so.status.trim();
       }
 
-      // 1b) Sometimes status may arrive as an object
       if (
         so?.status &&
         typeof so.status === "object" &&
         typeof so.status.refName === "string" &&
         so.status.refName.trim()
       ) {
-        console.log("✅ Using so.status.refName:", so.status.refName.trim());
         return so.status.refName.trim();
       }
 
-      // 2) Next best: statusRef like pendingFulfillment / pendingApproval / billed
       const statusRef =
         (typeof so?.statusRef === "string" && so.statusRef.trim()) ||
         (typeof so?.orderStatus?.refName === "string" && so.orderStatus.refName.trim()) ||
         "";
-
-      console.log("📦 Derived statusRef candidate:", statusRef);
 
       if (statusRef) {
         const normalized = statusRef.trim();
@@ -297,21 +268,17 @@ document.addEventListener("DOMContentLoaded", async () => {
         };
 
         if (explicitMap[normalized]) {
-          console.log("✅ Using explicit statusRef map:", normalized, "→", explicitMap[normalized]);
           return explicitMap[normalized];
         }
 
-        const prettyStatus = normalized
+        return normalized
           .replace(/([a-z])([A-Z])/g, "$1 $2")
           .replace(/\b\w/g, (c) => c.toUpperCase());
-
-        console.log("✅ Using formatted statusRef fallback:", normalized, "→", prettyStatus);
-        return prettyStatus;
       }
 
-      // 3) Last fallback: orderStatus single-letter NetSuite code
-      const statusId = String(so?.orderStatus?.id || "").trim().toUpperCase();
-      console.log("📦 Falling back to orderStatus.id:", statusId);
+      const statusId = String(so?.orderStatus?.id || "")
+        .trim()
+        .toUpperCase();
 
       const codeMap = {
         A: "Pending Approval",
@@ -323,146 +290,120 @@ document.addEventListener("DOMContentLoaded", async () => {
         G: "Cancelled",
       };
 
-      if (codeMap[statusId]) {
-        console.log("✅ Using orderStatus.id map:", statusId, "→", codeMap[statusId]);
-        return codeMap[statusId];
-      }
-
-      console.warn("⚠️ Could not map order status cleanly, returning raw fallback:", statusId || "-");
-      return statusId || "-";
+      return codeMap[statusId] || statusId || "-";
     }
 
     const orderStatusEl = document.getElementById("orderStatus");
     if (orderStatusEl) {
-      const resolvedStatus = formatOrderStatus(so);
-      console.log("🧾 Final resolved order status for UI:", resolvedStatus);
-      orderStatusEl.textContent = resolvedStatus;
-    } else {
-      console.warn("⚠️ orderStatus element not found in DOM");
+      orderStatusEl.textContent = formatOrderStatus(so);
     }
-    
-// --- Customer / address ---
-try {
-  const fullName = (
-    so.entityFull?.firstName && so.entityFull?.lastName
-      ? `${so.entityFull.firstName} ${so.entityFull.lastName}`
-      : so.entity?.refName || ""
-  ).trim();
 
-  document.querySelector('input[name="firstName"]').value =
-    so.entityFull?.firstName || fullName.split(" ")[0] || "";
+    try {
+      const fullName = (
+        so.entityFull?.firstName && so.entityFull?.lastName
+          ? `${so.entityFull.firstName} ${so.entityFull.lastName}`
+          : so.entity?.refName || ""
+      ).trim();
 
-  document.querySelector('input[name="lastName"]').value =
-    so.entityFull?.lastName || fullName.split(" ").slice(1).join(" ") || "";
+      document.querySelector('input[name="firstName"]').value =
+        so.entityFull?.firstName || fullName.split(" ")[0] || "";
 
-  // ✅ Prefer structured addressbook data first
-  const addressItems = so.entityFull?.addressbook?.items || [];
-  const defaultAddress =
-    addressItems.find((a) => a.defaultShipping) ||
-    addressItems.find((a) => a.defaultBilling) ||
-    addressItems[0] ||
-    null;
+      document.querySelector('input[name="lastName"]').value =
+        so.entityFull?.lastName || fullName.split(" ").slice(1).join(" ") || "";
 
-  const addr = defaultAddress?.addressbookAddress || {};
+      const addressItems = so.entityFull?.addressbook?.items || [];
+      const defaultAddress =
+        addressItems.find((a) => a.defaultShipping) ||
+        addressItems.find((a) => a.defaultBilling) ||
+        addressItems[0] ||
+        null;
 
-  if (defaultAddress && addr) {
-    console.log("🏠 Using structured NetSuite addressbook address:", addr);
+      const addr = defaultAddress?.addressbookAddress || {};
 
-    document.querySelector('input[name="address1"]').value = addr.addr1 || "";
-    document.querySelector('input[name="address2"]').value = addr.addr2 || "";
-    document.querySelector('input[name="address3"]').value = addr.city || "";
-    document.querySelector('input[name="county"]').value = addr.state || "";
-    document.querySelector('input[name="postcode"]').value = addr.zip || "";
-    document.querySelector('input[name="country"]').value =
-      addr.country?.refName ||
-      addr.country ||
-      "United Kingdom";
-  } else {
-  // ✅ Fallback to parsing raw address text if addressbook not present
-  const rawAddress =
-    so.shipAddress ||
-    so.shippingAddress_text ||
-    so.billAddress ||
-    so.billingAddress_text ||
-    "";
+      if (defaultAddress && addr) {
+        document.querySelector('input[name="address1"]').value = addr.addr1 || "";
+        document.querySelector('input[name="address2"]').value = addr.addr2 || "";
+        document.querySelector('input[name="address3"]').value = addr.city || "";
+        document.querySelector('input[name="county"]').value = addr.state || "";
+        document.querySelector('input[name="postcode"]').value = addr.zip || "";
+        document.querySelector('input[name="country"]').value =
+          addr.country?.refName || addr.country || "United Kingdom";
+      } else {
+        const rawAddress =
+          so.shipAddress ||
+          so.shippingAddress_text ||
+          so.billAddress ||
+          so.billingAddress_text ||
+          "";
 
-  let addressLines = rawAddress
-    ? String(rawAddress).split("\n").map((l) => l.trim()).filter(Boolean)
-    : [];
+        let addressLines = rawAddress
+          ? String(rawAddress).split("\n").map((l) => l.trim()).filter(Boolean)
+          : [];
 
-  // Remove customer name if NetSuite includes it as first line
-  if (addressLines.length && fullName) {
-    const firstLine = addressLines[0].toLowerCase().replace(/\s+/g, " ").trim();
-    const compareName = fullName.toLowerCase().replace(/\s+/g, " ").trim();
+        if (addressLines.length && fullName) {
+          const firstLine = addressLines[0].toLowerCase().replace(/\s+/g, " ").trim();
+          const compareName = fullName.toLowerCase().replace(/\s+/g, " ").trim();
 
-    if (firstLine === compareName) {
-      addressLines.shift();
+          if (firstLine === compareName) {
+            addressLines.shift();
+          }
+        }
+
+        const postcodeRegex = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
+        let postcode = "";
+        let countryLine = "";
+        const cleanedAddress = [];
+
+        for (const line of addressLines) {
+          if (postcodeRegex.test(line)) {
+            const match = line.match(postcodeRegex);
+            if (match) postcode = match[0].toUpperCase();
+
+            const townPart = line.replace(postcodeRegex, "").trim();
+            if (townPart) cleanedAddress.push(townPart);
+          } else if (
+            /(United Kingdom|UK|England|Scotland|Wales|Northern Ireland)/i.test(line)
+          ) {
+            countryLine = line;
+          } else {
+            cleanedAddress.push(line);
+          }
+        }
+
+        let address1 = cleanedAddress[0] || "";
+        let address2 = cleanedAddress[1] || "";
+        let address3 = cleanedAddress[2] || "";
+        let county = "";
+
+        if (address3) {
+          const countyMatch = address3.match(
+            /\b(East Sussex|West Sussex|Kent|Surrey|Essex|Hampshire|London|Greater London|Devon|Cornwall|Dorset|Somerset|Norfolk|Suffolk|Yorkshire|North Yorkshire|South Yorkshire|West Yorkshire|Lancashire|Cheshire)\b$/i
+          );
+
+          if (countyMatch) {
+            county = countyMatch[1].trim();
+            address3 = address3.slice(0, address3.length - county.length).trim();
+          }
+        }
+
+        document.querySelector('input[name="address1"]').value = address1;
+        document.querySelector('input[name="address2"]').value = address2;
+        document.querySelector('input[name="address3"]').value = address3;
+        document.querySelector('input[name="county"]').value = county;
+        document.querySelector('input[name="postcode"]').value = postcode || "";
+        document.querySelector('input[name="country"]').value =
+          countryLine || "United Kingdom";
+      }
+    } catch (err) {
+      console.warn("⚠️ Address population failed:", err.message);
     }
-  }
 
-  const postcodeRegex = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
-  let postcode = "";
-  let countryLine = "";
-  const cleanedAddress = [];
-
-  for (const line of addressLines) {
-    if (postcodeRegex.test(line)) {
-      const match = line.match(postcodeRegex);
-      if (match) postcode = match[0].toUpperCase();
-
-      const townPart = line.replace(postcodeRegex, "").trim();
-      if (townPart) cleanedAddress.push(townPart);
-    } else if (/(United Kingdom|UK|England|Scotland|Wales|Northern Ireland)/i.test(line)) {
-      countryLine = line;
-    } else {
-      cleanedAddress.push(line);
-    }
-  }
-
-  let address1 = cleanedAddress[0] || "";
-  let address2 = cleanedAddress[1] || "";
-  let address3 = cleanedAddress[2] || "";
-  let county = "";
-
-  // ✅ If final line looks like "TOWN COUNTY", split county out
-  if (address3) {
-    const countyMatch = address3.match(
-      /\b(East Sussex|West Sussex|Kent|Surrey|Essex|Hampshire|London|Greater London|Devon|Cornwall|Dorset|Somerset|Norfolk|Suffolk|Yorkshire|North Yorkshire|South Yorkshire|West Yorkshire|Lancashire|Cheshire)\b$/i
-    );
-
-    if (countyMatch) {
-      county = countyMatch[1].trim();
-      address3 = address3.slice(0, address3.length - county.length).trim();
-    }
-  }
-
-  console.log("🏠 Falling back to parsed raw address:", {
-    cleanedAddress,
-    address1,
-    address2,
-    address3,
-    county,
-    postcode,
-    countryLine,
-  });
-
-  document.querySelector('input[name="address1"]').value = address1;
-  document.querySelector('input[name="address2"]').value = address2;
-  document.querySelector('input[name="address3"]').value = address3;
-  document.querySelector('input[name="county"]').value = county;
-  document.querySelector('input[name="postcode"]').value = postcode || "";
-  document.querySelector('input[name="country"]').value = countryLine || "United Kingdom";
-}
-} catch (err) {
-  console.warn("⚠️ Address population failed:", err.message);
-}
-
-    // --- Contact info ---
     document.querySelector('input[name="email"]').value = so.email || "";
-    document.querySelector('input[name="contactNumber"]').value = so.custbody4 || so.phone || "";
-    document.querySelector('input[name="altContactNumber"]').value = so.altPhone || "";
+    document.querySelector('input[name="contactNumber"]').value =
+      so.custbody4 || so.phone || "";
+    document.querySelector('input[name="altContactNumber"]').value =
+      so.altPhone || "";
 
-    // --- Title (use entityFull if backend attached it) ---
     try {
       const entity = so.entityFull || {};
       const titleObj = entity.custentity_title || entity.title || null;
@@ -470,7 +411,7 @@ try {
         const titleSelect = document.querySelector('select[name="title"]');
         if (titleSelect) {
           const match = Array.from(titleSelect.options).find(
-            opt => String(opt.value) === String(titleObj.id)
+            (opt) => String(opt.value) === String(titleObj.id)
           );
           if (match) titleSelect.value = titleObj.id;
         }
@@ -479,11 +420,13 @@ try {
       console.warn("⚠️ Title population skipped:", err.message);
     }
 
-    // --- Order meta (Sales Exec, Store, Lead Source, Warehouse etc.) ---
     try {
       const nsExecId = so.custbody_sb_bedspecialist?.id || null;
       if (nsExecId && users.length) {
-        const execMatch = users.find(u => String(u.netsuiteId) === String(nsExecId));
+        const execMatch = users.find(
+          (u) =>
+            String(u.netsuiteId || u.netsuiteid || "") === String(nsExecId)
+        );
         if (execMatch) document.querySelector("#salesExec").value = execMatch.id;
       }
 
@@ -492,7 +435,7 @@ try {
 
       if (subsidiaryId && locations.length) {
         const storeMatch = locations.find(
-          loc =>
+          (loc) =>
             String(loc.netsuite_internal_id) === String(subsidiaryId) ||
             String(loc.invoice_location_id) === String(subsidiaryId)
         );
@@ -500,13 +443,14 @@ try {
       }
 
       document.querySelector('select[name="leadSource"]').value = so.leadSource?.id || "";
-      document.querySelector("#paymentInfo").value = so.custbody_sb_paymentinfo?.id || "";
-      document.querySelector("#warehouse").value = so.custbody_sb_warehouse?.id || "";
+      document.querySelector("#paymentInfo").value =
+        so.custbody_sb_paymentinfo?.id || "";
+      document.querySelector("#warehouse").value =
+        so.custbody_sb_warehouse?.id || "";
     } catch (err) {
       console.warn("⚠️ Order meta population failed:", err.message);
     }
 
-    // --- Cache warehouse for inventory popup use ---
     try {
       const warehouseSelect = document.getElementById("warehouse");
       if (warehouseSelect) {
@@ -523,7 +467,7 @@ try {
     }
 
     // ==================================================
-    // 4️⃣ Render Item Lines (delegated to salesViewItemLine.js)
+    // 4️⃣ Render Item Lines
     // ==================================================
     if (typeof window.renderSalesViewLines !== "function") {
       throw new Error("renderSalesViewLines() not found — did salesViewItemLine.js load?");
@@ -534,61 +478,69 @@ try {
       fulfilmentMethods: window._fulfilmentMap || [],
     });
 
-
-
     // ==================================================
     // 6️⃣ Lock / unlock form depending on order status
     // ==================================================
     const isPendingApproval = so.orderStatus?.id === "A";
 
     if (isPendingApproval) {
-      console.log("🔓 Pending approval – Sales New style fields editable");
+      console.log("🔓 Pending approval – unlock editable sales order fields");
 
-      document.querySelectorAll("input, select, textarea, button").forEach(el => {
-        // ✅ allow editing for Sales New style line UI + header fields you want editable
-        if (
-          // line inputs
+      document.querySelectorAll("input, select, textarea, button").forEach((el) => {
+        const isStoreField = el.id === "store" || el.name === "store";
+
+        const allowEdit =
+          el.name === "title" ||
+          el.name === "firstName" ||
+          el.name === "lastName" ||
+          el.name === "email" ||
+          el.name === "contactNumber" ||
+          el.name === "altContactNumber" ||
+          el.name === "address1" ||
+          el.name === "address2" ||
+          el.name === "address3" ||
+          el.name === "county" ||
+          el.name === "postcode" ||
+          el.name === "country" ||
+          el.id === "salesExec" ||
+          el.name === "leadSource" ||
+          el.id === "paymentInfo" ||
+          el.id === "warehouse" ||
+          el.classList.contains("item-search") ||
           el.classList.contains("item-qty") ||
           el.classList.contains("item-discount") ||
           el.classList.contains("item-saleprice") ||
-
-          // fulfilment / inventory
           el.classList.contains("item-fulfilment") ||
           el.classList.contains("fulfilmentSelect") ||
           el.classList.contains("open-inventory") ||
           el.classList.contains("item-inv-detail") ||
-
-          // header fields you said should remain editable
-          el.name === "leadSource" ||
-          el.id === "paymentInfo" ||
-
-          // always allowed actions
+          el.classList.contains("open-options") ||
+          el.classList.contains("delete-row") ||
+          el.id === "addItemBtn" ||
+          el.id === "saveOrderBtn" ||
+          el.id === "commitOrderBtn" ||
           el.id === "newMemoBtn" ||
           el.id === "printBtn" ||
-          el.id === "addDepositBtn"
-        ) {
+          el.id === "addDepositBtn";
+
+        if (allowEdit && !isStoreField) {
           el.disabled = false;
           el.classList.remove("locked-input");
-          return;
+        } else {
+          el.disabled = true;
+          el.classList.add("locked-input");
         }
-
-        // lock everything else
-        el.disabled = true;
-        el.classList.add("locked-input");
       });
-
     } else {
       console.log("🔒 Not pending approval – lock everything (read-only)");
 
-      document.querySelectorAll("input, select, textarea, button").forEach(el => {
-        // allow memo / print
+      document.querySelectorAll("input, select, textarea, button").forEach((el) => {
         if (el.id === "newMemoBtn" || el.id === "printBtn") return;
 
         el.disabled = true;
         el.classList.add("locked-input");
       });
 
-      // but keep deposit disabled on committed orders (optional)
       const addDepositBtn = document.getElementById("addDepositBtn");
       if (addDepositBtn) {
         addDepositBtn.disabled = true;
@@ -596,22 +548,17 @@ try {
       }
     }
 
-
     // ==================================================
     // 7️⃣ Summary + Action button + Add Deposit
     // ==================================================
     updateOrderSummaryFromTable();
     updateActionButton(so.orderStatus || so.status || {}, tranId, so);
 
-
-
-
-    // Enable Add Deposit popup
     const addDepositBtn = document.getElementById("addDepositBtn");
 
     function cleanMoneyText(rawValue) {
       if (rawValue == null) return 0;
-      const cleaned = String(rawValue).replace(/[^0-9.-]/g, ""); // strips £, commas, spaces etc.
+      const cleaned = String(rawValue).replace(/[^0-9.-]/g, "");
       const n = parseFloat(cleaned);
       return Number.isFinite(n) ? n : 0;
     }
@@ -620,12 +567,10 @@ try {
       addDepositBtn.disabled = false;
       addDepositBtn.classList.remove("locked-input");
 
-      // prevent accidental multiple bindings
       addDepositBtn.onclick = (e) => {
         e.preventDefault();
         e.stopPropagation();
 
-        // Prefer outstanding balance, fallback to grand total
         const outstandingText =
           document.getElementById("outstandingBalance")?.textContent || "";
         const grandTotalText =
@@ -633,10 +578,6 @@ try {
 
         let amount = cleanMoneyText(outstandingText);
         if (!(amount > 0)) amount = cleanMoneyText(grandTotalText);
-
-        console.log("🧾 outstandingText:", outstandingText);
-        console.log("🧾 grandTotalText:", grandTotalText);
-        console.log("🧾 amount used for popup:", amount);
 
         const popup = window.open(
           `${window.location.origin}/deposit.html?amount=${encodeURIComponent(
@@ -653,7 +594,6 @@ try {
         }
       };
     }
-
   } catch (err) {
     console.error("❌ Load failure:", err.message || err);
     alert("Failed to load Sales Order details. " + (err.message || err));
@@ -661,9 +601,10 @@ try {
     overlay?.classList.add("hidden");
   }
 });
+
 /* =====================================================
-   Memo Panel (separate but lightweight)
-   ===================================================== */
+   Memo Panel
+===================================================== */
 document.addEventListener("DOMContentLoaded", () => {
   const auth = storageGet?.();
   const token = auth?.token || null;
@@ -711,7 +652,7 @@ document.addEventListener("DOMContentLoaded", () => {
       noMemosMsg.style.display = "none";
 
       const frag = document.createDocumentFragment();
-      data.memos.forEach(m => {
+      data.memos.forEach((m) => {
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${m["Date"] || ""}</td>
@@ -745,8 +686,8 @@ function updateMemoHeader(count) {
 }
 
 /* =====================================================
-   💰 Deposits rendering + totals
-   ===================================================== */
+   Deposits rendering + totals
+===================================================== */
 function renderDeposits(deposits) {
   const section = document.getElementById("depositsSection");
   const tbody = document.querySelector("#depositsTable tbody");
@@ -772,7 +713,7 @@ function renderDeposits(deposits) {
   let totalDeposits = 0;
   const frag = document.createDocumentFragment();
 
-  deposits.forEach(d => {
+  deposits.forEach((d) => {
     const amount = parseFloat(d.amount || 0);
     totalDeposits += amount;
 
@@ -805,8 +746,9 @@ function updateDepositTotals(totalDeposits) {
   outstanding = Math.round(outstanding * 100) / 100;
   if (Math.abs(outstanding) < 0.005) outstanding = 0;
 
-  if (depositsTotalCell)
+  if (depositsTotalCell) {
     depositsTotalCell.textContent = `£${totalDeposits.toFixed(2)}`;
+  }
 
   if (balanceCell) {
     balanceCell.textContent = `£${outstanding.toFixed(2)}`;
@@ -817,7 +759,7 @@ function updateDepositTotals(totalDeposits) {
 
 /* =====================================================
    Deposit saved from popup
-   ===================================================== */
+===================================================== */
 window.onDepositSaved = async (deposit) => {
   if (!deposit || !deposit.id || !deposit.amount) return;
 
@@ -875,7 +817,7 @@ window.onDepositSaved = async (deposit) => {
 
 /* =====================================================
    Summary from table
-   ===================================================== */
+===================================================== */
 function updateOrderSummaryFromTable() {
   console.log("🧮 updateOrderSummaryFromTable()");
 
@@ -886,9 +828,6 @@ function updateOrderSummaryFromTable() {
   let discountTotal = 0;
 
   rows.forEach((row, idx) => {
-    // ================================
-    // Editable / pending-approval rows
-    // ================================
     const itemId = (row.querySelector(".item-internal-id")?.value || "").trim();
     const qtyInp = row.querySelector(".item-qty");
     const discInp = row.querySelector(".item-discount");
@@ -906,14 +845,12 @@ function updateOrderSummaryFromTable() {
       let defaultGrossTotal = 0;
       let actualGrossTotal = 0;
 
-      // ✅ keep signed values, not just positives
       if (Number.isFinite(amountGrossLine) && amountGrossLine !== 0) {
         defaultGrossTotal = amountGrossLine;
       } else if (Number.isFinite(saleGrossLine) && saleGrossLine !== 0) {
         defaultGrossTotal = saleGrossLine;
       }
 
-      // ✅ sale price is already the full signed line total
       if (Number.isFinite(saleGrossLine) && saleGrossLine !== 0) {
         actualGrossTotal = saleGrossLine;
       } else if (discountPct > 0 && defaultGrossTotal > 0) {
@@ -927,7 +864,6 @@ function updateOrderSummaryFromTable() {
 
       grossTotal += actualGrossTotal;
 
-      // ✅ only calculate discount from positive retail lines
       const lineDiscount =
         defaultGrossTotal > 0 && actualGrossTotal >= 0
           ? Math.max(0, defaultGrossTotal - actualGrossTotal)
@@ -943,15 +879,12 @@ function updateOrderSummaryFromTable() {
         discountPct,
         defaultGrossTotal,
         actualGrossTotal,
-        lineDiscount
+        lineDiscount,
       });
 
       return;
     }
 
-    // ================================
-    // Read-only / committed rows
-    // ================================
     const amountEl = row.querySelector(".amount");
     const saleEl = row.querySelector(".saleprice");
 
@@ -965,17 +898,9 @@ function updateOrderSummaryFromTable() {
     grossTotal += sale;
 
     const lineDiscount =
-      amount > 0 && sale >= 0
-        ? Math.max(0, amount - sale)
-        : 0;
+      amount > 0 && sale >= 0 ? Math.max(0, amount - sale) : 0;
 
     discountTotal += lineDiscount;
-
-    console.log(`🧾 Read-only row ${idx}`, {
-      amount,
-      sale,
-      lineDiscount
-    });
   });
 
   grossTotal = Number(grossTotal.toFixed(2));
@@ -996,10 +921,7 @@ function updateOrderSummaryFromTable() {
 
   if (typeof updateDepositTotals === "function") {
     const totalDeposits = Array.isArray(window._currentDeposits)
-      ? window._currentDeposits.reduce(
-          (sum, d) => sum + (parseFloat(d.amount) || 0),
-          0
-        )
+      ? window._currentDeposits.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0)
       : 0;
 
     updateDepositTotals(totalDeposits);
@@ -1009,7 +931,7 @@ function updateOrderSummaryFromTable() {
     grossTotal,
     netTotal,
     taxTotal,
-    discountTotal
+    discountTotal,
   });
 }
 
@@ -1026,7 +948,7 @@ document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
 
 /* =====================================================
    Print receipt
-   ===================================================== */
+===================================================== */
 document.addEventListener("click", (e) => {
   const btn = e.target.closest("#printBtn");
   if (!btn) return;
@@ -1034,27 +956,18 @@ document.addEventListener("click", (e) => {
   e.preventDefault();
   e.stopPropagation();
 
-  console.log("🖨️ Print button clicked");
-
   const parts = window.location.pathname.split("/").filter(Boolean);
   const tranId = parts[parts.length - 1];
 
-  console.log("🖨️ URL path parts:", parts);
-  console.log("🖨️ Derived tranId:", tranId);
-
   if (!tranId) {
-    console.error("❌ No tranId found in URL");
     alert("⚠️ Could not determine receipt transaction ID.");
     return;
   }
 
   const url = `/sales/reciept/${tranId}`;
-  console.log("🖨️ Opening receipt URL:", url);
-
   const receiptWin = window.open(url, "_blank");
 
   if (!receiptWin) {
-    console.warn("⚠️ Popup blocked - redirecting in same tab");
     window.location.href = url;
     return;
   }
@@ -1062,13 +975,9 @@ document.addEventListener("click", (e) => {
   receiptWin.focus();
 });
 
-
-
-
-
 /* =====================================================
-   Commit / fulfil buttons
-   ===================================================== */
+   Commit / save buttons
+===================================================== */
 function showCommitInline(message = "Committing…") {
   const wrap = document.getElementById("commitInlineStatus");
   const text = document.getElementById("commitInlineText");
@@ -1086,89 +995,180 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
   wrapper.innerHTML = "";
 
-  // ---- Inline status helpers ----
-  function showCommitInline(message = "Working…") {
+  function showCommitInlineLocal(message = "Working…") {
     const wrap = document.getElementById("commitInlineStatus");
     const text = document.getElementById("commitInlineText");
     if (text) text.textContent = message;
     wrap?.classList.remove("hidden");
   }
 
-  function hideCommitInline() {
+  function hideCommitInlineLocal() {
     document.getElementById("commitInlineStatus")?.classList.add("hidden");
   }
 
   const statusId = (orderStatusObj?.id || "").toUpperCase();
   const statusName = (orderStatusObj?.refName || "").toLowerCase();
 
-  // =====================================================
-  // ✅ ONLY show buttons if Pending Approval
-  // =====================================================
   const isPendingApproval = statusId === "A" || statusName.includes("approval");
   if (!isPendingApproval) return;
 
-  // Render Save + Commit buttons
   wrapper.innerHTML = `
     <button id="saveOrderBtn" class="btn-secondary">Save</button>
     <button id="commitOrderBtn" class="btn-primary">Commit</button>
   `;
 
-  // Helper to build payload (shared by Save + Commit)
-  function buildPayloadFromUI() {
-    const headerUpdates = {
-      leadSource: document.querySelector('select[name="leadSource"]')?.value || null,
-      paymentInfo: document.getElementById("paymentInfo")?.value || null,
-    };
+  function collectEditableSalesLines() {
+    return [...document.querySelectorAll("#orderItemsBody tr.order-line")]
+      .map((row) => {
+        let itemId = row.querySelector(".item-internal-id")?.value?.trim() || "";
 
-    const updates = [];
-
-    document.querySelectorAll("#orderItemsBody tr.order-line").forEach((row) => {
-      const lineId = row.dataset.lineid || "";
-      const itemId = row.querySelector(".item-internal-id")?.value || "";
-
-      const qty = Number(
-        row.querySelector(".item-qty")?.value ||
-          row.querySelector(".item-qty-cache")?.value ||
-          0
-      );
-
-      const fulfilSel =
-        row.querySelector(".item-fulfilment") || row.querySelector(".fulfilmentSelect");
-      let fulfilmentValue = fulfilSel?.value?.trim() || "";
-
-      // fallback map refName -> id if blank
-      if (!fulfilmentValue) {
-        const currentRef = row.querySelector(".fulfilment-cell")?.textContent?.trim() || "";
-        if (currentRef && Array.isArray(window._fulfilmentMap)) {
-          const match = window._fulfilmentMap.find(
-            (f) => f.name?.toLowerCase() === currentRef.toLowerCase()
-          );
-          fulfilmentValue = match?.id || "";
+        if (!itemId) {
+          const itemName = row.querySelector(".item-search")?.value?.trim() || "";
+          if (itemName && Array.isArray(window.items)) {
+            const match = window.items.find(
+              (it) =>
+                String(it["Name"] || "").trim().toLowerCase() ===
+                itemName.toLowerCase()
+            );
+            itemId = String(match?.["Internal ID"] || "").trim();
+          }
         }
-      }
 
-      const invInp = row.querySelector(".item-inv-detail");
+        const quantity =
+          parseFloat(
+            row.querySelector(".item-qty")?.value ||
+              row.querySelector(".item-qty-cache")?.value ||
+              "0"
+          ) || 0;
 
-      const discountPct = Number(row.querySelector(".item-discount")?.value || 0);
-      const saleGrossPerUnit = Number(row.querySelector(".item-saleprice")?.value || 0);
+        const fulfilSel =
+          row.querySelector(".item-fulfilment") ||
+          row.querySelector(".fulfilmentSelect");
 
-      updates.push({
-        lineId,
-        itemId,
-        quantity: qty,
-        fulfilmentMethod: fulfilmentValue || null,
-        inventoryDetail: invInp?.value || null,
-        discountPct,
-        saleGrossPerUnit,
-      });
-    });
+        let fulfilmentMethod = fulfilSel?.value?.trim() || "";
 
-    return { updates, headerUpdates };
+        if (!fulfilmentMethod) {
+          const currentRef =
+            row.querySelector(".fulfilment-cell")?.textContent?.trim() || "";
+          if (currentRef && Array.isArray(window._fulfilmentMap)) {
+            const match = window._fulfilmentMap.find(
+              (f) => f.name?.toLowerCase() === currentRef.toLowerCase()
+            );
+            fulfilmentMethod = match?.id || "";
+          }
+        }
+
+        const inventoryDetail = row.querySelector(".item-inv-detail")?.value || "";
+        const discountPct =
+          parseFloat(row.querySelector(".item-discount")?.value || "0") || 0;
+        const saleGrossLine =
+          parseFloat(row.querySelector(".item-saleprice")?.value || "0") || 0;
+        const amountGrossLine =
+          parseFloat(row.querySelector(".item-amount")?.value || "0") || 0;
+
+        const optionsText =
+          row
+            .querySelector(".options-summary")
+            ?.innerHTML?.trim()
+            .replace(/<br\s*\/?>/gi, "\n") || "";
+
+        return {
+          lineId: row.dataset.lineid || "",
+          itemId,
+          quantity,
+          fulfilmentMethod: fulfilmentMethod || null,
+          inventoryDetail: inventoryDetail || null,
+          discountPct,
+          saleGrossLine,
+          amountGrossLine,
+          optionsSummary: optionsText || null,
+          isNew: !row.dataset.lineid,
+        };
+      })
+      .filter((r) => r.itemId && r.quantity > 0);
   }
 
-  // -----------------------------
-  // ✅ Save Only button handler
-  // -----------------------------
+  function buildPayloadFromUI() {
+    const selectedSalesExecUserId = document.getElementById("salesExec")?.value || "";
+
+    const selectedSalesExecUser = (window._salesUsers || []).find(
+      (u) => String(u.id) === String(selectedSalesExecUserId)
+    );
+
+    const selectedSalesExecNsId =
+      selectedSalesExecUser?.netsuiteId ||
+      selectedSalesExecUser?.netsuiteid ||
+      null;
+
+    const headerUpdates = {
+      title: document.querySelector('select[name="title"]')?.value || null,
+      firstName:
+        document.querySelector('input[name="firstName"]')?.value?.trim() || null,
+      lastName:
+        document.querySelector('input[name="lastName"]')?.value?.trim() || null,
+      email: document.querySelector('input[name="email"]')?.value?.trim() || null,
+      contactNumber:
+        document.querySelector('input[name="contactNumber"]')?.value?.trim() || null,
+      altContactNumber:
+        document.querySelector('input[name="altContactNumber"]')?.value?.trim() || null,
+      address1:
+        document.querySelector('input[name="address1"]')?.value?.trim() || null,
+      address2:
+        document.querySelector('input[name="address2"]')?.value?.trim() || null,
+      address3:
+        document.querySelector('input[name="address3"]')?.value?.trim() || null,
+      county:
+        document.querySelector('input[name="county"]')?.value?.trim() || null,
+      postcode:
+        document.querySelector('input[name="postcode"]')?.value?.trim() || null,
+      country:
+        document.querySelector('input[name="country"]')?.value?.trim() || null,
+      salesExec: selectedSalesExecNsId,
+      leadSource: document.querySelector('select[name="leadSource"]')?.value || null,
+      paymentInfo: document.getElementById("paymentInfo")?.value || null,
+      warehouse: document.getElementById("warehouse")?.value || null,
+    };
+
+    const lines = collectEditableSalesLines();
+    const visibleLineIds = new Set(
+      [...document.querySelectorAll("#orderItemsBody tr.order-line")]
+        .map((row) => String(row.dataset.lineid || "").trim())
+        .filter(Boolean)
+    );
+
+    const originalLineIds = (so?.item?.items || [])
+      .map((line) => String(line.lineId || "").trim())
+      .filter(Boolean);
+
+    const deletedLineIds = originalLineIds.filter((id) => !visibleLineIds.has(id));
+
+    console.log("🧪 Sales Exec payload mapping:", {
+      selectedUiUserId: selectedSalesExecUserId,
+      mappedNsId: selectedSalesExecNsId,
+    });
+
+    console.log(
+      "🧪 Row payload debug:",
+      [...document.querySelectorAll("#orderItemsBody tr.order-line")].map((row) => ({
+        line: row.dataset.line || "",
+        lineId: row.dataset.lineid || "",
+        itemId: row.querySelector(".item-internal-id")?.value || "",
+        itemSearch: row.querySelector(".item-search")?.value || "",
+        qty: row.querySelector(".item-qty")?.value || "",
+        sale: row.querySelector(".item-saleprice")?.value || "",
+        amount: row.querySelector(".item-amount")?.value || "",
+      }))
+    );
+
+    console.log("🧪 Final lines payload:", lines);
+
+    return {
+      headerUpdates,
+      lines,
+      deletedLineIds,
+    };
+  }
+
   const saveBtn = document.getElementById("saveOrderBtn");
   if (saveBtn) {
     saveBtn.replaceWith(saveBtn.cloneNode(true));
@@ -1181,9 +1181,9 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
       freshSaveBtn.disabled = true;
       freshSaveBtn.classList.add("locked-input");
-      showCommitInline("Saving…");
+      showCommitInlineLocal("Saving…");
 
-      const { updates, headerUpdates } = buildPayloadFromUI();
+      const payload = buildPayloadFromUI();
 
       try {
         const res = await fetch(`/api/netsuite/salesorder/${tranId}/save`, {
@@ -1192,20 +1192,20 @@ function updateActionButton(orderStatusObj, tranId, so) {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ updates, headerUpdates }),
+          body: JSON.stringify(payload),
         });
 
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.error || "Failed to save order");
 
         showToast?.("✅ Saved (not committed)", "success");
-        showCommitInline("Saved ✅");
-        setTimeout(() => hideCommitInline(), 800);
+        showCommitInlineLocal("Saved ✅");
+        setTimeout(() => hideCommitInlineLocal(), 800);
       } catch (err) {
         console.error("❌ Save error:", err.message || err);
         showToast?.(`❌ ${err.message || err}`, "error");
-        showCommitInline("Save failed ❌");
-        setTimeout(() => hideCommitInline(), 1500);
+        showCommitInlineLocal("Save failed ❌");
+        setTimeout(() => hideCommitInlineLocal(), 1500);
       } finally {
         freshSaveBtn.disabled = false;
         freshSaveBtn.classList.remove("locked-input");
@@ -1213,52 +1213,88 @@ function updateActionButton(orderStatusObj, tranId, so) {
     });
   }
 
-  // =====================================================
-// ✅ Inventory saved callback (used by inventory popup)
-// =====================================================
 window.onInventorySaved = function (itemId, detailString, lineIndex) {
   try {
-    const row = document.querySelector(`#orderItemsBody tr.order-line[data-line="${lineIndex}"]`);
-    if (!row) return console.warn("⚠️ onInventorySaved: row not found", { lineIndex });
+    let row = null;
 
-    // set hidden field (Sales View uses this in Save/Commit payload)
+    // ✅ 1) prefer exact row remembered when popup was opened
+    if (window.__salesInventoryTargetRowLine != null) {
+      row = document.querySelector(
+        `#orderItemsBody tr.order-line[data-line="${window.__salesInventoryTargetRowLine}"]`
+      );
+    }
+
+    // ✅ 2) fallback to callback lineIndex
+    if (!row && lineIndex != null) {
+      row = document.querySelector(
+        `#orderItemsBody tr.order-line[data-line="${lineIndex}"]`
+      );
+    }
+
+    // ✅ 3) final fallback by item id (best effort)
+    if (!row && itemId) {
+      const matches = [
+        ...document.querySelectorAll("#orderItemsBody tr.order-line"),
+      ].filter(
+        (r) =>
+          String(r.querySelector(".item-internal-id")?.value || "").trim() ===
+          String(itemId).trim()
+      );
+
+      row = matches[matches.length - 1] || null;
+    }
+
+    if (!row) {
+      console.warn("⚠️ onInventorySaved: row not found", { itemId, lineIndex });
+      return;
+    }
+
     const invInp = row.querySelector(".item-inv-detail");
     if (invInp) invInp.value = detailString || "";
 
-    // update visible summary text
     const summary = row.querySelector(".inv-summary");
     if (summary) summary.textContent = detailString || "";
 
-    // update button icon based on qty match
     const btn = row.querySelector(".open-inventory");
     const qty =
-      parseInt(row.querySelector(".item-qty")?.value || row.querySelector(".item-qty-cache")?.value || "0", 10) || 0;
+      parseInt(
+        row.querySelector(".item-qty")?.value ||
+          row.querySelector(".item-qty-cache")?.value ||
+          "0",
+        10
+      ) || 0;
 
     const allocated = (detailString || "")
       .split(";")
-      .map(p => parseInt(p.trim().split("|")[0], 10) || 0)
+      .map((p) => parseInt(p.trim().split("|")[0], 10) || 0)
       .reduce((a, b) => a + b, 0);
 
-    if (btn) btn.textContent = (qty > 0 && allocated === qty) ? "✅" : "📦";
+    if (btn) btn.textContent = qty > 0 && allocated === qty ? "✅" : "📦";
 
-    // if you have any validation hooks, run them
-    const fulfilSel = row.querySelector(".item-fulfilment") || row.querySelector(".fulfilmentSelect");
+    const fulfilSel =
+      row.querySelector(".item-fulfilment") || row.querySelector(".fulfilmentSelect");
     if (fulfilSel && window.SalesLineUI?.validateInventoryForRow) {
       window.SalesLineUI.validateInventoryForRow(row);
     }
 
-    // optional: recompute summary panel if needed
-    if (typeof updateOrderSummaryFromTable === "function") updateOrderSummaryFromTable();
+    if (typeof updateOrderSummaryFromTable === "function") {
+      updateOrderSummaryFromTable();
+    }
 
-    console.log("✅ Inventory saved into Sales View row", { lineIndex, itemId });
+    // ✅ clear remembered target after successful writeback
+    window.__salesInventoryTargetRowLine = null;
+    window.__salesInventoryTargetItemId = null;
+
+    console.log("✅ Inventory saved into Sales View row", {
+      targetRowLine: row.dataset.line,
+      itemId,
+      lineIndex,
+    });
   } catch (err) {
     console.error("❌ onInventorySaved failed:", err.message || err);
   }
 };
 
-  // -----------------------------
-  // ✅ Commit button handler
-  // -----------------------------
   const commitBtn = document.getElementById("commitOrderBtn");
   if (!commitBtn) return;
 
@@ -1272,9 +1308,9 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
 
     freshCommitBtn.disabled = true;
     freshCommitBtn.classList.add("locked-input");
-    showCommitInline("Committing…");
+    showCommitInlineLocal("Committing…");
 
-    const { updates, headerUpdates } = buildPayloadFromUI();
+    const payload = buildPayloadFromUI();
 
     try {
       const res = await fetch(`/api/netsuite/salesorder/${tranId}/commit`, {
@@ -1283,26 +1319,25 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ updates, headerUpdates }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Failed to commit order");
 
       showToast?.(`✅ Order ${tranId} approved!`, "success");
-      showCommitInline("Committed ✅");
+      showCommitInlineLocal("Committed ✅");
 
-      // ✅ Hide buttons after success
       setTimeout(() => {
         wrapper.innerHTML = "";
-        hideCommitInline();
+        hideCommitInlineLocal();
       }, 1000);
     } catch (err) {
       console.error("❌ Commit error:", err.message || err);
       showToast?.(`❌ ${err.message || err}`, "error");
 
-      showCommitInline("Commit failed ❌");
-      setTimeout(() => hideCommitInline(), 2000);
+      showCommitInlineLocal("Commit failed ❌");
+      setTimeout(() => hideCommitInlineLocal(), 2000);
 
       freshCommitBtn.disabled = false;
       freshCommitBtn.classList.remove("locked-input");
