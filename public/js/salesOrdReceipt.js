@@ -59,14 +59,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     return `£${n.toFixed(2)}`;
   };
 
-  const isDiscountStyleLine = (name = "") => {
+  const isNegativeValueLine = (name = "") => {
     const text = String(name || "").toLowerCase();
     return (
       text.includes("discount") ||
       text.includes("blue light") ||
       text.includes("promo") ||
       text.includes("promotion") ||
-      text.includes("voucher")
+      text.includes("voucher") ||
+      text.includes("trade in") ||
+      text.includes("trade-in")
     );
   };
 
@@ -79,7 +81,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (hasTriggeredPrint) return;
     hasTriggeredPrint = true;
 
-    // small delay so DOM paints fully before print dialog opens
     setTimeout(() => {
       window.print();
     }, 400);
@@ -239,32 +240,37 @@ document.addEventListener("DOMContentLoaded", async () => {
       const optionsRaw = String(line.custcol_sb_itemoptionsdisplay || "").trim();
       const options = escapeHtml(optionsRaw).replace(/\n/g, "<br>");
 
-      const qty = Math.abs(Number(line.quantity || 0)) || 0;
+      const qty = Math.abs(Number(line.quantity || 1)) || 1;
 
-      let originalLineTotal = Number(line.amount || 0) || 0;
-      let actualLineTotal = hasRealValue(line.saleprice)
-        ? Number(line.saleprice || 0)
-        : originalLineTotal;
+      let retailGrossLineTotal = Number(line.amount || 0);
+      let saleGrossLineTotal = Number(line.saleprice ?? 0);
 
-      const discountLine = isDiscountStyleLine(itemName);
+      if (!Number.isFinite(retailGrossLineTotal)) retailGrossLineTotal = 0;
+      if (!Number.isFinite(saleGrossLineTotal)) saleGrossLineTotal = 0;
 
-      if (discountLine) {
-        if (originalLineTotal > 0) originalLineTotal = -originalLineTotal;
-        if (actualLineTotal > 0) actualLineTotal = -actualLineTotal;
+      if (retailGrossLineTotal === 0 && saleGrossLineTotal !== 0) {
+        retailGrossLineTotal = saleGrossLineTotal;
+      }
+
+      const negativeLine = isNegativeValueLine(itemName);
+
+      if (negativeLine) {
+        if (retailGrossLineTotal > 0) retailGrossLineTotal = -retailGrossLineTotal;
+        if (saleGrossLineTotal > 0) saleGrossLineTotal = -saleGrossLineTotal;
       } else {
-        if (originalLineTotal < 0) originalLineTotal = Math.abs(originalLineTotal);
-        if (actualLineTotal < 0) actualLineTotal = Math.abs(actualLineTotal);
+        if (retailGrossLineTotal < 0) retailGrossLineTotal = Math.abs(retailGrossLineTotal);
+        if (saleGrossLineTotal < 0) saleGrossLineTotal = Math.abs(saleGrossLineTotal);
       }
 
-      const displayUnitPrice = qty ? (originalLineTotal / qty) : originalLineTotal;
+      const retailGrossPerUnit = qty ? retailGrossLineTotal / qty : 0;
 
-      let discountPct = 0;
-      if (!discountLine && originalLineTotal > 0) {
-        discountPct = Math.max(
-          0,
-          ((originalLineTotal - actualLineTotal) / originalLineTotal) * 100
-        );
-      }
+      const discountPct =
+        retailGrossLineTotal > 0
+          ? Math.max(
+              0,
+              ((retailGrossLineTotal - saleGrossLineTotal) / retailGrossLineTotal) * 100
+            )
+          : 0;
 
       const tr = document.createElement("tr");
 
@@ -273,17 +279,17 @@ document.addEventListener("DOMContentLoaded", async () => {
           <td>${escapeHtml(itemName)}</td>
           <td>${options || "-"}</td>
           <td>${qty}</td>
-          <td>${formatMoney(displayUnitPrice)}</td>
+          <td>${formatMoney(retailGrossPerUnit)}</td>
           <td>${discountPct.toFixed(1)}%</td>
-          <td>${formatMoney(actualLineTotal)}</td>
+          <td>${formatMoney(saleGrossLineTotal)}</td>
         `;
       } else {
         tr.innerHTML = `
           <td>${escapeHtml(itemName)}</td>
           <td>${qty}</td>
-          <td>${formatMoney(displayUnitPrice)}</td>
+          <td>${formatMoney(retailGrossPerUnit)}</td>
           <td>${discountPct.toFixed(1)}%</td>
-          <td>${formatMoney(actualLineTotal)}</td>
+          <td>${formatMoney(saleGrossLineTotal)}</td>
         `;
       }
 
@@ -344,29 +350,34 @@ document.addEventListener("DOMContentLoaded", async () => {
     let totalOrdDiscount = 0;
 
     vatAmounts.forEach((line) => {
-      const itemName = line.item?.refName || "";
-      const discountLine = isDiscountStyleLine(itemName);
+      const itemName = String(line.item?.refName || "");
+      const negativeLine = isNegativeValueLine(itemName);
 
-      let retailLineTotal = Number(line.amount || 0) || 0;
-      let lineTotal = hasRealValue(line.saleprice)
+      let retailGrossLineTotal = Number(line.amount || 0);
+      let saleGrossLineTotal = hasRealValue(line.saleprice)
         ? Number(line.saleprice || 0)
-        : retailLineTotal;
+        : retailGrossLineTotal;
 
-      let vat = Number(line.vat || 0) || 0;
+      if (!Number.isFinite(retailGrossLineTotal)) retailGrossLineTotal = 0;
+      if (!Number.isFinite(saleGrossLineTotal)) saleGrossLineTotal = 0;
 
-      if (discountLine) {
-        if (retailLineTotal > 0) retailLineTotal = -retailLineTotal;
-        if (lineTotal > 0) lineTotal = -lineTotal;
-        if (vat > 0) vat = -vat;
-      } else {
-        if (retailLineTotal < 0) retailLineTotal = Math.abs(retailLineTotal);
-        if (lineTotal < 0) lineTotal = Math.abs(lineTotal);
-        if (vat < 0) vat = Math.abs(vat);
+      if (retailGrossLineTotal === 0 && saleGrossLineTotal !== 0) {
+        retailGrossLineTotal = saleGrossLineTotal;
       }
 
-      vatTotal += vat;
-      salesTotal += lineTotal;
-      totalRetail += retailLineTotal;
+      if (negativeLine) {
+        if (retailGrossLineTotal > 0) retailGrossLineTotal = -retailGrossLineTotal;
+        if (saleGrossLineTotal > 0) saleGrossLineTotal = -saleGrossLineTotal;
+      } else {
+        if (retailGrossLineTotal < 0) retailGrossLineTotal = Math.abs(retailGrossLineTotal);
+        if (saleGrossLineTotal < 0) saleGrossLineTotal = Math.abs(saleGrossLineTotal);
+      }
+
+      const taxValue = saleGrossLineTotal / 6;
+
+      vatTotal += taxValue;
+      salesTotal += saleGrossLineTotal;
+      totalRetail += retailGrossLineTotal;
     });
 
     totalOrdDiscount = totalRetail - salesTotal;
