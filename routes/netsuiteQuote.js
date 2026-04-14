@@ -289,15 +289,36 @@ router.get("/:id", async (req, res) => {
         const itemName = r.itemname || `Item ${itemId}`;
         const qty = Math.abs(Number(r.quantity) || 0);
 
-        const saleNet = Math.abs(Number(r.netamount) || 0);
-        const saleGross =
-          Math.abs(Number(r.grossamt) || 0) || +(saleNet * 1.2).toFixed(2);
+        const itemNameLower = String(itemName || "").toLowerCase();
 
-        const vat =
-          Math.abs(Number(r.tax1amt) || 0) ||
-          +(saleGross - saleGross / 1.2).toFixed(2);
+        const isNegativeValueLine =
+          itemNameLower.includes("discount") ||
+          itemNameLower.includes("blue light") ||
+          itemNameLower.includes("promo") ||
+          itemNameLower.includes("promotion") ||
+          itemNameLower.includes("voucher") ||
+          itemNameLower.includes("trade in") ||
+          itemNameLower.includes("trade-in");
 
-        const retailNetPerUnit = Math.abs(Number(r.rate) || 0);
+        let saleNet = Number(r.netamount) || 0;
+        let saleGross = Number(r.grossamt) || 0;
+        let vat = Number(r.tax1amt) || 0;
+        let retailNetPerUnit = Number(r.rate) || 0;
+
+        // NetSuite can return quote sales lines as negative internally.
+        // Normal items should display positive; trade-ins/discounts should display negative.
+        if (isNegativeValueLine) {
+          saleNet = -Math.abs(saleNet);
+          saleGross = saleGross ? -Math.abs(saleGross) : +(saleNet * 1.2).toFixed(2);
+          vat = vat ? -Math.abs(vat) : +(saleGross - saleGross / 1.2).toFixed(2);
+          retailNetPerUnit = -Math.abs(retailNetPerUnit);
+        } else {
+          saleNet = Math.abs(saleNet);
+          saleGross = saleGross ? Math.abs(saleGross) : +(saleNet * 1.2).toFixed(2);
+          vat = vat ? Math.abs(vat) : +(saleGross - saleGross / 1.2).toFixed(2);
+          retailNetPerUnit = Math.abs(retailNetPerUnit);
+        }
+
         const retailGross = +(retailNetPerUnit * qty * 1.2).toFixed(2);
 
         return {
@@ -305,7 +326,7 @@ router.get("/:id", async (req, res) => {
           item: { id: itemId, refName: itemName },
           quantity: qty,
           amount: retailGross,
-          vat,
+          vat: +vat.toFixed(2),
           saleprice: +saleGross.toFixed(2),
           retailNetPerUnit: +retailNetPerUnit.toFixed(2),
           taxCode: r.taxcode ? String(r.taxcode) : "",
@@ -348,10 +369,10 @@ router.post("/:id/save", async (req, res) => {
     const userId = await resolveUserIdFromAuth(req);
     console.log("🔐 Quote save request for user:", userId);
 
-  const restletUrl =
-  `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl` +
-  `?script=${process.env.NS_QUOTE_SAVE_RESTLET_SCRIPT}` +
-  `&deploy=${process.env.NS_QUOTE_SAVE_RESTLET_DEPLOY}`;
+    const restletUrl =
+      `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl` +
+      `?script=${process.env.NS_QUOTE_SAVE_RESTLET_SCRIPT}` +
+      `&deploy=${process.env.NS_QUOTE_SAVE_RESTLET_DEPLOY}`;
 
     if (!process.env.NS_QUOTE_SAVE_RESTLET_SCRIPT || !process.env.NS_QUOTE_SAVE_RESTLET_DEPLOY) {
       throw new Error("Missing NS_QUOTE_SAVE_RESTLET_SCRIPT or NS_QUOTE_SAVE_RESTLET_DEPLOY in environment");
@@ -496,8 +517,8 @@ router.patch("/:id", async (req, res) => {
 
           const grossToSave =
             i.saleprice !== undefined &&
-            i.saleprice !== null &&
-            i.saleprice !== ""
+              i.saleprice !== null &&
+              i.saleprice !== ""
               ? Number(i.saleprice)
               : Number(i.amount || 0);
 

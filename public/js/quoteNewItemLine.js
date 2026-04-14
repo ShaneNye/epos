@@ -691,8 +691,8 @@ function selectItemForRow(line, input, item) {
   if (hiddenId) hiddenId.value = String(internalId || "");
   if (hiddenBase) hiddenBase.value = item["Base Price"] || "";
 
-  const rawBase = parseFloat(item["Base Price"] || 0);
-  const retailPerUnitGross = rawBase > 0 ? rawBase * 1.2 : 0;
+const rawBase = parseFloat(item["Base Price"] || 0);
+const retailPerUnitGross = Number.isFinite(rawBase) ? rawBase * 1.2 : 0;
 
   if (discountField) discountField.value = 0;
 
@@ -793,10 +793,6 @@ function addNewRow() {
     </td>
 
     <td>
-      <input type="number" class="item-vat" placeholder="£" step="0.01" readonly />
-    </td>
-
-    <td>
       <input type="number" class="item-saleprice" placeholder="£" step="0.01" />
     </td>
 
@@ -815,26 +811,9 @@ function addNewRow() {
   setupAutocompleteForRow(tr);
   setupPriceSync(tr);
 
-  const recalcVat = () => {
-    const saleVal = parseMoneyInput(tr.querySelector(".item-saleprice")?.value);
-    const vatField = tr.querySelector(".item-vat");
-    if (vatField) vatField.value = (saleVal - saleVal / 1.2).toFixed(2);
-  };
-
-  tr.querySelector(".item-qty")?.addEventListener("input", () => {
-    recalcVat();
-    recalcTotals();
-  });
-
-  tr.querySelector(".item-discount")?.addEventListener("input", () => {
-    recalcVat();
-    recalcTotals();
-  });
-
-  tr.querySelector(".item-saleprice")?.addEventListener("input", () => {
-    recalcVat();
-    recalcTotals();
-  });
+  tr.querySelector(".item-qty")?.addEventListener("input", recalcTotals);
+  tr.querySelector(".item-discount")?.addEventListener("input", recalcTotals);
+  tr.querySelector(".item-saleprice")?.addEventListener("input", recalcTotals);
 
   tr.querySelector(".delete-row")?.addEventListener("click", () => {
     tr.remove();
@@ -842,7 +821,6 @@ function addNewRow() {
     recalcTotals();
   });
 
-  recalcVat();
   recalcTotals();
 }
 
