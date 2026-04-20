@@ -1,251 +1,530 @@
-.cashflow-wrapper {
-    max-width: 1100px;
-    margin: 2rem auto;
+:root {
+    --cashflow-bg: #f4f7fb;
+    --panel-bg: #ffffff;
+    --panel-border: #dde5ee;
+    --panel-shadow: 0 10px 26px rgba(16, 24, 40, 0.07);
+    --text-main: #1f2a37;
+    --text-soft: #5b6675;
+    --text-muted: #7a8594;
+    --table-head: #f7f9fc;
+    --table-border: #e8eef5;
+    --row-hover: #f9fbfe;
+    --success: #1e8e5a;
+    --danger: #d9534f;
+    --danger-dark: #bf4542;
+    --info: #1f7ae0;
+    --info-dark: #1668c2;
+    --input-border: #d5dde7;
+    --radius-lg: 16px;
+    --radius-md: 10px;
+    --radius-sm: 8px;
+    --button: #0081ab;
 }
 
+body {
+    background: linear-gradient(180deg, #f8fbff 0%, var(--cashflow-bg) 100%);
+    color: var(--text-main);
+}
+
+/* ================================
+   PAGE LAYOUT
+================================= */
+.content {
+    max-width: 1800px;
+}
+
+.content > h1 {
+    margin: 10px 0 22px;
+    font-size: 2rem;
+    line-height: 1.1;
+    color: var(--brand);
+    letter-spacing: -0.02em;
+}
+
+.cashflow-wrapper {
+    display: grid;
+    grid-template-columns: 560px minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+    max-width: 1600px;
+    margin: 0 auto 2rem;
+}
+
+/* ================================
+   PANELS
+================================= */
 .cashflow-panel {
-    background: #fff;
-    border: 1px solid #e3e6ea;
-    padding: 20px;
-    border-radius: 8px;
-    margin-bottom: 25px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06);
+    background: var(--panel-bg);
+    border: 1px solid var(--panel-border);
+    border-radius: var(--radius-lg);
+    padding: 18px;
+    box-shadow: var(--panel-shadow);
+    overflow: hidden;
+}
+
+.cashflow-panel.left {
+    position: sticky;
+    top: 90px;
+    align-self: start;
+    max-height: calc(100vh - 115px);
+    overflow-y: auto;
+}
+
+.cashflow-panel.right {
+    min-width: 0;
 }
 
 .cashflow-panel h2 {
-    margin-top: 0;
-    font-size: 1.35rem;
+    margin: 0 0 6px;
+    font-size: 1.28rem;
+    line-height: 1.2;
     color: var(--brand);
 }
 
+.cashflow-panel p {
+    margin: 0;
+    color: var(--text-soft);
+    font-size: 0.95rem;
+    line-height: 1.5;
+}
+
+.cashflow-panel > p + .table-wrapper,
+.cashflow-panel > .filters-row {
+    margin-top: 18px;
+}
+
+/* ================================
+   TABLE WRAPPERS
+================================= */
 .table-wrapper {
-    margin-top: 15px;
+    overflow-x: auto;
+    border: 1px solid var(--table-border);
+    border-radius: 14px;
+    background: #fff;
+}
+
+.cashflow-panel.left .table-wrapper {
     overflow-x: auto;
 }
 
+.table-wrapper::-webkit-scrollbar {
+    height: 10px;
+    width: 10px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+    background: #cfd8e3;
+    border-radius: 999px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+    background: #f3f6fa;
+}
+
+/* ================================
+   TABLES
+================================= */
 .cashflow-table,
-.eod-table {
+.eod-table,
+.inner-table {
     width: 100%;
-    border-collapse: collapse;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-size: 0.95rem;
+}
+
+.cashflow-table {
+    min-width: 520px;
+}
+
+.cashflow-table thead th,
+.eod-table thead th,
+.inner-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    background: var(--table-head);
+    color: #334155;
+    text-align: left;
+    font-weight: 700;
+    font-size: 0.84rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .cashflow-table th,
 .cashflow-table td,
 .eod-table th,
 .eod-table td {
-    padding: 10px 12px;
-    border-bottom: 1px solid #eee;
+    padding: 9px 12px;
+    border-bottom: 1px solid var(--table-border);
+    vertical-align: middle;
 }
 
-.cashflow-table th {
-    background: #f7f9fc;
-    text-align: left;
+.cashflow-table th,
+.cashflow-table td {
+    padding-top: 7px;
+    padding-bottom: 7px;
 }
 
-.eod-table th {
-    background: #f7f9fc;
-    text-align: left;
+.cashflow-table tbody tr:last-child td,
+.eod-table tbody tr:last-child td,
+.inner-table tbody tr:last-child td {
+    border-bottom: none;
 }
 
-.empty-row {
+.cashflow-table tbody tr:hover,
+.eod-table tbody tr:hover {
+    background: var(--row-hover);
+}
+
+.cashflow-table td:first-child,
+.eod-table td:nth-child(2) {
+    font-weight: 600;
+    color: #243447;
+}
+
+.cashflow-table td:first-child {
+    line-height: 1.2;
+}
+
+.cashflow-table td:nth-child(2),
+.cashflow-table td:nth-child(3),
+.eod-table td:last-child,
+.inner-table td:last-child {
+    font-variant-numeric: tabular-nums;
+}
+
+/* ================================
+   LEFT BALANCE TABLE POLISH
+================================= */
+.cashflow-table td:nth-child(2),
+.cashflow-table td:nth-child(3) {
+    color: #203040;
+}
+
+.cashflow-table td:nth-child(4),
+.cashflow-table td:nth-child(5),
+.cashflow-table th:nth-child(4),
+.cashflow-table th:nth-child(5) {
     text-align: center;
-    padding: 20px;
-    color: #777;
+
 }
 
+/* ================================
+   FILTER BAR
+================================= */
 .filters-row {
-    display: flex;
-    gap: 15px;
-    align-items: flex-end;
-    margin: 15px 0;
-    flex-wrap: wrap;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(150px, 1fr)) auto;
+    gap: 14px;
+    align-items: end;
+    padding: 16px;
+    border: 1px solid var(--table-border);
+    border-radius: 14px;
+    background: linear-gradient(180deg, #fcfdff 0%, #f7fafe 100%);
+    margin-bottom: 18px;
 }
 
 .filter-group {
     display: flex;
     flex-direction: column;
-}
-
-.btn-primary {
-    background: var(--brand);
-    color: #fff;
-    border: none;
-    padding: 9px 18px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-weight: 600;
-}
-
-.btn-primary:hover {
-    background: var(--brand-600);
-}
-
-.eod-details {
-    background: #fafafa;
-    padding: 12px 20px;
-    border-left: 3px solid var(--brand);
-}
-/* ================================
-   2-Column Layout for Cashflow Page
-   ================================ */
-.cashflow-wrapper {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 25px;
-    align-items: start;
-    margin-top: 20px;
-}
-
-/* Panels */
-.cashflow-panel {
-    background: #fff;
-    border: 1px solid #e3e8ee;
-    border-radius: 8px;
-    padding: 20px;
-    box-shadow: 0 1px 2px rgba(0,0,0,0.05);
-}
-
-/* Ensure tables don't overflow */
-.cashflow-panel .table-wrapper {
-    margin-top: 15px;
-    overflow-x: auto;
-}
-
-.cashflow-panel table {
-    width: 100%;
-    border-collapse: collapse;
-}
-
-/* Table styling */
-.cashflow-panel th,
-.cashflow-panel td {
-    padding: 10px 8px;
-    border-bottom: 1px solid #eef2f7;
-}
-
-.cashflow-panel th {
-    background: #f7f9fc;
-    font-weight: 600;
-}
-
-.empty-row {
-    text-align: center;
-    padding: 14px;
-    color: #888;
-}
-
-/* Filters row */
-.filters-row {
-    display: flex;
-    align-items: flex-end;
-    gap: 15px;
-    margin-bottom: 15px;
+    min-width: 0;
 }
 
 .filter-group label {
     display: block;
-    font-size: 13px;
-    margin-bottom: 4px;
-    color: #333;
+    font-size: 0.8rem;
+    margin-bottom: 6px;
+    color: var(--text-soft);
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
 }
 
 .filter-group select,
 .filter-group input {
-    padding: 6px 8px;
-    border-radius: 5px;
-    border: 1px solid #d1d8e0;
+    min-height: 42px;
+    padding: 9px 12px;
+    border-radius: 10px;
+    border: 1px solid var(--input-border);
+    background: #fff;
+    color: var(--text-main);
+    font: inherit;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
 }
 
-/* Button */
-.btn-primary {
-    padding: 8px 16px;
-    background: #0066ff;
+.filter-group select:hover,
+.filter-group input:hover {
+    border-color: #bfd0e2;
+}
+
+.filter-group select:focus,
+.filter-group input:focus {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: 0 0 0 4px rgba(0, 129, 171, 0.12);
+}
+
+/* ================================
+   BUTTONS
+================================= */
+.btn-primary,
+.btn-small {
     border: none;
-    border-radius: 6px;
-    color: white;
-    font-weight: 600;
+    border-radius: 10px;
     cursor: pointer;
+    font-weight: 700;
+    transition: transform 0.08s ease, box-shadow 0.2s ease, background 0.2s ease, opacity 0.2s ease;
+}
+
+.btn-primary:active,
+.btn-small:active {
+    transform: translateY(1px);
+}
+
+.btn-primary {
+    min-height: 42px;
+    padding: 0 18px;
+    background: #0081ab;
+    color: #fff;
+    box-shadow: 0 6px 16px rgba(0, 129, 171, 0.2);
 }
 
 .btn-primary:hover {
-    background: #0053d6;
+    filter: brightness(1.03);
 }
 
-/* Mobile responsive */
-@media (max-width: 900px) {
-    .cashflow-wrapper {
-        grid-template-columns: 1fr;
-    }
+.btn-small {
+    padding: 6px 10px;
+    font-size: 0.8rem;
+    min-width: 78px;
+    border-radius: 8px;
 }
+
+.btn-empty-safe {
+    background: linear-gradient(180deg, var(--danger) 0%, var(--danger-dark) 100%);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(217, 83, 79, 0.18);
+}
+
+.btn-empty-safe:hover {
+    filter: brightness(1.03);
+}
+
+.btn-empty-safe:disabled {
+    background: #b9c1ca;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+
+.btn-save-balances {
+    background: linear-gradient(180deg, var(--info) 0%, var(--info-dark) 100%);
+    color: #fff;
+    box-shadow: 0 4px 12px rgba(31, 122, 224, 0.18);
+}
+
+.btn-save-balances:hover {
+    filter: brightness(1.03);
+}
+
+.btn-save-balances:disabled {
+    background: #9bb8df;
+    box-shadow: none;
+    cursor: not-allowed;
+}
+.btn-secondary {
+    min-height: 42px;
+    padding: 0 18px;
+    border: 1px solid #cfd8e3;
+    border-radius: 10px;
+    background: #fff;
+    color: #243447;
+    font-weight: 700;
+    cursor: pointer;
+    transition: 0.2s ease;
+}
+
+.btn-secondary:hover {
+    background: #f7f9fc;
+    border-color: #b9c6d6;
+}
+/* ================================
+   ADMIN INPUTS
+================================= */
+.balance-input {
+    width: 70px;
+    max-width: 100%;
+    min-height: 32px;
+    padding: 4px 8px;
+    border: 1px solid var(--input-border);
+    border-radius: 8px;
+    font: inherit;
+    text-align: right;
+    background: #fff;
+    color: var(--text-main);
+    font-variant-numeric: tabular-nums;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.balance-input:hover {
+    border-color: #bfd0e2;
+}
+
+.balance-input:focus {
+    outline: none;
+    border-color: var(--brand);
+    box-shadow: 0 0 0 4px rgba(0, 129, 171, 0.12);
+}
+
+.muted-text {
+    color: var(--text-muted);
+    font-size: 0.9rem;
+}
+
+/* ================================
+   EMPTY / STATE ROWS
+================================= */
+.empty-row {
+    text-align: center;
+    padding: 24px !important;
+    color: var(--text-muted);
+    background: #fcfdff;
+    font-style: italic;
+}
+
+/* ================================
+   EOD RESULTS TABLE
+================================= */
+.eod-row {
+    cursor: pointer;
+    transition: background 0.16s ease;
+}
+
+.eod-row td:first-child {
+    white-space: nowrap;
+}
+
+.eod-row:hover {
+    background: #f5faff;
+}
+
+.eod-row td:last-child {
+    font-weight: 700;
+    color: #1f3c5a;
+}
+
+/* ================================
+   EXPANDED EOD DETAIL
+================================= */
+.eod-detail-row td {
+    padding: 0;
+    background: #f8fbff;
+}
+
 .eod-detail-row .eod-details {
-    background: #fafafa;
-    padding: 15px;
-    border: 1px solid #ddd;
-    border-radius: 6px;
+    padding: 20px;
+    background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+    border-top: 1px solid var(--table-border);
+}
+
+.eod-details h4 {
+    margin: 0 0 10px;
+    font-size: 0.95rem;
+    color: #24415d;
+    font-weight: 800;
+}
+
+.eod-details h4:not(:first-child) {
+    margin-top: 18px;
 }
 
 .inner-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-bottom: 15px;
+    margin: 0 0 16px;
+    border: 1px solid var(--table-border);
+    border-radius: 12px;
+    overflow: hidden;
+    background: #fff;
 }
 
 .inner-table th,
 .inner-table td {
-    padding: 6px 8px;
-    border-bottom: 1px solid #e3e3e3;
+    padding: 9px 10px;
+    vertical-align: middle;
 }
 
 .inner-table th {
-    background: #f5f5f5;
+    background: #f6f9fc;
+    text-align: left;
+    font-size: 0.8rem;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #4a5a6a;
 }
 
 .submitted-info {
-    margin-top: 10px;
-    font-size: 13px;
-    color: #555;
-}
-.btn-empty-safe {
-    padding: 6px 10px;
-    background: #ff6666;
-    border: none;
-    color: white;
-    cursor: pointer;
-    border-radius: 6px;
-    font-size: 13px;
-    transition: 0.2s;
+    margin-top: 8px;
+    padding: 12px 14px;
+    border-radius: 12px;
+    background: #eef5fb;
+    color: #4c5d6c;
+    font-size: 0.9rem;
+    line-height: 1.5;
 }
 
-.btn-empty-safe:hover {
-    background: #e05555;
+/* ================================
+   RESPONSIVE
+================================= */
+@media (max-width: 1250px) {
+    .cashflow-wrapper {
+        grid-template-columns: 480px minmax(0, 1fr);
+    }
+
+    .cashflow-panel.left {
+        max-height: calc(100vh - 105px);
+    }
 }
 
-.btn-empty-safe:disabled {
-    background: #aaa;
-    cursor: not-allowed;
+@media (max-width: 1050px) {
+    .cashflow-wrapper {
+        grid-template-columns: 1fr;
+    }
+
+    .cashflow-panel.left,
+    .cashflow-panel.right {
+        position: static;
+        max-height: none;
+        width: 100%;
+    }
 }
 
-.cashflow-wrapper {
-    display: flex;
-    gap: 20px;
-}
+@media (max-width: 780px) {
+    .cashflow-panel {
+        padding: 16px;
+        border-radius: 14px;
+    }
 
-/* LEFT PANEL — sticky and scrolls internally */
-.cashflow-panel.left {
-    width: 350px;
-    flex-shrink: 0;
-    position: sticky;
-    top: 90px; /* adjust depending on your menu height */
-    align-self: flex-start;
-    max-height: calc(92vh - 120px);
-    overflow-y: auto;
-    background: #fff;
-    border-right: 1px solid #e3e3e3;
-    padding-right: 10px;
-}
+    .filters-row {
+        grid-template-columns: 1fr;
+    }
 
-/* RIGHT PANEL — fills remaining space */
-.cashflow-panel.right {
-    flex: 1;
-    min-width: 0; /* prevents overflow */
+    .btn-primary {
+        width: 100%;
+    }
+
+    .cashflow-table th,
+    .cashflow-table td,
+    .eod-table th,
+    .eod-table td {
+        padding: 10px 9px;
+    }
+
+    .balance-input {
+        width: 100%;
+        min-width: 90px;
+    }
+
+    .btn-small {
+        width: 100%;
+    }
 }

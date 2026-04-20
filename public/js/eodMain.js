@@ -225,7 +225,11 @@ async function initDailyBalancing() {
   // Cashflow
   const totalSafeEl = document.getElementById("totalSafe");
   const totalFloatEl = document.getElementById("totalFloat");
+
+  // ✅ Add this new element
+  const currentSafeBalanceEl = document.getElementById("currentSafeBalance");
   const currentFloatBalanceEl = document.getElementById("currentFloatBalance");
+
   const cashBody = document.getElementById("cashflowTableBody");
 
   let allDeposits = [];
@@ -268,15 +272,22 @@ async function initDailyBalancing() {
     return matchLoc ? matchLoc.id : null;
   }
 
-  function updateCurrentFloatBalance() {
-    if (!currentFloatBalanceEl) return;
-
+  // ✅ Replaces updateCurrentFloatBalance()
+  function updateCurrentBalances() {
     if (!selectedLocationId || !Array.isArray(locations) || !locations.length) {
-      currentFloatBalanceEl.textContent = "£0.00";
+      if (currentSafeBalanceEl) currentSafeBalanceEl.textContent = "£0.00";
+      if (currentFloatBalanceEl) currentFloatBalanceEl.textContent = "£0.00";
       return;
     }
 
     const loc = locations.find((l) => Number(l.id) === Number(selectedLocationId));
+
+    const safeBal = Number(
+      loc?.safe_balance ??
+      loc?.safeBalance ??
+      loc?.safe ??
+      0
+    ) || 0;
 
     const floatBal = Number(
       loc?.float_balance ??
@@ -285,7 +296,13 @@ async function initDailyBalancing() {
       0
     ) || 0;
 
-    currentFloatBalanceEl.textContent = `£${floatBal.toFixed(2)}`;
+    if (currentSafeBalanceEl) {
+      currentSafeBalanceEl.textContent = `£${safeBal.toFixed(2)}`;
+    }
+
+    if (currentFloatBalanceEl) {
+      currentFloatBalanceEl.textContent = `£${floatBal.toFixed(2)}`;
+    }
   }
 
   function refreshPrintButton() {
@@ -313,38 +330,38 @@ async function initDailyBalancing() {
     });
   }
 
-function setEodReadOnly(locked) {
-  isEodLocked = locked;
+  function setEodReadOnly(locked) {
+    isEodLocked = locked;
 
-  document.getElementById("openFootfallBtn")?.toggleAttribute("disabled", locked);
-  document.getElementById("completeFootfallBtn")?.toggleAttribute("disabled", locked);
+    document.getElementById("openFootfallBtn")?.toggleAttribute("disabled", locked);
+    document.getElementById("completeFootfallBtn")?.toggleAttribute("disabled", locked);
 
-  // ✅ Keep store selector available even when current store is locked
-  if (storeSelect) {
-    storeSelect.removeAttribute("disabled");
-  }
-
-  document.getElementById("openAdjustmentBtn")?.toggleAttribute("disabled", locked);
-
-  document.querySelectorAll(".safe-input, .float-input").forEach((el) => {
-    el.toggleAttribute("disabled", locked);
-  });
-
-  signoffUserSelect?.toggleAttribute("disabled", locked);
-  signoffConfirm?.toggleAttribute("disabled", locked);
-
-  if (signoffSubmitBtn) {
-    if (locked) {
-      signoffSubmitBtn.disabled = true;
-    } else {
-      updateSubmitState();
+    // ✅ Keep store selector available even when current store is locked
+    if (storeSelect) {
+      storeSelect.removeAttribute("disabled");
     }
+
+    document.getElementById("openAdjustmentBtn")?.toggleAttribute("disabled", locked);
+
+    document.querySelectorAll(".safe-input, .float-input").forEach((el) => {
+      el.toggleAttribute("disabled", locked);
+    });
+
+    signoffUserSelect?.toggleAttribute("disabled", locked);
+    signoffConfirm?.toggleAttribute("disabled", locked);
+
+    if (signoffSubmitBtn) {
+      if (locked) {
+        signoffSubmitBtn.disabled = true;
+      } else {
+        updateSubmitState();
+      }
+    }
+
+    document.body.classList.toggle("eod-readonly", locked);
+
+    refreshPrintButton();
   }
-
-  document.body.classList.toggle("eod-readonly", locked);
-
-  refreshPrintButton();
-}
 
   async function checkTodayLock(storeId) {
     if (!storeId) return { ok: true, exists: false };
@@ -696,7 +713,8 @@ function setEodReadOnly(locked) {
           selectedLocationId = matchLoc.id;
         }
 
-        updateCurrentFloatBalance();
+        // ✅ updated
+        updateCurrentBalances();
       }
     }
   } catch (e) {
@@ -1068,7 +1086,9 @@ function setEodReadOnly(locked) {
   storeSelect?.addEventListener("change", async () => {
     const selected = storeSelect.value;
     selectedLocationId = buildStoreMatchLocationId(selected);
-    updateCurrentFloatBalance();
+
+    // ✅ updated
+    updateCurrentBalances();
 
     renderStore(selected);
     renderCashflow(selected);
@@ -1087,7 +1107,9 @@ function setEodReadOnly(locked) {
   ------------------------------------------------- */
   if (userStoreName) {
     selectedLocationId = buildStoreMatchLocationId(userStoreName);
-    updateCurrentFloatBalance();
+
+    // ✅ updated
+    updateCurrentBalances();
 
     renderStore(userStoreName);
     renderCashflow(userStoreName);

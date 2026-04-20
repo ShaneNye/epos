@@ -364,6 +364,60 @@ router.post("/locations/:id/safe-emptied", async (req, res) => {
   }
 });
 
+router.post("/locations/:id/balances", async (req, res) => {
+  try {
+    const id = req.params.id;
+    const { float_balance, safe_balance } = req.body;
+
+    const floatBalance = Number(float_balance);
+    const safeBalance = Number(safe_balance);
+
+    if (!Number.isFinite(floatBalance) || !Number.isFinite(safeBalance)) {
+      return res.status(400).json({
+        ok: false,
+        error: "Valid float_balance and safe_balance are required"
+      });
+    }
+
+    if (floatBalance < 0 || safeBalance < 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "Balances cannot be negative"
+      });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE locations
+      SET float_balance = $1,
+          safe_balance = $2
+      WHERE id = $3
+      RETURNING *
+      `,
+      [floatBalance, safeBalance, id]
+    );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({
+        ok: false,
+        error: "Location not found"
+      });
+    }
+
+    return res.json({
+      ok: true,
+      message: "Balances updated successfully",
+      location: result.rows[0]
+    });
+  } catch (err) {
+    console.error("❌ POST /locations/:id/balances error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: "Failed to update balances"
+    });
+  }
+});
+
 
 
 
