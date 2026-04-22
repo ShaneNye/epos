@@ -8,6 +8,28 @@ window.optionsCache = {};   // itemId -> options payload
 window.inventoryCache = {}; // itemId -> [{location, qty, bin, status, inventoryNumber}, ...]
 window.selectedWarehouse = ""; // order header warehouse
 
+function buildLegacyOptionSchemaFromItem(item) {
+  const opts = {};
+  Object.entries(item || {}).forEach(([key, val]) => {
+    if (!String(key).toLowerCase().startsWith("option :")) return;
+
+    const fieldName = String(key).replace(/^option\s*:\s*/i, "").trim();
+    const values = String(val || "")
+      .split(",")
+      .map(v => v.trim())
+      .filter(Boolean);
+
+    if (fieldName && values.length) opts[fieldName] = values;
+  });
+  return opts;
+}
+
+function getOptionSchemaForItem(itemId, itemData) {
+  const fromDb = window.itemOptionsCache?.getOptionsForItemSync?.(itemId) || {};
+  if (Object.keys(fromDb).length) return fromDb;
+  return buildLegacyOptionSchemaFromItem(itemData);
+}
+
 // === Load items from shared cache ===
 async function loadItems() {
   try {
@@ -348,17 +370,8 @@ async function selectItem(item) {
 
   const itemId = hiddenId.value;
 
-  // ✅ Cache options
-  const opts = {};
-  Object.entries(item).forEach(([key, val]) => {
-    if (key.toLowerCase().startsWith("option :")) {
-      const fieldName = key.replace(/^option\s*:\s*/i, "").trim();
-      const values = val ? val.split(",").map(v => v.trim()).filter(v => v) : [];
-      if (values.length > 0) {
-        opts[fieldName] = values;
-      }
-    }
-  });
+  // ✅ Cache options from the database-backed item option map.
+  const opts = getOptionSchemaForItem(itemId, item);
   window.optionsCache[itemId] = opts;
 
   // ✅ Handle options cell visibility
@@ -614,9 +627,16 @@ function validateInventoryForRow(row) {
 }
 
 // === Popup windows ===
-function openOptionsWindow(row) {
+async function openOptionsWindow(row) {
   const itemId = row.querySelector(".item-internal-id")?.value;
   if (!itemId) return alert("⚠️ Please select an item first.");
+
+  if (!window.optionsCache?.[itemId] || !Object.keys(window.optionsCache[itemId]).length) {
+    window.optionsCache = window.optionsCache || {};
+    window.optionsCache[itemId] =
+      await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
+  }
+
   const existingSelections = row.querySelector(".item-options-json")?.value || "{}";
   const url = `/options.html?itemId=${encodeURIComponent(itemId)}&selections=${encodeURIComponent(existingSelections)}`;
   const win = window.open(url, "ItemOptions", "width=600,height=500,resizable=yes,scrollbars=yes");
@@ -737,7 +757,13 @@ function addNewRow() {
 
 // === Init ===
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadItems();
+  await Promise.all([
+    loadItems(),
+    window.itemOptionsCache?.getAll?.().catch((err) => {
+      console.warn("⚠️ Failed to preload item options:", err.message);
+      return {};
+    }),
+  ]);
   populateSizeFilter();
   populateBaseOptionFilter();
   await loadInventoryBalances();

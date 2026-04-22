@@ -217,6 +217,9 @@ function guessOptionsJsonFromDisplay(optionsText = "") {
 }
 
 function buildOptionSchemaForItem(itemId) {
+  const fromDb = window.itemOptionsCache?.getOptionsForItemSync?.(itemId) || {};
+  if (Object.keys(fromDb).length) return fromDb;
+
   const itemData = (window.items || []).find((it) => {
     const internalId =
       it["Internal ID"] ??
@@ -773,9 +776,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   try {
-    if (typeof window.loadItems === "function") {
-      await window.loadItems();
-    }
+    await Promise.all([
+      typeof window.loadItems === "function" ? window.loadItems() : Promise.resolve(),
+      window.itemOptionsCache?.getAll?.().catch((err) => {
+        console.warn("⚠️ Failed to preload item options:", err.message);
+        return {};
+      }),
+    ]);
 
     if (
       typeof window.createGlobalSuggestions === "function" &&

@@ -14,6 +14,7 @@ const fetch = require("node-fetch");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const itemOptionsRoute = require("./routes/itemOptions");
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -195,6 +196,7 @@ app.use("/api/reset-password", require("./routes/resetPassword"));
 app.use("/api/fetchify", require("./routes/fetchify"));
 app.use("/api/netsuite/salesorder", require("./routes/netsuiteSalesOrder"));
 app.use("/api/netsuite/quote", require("./routes/netsuiteQuote"));
+app.use("/api/item-options", itemOptionsRoute.router);
 app.use("/api/netsuite/entity", require("./routes/netsuiteEntity"));
 app.use("/api/netsuite", require("./routes/netsuiteCustomerRecords"));
 app.use("/api/meta/store", require("./routes/storeName"));
@@ -742,5 +744,6 @@ app.use((req, res, next) => {
 
 app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);
+  itemOptionsRoute.startScheduler();
 
 });

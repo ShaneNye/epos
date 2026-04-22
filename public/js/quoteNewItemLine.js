@@ -19,6 +19,28 @@ function recalcTotals() {
   if (typeof window.updateOrderSummary === "function") return window.updateOrderSummary();
 }
 
+function buildLegacyOptionSchemaFromItem(item) {
+  const opts = {};
+  Object.entries(item || {}).forEach(([key, val]) => {
+    if (!String(key).toLowerCase().startsWith("option :")) return;
+
+    const fieldName = String(key).replace(/^option\s*:\s*/i, "").trim();
+    const values = String(val || "")
+      .split(",")
+      .map((v) => v.trim())
+      .filter(Boolean);
+
+    if (fieldName && values.length) opts[fieldName] = values;
+  });
+  return opts;
+}
+
+function getOptionSchemaForItem(itemId, itemData) {
+  const fromDb = window.itemOptionsCache?.getOptionsForItemSync?.(itemId) || {};
+  if (Object.keys(fromDb).length) return fromDb;
+  return buildLegacyOptionSchemaFromItem(itemData);
+}
+
 /* =========================================================
    Load items from shared cache / proxy
 ========================================================= */
@@ -343,7 +365,7 @@ function selectionsToSummary(selections) {
   return parts.join("<br>");
 }
 
-function openOptionsWindow(row) {
+async function openOptionsWindow(row) {
   if (!row) {
     console.warn("⚠️ openOptionsWindow called with no row");
     return;
@@ -371,6 +393,10 @@ function openOptionsWindow(row) {
   let schema = window.optionsCache?.[itemId] || {};
 
   if (!schema || !Object.keys(schema).length) {
+    schema = await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
+  }
+
+  if (!schema || !Object.keys(schema).length) {
     const itemData = (window.items || []).find((it) => {
       const internalId =
         it["Internal ID"] ??
@@ -384,22 +410,7 @@ function openOptionsWindow(row) {
       return String(internalId) === String(itemId);
     });
 
-    if (itemData) {
-      schema = {};
-      Object.entries(itemData).forEach(([key, val]) => {
-        if (!String(key).toLowerCase().startsWith("option :")) return;
-
-        const fieldName = String(key).replace(/^option\s*:\s*/i, "").trim();
-        const values = String(val || "")
-          .split(",")
-          .map((v) => v.trim())
-          .filter(Boolean);
-
-        if (fieldName && values.length) {
-          schema[fieldName] = values;
-        }
-      });
-    }
+    if (itemData) schema = buildLegacyOptionSchemaFromItem(itemData);
   }
 
   if (!schema || !Object.keys(schema).length) {
@@ -708,19 +719,7 @@ const retailPerUnitGross = Number.isFinite(rawBase) ? rawBase * 1.2 : 0;
   ensure60NightTrialCell(line);
   update60NightTrialColumnVisibility();
 
-  const opts = {};
-  Object.entries(item).forEach(([key, val]) => {
-    if (key.toLowerCase().startsWith("option :")) {
-      const fieldName = key.replace(/^option\s*:\s*/i, "").trim();
-      const values = val
-        ? val
-            .split(",")
-            .map((v) => v.trim())
-            .filter((v) => v)
-        : [];
-      if (values.length > 0) opts[fieldName] = values;
-    }
-  });
+  const opts = getOptionSchemaForItem(itemId, item);
 
   if (itemId) window.optionsCache[itemId] = opts;
 
@@ -844,7 +843,13 @@ window.openOptionsWindow = openOptionsWindow;
    Init
 ========================================================= */
 document.addEventListener("DOMContentLoaded", async () => {
-  await loadItems();
+  await Promise.all([
+    loadItems(),
+    window.itemOptionsCache?.getAll?.().catch((err) => {
+      console.warn("⚠️ Failed to preload item options:", err.message);
+      return {};
+    }),
+  ]);
   await populateSizeFilter();
   await populateBaseOptionFilter();
 

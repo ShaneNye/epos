@@ -196,6 +196,9 @@ function getItemClass(item) {
 }
 
 function buildOptionSchemaForItem(itemId) {
+  const fromDb = window.itemOptionsCache?.getOptionsForItemSync?.(itemId) || {};
+  if (Object.keys(fromDb).length) return fromDb;
+
   const itemData = (window.items || []).find((it) => getItemInternalId(it) === String(itemId));
 
   if (!itemData) return {};

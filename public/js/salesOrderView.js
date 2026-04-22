@@ -228,8 +228,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ==================================================
     // 1️⃣ Load everything in parallel where possible
     // ==================================================
-    const [_items, soRes, locRes, userRes, fulfilRes] = await Promise.all([
+    const [_items, _itemOptions, soRes, locRes, userRes, fulfilRes] = await Promise.all([
       loadItemCache(),
+      window.itemOptionsCache?.getAll?.().catch((err) => {
+        console.warn("⚠️ Failed to preload item options:", err.message);
+        return {};
+      }),
       fetch(`/api/netsuite/salesorder/${tranId}?refresh=1`, { headers }),
       fetch("/api/meta/locations", { headers }),
       fetch("/api/users", { headers }),

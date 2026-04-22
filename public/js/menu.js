@@ -1,6 +1,7 @@
 // Load menu.html and inject into #menu
 async function loadMenu() {
   try {
+    ensureThemeStylesheet();
     const res = await fetch("/menu.html");
     if (!res.ok) throw new Error("Failed to load menu");
     const html = await res.text();
@@ -11,11 +12,23 @@ async function loadMenu() {
   }
 }
 
+function ensureThemeStylesheet() {
+  if (document.querySelector('link[href="/css/app-theme.css"]')) return;
+
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = "/css/app-theme.css";
+  document.head.appendChild(link);
+}
+
 function initMenuLogic() {
   const burger = document.getElementById("burger");
   const sidebar = document.getElementById("sidebar");
   if (burger && sidebar) {
-    burger.addEventListener("click", () => sidebar.classList.toggle("expanded"));
+    burger.addEventListener("click", () => {
+      const expanded = sidebar.classList.toggle("expanded");
+      document.body.classList.toggle("sidebar-expanded", expanded);
+    });
   }
 
   // Highlight current page

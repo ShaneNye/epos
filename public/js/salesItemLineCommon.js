@@ -61,16 +61,7 @@
 
         // cache options payload like Sales New
         const itemId = hiddenId?.value || "";
-        const opts = {};
-        Object.entries(it).forEach(([key, val]) => {
-          if (key.toLowerCase().startsWith("option :")) {
-            const fieldName = key.replace(/^option\s*:\s*/i, "").trim();
-            const values = val
-              ? String(val).split(",").map((v) => v.trim()).filter(Boolean)
-              : [];
-            if (values.length) opts[fieldName] = values;
-          }
-        });
+        const opts = getOptionSchemaForItem(itemId, it);
 
         window.optionsCache = window.optionsCache || {};
         if (itemId) window.optionsCache[itemId] = opts;
@@ -123,6 +114,28 @@
     globalSuggestions.innerHTML = "";
   }
 
+  function buildLegacyOptionSchemaFromItem(item) {
+    const opts = {};
+    Object.entries(item || {}).forEach(([key, val]) => {
+      if (!String(key).toLowerCase().startsWith("option :")) return;
+
+      const fieldName = String(key).replace(/^option\s*:\s*/i, "").trim();
+      const values = String(val || "")
+        .split(",")
+        .map((v) => v.trim())
+        .filter(Boolean);
+
+      if (fieldName && values.length) opts[fieldName] = values;
+    });
+    return opts;
+  }
+
+  function getOptionSchemaForItem(itemId, itemData) {
+    const fromDb = window.itemOptionsCache?.getOptionsForItemSync?.(itemId) || {};
+    if (Object.keys(fromDb).length) return fromDb;
+    return buildLegacyOptionSchemaFromItem(itemData);
+  }
+
   function selectionsToSummary(selections) {
     const parts = [];
     Object.entries(selections || {}).forEach(([field, value]) => {
@@ -135,9 +148,15 @@
     return parts.join("<br>");
   }
 
-  function openOptionsWindow(row) {
+  async function openOptionsWindow(row) {
     const itemId = row.querySelector(".item-internal-id")?.value;
     if (!itemId) return alert("⚠️ Please select an item first.");
+
+    if (!window.optionsCache?.[itemId] || !Object.keys(window.optionsCache[itemId]).length) {
+      window.optionsCache = window.optionsCache || {};
+      window.optionsCache[itemId] =
+        await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
+    }
 
     const existingSelections =
       row.querySelector(".item-options-json")?.value || "{}";
