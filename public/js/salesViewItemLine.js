@@ -671,6 +671,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
       itemName.includes("promotion") ||
       itemName.includes("voucher") ||
       itemName.includes("trade in") ||
+      itemName.includes("recommendation card (as a minus)") ||
       itemName.includes("trade-in");
 
     if (isNegativeValueLine) {

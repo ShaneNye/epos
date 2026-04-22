@@ -403,6 +403,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       so.custbody4 || so.phone || "";
     document.querySelector('input[name="altContactNumber"]').value =
       so.altPhone || "";
+    document.querySelector('textarea[name="memo"]').value = so.memo || "";
 
     try {
       const entity = so.entityFull || {};
@@ -482,6 +483,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 6️⃣ Lock / unlock form depending on order status
     // ==================================================
     const isPendingApproval = so.orderStatus?.id === "A";
+    const isPendingFulfillment = so.orderStatus?.id === "B";
 
     if (isPendingApproval) {
       console.log("🔓 Pending approval – unlock editable sales order fields");
@@ -502,6 +504,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           el.name === "county" ||
           el.name === "postcode" ||
           el.name === "country" ||
+          el.name === "memo" ||
           el.id === "salesExec" ||
           el.name === "leadSource" ||
           el.id === "paymentInfo" ||
@@ -531,8 +534,29 @@ document.addEventListener("DOMContentLoaded", async () => {
           el.classList.add("locked-input");
         }
       });
+    } else if (isPendingFulfillment) {
+      console.log("📝 Pending fulfillment – allow only memo field editing");
+
+      document.querySelectorAll("input, select, textarea, button").forEach((el) => {
+        if (el.name === "memo") {
+          el.disabled = false;
+          el.classList.remove("locked-input");
+        } else if (el.id === "newMemoBtn" || el.id === "printBtn") {
+          el.disabled = false;
+          el.classList.remove("locked-input");
+        } else {
+          el.disabled = true;
+          el.classList.add("locked-input");
+        }
+      });
+
+      const addDepositBtn = document.getElementById("addDepositBtn");
+      if (addDepositBtn) {
+        addDepositBtn.disabled = true;
+        addDepositBtn.classList.add("locked-input");
+      }
     } else {
-      console.log("🔒 Not pending approval – lock everything (read-only)");
+      console.log("🔒 Not pending approval or fulfillment – lock everything (read-only)");
 
       document.querySelectorAll("input, select, textarea, button").forEach((el) => {
         if (el.id === "newMemoBtn" || el.id === "printBtn") return;
@@ -1010,12 +1034,22 @@ function updateActionButton(orderStatusObj, tranId, so) {
   const statusName = (orderStatusObj?.refName || "").toLowerCase();
 
   const isPendingApproval = statusId === "A" || statusName.includes("approval");
-  if (!isPendingApproval) return;
+  const isPendingFulfillment = statusId === "B" || statusName.includes("fulfillment");
 
-  wrapper.innerHTML = `
-    <button id="saveOrderBtn" class="btn-secondary">Save</button>
-    <button id="commitOrderBtn" class="btn-primary">Commit</button>
-  `;
+  if (!isPendingApproval && !isPendingFulfillment) return;
+
+  if (isPendingFulfillment) {
+    // For pending fulfillment, only show Save button (for memo updates)
+    wrapper.innerHTML = `
+      <button id="saveOrderBtn" class="btn-secondary">Save</button>
+    `;
+  } else {
+    // For pending approval, show both Save and Commit buttons
+    wrapper.innerHTML = `
+      <button id="saveOrderBtn" class="btn-secondary">Save</button>
+      <button id="commitOrderBtn" class="btn-primary">Commit</button>
+    `;
+  }
 
   function collectEditableSalesLines() {
     return [...document.querySelectorAll("#orderItemsBody tr.order-line")]
@@ -1123,6 +1157,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
         document.querySelector('input[name="postcode"]')?.value?.trim() || null,
       country:
         document.querySelector('input[name="country"]')?.value?.trim() || null,
+      memo: document.querySelector('textarea[name="memo"]')?.value?.trim() || null,
       salesExec: selectedSalesExecNsId,
       leadSource: document.querySelector('select[name="leadSource"]')?.value || null,
       paymentInfo: document.getElementById("paymentInfo")?.value || null,

@@ -68,6 +68,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       text.includes("promotion") ||
       text.includes("voucher") ||
       text.includes("trade in") ||
+      text.includes("recommendation card (as a minus)") ||
       text.includes("trade-in")
     );
   };

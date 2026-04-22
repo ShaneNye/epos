@@ -606,6 +606,7 @@ function validateOrderBeforeSave() {
         leadSource: document.querySelector('select[name="leadSource"]').value,
         paymentInfo: document.getElementById("paymentInfo").value,
         warehouse: document.getElementById("warehouse").value,
+        memo: document.querySelector('textarea[name="memo"]').value.trim(),
       };
 
       const items = [...document.querySelectorAll("#orderItemsBody .order-line")]

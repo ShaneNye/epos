@@ -209,6 +209,7 @@ function buildSalesOrderFields() {
     "custbody_sb_primarystore",
     "custbody_sb_paymentinfo",
     "custbody_sb_warehouse",
+    "memo",
     // totals (field IDs vary; keep what works in your account)
     "subtotal",
     "discountTotal",
@@ -377,6 +378,7 @@ router.post("/create", async (req, res) => {
       leadsource: { id: order.leadSource },
       custbody_sb_paymentinfo: { id: order.paymentInfo },
       custbody_sb_warehouse: { id: order.warehouse },
+      memo: order.memo,
 
       item: {
         items: items.map((i, idx) => {

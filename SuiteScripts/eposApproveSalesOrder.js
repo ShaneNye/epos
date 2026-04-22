@@ -15,16 +15,25 @@ define(['N/record', 'N/error'], (record, error) => {
 
       const so = record.load({ type: 'salesorder', id: context.id, isDynamic: false });
 
-      // --- Unlock and approve ---
-      // approvalstatus: 2 = Approved
-      so.setValue({ fieldId: 'approvalstatus', value: 2 });
+      // Handle header updates
+      if (context.headerUpdates) {
+        const updates = context.headerUpdates;
+        if (updates.memo !== undefined) so.setValue({ fieldId: 'memo', value: updates.memo });
+        // Add other header updates as needed
+      }
 
-      // orderstatus: 'B' = Pending Fulfillment
-      so.setValue({ fieldId: 'orderstatus', value: 'B' });
+      // --- Unlock and approve only if commit is true ---
+      if (context.commit) {
+        // approvalstatus: 2 = Approved
+        so.setValue({ fieldId: 'approvalstatus', value: 2 });
+
+        // orderstatus: 'B' = Pending Fulfillment
+        so.setValue({ fieldId: 'orderstatus', value: 'B' });
+      }
 
       const savedId = so.save({ enableSourcing: true, ignoreMandatoryFields: true });
 
-      return { ok: true, id: savedId, message: 'Sales Order approved & committed successfully.' };
+      return { ok: true, id: savedId, message: context.commit ? 'Sales Order approved & committed successfully.' : 'Sales Order saved successfully.' };
     } catch (e) {
       log.error('RESTlet Approve SO Error', e);
       return { ok: false, error: e.message || e };
