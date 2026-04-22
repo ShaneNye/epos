@@ -64,6 +64,44 @@ async function loadItemCache() {
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("💡 SalesOrderView init");
 
+  function normaliseStoreName(name) {
+    return String(name || "")
+      .toLowerCase()
+      .replace(/&/g, "and")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim();
+  }
+
+  function isDistributionStoreName(name) {
+    const normalised = normaliseStoreName(name);
+    return normalised === "distribution ltd" || normalised.includes("distribution ltd");
+  }
+
+  function syncDistributionOrderTypeVisibility() {
+    const wrapper = document.getElementById("distributionOrderTypeWrapper");
+    const select = document.getElementById("distributionOrderType");
+    const storeSelect = document.getElementById("store");
+    if (!wrapper || !select || !storeSelect) return;
+
+    const selectedOption = storeSelect.options[storeSelect.selectedIndex];
+    const selectedStoreName =
+      selectedOption?.dataset?.storeName ||
+      selectedOption?.textContent?.trim() ||
+      "";
+    const show =
+      selectedOption?.dataset?.distributionStore === "true" ||
+      isDistributionStoreName(selectedStoreName);
+
+    wrapper.style.display = show ? "flex" : "none";
+    select.disabled = !show;
+
+    if (!show) select.value = "";
+  }
+
+  const storeSelect = document.getElementById("store");
+  storeSelect?.addEventListener("change", syncDistributionOrderTypeVisibility);
+  storeSelect?.addEventListener("input", syncDistributionOrderTypeVisibility);
+
   const overlay = document.getElementById("loadingOverlay");
   overlay?.classList.remove("hidden");
 
@@ -149,6 +187,10 @@ document.addEventListener("DOMContentLoaded", async () => {
             const opt = document.createElement("option");
             opt.value = String(loc.id);
             opt.textContent = loc.name;
+            opt.dataset.storeName = loc.name || "";
+            opt.dataset.distributionStore = isDistributionStoreName(loc.name)
+              ? "true"
+              : "false";
             storeSelect.appendChild(opt);
           });
 
@@ -161,9 +203,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
             if (match) {
               storeSelect.value = String(match.id);
+              syncDistributionOrderTypeVisibility();
               console.log("✔ Auto-set store to:", match.name);
             }
           }
+          syncDistributionOrderTypeVisibility();
         }
       }
     } catch (err) {
@@ -443,6 +487,12 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (storeMatch) document.querySelector("#store").value = storeMatch.id;
       }
 
+      const distributionTypeSelect = document.getElementById("distributionOrderType");
+      if (distributionTypeSelect) {
+        distributionTypeSelect.value = so.custbody_sb_is_web_order?.id || "";
+      }
+      syncDistributionOrderTypeVisibility();
+
       document.querySelector('select[name="leadSource"]').value = so.leadSource?.id || "";
       document.querySelector("#paymentInfo").value =
         so.custbody_sb_paymentinfo?.id || "";
@@ -506,6 +556,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           el.name === "country" ||
           el.name === "memo" ||
           el.id === "salesExec" ||
+          el.id === "distributionOrderType" ||
           el.name === "leadSource" ||
           el.id === "paymentInfo" ||
           el.id === "warehouse" ||
@@ -624,6 +675,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   } finally {
     overlay?.classList.add("hidden");
   }
+
+  syncDistributionOrderTypeVisibility();
 });
 
 /* =====================================================
@@ -1159,6 +1212,10 @@ function updateActionButton(orderStatusObj, tranId, so) {
         document.querySelector('input[name="country"]')?.value?.trim() || null,
       memo: document.querySelector('textarea[name="memo"]')?.value?.trim() || null,
       salesExec: selectedSalesExecNsId,
+      distributionOrderType:
+        document.getElementById("distributionOrderTypeWrapper")?.style.display === "none"
+          ? null
+          : document.getElementById("distributionOrderType")?.value || null,
       leadSource: document.querySelector('select[name="leadSource"]')?.value || null,
       paymentInfo: document.getElementById("paymentInfo")?.value || null,
       warehouse: document.getElementById("warehouse")?.value || null,

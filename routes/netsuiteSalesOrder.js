@@ -209,6 +209,7 @@ function buildSalesOrderFields() {
     "custbody_sb_primarystore",
     "custbody_sb_paymentinfo",
     "custbody_sb_warehouse",
+    "custbody_sb_is_web_order",
     "memo",
     // totals (field IDs vary; keep what works in your account)
     "subtotal",
@@ -445,11 +446,21 @@ router.post("/create", async (req, res) => {
     };
 
     /* ======================================================
-       5️⃣ WEB ORDER FLAG — MUST BE BEFORE PAYLOAD PREVIEW
+       5️⃣ DISTRIBUTION ORDER TYPE (custbody_sb_is_web_order)
     ====================================================== */
-    if (String(storeNsId) === "6") {
-      orderBody.custbody_sb_is_web_order = { id: "1" };
-      console.log("🏷 Web Order FLAG SET: custbody_sb_is_web_order = 1");
+    const isDistributionStore = /distribution\s*ltd/i.test(String(storeName || "").trim());
+    const distributionOrderTypeId = String(order?.distributionOrderType || "").trim();
+    const allowedDistributionTypeIds = new Set(["1", "2", "3"]);
+
+    if (isDistributionStore) {
+      const selectedId = allowedDistributionTypeIds.has(distributionOrderTypeId)
+        ? distributionOrderTypeId
+        : "1"; // default Web Order for Distribution Ltd
+
+      orderBody.custbody_sb_is_web_order = { id: selectedId };
+      console.log(
+        `🏷 Distribution order type set: custbody_sb_is_web_order = ${selectedId}`
+      );
     }
 
     /* ======================================================

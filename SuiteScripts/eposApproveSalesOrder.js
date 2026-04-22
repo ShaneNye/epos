@@ -19,6 +19,12 @@ define(['N/record', 'N/error'], (record, error) => {
       if (context.headerUpdates) {
         const updates = context.headerUpdates;
         if (updates.memo !== undefined) so.setValue({ fieldId: 'memo', value: updates.memo });
+        if (updates.distributionOrderType !== undefined) {
+          so.setValue({
+            fieldId: 'custbody_sb_is_web_order',
+            value: updates.distributionOrderType || ''
+          });
+        }
         // Add other header updates as needed
       }
 

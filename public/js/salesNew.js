@@ -40,6 +40,48 @@ if (window.location.pathname.includes("/sales/view/")) {
     const headers = { Authorization: `Bearer ${saved.token}` };
     let currentUser = null;
 
+    function normaliseStoreName(name) {
+      return String(name || "")
+        .toLowerCase()
+        .replace(/&/g, "and")
+        .replace(/[^a-z0-9]+/g, " ")
+        .trim();
+    }
+
+    function isDistributionStoreName(name) {
+      const normalised = normaliseStoreName(name);
+      return normalised === "distribution ltd" || normalised.includes("distribution ltd");
+    }
+
+    function syncDistributionOrderTypeVisibility() {
+      const wrapper = document.getElementById("distributionOrderTypeWrapper");
+      const select = document.getElementById("distributionOrderType");
+      const storeSelect = document.getElementById("store");
+      if (!wrapper || !select || !storeSelect) return;
+
+      const selectedOption = storeSelect.options[storeSelect.selectedIndex];
+      const selectedStoreName =
+        selectedOption?.dataset?.storeName ||
+        selectedOption?.textContent?.trim() ||
+        "";
+      const show =
+        selectedOption?.dataset?.distributionStore === "true" ||
+        isDistributionStoreName(selectedStoreName);
+
+      wrapper.style.display = show ? "flex" : "none";
+      select.disabled = !show;
+
+      if (show) {
+        if (!select.value) select.value = "1"; // preserve previous default behaviour
+      } else {
+        select.value = "";
+      }
+    }
+
+    const storeSelect = document.getElementById("store");
+    storeSelect?.addEventListener("change", syncDistributionOrderTypeVisibility);
+    storeSelect?.addEventListener("input", syncDistributionOrderTypeVisibility);
+
     /* =========================================================
        ✅ No Address Required helpers
     ========================================================= */
@@ -184,6 +226,10 @@ function applyNoAddressMode() {
             const opt = document.createElement("option");
             opt.value = String(loc.id);
             opt.textContent = loc.name;
+            opt.dataset.storeName = loc.name || "";
+            opt.dataset.distributionStore = isDistributionStoreName(loc.name)
+              ? "true"
+              : "false";
             storeSelect.appendChild(opt);
           });
 
@@ -196,6 +242,7 @@ function applyNoAddressMode() {
 
             if (match) {
               storeSelect.value = String(match.id);
+              syncDistributionOrderTypeVisibility();
               console.log(`🏪 Default store set to: ${match.name} (ID: ${match.id})`);
             } else {
               console.warn(
@@ -203,11 +250,14 @@ function applyNoAddressMode() {
               );
             }
           }
+          syncDistributionOrderTypeVisibility();
         }
       }
     } catch (err) {
       console.error("Failed to load stores:", err);
     }
+
+    syncDistributionOrderTypeVisibility();
 
     // ✅ Prefill from lookup (after user + store)
     const stored = localStorage.getItem("selectedCustomer");
@@ -603,6 +653,10 @@ function validateOrderBeforeSave() {
       const order = {
         salesExec: document.getElementById("salesExec").value,
         store: document.getElementById("store").value,
+        distributionOrderType:
+          document.getElementById("distributionOrderTypeWrapper")?.style.display === "none"
+            ? ""
+            : document.getElementById("distributionOrderType")?.value || "",
         leadSource: document.querySelector('select[name="leadSource"]').value,
         paymentInfo: document.getElementById("paymentInfo").value,
         warehouse: document.getElementById("warehouse").value,
