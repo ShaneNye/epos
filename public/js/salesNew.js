@@ -457,17 +457,31 @@ document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
   const spinner = document.getElementById("orderSpinner");
   const toast = document.getElementById("orderToast");
   const spinnerText = document.getElementById("orderSpinnerTitle");
+  const saveOrderBtn = document.getElementById("saveOrderBtn");
+  let isOrderSubmitting = false;
+  let originalSaveOrderText = saveOrderBtn?.textContent || "Save Order";
 
   function lockForm() {
     if (form) form.classList.add("locked");
     if (spinner) spinner.classList.remove("hidden");
     if (toast) toast.classList.add("hidden");
+    if (saveOrderBtn) {
+      originalSaveOrderText = saveOrderBtn.textContent || originalSaveOrderText;
+      saveOrderBtn.disabled = true;
+      saveOrderBtn.setAttribute("aria-busy", "true");
+      saveOrderBtn.textContent = "Saving...";
+    }
     if (spinnerText) spinnerText.textContent = "Creating order…";
   }
 
   function unlockForm() {
     if (form) form.classList.remove("locked");
     if (spinner) spinner.classList.add("hidden");
+    if (saveOrderBtn) {
+      saveOrderBtn.disabled = false;
+      saveOrderBtn.removeAttribute("aria-busy");
+      saveOrderBtn.textContent = originalSaveOrderText;
+    }
   }
 
   function showToast(message, type = "success") {
@@ -614,12 +628,11 @@ function validateOrderBeforeSave() {
 
   /* === SAVE ORDER HANDLER (simple spinner only) === */
   document.addEventListener("click", async (e) => {
-    if (
-      e.target.classList.contains("btn-primary") &&
-      e.target.textContent.trim() === "Save Order"
-    ) {
+    const saveButton = e.target.closest("#saveOrderBtn");
+    if (saveButton) {
       e.preventDefault();
 
+      if (isOrderSubmitting || saveButton.disabled) return;
       if (!validateCustomerBeforeSave()) return;
       if (!validateOrderBeforeSave()) return;
 
@@ -692,14 +705,21 @@ function validateOrderBeforeSave() {
         })
         .filter((line) => line !== null);
 
-      const body = { customer, order, items, deposits };
-      console.log("🏷 noAddressRequired:", noAddressRequired);
-      console.log("💰 Including deposits in payload:", deposits);
-      await submitOrder(body);
+      try {
+        isOrderSubmitting = true;
+        const body = { customer, order, items, deposits };
+        console.log("🏷 noAddressRequired:", noAddressRequired);
+        console.log("💰 Including deposits in payload:", deposits);
+        await submitOrder(body);
+      } finally {
+        isOrderSubmitting = false;
+      }
     }
   });
 
   async function submitOrder(orderPayload) {
+    let createdSuccessfully = false;
+
     try {
       lockForm();
       console.log("📦 Sending order payload:", orderPayload);
@@ -737,6 +757,7 @@ function validateOrderBeforeSave() {
 
       if (soId) localStorage.setItem("currentSalesOrderId", soId);
       if (tranId) localStorage.setItem("currentSalesOrderTranId", tranId);
+      createdSuccessfully = true;
 
       showToast(
         `✅ Order ${tranId || soId} created successfully! Redirecting...`,
@@ -767,7 +788,7 @@ function validateOrderBeforeSave() {
       console.error("❌ Error submitting order:", err);
       showToast("❌ Something went wrong while creating the order.", "error");
     } finally {
-      unlockForm();
+      if (!createdSuccessfully) unlockForm();
     }
   }
 }

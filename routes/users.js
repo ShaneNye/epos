@@ -333,11 +333,20 @@ router.put("/:id", async (req, res) => {
       netsuiteid: netsuiteId || null,
       location_id: location_id || null,
       profileimage: profileImage,
-      sb_netsuite_token_id: sb_netsuite_token_id || null,
-      sb_netsuite_token_secret: sb_netsuite_token_secret || null,
-      prod_netsuite_token_id: prod_netsuite_token_id || null,
-      prod_netsuite_token_secret: prod_netsuite_token_secret || null,
     };
+
+    const tokenFields = {
+      sb_netsuite_token_id,
+      sb_netsuite_token_secret,
+      prod_netsuite_token_id,
+      prod_netsuite_token_secret,
+    };
+
+    for (const [field, value] of Object.entries(tokenFields)) {
+      if (!Object.prototype.hasOwnProperty.call(req.body, field)) continue;
+      if (value === "************" || value === "") continue;
+      updates[field] = value || null;
+    }
 
     if (password) updates.password_hash = await bcrypt.hash(password, 10);
 

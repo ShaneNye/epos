@@ -199,6 +199,7 @@ app.use("/api/netsuite/quote", require("./routes/netsuiteQuote"));
 app.use("/api/item-options", itemOptionsRoute.router);
 app.use("/api/netsuite/entity", require("./routes/netsuiteEntity"));
 app.use("/api/netsuite", require("./routes/netsuiteCustomerRecords"));
+app.use("/api/suitepim", require("./routes/suitepim"));
 app.use("/api/meta/store", require("./routes/storeName"));
 app.use("/api/meta/management-rules", require("./routes/managementRules"));
 app.use("/api/vsa", require("./routes/vsa"));
@@ -715,6 +716,7 @@ app.get("/reports", (req, res) => res.sendFile(path.join(__dirname, "public", "r
 app.get("/eod", (req, res) => res.sendFile(path.join(__dirname, "public", "endOfDay.html")))
 app.get("/cashflow", (req, res) => res.sendFile(path.join(__dirname, "public", "cashFlow.html")))
 app.get("/logistics", (req, res) => res.sendFile(path.join(__dirname, "public", "logistics.html")))
+app.get("/suitepim", (req, res) => res.sendFile(path.join(__dirname, "public", "suitepim.html")))
 app.get("/sales/reciept/:id", (req, res) => res.sendFile(path.join(__dirname,"public", "salesOrdReceipt.html")));
 
 app.get("/quote/view/:id", (req, res) =>

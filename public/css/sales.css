@@ -232,6 +232,13 @@ textarea:focus {
   border-color: var(--brand);
 }
 
+.btn-primary:disabled,
+.btn-secondary:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  box-shadow: none;
+}
+
 /* === SCROLL CONTAINER === */
 .form-scroll {
   max-height: calc(100vh - 120px);
