@@ -120,7 +120,15 @@
     ttlMs: TTL_MS,
   };
 
-  getAll().catch((err) => {
-    console.warn("Item options cache warmup failed:", err.message);
-  });
+  const warmup = () => {
+    getAll().catch((err) => {
+      console.warn("Item options cache warmup failed:", err.message);
+    });
+  };
+
+  if ("requestIdleCallback" in window) {
+    window.requestIdleCallback(warmup, { timeout: 5000 });
+  } else {
+    setTimeout(warmup, 2500);
+  }
 })();

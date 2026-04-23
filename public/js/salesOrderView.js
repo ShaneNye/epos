@@ -121,17 +121,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     Authorization: `Bearer ${saved.token}`,
   };
 
-  populateSalesExecAndStore(headers);
+  const mePromise = fetch("/api/me", { headers })
+    .then((res) => res.json())
+    .catch((err) => {
+      console.warn("Failed to load current user:", err);
+      return {};
+    });
+  const usersPromise = fetch("/api/users", { headers })
+    .then((res) => res.json())
+    .catch((err) => {
+      console.error("Failed to load sales executives:", err);
+      return {};
+    });
+  const locationsPromise = fetch("/api/meta/locations", { headers })
+    .then((res) => res.json())
+    .catch((err) => {
+      console.error("Failed to load stores:", err);
+      return {};
+    });
+
+  populateSalesExecAndStore(mePromise, usersPromise, locationsPromise);
 
   /* =====================================================
      Populate Sales Executive & Store Dropdowns
   ===================================================== */
-  async function populateSalesExecAndStore(headers) {
+  async function populateSalesExecAndStore(mePromise, usersPromise, locationsPromise) {
     let currentUser = null;
 
     try {
-      const meRes = await fetch("/api/me", { headers });
-      const meData = await meRes.json();
+      const meData = await mePromise;
       if (meData.ok && meData.user) {
         currentUser = meData.user;
         console.log("🧑 Current user:", currentUser);
@@ -141,8 +159,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     try {
-      const res = await fetch("/api/users", { headers });
-      const data = await res.json();
+      const data = await usersPromise;
 
       if (data.ok) {
         const execSelect = document.getElementById("salesExec");
@@ -171,8 +188,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     try {
-      const res = await fetch("/api/meta/locations", { headers });
-      const data = await res.json();
+      const data = await locationsPromise;
 
       if (data.ok) {
         const storeSelect = document.getElementById("store");
@@ -228,15 +244,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ==================================================
     // 1️⃣ Load everything in parallel where possible
     // ==================================================
-    const [_items, _itemOptions, soRes, locRes, userRes, fulfilRes] = await Promise.all([
+    const [_items, soRes, locJson, userJson, fulfilRes] = await Promise.all([
       loadItemCache(),
-      window.itemOptionsCache?.getAll?.().catch((err) => {
-        console.warn("⚠️ Failed to preload item options:", err.message);
-        return {};
-      }),
-      fetch(`/api/netsuite/salesorder/${tranId}?refresh=1`, { headers }),
-      fetch("/api/meta/locations", { headers }),
-      fetch("/api/users", { headers }),
+      fetch(`/api/netsuite/salesorder/${tranId}?lite=1`, { headers }),
+      locationsPromise,
+      usersPromise,
       fetch("/api/netsuite/fulfilmentmethods").catch(() => null),
     ]);
 
@@ -249,10 +261,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!so) throw new Error("No salesOrder object in response");
     console.log("✅ Sales Order loaded:", so.tranId || tranId);
 
-    const locJson = locRes.ok ? await locRes.json() : {};
     const locations = locJson.locations || locJson.data || [];
 
-    const userJson = userRes.ok ? await userRes.json() : {};
     const users = userJson.users || userJson.data || [];
     window._salesUsers = users;
 
@@ -283,8 +293,19 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("orderNumber").textContent = so.tranId || tranId;
 
     function formatOrderStatus(so) {
+      const codeMap = {
+        A: "Pending Approval",
+        B: "Pending Fulfillment",
+        C: "Partially Fulfilled",
+        D: "Pending Billing",
+        E: "Billed",
+        F: "Closed",
+        G: "Cancelled",
+      };
+
       if (typeof so?.status === "string" && so.status.trim()) {
-        return so.status.trim();
+        const normalizedStatus = so.status.trim();
+        return codeMap[normalizedStatus.toUpperCase()] || normalizedStatus;
       }
 
       if (
@@ -293,16 +314,20 @@ document.addEventListener("DOMContentLoaded", async () => {
         typeof so.status.refName === "string" &&
         so.status.refName.trim()
       ) {
-        return so.status.refName.trim();
+        const normalizedStatusRef = so.status.refName.trim();
+        return codeMap[normalizedStatusRef.toUpperCase()] || normalizedStatusRef;
       }
 
       const statusRef =
         (typeof so?.statusRef === "string" && so.statusRef.trim()) ||
         (typeof so?.orderStatus?.refName === "string" && so.orderStatus.refName.trim()) ||
+        (typeof so?.orderstatus?.refName === "string" && so.orderstatus.refName.trim()) ||
         "";
 
       if (statusRef) {
         const normalized = statusRef.trim();
+        const statusCodeLabel = codeMap[normalized.toUpperCase()];
+        if (statusCodeLabel) return statusCodeLabel;
 
         const explicitMap = {
           pendingApproval: "Pending Approval",
@@ -324,19 +349,9 @@ document.addEventListener("DOMContentLoaded", async () => {
           .replace(/\b\w/g, (c) => c.toUpperCase());
       }
 
-      const statusId = String(so?.orderStatus?.id || "")
+      const statusId = String(so?.orderStatus?.id || so?.orderstatus?.id || so?.orderstatus || "")
         .trim()
         .toUpperCase();
-
-      const codeMap = {
-        A: "Pending Approval",
-        B: "Pending Fulfillment",
-        C: "Partially Fulfilled",
-        D: "Pending Billing",
-        E: "Billed",
-        F: "Closed",
-        G: "Cancelled",
-      };
 
       return codeMap[statusId] || statusId || "-";
     }
@@ -446,11 +461,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.warn("⚠️ Address population failed:", err.message);
     }
 
-    document.querySelector('input[name="email"]').value = so.email || "";
+    const customerContact = so.entityFull || {};
+    document.querySelector('input[name="email"]').value =
+      customerContact.email || so.email || "";
     document.querySelector('input[name="contactNumber"]').value =
-      so.custbody4 || so.phone || "";
+      customerContact.phone || so.custbody4 || so.phone || "";
     document.querySelector('input[name="altContactNumber"]').value =
-      so.altPhone || "";
+      customerContact.altPhone || so.altPhone || "";
     document.querySelector('textarea[name="memo"]').value = so.memo || "";
 
     try {
@@ -536,8 +553,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ==================================================
     // 6️⃣ Lock / unlock form depending on order status
     // ==================================================
-    const isPendingApproval = so.orderStatus?.id === "A";
-    const isPendingFulfillment = so.orderStatus?.id === "B";
+    const statusId = String(so.orderStatus?.id || so.orderstatus?.id || so.orderstatus || so.status || "")
+      .trim()
+      .toUpperCase();
+    const isPendingApproval = statusId === "A";
+    const isPendingFulfillment = statusId === "B";
 
     if (isPendingApproval) {
       console.log("🔓 Pending approval – unlock editable sales order fields");
@@ -631,7 +651,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 7️⃣ Summary + Action button + Add Deposit
     // ==================================================
     updateOrderSummaryFromTable();
-    updateActionButton(so.orderStatus || so.status || {}, tranId, so);
+    updateActionButton(so.orderStatus || so.orderstatus || so.status || {}, tranId, so);
 
     const addDepositBtn = document.getElementById("addDepositBtn");
 
@@ -672,6 +692,25 @@ document.addEventListener("DOMContentLoaded", async () => {
           popup.focus();
         }
       };
+    }
+
+    const currentStatusId = String(
+      so.orderStatus?.id || so.orderstatus?.id || so.orderstatus || so.status || ""
+    )
+      .trim()
+      .toUpperCase();
+    const warmItemOptions = () => {
+      window.itemOptionsCache?.getAll?.().catch((err) => {
+        console.warn("Failed to warm item options:", err.message);
+      });
+    };
+
+    if (currentStatusId === "A") {
+      setTimeout(warmItemOptions, 250);
+    } else if ("requestIdleCallback" in window) {
+      window.requestIdleCallback(warmItemOptions, { timeout: 5000 });
+    } else {
+      setTimeout(warmItemOptions, 2500);
     }
   } catch (err) {
     console.error("❌ Load failure:", err.message || err);
@@ -1087,8 +1126,14 @@ function updateActionButton(orderStatusObj, tranId, so) {
     document.getElementById("commitInlineStatus")?.classList.add("hidden");
   }
 
-  const statusId = (orderStatusObj?.id || "").toUpperCase();
-  const statusName = (orderStatusObj?.refName || "").toLowerCase();
+  const statusId =
+    typeof orderStatusObj === "string"
+      ? orderStatusObj.trim().toUpperCase()
+      : String(orderStatusObj?.id || "").toUpperCase();
+  const statusName =
+    typeof orderStatusObj === "string"
+      ? ""
+      : String(orderStatusObj?.refName || "").toLowerCase();
 
   const isPendingApproval = statusId === "A" || statusName.includes("approval");
   const isPendingFulfillment = statusId === "B" || statusName.includes("fulfillment");
@@ -1243,20 +1288,11 @@ function updateActionButton(orderStatusObj, tranId, so) {
       mappedNsId: selectedSalesExecNsId,
     });
 
-    console.log(
-      "🧪 Row payload debug:",
-      [...document.querySelectorAll("#orderItemsBody tr.order-line")].map((row) => ({
-        line: row.dataset.line || "",
-        lineId: row.dataset.lineid || "",
-        itemId: row.querySelector(".item-internal-id")?.value || "",
-        itemSearch: row.querySelector(".item-search")?.value || "",
-        qty: row.querySelector(".item-qty")?.value || "",
-        sale: row.querySelector(".item-saleprice")?.value || "",
-        amount: row.querySelector(".item-amount")?.value || "",
-      }))
-    );
-
-    console.log("🧪 Final lines payload:", lines);
+    console.log("Sales order save payload summary:", {
+      lines: lines.length,
+      deletedLines: deletedLineIds.length,
+      headerFields: Object.keys(headerUpdates).filter((key) => headerUpdates[key] != null),
+    });
 
     return {
       headerUpdates,

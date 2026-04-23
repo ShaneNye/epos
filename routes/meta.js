@@ -6,7 +6,10 @@ const router = express.Router();
 /* ---------------- helpers ---------------- */
 function normalizeSlug(s) {
   if (typeof s !== "string") return "";
-  return s.replace(/^\//, "").replace(/\.html$/i, "").trim();
+  const slug = s.replace(/^\//, "").replace(/\.html$/i, "").trim().toLowerCase();
+  if (slug === "end-of-day" || slug === "endofday") return "eod";
+  if (slug === "cash-flow") return "cashflow";
+  return slug;
 }
 function toArray(val) {
   if (Array.isArray(val)) return val;

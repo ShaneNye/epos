@@ -1,6 +1,7 @@
 const express = require("express");
 const fetch = require("node-fetch");
 const pool = require("../db");
+const crypto = require("crypto");
 
 const router = express.Router();
 
@@ -10,10 +11,55 @@ const DEFAULT_OPTIONS_URL =
 const OPTIONS_URL = process.env.ITEM_OPTIONS_URL || DEFAULT_OPTIONS_URL;
 const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = Number(process.env.ITEM_OPTIONS_FETCH_TIMEOUT_MS || 30000);
+const RESPONSE_CACHE_TTL_MS = Number(process.env.ITEM_OPTIONS_RESPONSE_CACHE_TTL_MS || 60 * 60 * 1000);
 
 let initialized = false;
 let syncInFlight = null;
 let schedulerStarted = false;
+const responseCache = new Map();
+
+function sendCachedJson(req, res, payload, cacheKey) {
+  const body = JSON.stringify(payload);
+  const etag = `"${crypto.createHash("sha1").update(body).digest("hex")}"`;
+
+  responseCache.set(cacheKey, {
+    body,
+    etag,
+    expiresAt: Date.now() + RESPONSE_CACHE_TTL_MS,
+  });
+
+  res.set({
+    "Cache-Control": `private, max-age=${Math.floor(RESPONSE_CACHE_TTL_MS / 1000)}, stale-while-revalidate=300`,
+    ETag: etag,
+  });
+
+  if (req.headers["if-none-match"] === etag) {
+    return res.status(304).end();
+  }
+
+  return res.type("application/json").send(body);
+}
+
+function sendMemoizedResponse(req, res, cacheKey) {
+  const cached = responseCache.get(cacheKey);
+  if (!cached || cached.expiresAt <= Date.now()) {
+    responseCache.delete(cacheKey);
+    return false;
+  }
+
+  res.set({
+    "Cache-Control": `private, max-age=${Math.floor(RESPONSE_CACHE_TTL_MS / 1000)}, stale-while-revalidate=300`,
+    ETag: cached.etag,
+  });
+
+  if (req.headers["if-none-match"] === cached.etag) {
+    res.status(304).end();
+  } else {
+    res.type("application/json").send(cached.body);
+  }
+
+  return true;
+}
 
 function cleanText(value) {
   return String(value ?? "").trim();
@@ -318,6 +364,7 @@ async function syncItemOptions() {
         ms: Date.now() - startedAt.getTime(),
       });
 
+      responseCache.clear();
       return { ok: true, synced: payload.results.length };
     } catch (err) {
       await pool.query(
@@ -401,18 +448,21 @@ router.get("/", async (req, res) => {
   try {
     await ensureTables();
     const itemId = req.query.itemId ? String(req.query.itemId) : "";
+    const cacheKey = itemId ? `item:${itemId}` : "all";
+    if (sendMemoizedResponse(req, res, cacheKey)) return;
+
     const [options, state] = await Promise.all([
       getOptions(itemId),
       pool.query("SELECT * FROM item_option_sync_state WHERE id = 1"),
     ]);
 
-    return res.json({
+    return sendCachedJson(req, res, {
       ok: true,
       itemId: itemId || null,
       options: itemId ? options[itemId] || {} : options,
       byItemId: itemId ? undefined : options,
       sync: state.rows[0] || null,
-    });
+    }, cacheKey);
   } catch (err) {
     console.error("❌ GET /api/item-options error:", err.message);
     return res.status(500).json({ ok: false, error: "Failed to load item options" });

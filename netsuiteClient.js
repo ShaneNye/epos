@@ -35,6 +35,34 @@ const oauth = OAuth({
   },
 });
 
+const USER_TOKEN_CACHE_TTL_MS =
+  Number(process.env.NS_USER_TOKEN_CACHE_TTL_MS || 5 * 60 * 1000) || 5 * 60 * 1000;
+const userTokenCache = new Map();
+
+function userTokenCacheKey(userId) {
+  return `${currentEnvLabel()}:${String(userId)}`;
+}
+
+function readCachedUserTokens(userId) {
+  const key = userTokenCacheKey(userId);
+  const cached = userTokenCache.get(key);
+  if (!cached) return null;
+
+  if (cached.expiresAt <= Date.now()) {
+    userTokenCache.delete(key);
+    return null;
+  }
+
+  return cached.tokens;
+}
+
+function cacheUserTokens(userId, tokens) {
+  userTokenCache.set(userTokenCacheKey(userId), {
+    tokens,
+    expiresAt: Date.now() + USER_TOKEN_CACHE_TTL_MS,
+  });
+}
+
 /* ======================================================
    ===============  Auth Header Helper  =================
    ====================================================== */
@@ -42,6 +70,15 @@ const oauth = OAuth({
 async function getAuthHeader(url, method, userId = null) {
   let tokenId = process.env.NS_TOKEN_ID;
   let tokenSecret = process.env.NS_TOKEN_SECRET;
+
+  if (userId) {
+    const cachedTokens = readCachedUserTokens(userId);
+    if (cachedTokens) {
+      tokenId = cachedTokens.tokenId || tokenId;
+      tokenSecret = cachedTokens.tokenSecret || tokenSecret;
+      userId = null;
+    }
+  }
 
   if (userId) {
     try {
@@ -65,6 +102,8 @@ async function getAuthHeader(url, method, userId = null) {
           tokenId = u.sb_netsuite_token_id || tokenId;
           tokenSecret = u.sb_netsuite_token_secret || tokenSecret;
         }
+
+        cacheUserTokens(userId, { tokenId, tokenSecret });
 
         if (!tokenId || !tokenSecret) {
           console.warn(

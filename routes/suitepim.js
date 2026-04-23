@@ -469,6 +469,7 @@ router.use(requireSuitePimSession);
 
 router.get("/config", (req, res) => {
   const env = normalizeEnvironment(req.query.environment);
+  const cfg = envConfig(env);
   const cleanFields = fields.map(({ optionFeed, ...field }) => ({
     ...field,
     hasOptions: !!optionFeed,
@@ -478,7 +479,8 @@ router.get("/config", (req, res) => {
     ok: true,
     environment: publicEnvironmentName(env),
     fields: cleanFields,
-    productFeedConfigured: !!envConfig(env).productDataUrl,
+    productFeedConfigured: !!cfg.productDataUrl,
+    priceRestletConfigured: !!cfg.priceRestletUrl,
   });
 });
 

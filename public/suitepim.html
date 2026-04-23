@@ -27,10 +27,6 @@
         <p class="suitepim-kicker">Item record management</p>
         <h1>SuitePim</h1>
       </div>
-      <div class="suitepim-env-toggle" aria-label="SuitePim environment">
-        <button type="button" class="suitepim-env-btn active" data-env="sandbox">Sandbox</button>
-        <button type="button" class="suitepim-env-btn" data-env="production">Production</button>
-      </div>
     </header>
 
     <section class="suitepim-toolbar" aria-label="Product data controls">
@@ -77,41 +73,62 @@
       </button>
     </section>
 
-    <section class="suitepim-filter-builder" aria-label="Advanced filters">
+    <section class="suitepim-filter-builder suitepim-collapsible is-collapsed" aria-label="Advanced filters">
       <div class="suitepim-panel-heading">
         <div>
           <h2>Filters</h2>
           <p>Stack multiple filters to narrow ProductData records.</p>
         </div>
-        <button id="suitepimClearFiltersBtn" type="button">Clear filters</button>
+        <div class="suitepim-panel-actions">
+          <button id="suitepimClearFiltersBtn" type="button">Clear filters</button>
+          <button id="suitepimToggleFiltersBtn" class="suitepim-panel-toggle" type="button" aria-expanded="false" aria-controls="suitepimFilterBody">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M6 9l6 6 6-6"></path>
+            </svg>
+          </button>
+        </div>
       </div>
-      <div class="suitepim-filter-row">
-        <select id="suitepimFilterField" aria-label="Filter field">
-          <option value="">Choose field</option>
-        </select>
-        <div id="suitepimFilterValueHost" class="suitepim-control-host"></div>
-        <button id="suitepimAddFilterBtn" class="suitepim-primary-btn" type="button">Add filter</button>
+      <div id="suitepimFilterBody" class="suitepim-panel-body">
+        <div class="suitepim-filter-row">
+          <select id="suitepimFilterField" aria-label="Filter field">
+            <option value="">Choose field</option>
+          </select>
+          <div id="suitepimFilterValueHost" class="suitepim-control-host"></div>
+          <button id="suitepimAddFilterBtn" class="suitepim-primary-btn" type="button">Add filter</button>
+        </div>
+        <div id="suitepimActiveFilters" class="suitepim-active-filters" aria-label="Active filters"></div>
       </div>
-      <div id="suitepimActiveFilters" class="suitepim-active-filters" aria-label="Active filters"></div>
     </section>
 
-    <section class="suitepim-bulk-panel" aria-label="Bulk actions">
+    <section class="suitepim-bulk-panel suitepim-collapsible is-collapsed" aria-label="Bulk actions">
       <div class="suitepim-panel-heading">
         <div>
           <h2>Bulk actions</h2>
           <p>Apply one field value to selected rows or the current filtered result.</p>
         </div>
+        <button id="suitepimToggleBulkBtn" class="suitepim-panel-toggle" type="button" aria-expanded="false" aria-controls="suitepimBulkBody">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M6 9l6 6 6-6"></path>
+          </svg>
+        </button>
       </div>
-      <div class="suitepim-bulk-row">
-        <select id="suitepimBulkField" aria-label="Bulk field">
-          <option value="">Choose field</option>
-        </select>
-        <div id="suitepimBulkValueHost" class="suitepim-control-host"></div>
-        <select id="suitepimBulkScope" aria-label="Bulk scope">
-          <option value="selected">Selected rows</option>
-          <option value="filtered">Filtered rows</option>
-        </select>
-        <button id="suitepimApplyBulkBtn" class="suitepim-primary-btn" type="button">Apply bulk update</button>
+      <div id="suitepimBulkBody" class="suitepim-panel-body">
+        <div class="suitepim-bulk-row">
+          <select id="suitepimBulkField" aria-label="Bulk field">
+            <option value="">Choose field</option>
+          </select>
+          <select id="suitepimBulkMode" class="suitepim-bulk-mode" aria-label="Bulk pricing action" hidden>
+            <option value="set">Set to</option>
+            <option value="add-value">Increase by value</option>
+            <option value="add-percent">Increase by percent</option>
+          </select>
+          <div id="suitepimBulkValueHost" class="suitepim-control-host"></div>
+          <select id="suitepimBulkScope" aria-label="Bulk scope">
+            <option value="selected">Selected rows</option>
+            <option value="filtered">Filtered rows</option>
+          </select>
+          <button id="suitepimApplyBulkBtn" class="suitepim-primary-btn" type="button">Apply bulk update</button>
+        </div>
       </div>
     </section>
 

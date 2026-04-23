@@ -1,9 +1,11 @@
 // server.js
+require("dotenv").config();
 console.log("🟦 Loaded salesMemos.js FROM:", __filename);
 
 console.log("🟢 Server starting from directory:", __dirname);
 
 const express = require("express");
+const compression = require("compression");
 const path = require("path");
 const fs = require("fs");
 const crypto = require("crypto");
@@ -16,6 +18,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const itemOptionsRoute = require("./routes/itemOptions");
 
+app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -38,12 +41,43 @@ app.use((req, res, next) => {
 app.use(express.static(path.join(__dirname, "public")));
 
 
+const suiteletCache = new Map();
+
+function sendCachedJson(req, res, payload, { ttlMs = 5 * 60 * 1000 } = {}) {
+  const body = JSON.stringify(payload);
+  const etag = `"${crypto.createHash("sha1").update(body).digest("hex")}"`;
+
+  res.set({
+    "Cache-Control": `private, max-age=${Math.floor(ttlMs / 1000)}, stale-while-revalidate=300`,
+    ETag: etag,
+  });
+
+  if (req.headers["if-none-match"] === etag) {
+    return res.status(304).end();
+  }
+
+  return res.type("application/json").send(body);
+}
+
 /**
  * Utility to call NetSuite external Suitelet JSON endpoints.
  * It pulls the base URL + token from env vars dynamically.
  */
-async function fetchNetSuiteData(envUrlKey, envTokenKey, res, label) {
+async function fetchNetSuiteData(envUrlKey, envTokenKey, req, res, label, options = {}) {
   try {
+    const ttlMs = Number(options.ttlMs || process.env.SUITELET_CACHE_TTL_MS || 60 * 60 * 1000);
+    const cacheKey = `${envUrlKey}:${envTokenKey}`;
+    const cached = suiteletCache.get(cacheKey);
+
+    if (!options.forceRefresh && cached?.expiresAt > Date.now() && cached.payload) {
+      return sendCachedJson(req, res, cached.payload, { ttlMs });
+    }
+
+    if (!options.forceRefresh && cached?.inFlight) {
+      const payload = await cached.inFlight;
+      return sendCachedJson(req, res, payload, { ttlMs });
+    }
+
     const baseUrl = process.env[envUrlKey];
     const token = process.env[envTokenKey];
 
@@ -55,11 +89,27 @@ async function fetchNetSuiteData(envUrlKey, envTokenKey, res, label) {
     const nsUrl = `${baseUrl}&token=${encodeURIComponent(token)}`;
     console.log(`📡 [NetSuite] ${label}: ${nsUrl}`);
 
-    const response = await fetch(nsUrl);
-    if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
+    const inFlight = (async () => {
+      const response = await fetch(nsUrl);
+      if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
 
-    const json = await response.json();
-    return res.json(json);
+      const json = await response.json();
+      suiteletCache.set(cacheKey, {
+        payload: json,
+        expiresAt: Date.now() + ttlMs,
+        inFlight: null,
+      });
+      return json;
+    })();
+
+    suiteletCache.set(cacheKey, {
+      payload: cached?.payload || null,
+      expiresAt: cached?.expiresAt || 0,
+      inFlight,
+    });
+
+    const json = await inFlight;
+    return sendCachedJson(req, res, json, { ttlMs });
   } catch (err) {
     console.error(`❌ NetSuite ${label} proxy error:`, err);
     res.status(500).json({ ok: false, error: `Failed to fetch ${label} data` });
@@ -108,7 +158,7 @@ async function prewarmSalesOrders(
         const id = queue.shift();
         running++;
 
-        const url = `${host}/api/netsuite/salesorder/${encodeURIComponent(id)}?env=${encodeURIComponent(envType)}`;
+        const url = `${host}/api/netsuite/salesorder/${encodeURIComponent(id)}?env=${encodeURIComponent(envType)}&lite=1`;
 
         console.log("🔥 PREWARM FETCH", { id, url });
 
@@ -398,32 +448,32 @@ app.get("/api/roles", async (req, res) => {
    ========================================================== */
 // === Lead Source ===
 app.get("/api/netsuite/leadsource", (req, res) =>
-  fetchNetSuiteData("SALES_ORD_LEAD_SOURCE_URL", "SALES_ORDER_TKN_LEAD_SOURCE", res, "lead source")
+  fetchNetSuiteData("SALES_ORD_LEAD_SOURCE_URL", "SALES_ORDER_TKN_LEAD_SOURCE", req, res, "lead source")
 );
 
 // === Warehouse ===
 app.get("/api/netsuite/warehouse", (req, res) =>
-  fetchNetSuiteData("SALES_ORD_LOCATION_URL", "SALES_ORDER_TKN_LOCATION", res, "warehouse locations")
+  fetchNetSuiteData("SALES_ORD_LOCATION_URL", "SALES_ORDER_TKN_LOCATION", req, res, "warehouse locations")
 );
 
 // === Payment Methods ===
 app.get("/api/netsuite/paymentmethods", (req, res) =>
-  fetchNetSuiteData("SALES_ORD_PYMT_MTHD_URL", "SALES_ORDER_TKN_PYMT_MTHD", res, "payment methods")
+  fetchNetSuiteData("SALES_ORD_PYMT_MTHD_URL", "SALES_ORDER_TKN_PYMT_MTHD", req, res, "payment methods")
 );
 
 // === Payment Info ===
 app.get("/api/netsuite/paymentinfo", (req, res) =>
-  fetchNetSuiteData("SALES_ORDER_PAYMENT_INFO_URL", "SALES_ORDER_PAYMENT_INFO", res, "payment info")
+  fetchNetSuiteData("SALES_ORDER_PAYMENT_INFO_URL", "SALES_ORDER_PAYMENT_INFO", req, res, "payment info")
 );
 
 // === Customer Titles ===
 app.get("/api/netsuite/titles", (req, res) =>
-  fetchNetSuiteData("SALES_ORDER_CSTM_TITLE_URL", "SALES_ORDER_CSTM_TITLE", res, "customer titles")
+  fetchNetSuiteData("SALES_ORDER_CSTM_TITLE_URL", "SALES_ORDER_CSTM_TITLE", req, res, "customer titles")
 );
 
 // === Sales Order Items ===
 app.get("/api/netsuite/items", (req, res) =>
-  fetchNetSuiteData("SALES_ORDER_ITEMS_URL", "SALES_ORDER_ITEMS", res, "sales order items")
+  fetchNetSuiteData("SALES_ORDER_ITEMS_URL", "SALES_ORDER_ITEMS", req, res, "sales order items")
 );
 
 // === Customer Match (with query params) ===
@@ -452,12 +502,12 @@ app.get("/api/netsuite/customermatch", async (req, res) => {
 
 // === Intercompany Purchase Orders ===
 app.get("/api/netsuite/intercopurchaseorders", (req, res) =>
-  fetchNetSuiteData("SALES_PRDER_INTERCO_PO_URL", "SALES_ORDER_INTERCO_PO", res, "intercompany purchase orders")
+  fetchNetSuiteData("SALES_PRDER_INTERCO_PO_URL", "SALES_ORDER_INTERCO_PO", req, res, "intercompany purchase orders")
 );
 
 // === Fulfilment Methods ===
 app.get("/api/netsuite/fulfilmentmethods", (req, res) =>
-  fetchNetSuiteData("SALES_ORDER_FULFIL_METHOD_URL", "SALES_ORDER_FULFIL_METHOD", res, "fulfilment methods")
+  fetchNetSuiteData("SALES_ORDER_FULFIL_METHOD_URL", "SALES_ORDER_FULFIL_METHOD", req, res, "fulfilment methods")
 );
 
 // === Inventory Balance ===
@@ -484,16 +534,16 @@ app.get("/api/netsuite/inventorybalance", async (req, res) => {
 
 // === Invoice Numbers ===
 app.get("/api/netsuite/invoice-numbers", (req, res) =>
-  fetchNetSuiteData("SALES_ORDER_INV_NUMBER_URL", "SALES_ORDER_INV_NUMBER", res, "invoice numbers")
+  fetchNetSuiteData("SALES_ORDER_INV_NUMBER_URL", "SALES_ORDER_INV_NUMBER", req, res, "invoice numbers")
 );
 
 // === Inventory Status ===
 app.get("/api/netsuite/inventory-status", (req, res) =>
-  fetchNetSuiteData("SALES_ORDER_INV_STATUS_URL", "SALES_ORDER_INV_STATUS", res, "inventory status")
+  fetchNetSuiteData("SALES_ORDER_INV_STATUS_URL", "SALES_ORDER_INV_STATUS", req, res, "inventory status")
 );
 
 app.get("/api/netsuite/order-management", (req, res) =>
-  fetchNetSuiteData("ORDER_MANAGEMENT_URL", "ORDER_MANAGEMENT", res, "order management")
+  fetchNetSuiteData("ORDER_MANAGEMENT_URL", "ORDER_MANAGEMENT", req, res, "order management")
 );
 
 
@@ -501,63 +551,63 @@ app.get("/api/netsuite/order-management", (req, res) =>
 
 // === Quote Management ===
 app.get("/api/netsuite/quote-management", (req, res) =>
-  fetchNetSuiteData("QUOTE_MANAGEMENT_URL", "QUOTE_MANAGEMENT", res, "quote management")
+  fetchNetSuiteData("QUOTE_MANAGEMENT_URL", "QUOTE_MANAGEMENT", req, res, "quote management")
 );
 
 // === Case Management ===
 app.get("/api/netsuite/case-management", (req, res) =>
-  fetchNetSuiteData("CASE_MANAGEMENT_URL", "CASE_MANAGEMENT", res, "case management")
+  fetchNetSuiteData("CASE_MANAGEMENT_URL", "CASE_MANAGEMENT", req, res, "case management")
 );
 
 // === Transfer Order Management ===
 app.get("/api/netsuite/transfer-order-management", (req, res) =>
-  fetchNetSuiteData("TRANSFER_ORDER_MANAGEMENT_URL", "TRANSFER_ORDER_MANAGEMENT", res, "transfer order management")
+  fetchNetSuiteData("TRANSFER_ORDER_MANAGEMENT_URL", "TRANSFER_ORDER_MANAGEMENT", req, res, "transfer order management")
 );
 
 // === Customer Lookup Report ===
 app.get("/api/netsuite/customer-lookup", (req, res) =>
-  fetchNetSuiteData("CUSTOMER_LOOKUP_URL", "CUSTOMER_LOOKUP", res, "customer lookup report")
+  fetchNetSuiteData("CUSTOMER_LOOKUP_URL", "CUSTOMER_LOOKUP", req, res, "customer lookup report")
 );
 
 
 
 // === GL Accounts ===
 app.get("/api/netsuite/glaccounts", (req, res) =>
-  fetchNetSuiteData("GL_ACCOUNTS_URL", "GL_ACCOUNTS", res, "GL accounts")
+  fetchNetSuiteData("GL_ACCOUNTS_URL", "GL_ACCOUNTS", req, res, "GL accounts")
 );
 
 // === Customer Deposits ===
 app.get("/api/netsuite/customer-deposits", (req, res) =>
-  fetchNetSuiteData("CUSTOMER_DEPOSITS_URL", "CUSTOMER_DEPOSITS", res, "customer deposits")
+  fetchNetSuiteData("CUSTOMER_DEPOSITS_URL", "CUSTOMER_DEPOSITS", req, res, "customer deposits")
 );
 
 // === VSA Item Data ===
 app.get("/api/netsuite/vsa-item-data", (req, res) =>
-  fetchNetSuiteData("VSA_ITEM_DATA_URL", "VSA_ITEM_DATA", res, "VSA item data")
+  fetchNetSuiteData("VSA_ITEM_DATA_URL", "VSA_ITEM_DATA", req, res, "VSA item data")
 );
 
 // === Widget Sales ===
 app.get("/api/netsuite/widget-sales", (req, res) =>
-  fetchNetSuiteData("WIDGET_SALES_URL", "WIDGET_SALES", res, "Widget Sales data")
+  fetchNetSuiteData("WIDGET_SALES_URL", "WIDGET_SALES", req, res, "Widget Sales data")
 );
 
 // == sales order item size ==
 app.get("/api/netsuite/sales-order-item-size", (req, res) =>
-fetchNetSuiteData("SALES_ORDER_ITEM_SIZE_URL", "SALES_ORDER_ITEM_SIZE", res, "sales Order item size")
+fetchNetSuiteData("SALES_ORDER_ITEM_SIZE_URL", "SALES_ORDER_ITEM_SIZE", req, res, "sales Order item size")
 );
 
 // == Sales Order Base Option ==
 app.get("/api/netsuite/sales-order-item-base-option", (req, res) =>
-fetchNetSuiteData("SALES_ORDER_ITEM_BASE_OPTIONS_URL", "SALES_ORDER_ITEM_BASE_OPTION", res, "sales order item base option")
+fetchNetSuiteData("SALES_ORDER_ITEM_BASE_OPTIONS_URL", "SALES_ORDER_ITEM_BASE_OPTION", req, res, "sales order item base option")
 );
 
 // == Stock Replenishment ==
 app.get("/api/netsuite/stock-replenishment", (req, res) =>
-fetchNetSuiteData("STOCK_REPLENISHMENT_URL", "STOCK_REPLENISHMENT", res, "stock replenishment"));
+fetchNetSuiteData("STOCK_REPLENISHMENT_URL", "STOCK_REPLENISHMENT", req, res, "stock replenishment"));
 
 // == Quantity Backordered
 app.get("/api/netsuite/quantity-backordered", (req, res) =>
-fetchNetSuiteData("QUANTITY_BACKORDERED_URL", "QUANTITY_BACKORDERED", res, "quantity backordered"));
+fetchNetSuiteData("QUANTITY_BACKORDERED_URL", "QUANTITY_BACKORDERED", req, res, "quantity backordered"));
 
 
 // === Purchase Order Management ===

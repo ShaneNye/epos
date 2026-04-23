@@ -18,8 +18,19 @@ const {
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
 
-function cacheKey(id) {
+function cachePrefix(id) {
   return `so:${String(id).trim()}`;
+}
+
+function cacheKey(id, { lite = false, includeDeposits = true } = {}) {
+  return `${cachePrefix(id)}:lite:${lite ? 1 : 0}:dep:${includeDeposits ? 1 : 0}`;
+}
+
+function cacheDeleteSalesOrder(id) {
+  const prefix = `${cachePrefix(id)}:`;
+  for (const key of soCache.keys()) {
+    if (key === cachePrefix(id) || key.startsWith(prefix)) soCache.delete(key);
+  }
 }
 
 function cacheGet(key) {
@@ -72,6 +83,16 @@ const fulfilmentCache = {
   data: null, // fulfilmentMap
   inFlight: null,
 };
+
+function summarizePatchPayload(lines, headerUpdates, deletedLineIds) {
+  return {
+    lineCount: Array.isArray(lines) ? lines.length : 0,
+    deletedLineCount: Array.isArray(deletedLineIds) ? deletedLineIds.length : 0,
+    headerFields: Object.keys(headerUpdates || {}).filter(
+      (field) => headerUpdates[field] !== null && headerUpdates[field] !== undefined
+    ),
+  };
+}
 
 function isFresh(expiresAt) {
   return expiresAt && expiresAt > Date.now();
@@ -383,8 +404,6 @@ router.post("/create", async (req, res) => {
 
       item: {
         items: items.map((i, idx) => {
-          console.log(`🧪 RAW FRONTEND LINE ${idx + 1}:`, i);
-
           const line = {
             item: { id: i.item },
             quantity: i.quantity,
@@ -439,7 +458,6 @@ router.post("/create", async (req, res) => {
             line.orderallocationstrategy = null;
           }
 
-          console.log(`🧾 Final Line ${idx + 1}:`, line);
           return line;
         }),
       },
@@ -466,7 +484,11 @@ router.post("/create", async (req, res) => {
     /* ======================================================
        6️⃣ FINAL PAYLOAD PREVIEW (AFTER ALL MODIFICATIONS)
     ====================================================== */
-    console.log("🚀 FINAL Sales Order payload:", JSON.stringify(orderBody, null, 2));
+    console.log("Final Sales Order payload summary:", {
+      customerId,
+      itemCount: orderBody.item?.items?.length || 0,
+      hasDistributionOrderType: !!orderBody.custbody_sb_is_web_order,
+    });
 
     /* ======================================================
        7️⃣ CREATE SALES ORDER IN NETSUITE
@@ -914,7 +936,6 @@ router.get("/:id", async (req, res) => {
 
     // ✅ Cache support
     const refresh = String(req.query.refresh || "") === "1";
-    key = cacheKey(id);
 
     // Optional: lite mode (still returns lines via suiteql; just reduces base record payload)
     const lite =
@@ -928,6 +949,8 @@ router.get("/:id", async (req, res) => {
         String(req.query.deposits || "") === "0" ||
         String(req.query.deposits || "") === "false"
       );
+
+    key = cacheKey(id, { lite, includeDeposits });
 
     if (!refresh) {
       const cached = cacheGet(key);
@@ -1247,9 +1270,10 @@ router.post("/:id/commit", async (req, res) => {
     } = req.body;
 
     console.log(`🔁 Approving Sales Order ${id} via NetSuite RESTlet`);
-    console.log("📦 Incoming lines:", JSON.stringify(lines, null, 2));
-    console.log("🗑 Incoming deletedLineIds:", JSON.stringify(deletedLineIds, null, 2));
-    console.log("🧾 Incoming headerUpdates:", JSON.stringify(headerUpdates, null, 2));
+    console.log(
+      "Patch payload summary:",
+      summarizePatchPayload(lines, headerUpdates, deletedLineIds)
+    );
 
     if (!id || !Array.isArray(lines) || !Array.isArray(deletedLineIds)) {
       return res.status(400).json({
@@ -1296,12 +1320,13 @@ router.post("/:id/commit", async (req, res) => {
     global._recentCommits[id] = now;
 
     const payload = { id, lines, headerUpdates, deletedLineIds, commit: true };
-    console.log("📡 Calling NetSuite RESTlet with payload:", JSON.stringify(payload, null, 2));
+    const payloadText = JSON.stringify(payload);
+    console.log("Calling NetSuite RESTlet with payload bytes:", payloadText.length);
 
     const response = await fetch(restletUrl, {
       method: "POST",
       headers,
-      body: JSON.stringify(payload),
+      body: payloadText,
     });
 
     const text = await response.text();
@@ -1322,6 +1347,7 @@ router.post("/:id/commit", async (req, res) => {
     }
 
     console.log(`✅ Sales Order ${id} approved via RESTlet`);
+    cacheDeleteSalesOrder(id);
 
     // ==========================================================
     // 🧾 Create custom record: customrecord_sb_coms_sales_value
@@ -1623,9 +1649,10 @@ router.post("/:id/save", async (req, res) => {
     } = req.body;
 
     console.log(`💾 Saving (patch only) Sales Order ${id} via NetSuite RESTlet`);
-    console.log("📦 Incoming lines:", JSON.stringify(lines, null, 2));
-    console.log("🗑 Incoming deletedLineIds:", JSON.stringify(deletedLineIds, null, 2));
-    console.log("🧾 Incoming headerUpdates:", JSON.stringify(headerUpdates, null, 2));
+    console.log(
+      "Patch payload summary:",
+      summarizePatchPayload(lines, headerUpdates, deletedLineIds)
+    );
 
     if (!id || !Array.isArray(lines) || !Array.isArray(deletedLineIds)) {
       return res.status(400).json({
@@ -1680,15 +1707,13 @@ router.post("/:id/save", async (req, res) => {
       commit: false,
     };
 
-    console.log(
-      "📡 Calling NetSuite RESTlet (save-only) with payload:",
-      JSON.stringify(payload, null, 2)
-    );
+    const payloadText = JSON.stringify(payload);
+    console.log("Calling NetSuite RESTlet (save-only) with payload bytes:", payloadText.length);
 
     const response = await fetch(restletUrl, {
       method: "POST",
       headers,
-      body: JSON.stringify(payload),
+      body: payloadText,
     });
 
     const text = await response.text();
@@ -1712,9 +1737,8 @@ router.post("/:id/save", async (req, res) => {
 
     // ✅ Invalidate cached SO payload so next view is always fresh
     try {
-      const key = cacheKey(id);
-      soCache.delete(key);
-      console.log("🧹 Cleared SO cache after save:", key);
+      cacheDeleteSalesOrder(id);
+      console.log("Cleared SO cache after save:", id);
     } catch (e) {
       console.warn("⚠️ Failed to clear SO cache after save:", e.message);
     }

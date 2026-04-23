@@ -1,6 +1,6 @@
 (function () {
   const state = {
-    environment: "sandbox",
+    environment: "production",
     fields: [],
     rows: [],
     filteredRows: [],
@@ -34,9 +34,12 @@
       "suitepimClearFiltersBtn",
       "suitepimActiveFilters",
       "suitepimBulkField",
+      "suitepimBulkMode",
       "suitepimBulkValueHost",
       "suitepimBulkScope",
       "suitepimApplyBulkBtn",
+      "suitepimToggleFiltersBtn",
+      "suitepimToggleBulkBtn",
       "suitepimColumnsBtn",
       "suitepimRefreshBtn",
       "suitepimPushBtn",
@@ -74,11 +77,6 @@
     return { Authorization: `Bearer ${saved.token}` };
   }
 
-  function savedEnvironment() {
-    const saved = typeof storageGet === "function" ? storageGet() : null;
-    return String(saved?.env || "sandbox").toLowerCase() === "production" ? "production" : "sandbox";
-  }
-
   function fieldByName(name) {
     return state.fields.find((field) => field.name === name);
   }
@@ -101,6 +99,10 @@
   }
 
   function isCalculatedPriceField(column) {
+    return ["Purchase Price", "Base Price", "Retail Price", "Margin"].includes(column);
+  }
+
+  function isBulkPricingField(column) {
     return ["Purchase Price", "Base Price", "Retail Price", "Margin"].includes(column);
   }
 
@@ -302,7 +304,7 @@
   }
 
   function editableFields() {
-    return state.fields.filter((field) => !field.disableField && !field.toolColumn);
+    return state.fields.filter((field) => !field.disableField || ["Retail Price", "Margin"].includes(field.name));
   }
 
   function renderFieldOptions(select, placeholder, fields = state.fields) {
@@ -540,7 +542,17 @@
 
   function renderBulkValueControl() {
     const field = fieldByName(el.suitepimBulkField.value);
-    state.bulkDraft = { fieldName: field?.name || "", value: "", valueLabel: "", internalIds: null };
+    const isPricing = isBulkPricingField(field?.name);
+    el.suitepimBulkMode.hidden = !isPricing;
+    el.suitepimBulkMode.disabled = !isPricing;
+    el.suitepimBulkMode.closest(".suitepim-bulk-row")?.classList.toggle("is-pricing", isPricing);
+    state.bulkDraft = {
+      fieldName: field?.name || "",
+      mode: isPricing ? el.suitepimBulkMode.value : "set",
+      value: "",
+      valueLabel: "",
+      internalIds: null,
+    };
     renderTypedControl({
       host: el.suitepimBulkValueHost,
       field,
@@ -548,6 +560,7 @@
       onChange(value, valueLabel) {
         state.bulkDraft = {
           fieldName: field.name,
+          mode: isBulkPricingField(field.name) ? el.suitepimBulkMode.value : "set",
           value: field.fieldType === "Checkbox" ? value === "true" : value,
           valueLabel,
           internalIds: fieldUsesOptions(field) ? value : null,
@@ -947,6 +960,21 @@
       if (internalIds !== null && internalIds !== undefined) {
         updated[`${field.name}_InternalId`] = internalIds;
       }
+
+      if (isBulkPricingField(field.name)) {
+        const oldValue = parseFloat(state.rows[idx][field.name]) || 0;
+        const amount = parseFloat(draft.value);
+        if (!Number.isFinite(amount)) return;
+
+        if (draft.mode === "add-value") {
+          updated[field.name] = oldValue + amount;
+        } else if (draft.mode === "add-percent") {
+          updated[field.name] = oldValue * (1 + amount / 100);
+        } else {
+          updated[field.name] = amount;
+        }
+      }
+
       if (isCalculatedPriceField(field.name)) {
         updated = recalcRow(updated, field.name);
       }
@@ -961,6 +989,13 @@
     state.page = 1;
     applyFilters();
     showStatus(`Bulk update applied to ${targetRows.length.toLocaleString()} row(s). Review and push changes when ready.`, "success");
+  }
+
+  function togglePanel(button) {
+    const panel = button.closest(".suitepim-collapsible");
+    if (!panel) return;
+    const collapsed = panel.classList.toggle("is-collapsed");
+    button.setAttribute("aria-expanded", String(!collapsed));
   }
 
   async function pushSelected() {
@@ -1025,7 +1060,12 @@
     el.suitepimAddFilterBtn.addEventListener("click", addFilter);
     el.suitepimClearFiltersBtn.addEventListener("click", clearFilters);
     el.suitepimBulkField.addEventListener("change", renderBulkValueControl);
+    el.suitepimBulkMode.addEventListener("change", () => {
+      if (state.bulkDraft) state.bulkDraft.mode = el.suitepimBulkMode.value;
+    });
     el.suitepimApplyBulkBtn.addEventListener("click", applyBulkUpdate);
+    el.suitepimToggleFiltersBtn.addEventListener("click", () => togglePanel(el.suitepimToggleFiltersBtn));
+    el.suitepimToggleBulkBtn.addEventListener("click", () => togglePanel(el.suitepimToggleBulkBtn));
     el.suitepimRefreshBtn.addEventListener("click", () => loadProducts().catch((err) => showStatus(err.message, "error")));
     el.suitepimPushBtn.addEventListener("click", pushSelected);
     el.suitepimPrevPage.addEventListener("click", () => {
@@ -1045,13 +1085,6 @@
       el.suitepimColumnsPanel.classList.remove("open");
       el.suitepimColumnsPanel.setAttribute("aria-hidden", "true");
     });
-    document.querySelectorAll(".suitepim-env-btn").forEach((button) => {
-      button.addEventListener("click", async () => {
-        state.environment = button.dataset.env;
-        document.querySelectorAll(".suitepim-env-btn").forEach((btn) => btn.classList.toggle("active", btn === button));
-        await boot();
-      });
-    });
     el.suitepimModalSearch.addEventListener("input", renderModalOptions);
     el.suitepimModalClose.addEventListener("click", closeModal);
     el.suitepimModalCancel.addEventListener("click", closeModal);
@@ -1060,9 +1093,6 @@
 
   async function boot() {
     try {
-      document.querySelectorAll(".suitepim-env-btn").forEach((button) => {
-        button.classList.toggle("active", button.dataset.env === state.environment);
-      });
       state.options.clear();
       state.activeFilters = [];
       await loadConfig();
@@ -1081,7 +1111,7 @@
 
   window.addEventListener("DOMContentLoaded", async () => {
     initEls();
-    state.environment = savedEnvironment();
+    state.environment = "production";
     bindEvents();
     await boot();
   });

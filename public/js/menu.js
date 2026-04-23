@@ -85,6 +85,18 @@ function normalizePath(path) {
   return normalized;
 }
 
+function normalizeAccessSlug(value) {
+  const slug = String(value || "")
+    .replace(/^\//, "")
+    .replace(/\.html$/i, "")
+    .trim()
+    .toLowerCase();
+
+  if (slug === "end-of-day" || slug === "endofday") return "eod";
+  if (slug === "cash-flow") return "cashflow";
+  return slug;
+}
+
 function isHexColor(v) {
   return typeof v === "string" && /^#([0-9A-F]{3}){1,2}$/i.test(v.trim());
 }
@@ -234,23 +246,19 @@ async function applyAccessRestrictions(activeRole, token) {
       r => r.name.toLowerCase() === activeRole.toLowerCase()
     );
     const allowed = Array.isArray(roleInfo?.access) ? roleInfo.access : [];
+    const normalizedAllowed = allowed.map(normalizeAccessSlug);
 
     console.log(`🔐 Role '${activeRole}' has access to:`, allowed);
 
     // Update visible menu items based on access list
     document.querySelectorAll(".menu-item").forEach(link => {
-      const href = link.getAttribute("href")
-        .replace(/^\//, "")
-        .replace(/\.html$/, "");
-      link.style.display = allowed.includes(href) ? "" : "none";
+      const href = normalizeAccessSlug(link.getAttribute("href"));
+      link.style.display = normalizedAllowed.includes(href) ? "" : "none";
     });
 
     // Normalize paths
     const pathNow = window.location.pathname.toLowerCase();
-    const currentPath = normalizePath(window.location.pathname).replace(/^\//, "");
-    const normalizedAllowed = allowed.map(a =>
-      a.replace(/^\//, "").replace(/\.html$/, "").toLowerCase()
-    );
+    const currentPath = normalizeAccessSlug(normalizePath(window.location.pathname));
 
     // ✅ Always allow Sales Order viewer pages & SalesOrder APIs
     if (
