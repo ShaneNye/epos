@@ -3,7 +3,7 @@ const fetch = require("node-fetch");
 const crypto = require("crypto");
 const { getSession } = require("../sessions");
 const { getAuthHeader } = require("../netsuiteClient");
-const { fields, optionFeeds, productFeeds } = require("./suitepimFields");
+const { fields, optionFeeds, productFeeds, validationFeeds, validationFields } = require("./suitepimFields");
 
 const router = express.Router();
 const jobs = {};
@@ -54,6 +54,23 @@ function envConfig(env) {
       process.env[`SUITEPIM_${upper}_PRODUCT_DATA_URL`] ||
       process.env[`NETSUITE_${upper}_PRODUCT_DATA_URL`] ||
       productFeeds[env] ||
+      "",
+    validationUrl:
+      process.env[`SUITEPIM_${upper}_VALIDATION_URL`] ||
+      process.env[`NETSUITE_${upper}_VALIDATION_URL`] ||
+      validationFeeds[env] ||
+      "",
+    itemPerformanceUrl:
+      process.env[`SUITEPIM_${upper}_ITEM_PERFORMANCE_URL`] ||
+      process.env.SUITEPIM_ITEM_PERFORMANCE_URL ||
+      process.env[`NETSUITE_${upper}_ITEM_PERFORMANCE_URL`] ||
+      process.env.NETSUITE_ITEM_PERFORMANCE_URL ||
+      "",
+    savedSearchRestletUrl:
+      process.env[`SUITEPIM_${upper}_SAVED_SEARCH_RESTLET_URL`] ||
+      process.env.SUITEPIM_SAVED_SEARCH_RESTLET_URL ||
+      process.env[`NETSUITE_${upper}_SAVED_SEARCH_RESTLET_URL`] ||
+      process.env.NETSUITE_SAVED_SEARCH_RESTLET_URL ||
       "",
     imageEndpoint: process.env[`NETSUITE_${upper}_IMAGE_ENDPOINT`] || "",
     priceRestletUrl:
@@ -157,6 +174,163 @@ function normalizeMultipleSelects(row, optionMap) {
     }
   });
   return next;
+}
+
+function isValidationValuePresent(value) {
+  if (value === true || value === "T" || value === "true") return true;
+  if (value === false || value === "F" || value === "false") return false;
+  return value !== null && value !== undefined && String(value).trim() !== "";
+}
+
+function validationInternalId(row) {
+  return row.internalid || row["Internal ID"] || row.id || "";
+}
+
+function validationDefaultValue(field, internalId) {
+  return field.defaultValue === "internalid" ? String(internalId) : field.defaultValue;
+}
+
+function enrichValidationRow(row) {
+  const internalId = validationInternalId(row);
+  const missing = validationFields
+    .filter((field) => !isValidationValuePresent(row[field.name]))
+    .map((field) => field.name);
+
+  return {
+    ...row,
+    internalid: internalId,
+    missingFields: missing,
+    missingCount: missing.length,
+  };
+}
+
+function normalizePerformanceRows(payload) {
+  const rows = Array.isArray(payload) ? payload : payload.results || payload.items || payload.rows || [];
+  return rows
+    .map((row) => ({
+      Date: row.Date || row.date || row.trandate || "",
+      Store: row.Store || row.store || row.location || row.Location || "Unknown",
+      SalesOrder:
+        row.SalesOrder ||
+        row.salesOrder ||
+        row.salesorder ||
+        row.tranid ||
+        row.TranID ||
+        row.documentNumber ||
+        row.documentnumber ||
+        row.DocumentNumber ||
+        row.transaction ||
+        row.Transaction ||
+        "",
+      Item: row.Item || row.item || row.itemname || row.name || "Unknown",
+      ItemType: row.ItemType || row.itemType || row.itemtype || row.Type || row.type || "Unknown",
+      Quantity: row.Quantity || row.quantity || row.qty || 0,
+      Amount: row.Amount || row.amount || row.formulacurrency || row.netamount || row.total || 0,
+    }))
+    .filter((row) => row.Date && row.Item);
+}
+
+function sqlString(value) {
+  return String(value || "").replace(/'/g, "''");
+}
+
+async function fetchSuiteQLRows(cfg, userId, query) {
+  if (!cfg.accountDash) throw new Error("Missing NetSuite account dash for SuiteQL");
+
+  const suiteqlUrl = `https://${cfg.accountDash}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`;
+  const allItems = [];
+  let offset = 0;
+  const limit = 1000;
+  let hasMore = true;
+
+  while (hasMore) {
+    const pageUrl = `${suiteqlUrl}?limit=${limit}&offset=${offset}`;
+    const response = await fetch(pageUrl, {
+      method: "POST",
+      headers: {
+        ...(await netSuiteHeaders(pageUrl, "POST", userId, cfg)),
+        Prefer: "transient",
+      },
+      body: JSON.stringify({ q: query }),
+    });
+    const payload = parseJson(await response.text());
+    if (!response.ok) throw new Error(`SuiteQL returned ${response.status}: ${JSON.stringify(payload)}`);
+
+    const items = Array.isArray(payload.items) ? payload.items : [];
+    allItems.push(...items);
+    hasMore = payload.hasMore === true || items.length === limit;
+    offset += limit;
+  }
+
+  return allItems;
+}
+
+async function fetchItemPerformance(cfg, userId) {
+  if (cfg.itemPerformanceUrl) {
+    const response = await fetch(cfg.itemPerformanceUrl);
+    const payload = parseJson(await response.text());
+    if (!response.ok) throw new Error(`Item performance feed returned ${response.status}`);
+    return { source: "feed", rows: normalizePerformanceRows(payload) };
+  }
+
+  if (cfg.savedSearchRestletUrl) {
+    const body = {
+      searchId: "customsearch_sb_sp_item_performance",
+      internalId: 4270,
+    };
+    const response = await fetch(cfg.savedSearchRestletUrl, {
+      method: "POST",
+      headers: await netSuiteHeaders(cfg.savedSearchRestletUrl, "POST", userId, cfg),
+      body: JSON.stringify(body),
+    });
+    const payload = parseJson(await response.text());
+    if (!response.ok) throw new Error(`Saved search RESTlet returned ${response.status}: ${JSON.stringify(payload)}`);
+    return { source: "saved-search-restlet", rows: normalizePerformanceRows(payload) };
+  }
+
+  const query = `
+    SELECT
+      TO_CHAR(t.trandate, 'DD/MM/YYYY') AS "Date",
+      COALESCE(BUILTIN.DF(t.subsidiary), 'Unknown') AS "Store",
+      t.tranid AS "salesorder",
+      BUILTIN.DF(tl.item) AS "Item",
+      CASE
+        WHEN i.itemtype = 'Service' OR BUILTIN.DF(i.itemtype) LIKE 'Service%' THEN 'Service'
+        WHEN i.itemtype = 'InvtPart' OR BUILTIN.DF(i.itemtype) = 'Inventory Item' THEN 'Inventory'
+        ELSE BUILTIN.DF(i.itemtype)
+      END AS "ItemType",
+      ABS(tl.quantity) AS "Quantity",
+      (
+        SELECT SUM(COALESCE(tal.amount, 0) * -1) * 1.2
+        FROM TransactionAccountingLine AS tal
+        WHERE tal.transaction = tl.transaction
+          AND tal.transactionline = tl.id
+      ) AS "Amount"
+    FROM transaction AS t
+    JOIN transactionline AS tl ON tl.transaction = t.id
+    JOIN item AS i ON i.id = tl.item
+    LEFT JOIN customer AS c ON c.id = t.entity
+    WHERE t.type = 'SalesOrd'
+      AND tl.mainline = 'F'
+      AND tl.taxline = 'F'
+      AND COALESCE(tl.isclosed, 'F') = 'F'
+      AND tl.item IS NOT NULL
+      AND COALESCE(t.subsidiary, 0) <> 1
+      AND COALESCE(UPPER(BUILTIN.DF(t.subsidiary)), '') <> 'HOLDINGS LTD'
+      AND COALESCE(UPPER(BUILTIN.DF(t.status)), '') NOT LIKE '%CANCELLED%'
+      AND COALESCE(UPPER(BUILTIN.DF(t.customform)), '') <> 'SUSSEX BEDS - CUSTOMER SERVICE ORDER'
+      AND COALESCE(UPPER(BUILTIN.DF(t.leadsource)), '') <> 'COMPETITION PRIZE'
+      AND COALESCE(UPPER(BUILTIN.DF(t.custbody_sb_bedspecialist)), '') <> 'SHANE NYE'
+      AND COALESCE(UPPER(c.entityid), '') NOT LIKE '%I/C%'
+      AND COALESCE(UPPER(BUILTIN.DF(t.entity)), '') NOT LIKE '%I/C%'
+      AND t.trandate >= ADD_MONTHS(CURRENT_DATE, -6)
+    ORDER BY t.trandate DESC
+  `;
+  const allItems = await fetchSuiteQLRows(cfg, userId, query).catch((err) => {
+    throw new Error(`SuiteQL item performance fallback ${err.message.replace(/^SuiteQL /, "")}`);
+  });
+
+  return { source: "suiteql-fallback", rows: normalizePerformanceRows({ items: allItems }) };
 }
 
 async function netSuiteHeaders(url, method, userId, cfg) {
@@ -436,6 +610,73 @@ async function processRow(row, job) {
   }
 }
 
+async function processValidationRow(row, job) {
+  const result = {
+    itemId: row.Name || row.name || row.internalid,
+    internalId: row.internalid,
+    recordType: null,
+    changedFields: Object.keys(row.fields || {}),
+    status: "Pending",
+    response: { main: null, error: null, diagnostics: null },
+  };
+
+  try {
+    const internalId = String(row.internalid || "").trim();
+    const payload = row.fields || {};
+    if (!internalId) {
+      result.status = "Skipped";
+      result.response.error = "Missing Internal ID";
+      return result;
+    }
+    if (!Object.keys(payload).length) {
+      result.status = "Skipped";
+      result.response.error = "No missing fields";
+      return result;
+    }
+
+    const recordType = await resolveRecordType(job.cfg, job.userId, internalId, row.recordType || row["Record Type"]);
+    result.recordType = recordType;
+    const url = `${job.cfg.restUrl}/${recordType}/${encodeURIComponent(internalId)}`;
+    const response = await fetch(url, {
+      method: "PATCH",
+      headers: {
+        ...(await netSuiteHeaders(url, "PATCH", job.userId, job.cfg)),
+        Prefer: "return=representation",
+      },
+      body: JSON.stringify(payload),
+    });
+    const body = parseJson(await response.text());
+    result.response.main = body || { status: response.status };
+    result.response.diagnostics = {
+      url,
+      method: "PATCH",
+      status: response.status,
+      statusText: response.statusText,
+      payload,
+      response: result.response.main,
+    };
+    if (!response.ok) {
+      const err = new Error(`Validation update failed (${response.status}): ${JSON.stringify(result.response.main)}`);
+      err.diagnostics = result.response.diagnostics;
+      throw err;
+    }
+
+    result.status = "Success";
+    return result;
+  } catch (err) {
+    result.status = "Error";
+    result.response.error = err.message;
+    result.response.diagnostics = err.diagnostics || result.response.diagnostics || null;
+    console.error("SuitePim validation row failed:", {
+      itemId: result.itemId,
+      internalId: result.internalId,
+      error: err.message,
+      diagnostics: result.response.diagnostics,
+    });
+    return result;
+  }
+}
+
 async function runNextJob() {
   if (!jobQueue.length) return;
   const jobId = jobQueue[0];
@@ -450,7 +691,9 @@ async function runNextJob() {
   async function worker() {
     while (index < job.rows.length) {
       const row = job.rows[index++];
-      const rowResult = await processRow(row, job);
+      const rowResult = job.type === "validation"
+        ? await processValidationRow(row, job)
+        : await processRow(row, job);
       results.push(rowResult);
       job.processed += 1;
     }
@@ -517,6 +760,119 @@ router.get("/products", async (req, res) => {
   }
 });
 
+router.get("/validation/config", (req, res) => {
+  const env = normalizeEnvironment(req.query.environment);
+  const cfg = envConfig(env);
+  res.json({
+    ok: true,
+    environment: publicEnvironmentName(env),
+    fields: validationFields,
+    validationFeedConfigured: !!cfg.validationUrl,
+  });
+});
+
+router.get("/validation", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    if (!cfg.validationUrl) {
+      return res.status(500).json({ ok: false, error: "Missing SuitePim validation feed URL" });
+    }
+
+    const response = await fetch(cfg.validationUrl);
+    const payload = parseJson(await response.text());
+    if (!response.ok) throw new Error(`Validation feed returned ${response.status}`);
+
+    const rawRows = Array.isArray(payload) ? payload : payload.results || payload.items || [];
+    const rows = rawRows.map(enrichValidationRow);
+    res.json({
+      ok: true,
+      rows,
+      count: rows.length,
+      fields: validationFields,
+      environment: publicEnvironmentName(env),
+    });
+  } catch (err) {
+    console.error("SuitePim validation load failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get("/item-performance", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const result = await fetchItemPerformance(cfg, userId);
+    res.json({
+      ok: true,
+      environment: publicEnvironmentName(env),
+      searchId: "customsearch_sb_sp_item_performance",
+      savedSearchInternalId: 4270,
+      source: result.source,
+      rows: result.rows,
+      count: result.rows.length,
+    });
+  } catch (err) {
+    console.error("SuitePim item performance failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get("/item-performance/diagnostics/:salesOrder", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const salesOrder = sqlString(req.params.salesOrder);
+    const query = `
+      SELECT
+        t.tranid AS "salesorder",
+        TO_CHAR(t.trandate, 'DD/MM/YYYY') AS "date",
+        BUILTIN.DF(t.status) AS "status",
+        BUILTIN.DF(t.customform) AS "customform",
+        BUILTIN.DF(t.leadsource) AS "leadsource",
+        BUILTIN.DF(t.custbody_sb_bedspecialist) AS "bedspecialist",
+        BUILTIN.DF(t.entity) AS "entity",
+        c.entityid AS "entityid",
+        t.subsidiary AS "subsidiaryid",
+        BUILTIN.DF(t.subsidiary) AS "subsidiary",
+        tl.id AS "lineid",
+        tl.mainline AS "mainline",
+        tl.taxline AS "taxline",
+        tl.isclosed AS "lineclosed",
+        tl.item AS "itemid",
+        BUILTIN.DF(tl.item) AS "item",
+        BUILTIN.DF(i.itemtype) AS "itemtype",
+        ABS(tl.quantity) AS "quantity",
+        (
+          SELECT SUM(COALESCE(tal.amount, 0) * -1) * 1.2
+          FROM TransactionAccountingLine AS tal
+          WHERE tal.transaction = tl.transaction
+            AND tal.transactionline = tl.id
+        ) AS "amount"
+      FROM transaction AS t
+      JOIN transactionline AS tl ON tl.transaction = t.id
+      LEFT JOIN item AS i ON i.id = tl.item
+      LEFT JOIN customer AS c ON c.id = t.entity
+      WHERE t.type = 'SalesOrd'
+        AND t.tranid = '${salesOrder}'
+      ORDER BY tl.id
+    `;
+    const rows = await fetchSuiteQLRows(cfg, userId, query);
+    res.json({
+      ok: true,
+      environment: publicEnvironmentName(env),
+      salesOrder: req.params.salesOrder,
+      rows,
+      count: rows.length,
+    });
+  } catch (err) {
+    console.error("SuitePim item performance diagnostic failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 router.get("/options/:fieldName", async (req, res) => {
   try {
     const env = normalizeEnvironment(req.query.environment);
@@ -542,6 +898,38 @@ router.post("/push-updates", async (req, res) => {
 
     jobs[jobId] = {
       id: jobId,
+      status: "pending",
+      total: rows.length,
+      processed: 0,
+      results: [],
+      rows,
+      cfg,
+      userId,
+      environment: publicEnvironmentName(env),
+      createdAt: new Date().toISOString(),
+    };
+    jobQueue.push(jobId);
+    if (jobQueue.length === 1) runNextJob().catch((err) => console.error("SuitePim queue failed:", err));
+
+    res.json({ ok: true, jobId, queuePos: jobQueue.indexOf(jobId) + 1, queueTotal: jobQueue.length });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post("/push-validation", async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+    if (!rows.length) return res.status(400).json({ ok: false, error: "No rows to push" });
+
+    const env = normalizeEnvironment(req.body.environment || req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const jobId = crypto.randomBytes(6).toString("hex");
+
+    jobs[jobId] = {
+      id: jobId,
+      type: "validation",
       status: "pending",
       total: rows.length,
       processed: 0,

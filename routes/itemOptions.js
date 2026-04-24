@@ -71,7 +71,9 @@ function isExcludedOptionField(option) {
   const sourceName = cleanText(option?.sourceResult?.source?.name).toLowerCase();
 
   return [label, selectText, sourceName].some((value) =>
-    /^base\s+options?$/i.test(value) || /^fabric\s+type$/i.test(value)
+    /^base\s+options?$/i.test(value) ||
+    /^fabric\s+type$/i.test(value) ||
+    /^Size\.v1$/i.test(value)
   );
 }
 

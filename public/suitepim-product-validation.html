@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico" />
+  <title>SuitePim Product Validation</title>
+
+  <link rel="stylesheet" href="/assistant/assistant.css" />
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/suitepim.css" />
+
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/assistant/assistant.js"></script>
+  <script type="module" src="/assistant/assistantHooks.js"></script>
+  <script src="/js/suitepimValidation.js" defer></script>
+</head>
+
+<body>
+  <div id="menu"></div>
+
+  <main class="content suitepim-page">
+    <header class="suitepim-header">
+      <div>
+        <p class="suitepim-kicker">SuitePim</p>
+        <h1>Product Validation</h1>
+      </div>
+      <a class="suitepim-secondary-link" href="/suitepim">SuitePim home</a>
+    </header>
+
+    <section class="suitepim-toolbar suitepim-validation-toolbar" aria-label="Validation controls">
+      <div class="suitepim-search">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="M16.5 16.5 21 21"></path>
+        </svg>
+        <input id="suitepimValidationSearch" type="search" placeholder="Search item or internal ID..." />
+      </div>
+      <select id="suitepimValidationState" aria-label="Validation state filter">
+        <option value="missing">Missing only</option>
+        <option value="all">All records</option>
+        <option value="complete">Complete only</option>
+      </select>
+      <button id="suitepimValidationRefresh" class="suitepim-icon-btn" type="button" title="Refresh" aria-label="Refresh">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M20 6v5h-5"></path>
+          <path d="M4 18v-5h5"></path>
+          <path d="M18.3 9A7 7 0 0 0 6.8 6.7L4 9"></path>
+          <path d="M5.7 15a7 7 0 0 0 11.5 2.3L20 15"></path>
+        </svg>
+      </button>
+      <button id="suitepimValidationPush" class="suitepim-primary-btn" type="button">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M12 19V5"></path>
+          <path d="M6 11l6-6 6 6"></path>
+        </svg>
+        Push missing data
+      </button>
+    </section>
+
+    <section class="suitepim-summary" aria-label="Validation summary">
+      <div><span id="suitepimValidationTotal">0</span><small>records</small></div>
+      <div><span id="suitepimValidationMissingRows">0</span><small>with missing data</small></div>
+      <div><span id="suitepimValidationMissingFields">0</span><small>missing fields</small></div>
+      <div><span id="suitepimValidationVisible">0</span><small>visible</small></div>
+    </section>
+
+    <section id="suitepimValidationStatus" class="suitepim-status" aria-live="polite"></section>
+    <section id="suitepimValidationReport" class="suitepim-push-report" hidden aria-label="Validation push report"></section>
+    <section id="suitepimValidationMount" class="suitepim-shell" aria-label="SuitePim validation workspace">
+      <div class="suitepim-loading"><div class="suitepim-spinner" aria-hidden="true"></div><p>Loading validation data...</p></div>
+    </section>
+  </main>
+</body>
+
+</html>

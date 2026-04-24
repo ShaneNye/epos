@@ -5,6 +5,24 @@ const productFeeds = {
     "https://7972741.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4349&deploy=1&compid=7972741&ns-at=AAEJ7tMQJry3Xg_bYRGo6Nb9K7z8_2rleWv3_ujrUWhzaxks0Io",
 };
 
+const validationFeeds = {
+  sandbox:
+    "https://7972741-sb1.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4063&deploy=1&compid=7972741_SB1&ns-at=AAEJ7tMQ_MeqOHAMqQr_VxvEHRx5tpG9A7OFoZTvlCBduLahtfk",
+  production:
+    "https://7972741.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4353&deploy=1&compid=7972741&ns-at=AAEJ7tMQPDWBr7BlnFc_GDVmc2ClMgQ_mNcJiARsj6MM2yp17J4",
+};
+
+const validationFields = [
+  { name: "Include Children", internalid: "includechildren", fieldType: "Checkbox", defaultValue: true },
+  { name: "Use Bins", internalid: "usebins", fieldType: "Checkbox", defaultValue: true },
+  { name: "UPC Code", internalid: "upccode", fieldType: "Free-Form Text", defaultValue: "internalid" },
+  { name: "Drop Ship Item", internalid: "isdropshipitem", fieldType: "Checkbox", defaultValue: true },
+  { name: "Web SKU", internalid: "custitemwoo_commerce_sku", fieldType: "Free-Form Text", defaultValue: "internalid" },
+  { name: "WMS MIX LOTS IN BINS", internalid: "custitem_wmsse_mix_lot", fieldType: "Checkbox", defaultValue: true },
+  { name: "WMS MIX ITEMS IN BINS", internalid: "custitem_wmsse_mix_item", fieldType: "Checkbox", defaultValue: true },
+  { name: "USE TALLY SCAN", internalid: "custitem_wms_usetallyscan", fieldType: "Checkbox", defaultValue: true },
+];
+
 const optionFeeds = {
   "Class": {
     sandbox: "SUITEPIM_SANDBOX_CLASS_FEED_URL",
@@ -130,4 +148,6 @@ module.exports = {
   fields,
   optionFeeds,
   productFeeds,
+  validationFeeds,
+  validationFields,
 };

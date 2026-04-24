@@ -308,3 +308,16 @@ body{
     min-height: auto;
   }
 }
+
+@media screen and (max-width: 760px) {
+  body {
+    padding: 12px;
+    overflow-x: auto;
+  }
+
+  .page {
+    width: 100%;
+    min-width: 640px;
+    margin: 0;
+  }
+}

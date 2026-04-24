@@ -488,6 +488,45 @@
   }
 }
 
+@media (max-width: 900px) {
+  .lookup-toolbar,
+  .stock-controls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .lookup-toolbar input,
+  .lookup-toolbar button,
+  .stock-filter,
+  #stockLocationSelect,
+  #stockStatusSelect,
+  #stockClassSelect,
+  #stockSizeSelect,
+  #stockPresetSelect {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .table-wrapper,
+  .stock-table-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  #customerLookupTable,
+  .stock-table {
+    min-width: 760px;
+  }
+
+  .expand-panel {
+    grid-template-columns: 1fr;
+  }
+
+  .expand-divider {
+    display: none;
+  }
+}
+
 
 /* === Scrollbar Styling === */
 .stock-table-scroll::-webkit-scrollbar {

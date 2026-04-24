@@ -601,3 +601,348 @@ tr:hover td,
     padding-bottom: 6px;
   }
 }
+
+@media (max-width: 1100px) {
+  .content,
+  main.content {
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .tab-content,
+  .form-section,
+  .table-container,
+  .table-wrapper,
+  .stock-table-container,
+  .stock-table-scroll,
+  .deposits-panel,
+  .memo-panel,
+  .modal-content {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .table-container,
+  .table-wrapper,
+  .table-scroll,
+  .table-scroll-wrapper,
+  .stock-table-scroll,
+  .delivery-grid-wrapper,
+  .home-item-table-wrap,
+  .memo-content,
+  .deposits-panel,
+  .form-section:has(.order-table) {
+    overflow-x: auto !important;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .toolbar,
+  .user-toolbar,
+  .lookup-toolbar,
+  .stock-controls,
+  .panel-header,
+  .section-header-flex,
+  .actions,
+  .modal-actions,
+  .form-actions,
+  .popup-footer,
+  .popup-actions {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 900px) {
+  html,
+  body {
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  body {
+    min-width: 0;
+  }
+
+  input,
+  select,
+  textarea,
+  button {
+    max-width: 100%;
+  }
+
+  input,
+  select,
+  textarea,
+  .btn-primary,
+  .btn-secondary,
+  .action-btn,
+  .goBtn,
+  #pagination button {
+    min-height: 40px;
+  }
+
+  .page-title,
+  .content > h1,
+  main.content > h1 {
+    overflow-wrap: anywhere;
+  }
+
+  .form-grid {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  .form-row,
+  .form-row.three-column,
+  .postcode-row,
+  .analytics-summary,
+  .lookup-toolbar,
+  .user-toolbar,
+  .toolbar,
+  .panel-header,
+  .deposits-panel .section-header-flex {
+    flex-direction: column;
+    align-items: stretch !important;
+  }
+
+  .postcode-row input,
+  .toolbar select,
+  .toolbar input,
+  .user-search,
+  .user-search input,
+  .lookup-toolbar input,
+  .stock-filter,
+  #storeFilter,
+  #quoteStoreFilter,
+  #caseStoreFilter,
+  #intercoStoreFilter,
+  #toStoreFilter,
+  #stockLocationSelect,
+  #stockStatusSelect,
+  #stockClassSelect,
+  #stockSizeSelect,
+  #stockPresetSelect {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  .form-scroll {
+    max-height: none !important;
+    overflow: visible !important;
+    padding-right: 0 !important;
+  }
+
+  .order-summary {
+    position: static !important;
+    width: 100% !important;
+    flex-basis: auto !important;
+    top: auto !important;
+  }
+
+  .tabs,
+  .subtabs,
+  .delivery-subtabs {
+    max-width: 100%;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .tab,
+  .subtab,
+  .delivery-subtab {
+    flex: 0 0 auto;
+  }
+
+  .table-scroll .data-table,
+  .fixed-header,
+  .order-table,
+  .styled-table,
+  .stock-table,
+  .delivery-grid,
+  #customerLookupTable,
+  #userTable,
+  #roleTable,
+  #locationTable,
+  #logisticsTable,
+  #scheduleTable {
+    width: max-content;
+    min-width: min(760px, calc(100vw - 32px));
+  }
+
+  .memo-content table,
+  .deposits-panel table {
+    min-width: 680px;
+  }
+
+  .modal {
+    align-items: flex-start !important;
+    overflow-y: auto;
+    padding: 12px;
+  }
+
+  .modal-content {
+    width: min(100%, 560px) !important;
+    max-height: calc(100vh - 24px) !important;
+  }
+
+  .modal-body {
+    padding: 1rem !important;
+  }
+
+  .modal-actions,
+  .actions,
+  .form-actions,
+  .popup-footer,
+  .popup-actions {
+    justify-content: stretch !important;
+  }
+
+  .modal-actions > *,
+  .actions > *,
+  .form-actions > *,
+  .popup-footer > *,
+  .popup-actions > * {
+    flex: 1 1 auto;
+  }
+}
+
+@media (max-width: 760px) {
+  .content {
+    padding: 16px 12px 88px;
+  }
+
+  .form-section,
+  .tab-content,
+  .deposits-panel,
+  .order-summary,
+  #stockSearch,
+  #dashboardGrid section {
+    padding: 14px !important;
+  }
+
+  .table-scroll .data-table,
+  .fixed-header,
+  .order-table,
+  .styled-table,
+  .stock-table,
+  .delivery-grid,
+  #customerLookupTable,
+  #userTable,
+  #roleTable,
+  #locationTable,
+  #logisticsTable,
+  #scheduleTable {
+    min-width: 680px;
+  }
+
+  .sidebar,
+  .sidebar.expanded,
+  .menu {
+    height: 74px;
+  }
+
+  body,
+  body:not(.sidebar-expanded),
+  body.sidebar-expanded {
+    padding-bottom: 82px;
+  }
+}
+
+@media (max-width: 900px) {
+  body,
+  body:not(.sidebar-expanded),
+  body.sidebar-expanded {
+    padding-left: 0 !important;
+    padding-bottom: 82px !important;
+  }
+
+  .sidebar,
+  .sidebar.expanded {
+    position: fixed !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 74px !important;
+    min-height: 74px !important;
+    max-height: 74px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    overflow: hidden !important;
+    border-right: 0 !important;
+    box-shadow: 0 -8px 22px rgba(0, 72, 96, 0.22) !important;
+  }
+
+  .sidebar > div:first-child {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    display: flex !important;
+  }
+
+  .burger,
+  .user-section,
+  .menu-label,
+  .menu-item .tooltip {
+    display: none !important;
+  }
+
+  .menu {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 8px 10px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .menu::-webkit-scrollbar {
+    display: none;
+  }
+
+  .menu-item {
+    flex: 0 0 50px !important;
+    width: 50px !important;
+    min-width: 50px !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 0 !important;
+    border-left: 0 !important;
+    border-bottom: 3px solid transparent !important;
+    border-radius: 8px !important;
+    transform: none !important;
+  }
+
+  .menu-item:hover,
+  .menu-item.active {
+    border-left: 0 !important;
+    transform: none !important;
+  }
+
+  .menu-item.active {
+    border-bottom-color: var(--accent) !important;
+  }
+
+  .menu-item svg {
+    width: 23px !important;
+    height: 23px !important;
+    margin: 0 !important;
+  }
+}

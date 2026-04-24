@@ -107,3 +107,24 @@ input[type="text"] {
     font-weight: 600;
     cursor: pointer;
 }
+
+@media (max-width: 560px) {
+    .popup-wrapper {
+        padding: 0.75rem;
+    }
+
+    .popup-body {
+        padding: 1rem;
+    }
+
+    .popup-footer {
+        flex-direction: column;
+        gap: 0.6rem;
+    }
+
+    .btn-primary,
+    .btn-secondary {
+        width: 100%;
+        min-height: 40px;
+    }
+}

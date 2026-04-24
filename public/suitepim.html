@@ -15,7 +15,7 @@
   <script src="/js/menu.js"></script>
   <script src="/assistant/assistant.js"></script>
   <script type="module" src="/assistant/assistantHooks.js"></script>
-  <script src="/js/suitepimProductData.js" defer></script>
+  <script src="/js/suitepimDashboard.js" defer></script>
 </head>
 
 <body>
@@ -29,177 +29,121 @@
       </div>
     </header>
 
-    <section class="suitepim-toolbar" aria-label="Product data controls">
-      <div class="suitepim-search">
+    <nav class="suitepim-subnav" aria-label="SuitePim sections">
+      <a class="suitepim-subnav-link active" href="/suitepim">
         <svg aria-hidden="true" viewBox="0 0 24 24">
-          <circle cx="11" cy="11" r="7"></circle>
-          <path d="M16.5 16.5 21 21"></path>
+          <path d="M4 19V5"></path>
+          <path d="M8 19v-6"></path>
+          <path d="M13 19v-9"></path>
+          <path d="M18 19V8"></path>
         </svg>
-        <input id="suitepimSearch" type="search" placeholder="Search item, supplier, ID, class..." />
-      </div>
-
-      <select id="suitepimStateFilter" aria-label="Row state filter">
-        <option value="all">All records</option>
-        <option value="active">Active only</option>
-        <option value="inactive">Inactive only</option>
-        <option value="parent">Parent items</option>
-        <option value="changed">Changed rows</option>
-        <option value="selected">Selected rows</option>
-      </select>
-
-      <button id="suitepimColumnsBtn" class="suitepim-icon-btn" type="button" title="Columns" aria-label="Columns">
+        Dashboard
+      </a>
+      <a class="suitepim-subnav-link" href="/suitepim/product-data">
         <svg aria-hidden="true" viewBox="0 0 24 24">
           <path d="M4 5h16"></path>
           <path d="M4 12h16"></path>
           <path d="M4 19h16"></path>
         </svg>
-      </button>
-
-      <button id="suitepimRefreshBtn" class="suitepim-icon-btn" type="button" title="Refresh" aria-label="Refresh">
+        Product Data
+      </a>
+      <a class="suitepim-subnav-link" href="/suitepim/product-validation">
         <svg aria-hidden="true" viewBox="0 0 24 24">
-          <path d="M20 6v5h-5"></path>
-          <path d="M4 18v-5h5"></path>
-          <path d="M18.3 9A7 7 0 0 0 6.8 6.7L4 9"></path>
-          <path d="M5.7 15a7 7 0 0 0 11.5 2.3L20 15"></path>
+          <path d="M9 12l2 2 4-5"></path>
+          <path d="M4 4h16v16H4z"></path>
         </svg>
-      </button>
+        Product Validation
+      </a>
+    </nav>
 
-      <button id="suitepimPushBtn" class="suitepim-primary-btn" type="button">
-        <svg aria-hidden="true" viewBox="0 0 24 24">
-          <path d="M12 19V5"></path>
-          <path d="M6 11l6-6 6 6"></path>
-        </svg>
-        Push changes
-      </button>
-    </section>
-
-    <section class="suitepim-filter-builder suitepim-collapsible is-collapsed" aria-label="Advanced filters">
-      <div class="suitepim-panel-heading">
-        <div>
-          <h2>Filters</h2>
-          <p>Stack multiple filters to narrow ProductData records.</p>
-        </div>
-        <div class="suitepim-panel-actions">
-          <button id="suitepimClearFiltersBtn" type="button">Clear filters</button>
-          <button id="suitepimToggleFiltersBtn" class="suitepim-panel-toggle" type="button" aria-expanded="false" aria-controls="suitepimFilterBody">
-            <svg aria-hidden="true" viewBox="0 0 24 24">
-              <path d="M6 9l6 6 6-6"></path>
-            </svg>
-          </button>
-        </div>
+    <section class="suitepim-hub-hero">
+      <div>
+        <h2>Product workspace</h2>
+        <p>Track item sales, location performance, and month-on-month movement from the item performance search.</p>
       </div>
-      <div id="suitepimFilterBody" class="suitepim-panel-body">
-        <div class="suitepim-filter-row">
-          <select id="suitepimFilterField" aria-label="Filter field">
-            <option value="">Choose field</option>
-          </select>
-          <div id="suitepimFilterValueHost" class="suitepim-control-host"></div>
-          <button id="suitepimAddFilterBtn" class="suitepim-primary-btn" type="button">Add filter</button>
-        </div>
-        <div id="suitepimActiveFilters" class="suitepim-active-filters" aria-label="Active filters"></div>
+      <div class="suitepim-kpi-placeholder" id="suitepimPerformanceSource">
+        <span>Loading</span>
+        <strong>Item performance</strong>
       </div>
     </section>
 
-    <section class="suitepim-bulk-panel suitepim-collapsible is-collapsed" aria-label="Bulk actions">
+    <section class="suitepim-kpi-filter-panel suitepim-collapsible is-collapsed" aria-label="Item performance filters">
       <div class="suitepim-panel-heading">
         <div>
-          <h2>Bulk actions</h2>
-          <p>Apply one field value to selected rows or the current filtered result.</p>
+          <h2>KPI filters</h2>
+          <p>Filter the dashboard by date range, subsidiary, and item type.</p>
         </div>
-        <button id="suitepimToggleBulkBtn" class="suitepim-panel-toggle" type="button" aria-expanded="false" aria-controls="suitepimBulkBody">
+        <button id="suitepimToggleKpiFiltersBtn" class="suitepim-panel-toggle" type="button" aria-expanded="false" aria-controls="suitepimKpiFilterBody">
           <svg aria-hidden="true" viewBox="0 0 24 24">
             <path d="M6 9l6 6 6-6"></path>
           </svg>
         </button>
       </div>
-      <div id="suitepimBulkBody" class="suitepim-panel-body">
-        <div class="suitepim-bulk-row">
-          <select id="suitepimBulkField" aria-label="Bulk field">
-            <option value="">Choose field</option>
-          </select>
-          <select id="suitepimBulkMode" class="suitepim-bulk-mode" aria-label="Bulk pricing action" hidden>
-            <option value="set">Set to</option>
-            <option value="add-value">Increase by value</option>
-            <option value="add-percent">Increase by percent</option>
-          </select>
-          <div id="suitepimBulkValueHost" class="suitepim-control-host"></div>
-          <select id="suitepimBulkScope" aria-label="Bulk scope">
-            <option value="selected">Selected rows</option>
-            <option value="filtered">Filtered rows</option>
-          </select>
-          <button id="suitepimApplyBulkBtn" class="suitepim-primary-btn" type="button">Apply bulk update</button>
+      <div id="suitepimKpiFilterBody" class="suitepim-panel-body">
+        <div class="suitepim-dashboard-controls">
+          <div>
+            <label for="suitepimPerformancePeriod">Period</label>
+            <select id="suitepimPerformancePeriod">
+              <option value="all">All available data</option>
+              <option value="this-month">This month</option>
+              <option value="last-month">Last month</option>
+              <option value="ytd">Year to date</option>
+              <option value="last-12">Last 12 months</option>
+            </select>
+          </div>
+          <div>
+            <label for="suitepimLocationToggle">Subsidiaries</label>
+            <button id="suitepimLocationToggle" class="suitepim-location-toggle" type="button">All subsidiaries</button>
+            <div id="suitepimLocationPanel" class="suitepim-location-panel" hidden></div>
+          </div>
+          <button id="suitepimPerformanceClear" type="button">All subsidiaries</button>
+          <button id="suitepimExportCsvBtn" type="button">Download CSV</button>
         </div>
+
+        <section class="suitepim-report-tabs" aria-label="Item type report">
+          <button type="button" data-type="Inventory">Inventory Items</button>
+          <button type="button" data-type="Service">Service Items</button>
+          <button class="active" type="button" data-type="all">All Items</button>
+        </section>
       </div>
     </section>
 
-    <section class="suitepim-summary" aria-label="Product data summary">
-      <div>
-        <span id="suitepimTotalCount">0</span>
-        <small>records</small>
-      </div>
-      <div>
-        <span id="suitepimVisibleCount">0</span>
-        <small>visible</small>
-      </div>
-      <div>
-        <span id="suitepimSelectedCount">0</span>
-        <small>selected</small>
-      </div>
-      <div>
-        <span id="suitepimChangedCount">0</span>
-        <small>changed</small>
-      </div>
+    <section id="suitepimPerformanceStatus" class="suitepim-status" aria-live="polite"></section>
+
+    <section class="suitepim-performance-kpis" aria-label="Item performance summary">
+      <div><span id="suitepimPerfSales">£0</span><small>sales</small></div>
+      <div><span id="suitepimPerfUnits">0</span><small>units</small></div>
+      <div><span id="suitepimPerfItems">0</span><small>items</small></div>
+      <div><span id="suitepimPerfAvg">£0</span><small>average item value</small></div>
     </section>
 
-    <section id="suitepimStatus" class="suitepim-status" aria-live="polite"></section>
-    <section id="suitepimPushReport" class="suitepim-push-report" hidden aria-label="SuitePim push report"></section>
+    <section class="suitepim-performance-grid" aria-label="Item performance report">
+      <article class="suitepim-report-panel">
+        <div class="suitepim-report-heading">
+          <h2 id="suitepimTrendTitle">Monthly trend</h2>
+          <span id="suitepimPerfMom">MoM 0%</span>
+        </div>
+        <div id="suitepimMonthlyTrend" class="suitepim-bar-chart"></div>
+      </article>
 
-    <section id="suitepimMount" class="suitepim-shell" aria-label="SuitePim product data workspace">
-      <div class="suitepim-loading">
-        <div class="suitepim-spinner" aria-hidden="true"></div>
-        <p>Loading ProductData...</p>
-      </div>
+      <article class="suitepim-report-panel">
+        <div class="suitepim-report-heading">
+          <h2>Subsidiary performance</h2>
+          <span id="suitepimPerfYoy">YoY 0%</span>
+        </div>
+        <div id="suitepimStorePerformance" class="suitepim-bar-list"></div>
+      </article>
+
+      <article class="suitepim-report-panel suitepim-report-panel-wide">
+        <div class="suitepim-report-heading">
+          <h2>Top items</h2>
+          <span id="suitepimPerfRows">0 rows</span>
+        </div>
+        <div id="suitepimTopItems" class="suitepim-top-items"></div>
+      </article>
     </section>
 
-    <div class="suitepim-pagination" aria-label="Product data pagination">
-      <button id="suitepimPrevPage" type="button">Previous</button>
-      <span id="suitepimPageLabel">Page 1</span>
-      <button id="suitepimNextPage" type="button">Next</button>
-    </div>
   </main>
-
-  <aside id="suitepimColumnsPanel" class="suitepim-drawer" aria-label="Column chooser" aria-hidden="true">
-    <div class="suitepim-drawer-header">
-      <h2>Columns</h2>
-      <button id="suitepimCloseColumns" class="suitepim-icon-btn" type="button" title="Close" aria-label="Close">
-        <svg aria-hidden="true" viewBox="0 0 24 24">
-          <path d="M6 6l12 12"></path>
-          <path d="M18 6 6 18"></path>
-        </svg>
-      </button>
-    </div>
-    <div id="suitepimColumnList" class="suitepim-column-list"></div>
-  </aside>
-
-  <div id="suitepimModal" class="suitepim-modal hidden" role="dialog" aria-modal="true">
-    <div class="suitepim-modal-panel">
-      <div class="suitepim-modal-header">
-        <h2 id="suitepimModalTitle">Select value</h2>
-        <button id="suitepimModalClose" class="suitepim-icon-btn" type="button" title="Close" aria-label="Close">
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <path d="M6 6l12 12"></path>
-            <path d="M18 6 6 18"></path>
-          </svg>
-        </button>
-      </div>
-      <input id="suitepimModalSearch" type="search" placeholder="Search options..." />
-      <div id="suitepimModalOptions" class="suitepim-modal-options"></div>
-      <div class="suitepim-modal-actions">
-        <button id="suitepimModalCancel" type="button">Cancel</button>
-        <button id="suitepimModalSave" class="suitepim-primary-btn" type="button">Apply</button>
-      </div>
-    </div>
-  </div>
 </body>
 
 </html>

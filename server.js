@@ -354,12 +354,15 @@ app.use(async (req, res, next) => {
       ? activeRole.access
       : [];
     const cleanPath = req.path.replace(/^\/+/, "");
+    const accessPath = cleanPath === "suitepim" || cleanPath.startsWith("suitepim/")
+      ? "suitepim"
+      : cleanPath;
 
     // ✅ Role-based access
     if (
-      allowed.includes(cleanPath) ||
-      cleanPath === "" ||
-      cleanPath === "home"
+      allowed.includes(accessPath) ||
+      accessPath === "" ||
+      accessPath === "home"
     ) {
       return next();
     }
@@ -767,6 +770,8 @@ app.get("/eod", (req, res) => res.sendFile(path.join(__dirname, "public", "endOf
 app.get("/cashflow", (req, res) => res.sendFile(path.join(__dirname, "public", "cashFlow.html")))
 app.get("/logistics", (req, res) => res.sendFile(path.join(__dirname, "public", "logistics.html")))
 app.get("/suitepim", (req, res) => res.sendFile(path.join(__dirname, "public", "suitepim.html")))
+app.get("/suitepim/product-data", (req, res) => res.sendFile(path.join(__dirname, "public", "suitepim-product-data.html")))
+app.get("/suitepim/product-validation", (req, res) => res.sendFile(path.join(__dirname, "public", "suitepim-product-validation.html")))
 app.get("/sales/reciept/:id", (req, res) => res.sendFile(path.join(__dirname,"public", "salesOrdReceipt.html")));
 
 app.get("/quote/view/:id", (req, res) =>

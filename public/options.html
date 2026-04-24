@@ -3,6 +3,7 @@
 
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
   <title>Item Options</title>
   <style>
@@ -74,6 +75,23 @@
       font-weight: 600;
       color: #111827;
     }
+
+    @media (max-width: 560px) {
+      body {
+        padding: 12px;
+      }
+
+      .btns {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      button {
+        width: 100%;
+        min-height: 40px;
+      }
+    }
   </style>
 </head>
 
@@ -117,7 +135,12 @@
 
     const form = document.getElementById("optionsForm");
 
+    function isExcludedField(field) {
+      return String(field || "").trim().toLowerCase() === "size.v1";
+    }
+
     Object.entries(opts).forEach(([field, values]) => {
+      if (isExcludedField(field)) return;
       if (!Array.isArray(values) || values.length === 0) return;
 
       const fieldLower = String(field).toLowerCase();

@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico" />
     <title>Edit Location</title>
     <link rel="stylesheet" href="/css/styles.css" />
@@ -117,6 +118,25 @@
       button.cancel:hover {
         background: #dfe3e8;
         transform: translateY(-1px);
+      }
+
+      @media (max-width: 560px) {
+        body {
+          padding: 1rem;
+        }
+
+        form {
+          padding: 1rem;
+        }
+
+        .btn-row {
+          flex-direction: column;
+        }
+
+        button {
+          width: 100%;
+          min-height: 40px;
+        }
       }
     </style>
   </head>

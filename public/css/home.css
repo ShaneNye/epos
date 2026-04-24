@@ -1018,3 +1018,106 @@ select#activeRoleSelect::-internal-list-box {
     min-width: 760px;
   }
 }
+
+@media (max-width: 900px) {
+  body,
+  body.sidebar-expanded,
+  body:not(.sidebar-expanded) {
+    padding-left: 0 !important;
+    padding-bottom: 82px !important;
+  }
+
+  .sidebar,
+  .sidebar.expanded {
+    position: fixed !important;
+    top: auto !important;
+    left: 0 !important;
+    right: 0 !important;
+    bottom: 0 !important;
+    width: 100vw !important;
+    height: 74px !important;
+    min-height: 74px !important;
+    max-height: 74px !important;
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: stretch !important;
+    justify-content: flex-start !important;
+    overflow: hidden !important;
+    border-right: 0 !important;
+    box-shadow: 0 -8px 22px rgba(0, 72, 96, 0.22) !important;
+  }
+
+  .sidebar > div:first-child {
+    flex: 1 1 auto !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    height: 100% !important;
+    display: flex !important;
+  }
+
+  .burger,
+  .user-section,
+  .menu-label,
+  .menu-item .tooltip {
+    display: none !important;
+  }
+
+  .menu {
+    width: 100% !important;
+    height: 100% !important;
+    min-height: 0 !important;
+    display: flex !important;
+    flex: 1 1 auto !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    gap: 6px !important;
+    padding: 8px 10px !important;
+    overflow-x: auto !important;
+    overflow-y: hidden !important;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .menu::-webkit-scrollbar {
+    display: none;
+  }
+
+  .menu-item {
+    flex: 0 0 50px !important;
+    width: 50px !important;
+    min-width: 50px !important;
+    height: 52px !important;
+    min-height: 52px !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    justify-content: center !important;
+    align-items: center !important;
+    gap: 0 !important;
+    border-left: 0 !important;
+    border-bottom: 3px solid transparent !important;
+    border-radius: 8px !important;
+    transform: none !important;
+  }
+
+  .menu-item:hover,
+  .menu-item.active {
+    border-left: 0 !important;
+    transform: none !important;
+  }
+
+  .menu-item.active {
+    border-bottom-color: #ffd700 !important;
+  }
+
+  .menu-item svg {
+    width: 23px !important;
+    height: 23px !important;
+    margin: 0 !important;
+  }
+
+  .content {
+    width: 100% !important;
+    max-width: 100% !important;
+    padding: 18px 12px 96px !important;
+  }
+}

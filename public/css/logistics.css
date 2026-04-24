@@ -320,3 +320,42 @@
     position: relative;
     z-index: 5;  /* ensures highlight is visible over grid */
 }
+
+@media (max-width: 900px) {
+    .tab-content {
+        padding: 1rem;
+    }
+
+    .tabs,
+    .delivery-subtabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .tab,
+    .delivery-subtab {
+        flex: 0 0 auto;
+    }
+
+    .user-toolbar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .table-scroll-wrapper {
+        overflow-x: auto;
+    }
+
+    #logisticsTable,
+    #scheduleTable,
+    .delivery-grid {
+        min-width: 760px;
+    }
+
+    .logistics-map-wrapper,
+    .schedule-map-wrapper,
+    #logisticsMap,
+    #scheduleMap {
+        min-height: 280px;
+    }
+}

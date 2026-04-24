@@ -14,6 +14,7 @@ function buildLegacyOptionSchemaFromItem(item) {
     if (!String(key).toLowerCase().startsWith("option :")) return;
 
     const fieldName = String(key).replace(/^option\s*:\s*/i, "").trim();
+    if (String(fieldName).toLowerCase() === "size.v1") return;
     const values = String(val || "")
       .split(",")
       .map(v => v.trim())

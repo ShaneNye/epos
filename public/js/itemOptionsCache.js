@@ -1,6 +1,6 @@
 // public/js/itemOptionsCache.js
 (() => {
-  const CACHE_KEY = "itemOptionsCache:v1";
+  const CACHE_KEY = "itemOptionsCache:v2";
   const TTL_MS = 60 * 60 * 1000;
 
   let memoryCache = null;
@@ -8,6 +8,28 @@
 
   function now() {
     return Date.now();
+  }
+
+  function isExcludedFieldName(fieldName) {
+    const normalized = String(fieldName || "").trim().toLowerCase();
+    return normalized === "size.v1";
+  }
+
+  function sanitizeItemOptions(byItemId) {
+    const sanitized = {};
+
+    Object.entries(byItemId || {}).forEach(([itemId, fields]) => {
+      const nextFields = {};
+
+      Object.entries(fields || {}).forEach(([fieldName, values]) => {
+        if (isExcludedFieldName(fieldName)) return;
+        nextFields[fieldName] = values;
+      });
+
+      sanitized[itemId] = nextFields;
+    });
+
+    return sanitized;
   }
 
   function isFresh(cache) {
@@ -32,7 +54,7 @@
   function writeLocalCache(byItemId) {
     const payload = {
       cachedAt: now(),
-      byItemId: byItemId || {},
+      byItemId: sanitizeItemOptions(byItemId),
     };
 
     memoryCache = payload;
@@ -51,7 +73,7 @@
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();
-    const byItemId = data.byItemId || data.options || {};
+    const byItemId = sanitizeItemOptions(data.byItemId || data.options || {});
     writeLocalCache(byItemId);
     return byItemId;
   }

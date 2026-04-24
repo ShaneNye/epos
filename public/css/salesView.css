@@ -410,6 +410,61 @@ textarea:focus {
   }
 }
 
+@media (max-width: 900px) {
+  .form-row.three-column {
+    gap: 0.8rem;
+  }
+
+  .form-section.narrow,
+  .right-main,
+  .order-summary,
+  .deposits-panel,
+  .memo-panel {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .form-scroll {
+    max-height: none;
+    overflow: visible;
+    padding-right: 0;
+  }
+
+  .postcode-row {
+    flex-wrap: wrap;
+  }
+
+  #findAddressBtn {
+    width: 100%;
+    min-height: 40px;
+  }
+
+  .order-table,
+  .styled-table,
+  .memo-content table {
+    min-width: 720px;
+  }
+
+  .actions,
+  .deposits-panel .section-header-flex {
+    flex-wrap: wrap;
+  }
+}
+
+@media (max-width: 560px) {
+  .actions,
+  .deposits-panel .section-header-flex {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .actions button,
+  .actions a,
+  #addDepositBtn {
+    width: 100%;
+  }
+}
+
 
 .order-spinner {
   display: flex;

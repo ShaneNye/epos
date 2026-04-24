@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
     <title>Add Customer Deposit</title>
     <style>
@@ -99,6 +100,20 @@
             font-size: 0.8rem;
             color: var(--muted);
             margin-top: 1rem;
+        }
+
+        @media (max-width: 520px) {
+            body {
+                align-items: flex-start;
+                height: auto;
+                min-height: 100vh;
+                padding: 1rem;
+            }
+
+            .deposit-card {
+                width: 100%;
+                padding: 1.25rem;
+            }
         }
     </style>
 </head>

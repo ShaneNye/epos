@@ -411,3 +411,52 @@ main.content {
 #transferOrders .data-table a:hover {
   text-decoration: underline;
 }
+
+@media (max-width: 900px) {
+  main.content {
+    margin-top: 0;
+  }
+
+  .tab-content {
+    padding: 1rem;
+  }
+
+  .panel-header,
+  .toolbar,
+  #quotes .toolbar,
+  #cases .toolbar,
+  #intercompany .toolbar,
+  #transferOrders .toolbar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tabs,
+  .subtabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab,
+  .subtab {
+    flex: 0 0 auto;
+  }
+
+  .table-scroll {
+    max-height: none;
+  }
+
+  .fixed-header,
+  .table-scroll .data-table {
+    min-width: 820px;
+  }
+
+  #storeFilter,
+  #quoteStoreFilter,
+  #caseStoreFilter,
+  #intercoStoreFilter,
+  #toStoreFilter {
+    width: 100%;
+    min-width: 0;
+  }
+}

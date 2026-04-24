@@ -491,3 +491,57 @@
 .widget-scroll .widget-admin-grid {
   margin-top: 0;         /* you currently set margin-top: 1rem */
 }
+
+@media (max-width: 900px) {
+  .content {
+    margin-top: 0;
+  }
+
+  .user-toolbar,
+  .user-search,
+  .modal-actions,
+  .panel-header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .tabs,
+  .subtabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .tab,
+  .subtab {
+    flex: 0 0 auto;
+  }
+
+  .table-scroll-wrapper {
+    overflow-x: auto;
+  }
+
+  #userTable,
+  #roleTable,
+  #locationTable {
+    min-width: 760px;
+  }
+
+  #addUserBtn,
+  #addRoleBtn,
+  #addLocationBtn,
+  #clearSearch,
+  .user-search select,
+  .user-search input {
+    width: 100%;
+  }
+
+  .modal {
+    align-items: flex-start;
+    overflow-y: auto;
+    padding: 12px;
+  }
+
+  .modal-content {
+    max-height: calc(100vh - 24px);
+  }
+}
