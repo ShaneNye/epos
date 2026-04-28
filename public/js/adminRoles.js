@@ -6,8 +6,30 @@ document.addEventListener("DOMContentLoaded", () => {
   const cancelRoleBtn = document.getElementById("cancelRoleModal");
   const addRoleBtn = document.getElementById("addRoleBtn");
   const accessSelect = document.getElementById("accessSelect");
+  const ACCESS_OPTIONS = [
+    { value: "home", label: "Home" },
+    { value: "sales/new", label: "New Sales Order" },
+    { value: "sales/kiosk", label: "Sales Kiosk" },
+    { value: "quote/new", label: "New Quote" },
+    { value: "orders", label: "Order Management" },
+    { value: "reports", label: "Reports" },
+    { value: "eod", label: "End Of Day" },
+    { value: "cashflow", label: "Cashflow" },
+    { value: "engagement", label: "Engagement" },
+    { value: "logistics", label: "Logistics" },
+    { value: "suitepim", label: "SuitePim" },
+    { value: "promotions", label: "Promotions" },
+    { value: "admin", label: "Admin" },
+  ];
 
   let editingRoleId = null;
+
+  function hydrateAccessSelect() {
+    if (!accessSelect) return;
+    accessSelect.innerHTML = ACCESS_OPTIONS.map(
+      (option) => `<option value="${option.value}">${option.label}</option>`
+    ).join("");
+  }
 
   // --- Fetch & Render Roles ---
   async function fetchRoles() {
@@ -58,6 +80,7 @@ document.addEventListener("DOMContentLoaded", () => {
     editingRoleId = id;
     document.getElementById("roleModalTitle").textContent = id ? "Edit Role" : "Add Role";
     roleForm.reset();
+    hydrateAccessSelect();
     if (accessSelect) Array.from(accessSelect.options).forEach(o => (o.selected = false));
 
     if (id) {
@@ -150,5 +173,6 @@ document.addEventListener("DOMContentLoaded", () => {
   addRoleBtn.addEventListener("click", () => openRoleModal());
 
   // --- Init ---
+  hydrateAccessSelect();
   fetchRoles();
 });

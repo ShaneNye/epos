@@ -404,6 +404,8 @@ router.post("/create", async (req, res) => {
 
       item: {
         items: items.map((i, idx) => {
+          const itemClass = String(i.class || "").trim().toLowerCase();
+          const isServiceItem = itemClass.includes("service");
           const line = {
             item: { id: i.item },
             quantity: i.quantity,
@@ -427,7 +429,7 @@ router.post("/create", async (req, res) => {
           // }
 
           // Fulfilment Method → custcol_sb_fulfilmentlocation
-          if (i.fulfilmentMethod && i.class !== "service") {
+          if (i.fulfilmentMethod && !isServiceItem) {
             line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
           }
 

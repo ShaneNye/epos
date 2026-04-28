@@ -84,12 +84,13 @@ async function resolveStoreData(appStoreId) {
 router.post("/create", async (req, res) => {
   try {
     const { customer, order, items } = req.body;
-    let customerId = customer?.id || null;
+    let customerId = customer?.noAddressRequired ? null : customer?.id || null;
 
     const userId = await resolveUserIdFromAuth(req);
     console.log("🔐 Authenticated user for quote creation:", userId);
 
     if (!customerId) {
+      const noAddressRequired = customer?.noAddressRequired === true;
       const custBody = {
         entityStatus: { id: "13" },
         companyName: `${customer.firstName} ${customer.lastName}`,
@@ -101,21 +102,26 @@ router.post("/create", async (req, res) => {
         altPhone: customer.altContactNumber,
         subsidiary: { id: "1" },
         isPerson: true,
-        addressbook: {
+      };
+
+      if (!noAddressRequired) {
+        custBody.addressbook = {
           items: [
             {
               defaultShipping: true,
               defaultBilling: true,
               label: "Main Address",
               addressbookAddress: {
-                addr1: customer.address1,
-                addr2: customer.address2,
-                zip: customer.postcode,
+                addr1: customer.address1 || "",
+                addr2: customer.address2 || "",
+                city: customer.address3 || "",
+                state: customer.county || "",
+                zip: customer.postcode || "",
               },
             },
           ],
-        },
-      };
+        };
+      }
 
       console.log("🧾 Creating new customer for quote:", custBody);
       const newCust = await nsPost("/customer", custBody, userId, "sb");
@@ -155,18 +161,23 @@ router.post("/create", async (req, res) => {
         ? { id: String(storeNsId) }
         : undefined,
       item: {
-        items: (items || []).map((i) => ({
-          item: { id: String(i.item) },
-          quantity: Number(i.quantity) || 1,
-          amount: Number(i.saleprice || i.amount || 0) / 1.2,
-          custcol_sb_itemoptionsdisplay: i.options || "",
-          ...(i.fulfilmentMethod && {
-            custcol_sb_fulfilmentlocation: { id: String(i.fulfilmentMethod) },
-          }),
-          ...(i.taxCode && {
-            taxCode: { id: String(i.taxCode) },
-          }),
-        })),
+        items: (items || []).map((i) => {
+          const itemClass = String(i.class || "").trim().toLowerCase();
+          const isServiceItem = itemClass.includes("service");
+
+          return {
+            item: { id: String(i.item) },
+            quantity: Number(i.quantity) || 1,
+            amount: Number(i.saleprice || i.amount || 0) / 1.2,
+            custcol_sb_itemoptionsdisplay: i.options || "",
+            ...(!isServiceItem && i.fulfilmentMethod && {
+              custcol_sb_fulfilmentlocation: { id: String(i.fulfilmentMethod) },
+            }),
+            ...(i.taxCode && {
+              taxCode: { id: String(i.taxCode) },
+            }),
+          };
+        }),
       },
     };
 

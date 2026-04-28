@@ -56,6 +56,16 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
     console.warn("⚠️ No matching line found for index", lineIndex);
     return;
   }
+  const setInventoryDetail = (value) => {
+    if (window.salesNewItemEditor?.setInventoryDetailForRow) {
+      window.salesNewItemEditor.setInventoryDetailForRow(targetRow, value);
+      return;
+    }
+    const detailField = targetRow.querySelector(".item-inv-detail");
+    const normalized = String(value || "").trim();
+    if (detailField) detailField.value = normalized;
+    targetRow.dataset.invdetail = normalized;
+  };
 
   // 🧩 Parse the first inventory detail entry
   const firstPart = detailString?.split(";")[0]?.trim() || "";
@@ -133,8 +143,8 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
 
     targetRow.dataset.lotnumber = invId || "";
     targetRow.dataset.inventoryMeta = "";
-    targetRow.dataset.invdetail = "";
     targetRow.dataset.inventoryMetaJson = "";
+    setInventoryDetail(detailString || "");
 
     const cell = targetRow.querySelector(".inventory-cell");
     if (cell) {
@@ -166,7 +176,7 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
 
   targetRow.dataset.lotnumber = "";
   targetRow.dataset.inventoryMeta = cleanedDetail;
-  targetRow.dataset.invdetail = cleanedDetail;
+  setInventoryDetail(cleanedDetail);
 
   try {
     const jsonMeta = cleanedDetail.split(";").map((part) => {

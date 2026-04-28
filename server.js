@@ -18,6 +18,28 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const itemOptionsRoute = require("./routes/itemOptions");
 
+function normalizeAccessPath(value) {
+  const slug = String(value || "")
+    .replace(/^\//, "")
+    .replace(/\.html$/i, "")
+    .trim()
+    .toLowerCase();
+
+  if (slug === "end-of-day" || slug === "endofday") return "eod";
+  if (slug === "cash-flow") return "cashflow";
+  if (slug === "suitepim" || slug.startsWith("suitepim/")) return "suitepim";
+  return slug;
+}
+
+function sendNoCacheFile(res, filePath) {
+  res.set({
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+  });
+  return res.sendFile(filePath);
+}
+
 app.use(compression());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
@@ -38,7 +60,17 @@ app.use((req, res, next) => {
 
 
 // --- Serve static files ---
-app.use(express.static(path.join(__dirname, "public")));
+app.use(
+  express.static(path.join(__dirname, "public"), {
+    setHeaders(res, filePath) {
+      if (/\.(html|js|css)$/i.test(filePath)) {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+      }
+    },
+  })
+);
 
 
 const suiteletCache = new Map();
@@ -252,6 +284,7 @@ app.use("/api/netsuite", require("./routes/netsuiteCustomerRecords"));
 app.use("/api/suitepim", require("./routes/suitepim"));
 app.use("/api/meta/store", require("./routes/storeName"));
 app.use("/api/meta/management-rules", require("./routes/managementRules"));
+app.use("/api/promotions", require("./routes/promotions"));
 app.use("/api/vsa", require("./routes/vsa"));
 const intercompanyRoutes = require("./routes/intercompany");
 app.use("/api/netsuite/intercompany", intercompanyRoutes);
@@ -320,9 +353,7 @@ app.use(async (req, res, next) => {
     const alwaysAllowed = [
       "/sales/view",
       "/sales/reciept",
-      "/sales/new",
       "/quote/view",
-      "/quote/new",
       "/quote/reciept",
       "/api/netsuite/salesorder",
       "/api/netsuite/quote",
@@ -350,13 +381,29 @@ app.use(async (req, res, next) => {
     }
 
     const activeRole = session.activeRole;
-    const allowed = Array.isArray(activeRole?.access)
-      ? activeRole.access
-      : [];
-    const cleanPath = req.path.replace(/^\/+/, "");
-    const accessPath = cleanPath === "suitepim" || cleanPath.startsWith("suitepim/")
-      ? "suitepim"
-      : cleanPath;
+    const activeRoleName =
+      typeof activeRole === "string" ? activeRole : activeRole?.name || null;
+
+    let allowed = [];
+    if (activeRoleName) {
+      const roleResult = await pool.query(
+        "SELECT access FROM roles WHERE LOWER(name) = LOWER($1) LIMIT 1",
+        [activeRoleName]
+      );
+      const rawAccess = roleResult.rows[0]?.access;
+
+      if (Array.isArray(rawAccess)) {
+        allowed = rawAccess.map(normalizeAccessPath);
+      } else if (typeof rawAccess === "string") {
+        try {
+          allowed = JSON.parse(rawAccess || "[]").map(normalizeAccessPath);
+        } catch {
+          allowed = [];
+        }
+      }
+    }
+    const accessPath = normalizeAccessPath(req.path);
+    const cleanPath = req.path;
 
     // ✅ Role-based access
     if (
@@ -477,6 +524,11 @@ app.get("/api/netsuite/titles", (req, res) =>
 // === Sales Order Items ===
 app.get("/api/netsuite/items", (req, res) =>
   fetchNetSuiteData("SALES_ORDER_ITEMS_URL", "SALES_ORDER_ITEMS", req, res, "sales order items")
+);
+
+// === Sales Kiosk Items ===
+app.get("/api/netsuite/kiosk-items", (req, res) =>
+  fetchNetSuiteData("KIOSK_ITEM_URL", "KIOSK_ITEM", req, res, "sales kiosk items")
 );
 
 // === Customer Match (with query params) ===
@@ -757,34 +809,37 @@ app.get("/health", (req, res) => res.json({ ok: true }));
    ====================  HTML ROUTES  ========================
    ========================================================== */
 
-app.get("/", (req, res) => res.sendFile(path.join(__dirname, "public", "index.html")));
-app.get("/home", (req, res) => res.sendFile(path.join(__dirname, "public", "home.html")));
-app.get("/admin", (req, res) => res.sendFile(path.join(__dirname, "public", "admin.html")));
-app.get("/forgot", (req, res) => res.sendFile(path.join(__dirname, "public", "forgot.html")));
-app.get("/orders", (req, res) => res.sendFile(path.join(__dirname, "public", "orderManagement.html")));
-app.get("/reset", (req, res) => res.sendFile(path.join(__dirname, "public", "reset.html")));
-app.get("/sales/new", (req, res) => res.sendFile(path.join(__dirname, "public", "newSalesOrder.html")));
-app.get("/quote/new", (req, res) => res.sendFile(path.join(__dirname, "public", "quoteNew.html")));
-app.get("/reports", (req, res) => res.sendFile(path.join(__dirname, "public", "reports.html")))
-app.get("/eod", (req, res) => res.sendFile(path.join(__dirname, "public", "endOfDay.html")))
-app.get("/cashflow", (req, res) => res.sendFile(path.join(__dirname, "public", "cashFlow.html")))
-app.get("/logistics", (req, res) => res.sendFile(path.join(__dirname, "public", "logistics.html")))
-app.get("/suitepim", (req, res) => res.sendFile(path.join(__dirname, "public", "suitepim.html")))
-app.get("/suitepim/product-data", (req, res) => res.sendFile(path.join(__dirname, "public", "suitepim-product-data.html")))
-app.get("/suitepim/product-validation", (req, res) => res.sendFile(path.join(__dirname, "public", "suitepim-product-validation.html")))
-app.get("/sales/reciept/:id", (req, res) => res.sendFile(path.join(__dirname,"public", "salesOrdReceipt.html")));
+app.get("/", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "index.html")));
+app.get("/home", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "home.html")));
+app.get("/admin", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "admin.html")));
+app.get("/forgot", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "forgot.html")));
+app.get("/orders", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "orderManagement.html")));
+app.get("/reset", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "reset.html")));
+app.get("/sales/new", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "newSalesOrder.html")));
+app.get("/sales/kiosk", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "salesKiosk.html")));
+app.get("/quote/new", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "quoteNew.html")));
+app.get("/reports", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "reports.html")))
+app.get("/promotions", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "promotions.html")))
+app.get("/eod", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "endOfDay.html")))
+app.get("/cashflow", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cashFlow.html")))
+app.get("/logistics", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "logistics.html")))
+app.get("/suitepim", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim.html")))
+app.get("/suitepim/product-data", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-product-data.html")))
+app.get("/suitepim/web-management", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-web-management.html")))
+app.get("/suitepim/product-validation", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-product-validation.html")))
+app.get("/sales/reciept/:id", (req, res) => sendNoCacheFile(res, path.join(__dirname,"public", "salesOrdReceipt.html")));
 
 app.get("/quote/view/:id", (req, res) =>
-  res.sendFile(path.join(__dirname, "public", "quoteView.html"))
+  sendNoCacheFile(res, path.join(__dirname, "public", "quoteView.html"))
 );
 app.get(["/quote/reciept/:id", "/quote/receipt/:id"], (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "quoteReciept.html"));
+  sendNoCacheFile(res, path.join(__dirname, "public", "quoteReciept.html"));
 });
 app.get("/sales/view/:id", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "salesOrderView.html"));
+  sendNoCacheFile(res, path.join(__dirname, "public", "salesOrderView.html"));
 });
 app.get("/engagement", (req, res) =>
-  res.sendFile(path.join(__dirname, "public", "engagement.html"))
+  sendNoCacheFile(res, path.join(__dirname, "public", "engagement.html"))
 );
 
 

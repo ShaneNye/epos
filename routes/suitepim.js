@@ -3,7 +3,7 @@ const fetch = require("node-fetch");
 const crypto = require("crypto");
 const { getSession } = require("../sessions");
 const { getAuthHeader } = require("../netsuiteClient");
-const { fields, optionFeeds, productFeeds, validationFeeds, validationFields } = require("./suitepimFields");
+const { fields, optionFeeds, productFeeds, webManagementFeeds, validationFeeds, validationFields } = require("./suitepimFields");
 
 const router = express.Router();
 const jobs = {};
@@ -54,6 +54,11 @@ function envConfig(env) {
       process.env[`SUITEPIM_${upper}_PRODUCT_DATA_URL`] ||
       process.env[`NETSUITE_${upper}_PRODUCT_DATA_URL`] ||
       productFeeds[env] ||
+      "",
+    webManagementUrl:
+      process.env[`SUITEPIM_${upper}_WEB_MANAGEMENT_URL`] ||
+      process.env[`NETSUITE_${upper}_WEB_MANAGEMENT_URL`] ||
+      webManagementFeeds[env] ||
       "",
     validationUrl:
       process.env[`SUITEPIM_${upper}_VALIDATION_URL`] ||
@@ -119,10 +124,13 @@ function recalcRow(row, changedField = null) {
   return updated;
 }
 
-function normalizeOption(item) {
+function normalizeOption(item, fieldName = "") {
+  const name = String(item.Name || item.name || item.text || item.label || "").trim();
+  const rawId = String(item["Internal ID"] || item.internalId || item.id || "").trim();
+  const fallbackId = fieldName === "Reasons To Buy" ? name : "";
   return {
-    id: String(item["Internal ID"] || item.internalId || item.id || "").trim(),
-    name: String(item.Name || item.name || item.text || item.label || "").trim(),
+    id: rawId || fallbackId,
+    name,
     raw: item,
   };
 }
@@ -131,7 +139,356 @@ function optionUrlFor(fieldName, env) {
   const feed = optionFeeds[fieldName];
   if (!feed) return "";
   const fallbackKey = env === "production" ? "defaultProduction" : "defaultSandbox";
+  if (fieldName === "Reasons To Buy" && process.env.REASONS_TO_BUY_URL) {
+    return process.env.REASONS_TO_BUY_URL;
+  }
   return process.env[feed[env]] || feed[fallbackKey] || "";
+}
+
+function optionTokenFor(fieldName, env) {
+  if (fieldName === "Reasons To Buy") {
+    return process.env.REASONS_TO_BUY || "";
+  }
+  return "";
+}
+
+function withSuiteletToken(url, token) {
+  if (!url) return "";
+  if (!token) return url;
+
+  const parsed = new URL(url);
+  parsed.searchParams.set("token", token);
+  return parsed.toString();
+}
+
+function openAIConfig() {
+  return {
+    apiKey: process.env.OPENAI_API_KEY || "",
+    model: process.env.OPENAI_SUITEPIM_MODEL || process.env.OPENAI_DESCRIPTION_MODEL || "gpt-4.1-mini",
+  };
+}
+
+function compactList(value) {
+  if (Array.isArray(value)) return value.map((item) => String(item || "").trim()).filter(Boolean);
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function buildDescriptionContext(row, reasonOptions = []) {
+  const reasons = compactList(row["reasons to buy"]);
+  const reasonDetails = reasons
+    .map((name) => {
+      const match = reasonOptions.find((option) => option.name.toLowerCase() === String(name).trim().toLowerCase());
+      const raw = match?.raw || {};
+      return {
+        name,
+        description: String(raw.Description || raw.description || raw["Item Description"] || "").trim(),
+      };
+    })
+    .filter((item) => item.name);
+
+  return {
+    eanGtin: row["EAN/GTIN"] || row["EAN"] || row["GTIN"] || row["UPC Code"] || "",
+    name: row.Name || row["Display Name"] || "",
+    className: row.Class || "",
+    subClass: row["Sub-Class"] || "",
+    type: row.Type || "",
+    comfort: row.Comfort || "",
+    springType: row["Spring Type"] || "",
+    fillings: row.Fillings || "",
+    surface: row.Surface || "",
+    warranty: row.Warranty || "",
+    leadTime: row["Lead Time"] || "",
+    countryOfOrigin: row["Country Of Origin"] || "",
+    supplier: row["Supplier Name"] || "",
+    storage: row.Storage || "",
+    turnable: row.Turnable || "",
+    builtFlatPacked: row["Built/Flat Packed"] || "",
+    standardSizes: row["Standard-Sizes"] || row["Standard Sizes"] || "",
+    category: row.Category || "",
+    tags: row.Tags || "",
+    shortDescription: row["New Short Desc"] || row["Short Description"] || "",
+    dimensions: {
+      width: row.Width || "",
+      length: row.Length || "",
+      height: row.Height || "",
+      depth: row.Depth || "",
+      unit: row["Dimension Unit"] || "",
+    },
+    reasonsToBuy: reasonDetails,
+  };
+}
+
+function extractOpenAIText(payload) {
+  if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
+    return payload.output_text.trim();
+  }
+
+  const outputs = Array.isArray(payload?.output) ? payload.output : [];
+  for (const item of outputs) {
+    const content = Array.isArray(item?.content) ? item.content : [];
+    for (const part of content) {
+      if (typeof part?.text === "string" && part.text.trim()) return part.text.trim();
+    }
+  }
+
+  return "";
+}
+
+function extractOpenAIUsage(payload) {
+  const usage = payload?.usage || {};
+  return {
+    inputTokens: Number(usage.input_tokens || 0),
+    outputTokens: Number(usage.output_tokens || 0),
+    totalTokens: Number(usage.total_tokens || 0),
+  };
+}
+
+function parseJsonText(value) {
+  const text = String(value || "").trim();
+  if (!text) return null;
+  const cleaned = text.replace(/^```json\s*/i, "").replace(/^```\s*/i, "").replace(/\s*```$/i, "").trim();
+  try {
+    return JSON.parse(cleaned);
+  } catch {
+    return null;
+  }
+}
+
+function normalizeEnrichmentValue(value) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") return String(value);
+  if (typeof value === "boolean") return value ? "Yes" : "No";
+  return String(value).trim();
+}
+
+function escapeRegExp(value) {
+  return String(value || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function sanitizeEnrichedDescription(text, row, enrichment = {}) {
+  let output = String(text || "").trim();
+  if (!output) return output;
+
+  const canonicalName = String(row.Name || row["Display Name"] || "").trim();
+  const supplierName = String(row["Supplier Name"] || "").trim();
+  const matchedProductName = String(enrichment.matchedProductName || "").trim();
+
+  [supplierName, matchedProductName]
+    .filter(Boolean)
+    .filter((name, index, arr) => arr.indexOf(name) === index)
+    .forEach((name) => {
+      if (!canonicalName || name.toLowerCase() === canonicalName.toLowerCase()) return;
+      output = output.replace(new RegExp(escapeRegExp(name), "gi"), canonicalName);
+    });
+
+  return output;
+}
+
+function mapEnrichmentToFields(data = {}) {
+  return {
+    "Country Of Origin": normalizeEnrichmentValue(data.country_of_origin),
+    Depth: normalizeEnrichmentValue(data.depth),
+    Fillings: normalizeEnrichmentValue(data.fillings),
+    Height: normalizeEnrichmentValue(data.height),
+    Width: normalizeEnrichmentValue(data.width),
+    Length: normalizeEnrichmentValue(data.length),
+    "Spring Type": normalizeEnrichmentValue(data.spring_type),
+    Storage: normalizeEnrichmentValue(data.storage),
+    Surface: normalizeEnrichmentValue(data.surface),
+    Turnable: normalizeEnrichmentValue(data.turnable),
+    Warranty: normalizeEnrichmentValue(data.warranty),
+  };
+}
+
+function hasMeaningfulFieldUpdates(fieldUpdates = {}) {
+  return Object.values(fieldUpdates).some((value) => String(value || "").trim() !== "");
+}
+
+async function generateFeatureDescriptionFromRow(row, reasonOptions = []) {
+  const openai = openAIConfig();
+  if (!openai.apiKey) throw new Error("Missing OPENAI_API_KEY");
+
+  const context = buildDescriptionContext(row, reasonOptions);
+  const instructions = [
+    "You write ecommerce mattress and bed product copy for Sussex Beds.",
+    "Generate one benefit-led feature description in UK English.",
+    "Use only the provided product data.",
+    "Keep it concise: 55 to 95 words.",
+    "Focus on customer benefits, comfort, support, practicality, and reassurance.",
+    "Do not use bullet points, markdown, headings, or HTML.",
+    "Do not invent specs, certifications, or claims not present in the input.",
+    "Return plain text only.",
+  ].join(" ");
+
+  const input = [
+    "Create a product feature description from this JSON product context:",
+    JSON.stringify(context, null, 2),
+  ].join("\n\n");
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openai.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: openai.model,
+      instructions,
+      input,
+      max_output_tokens: 220,
+    }),
+  });
+
+  const payload = parseJson(await response.text());
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || `OpenAI request failed: ${response.status}`);
+  }
+
+  const text = extractOpenAIText(payload);
+  if (!text) throw new Error("OpenAI did not return any description text");
+
+  return {
+    text,
+    model: openai.model,
+    usage: extractOpenAIUsage(payload),
+    context,
+    fieldUpdates: {},
+    enriched: false,
+  };
+}
+
+async function enrichFromGtin(row) {
+  const openai = openAIConfig();
+  if (!openai.apiKey) throw new Error("Missing OPENAI_API_KEY");
+
+  const gtin = String(row["EAN/GTIN"] || row["EAN"] || row["GTIN"] || row["UPC Code"] || "").trim();
+  if (!gtin) return null;
+
+  const lookupContext = {
+    eanGtin: gtin,
+    name: row.Name || row["Display Name"] || "",
+    className: row.Class || "",
+    currentKnownFields: {
+      comfort: row.Comfort || "",
+      springType: row["Spring Type"] || "",
+      fillings: row.Fillings || "",
+      warranty: row.Warranty || "",
+      countryOfOrigin: row["Country Of Origin"] || "",
+      width: row.Width || "",
+      length: row.Length || "",
+      height: row.Height || "",
+      depth: row.Depth || "",
+      dimensionUnit: row["Dimension Unit"] || "",
+    },
+  };
+
+  const instructions = [
+    "Search the web to identify the product that matches the supplied EAN or GTIN.",
+    "Prioritise exact EAN or GTIN matches over product-name similarity.",
+    "If the GTIN does not confidently match a product, return found_match false.",
+    "If it matches, extract only the requested attributes and write one short benefit-led product description in UK English.",
+    "Use the supplied EPOS product name as the canonical product name in the description.",
+    "Do not mention the supplier name, external retailer name, or a different source product name in the description.",
+    "Return a single valid JSON object only, with no markdown fences and no explanatory text.",
+    "Do not invent values. Use empty strings for unknown fields.",
+  ].join(" ");
+
+  const input = [
+    "Find and enrich this product using the EAN/GTIN. Return JSON with these keys exactly:",
+    JSON.stringify({
+      found_match: true,
+      matched_product_name: "",
+      feature_description: "",
+      country_of_origin: "",
+      depth: "",
+      fillings: "",
+      height: "",
+      width: "",
+      length: "",
+      spring_type: "",
+      storage: "",
+      surface: "",
+      turnable: "",
+      warranty: "",
+      confidence_notes: "",
+    }, null, 2),
+    "Lookup context:",
+    JSON.stringify(lookupContext, null, 2),
+  ].join("\n\n");
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openai.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: openai.model,
+      instructions,
+      input,
+      tools: [{ type: "web_search", search_context_size: "low" }],
+      tool_choice: "auto",
+      max_output_tokens: 320,
+    }),
+  });
+
+  const payload = parseJson(await response.text());
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || `OpenAI web enrichment failed: ${response.status}`);
+  }
+
+  const parsed = parseJsonText(extractOpenAIText(payload));
+  if (!parsed || typeof parsed !== "object") {
+    throw new Error("OpenAI enrichment did not return valid JSON");
+  }
+
+  const fieldUpdates = mapEnrichmentToFields(parsed);
+  const matchedProductName = normalizeEnrichmentValue(parsed.matched_product_name);
+  return {
+    foundMatch: parsed.found_match === true || String(parsed.found_match).toLowerCase() === "true",
+    text: sanitizeEnrichedDescription(normalizeEnrichmentValue(parsed.feature_description), row, { matchedProductName }),
+    fieldUpdates,
+    usage: extractOpenAIUsage(payload),
+    model: openai.model,
+    matchedProductName,
+    confidenceNotes: normalizeEnrichmentValue(parsed.confidence_notes),
+  };
+}
+
+async function generateFeatureDescription(row, env) {
+  const openai = openAIConfig();
+  if (!openai.apiKey) throw new Error("Missing OPENAI_API_KEY");
+
+  const gtin = String(row["EAN/GTIN"] || row["EAN"] || row["GTIN"] || row["UPC Code"] || "").trim();
+  if (!gtin) {
+    const reasonOptions = await fetchOptionFeed("Reasons To Buy", env).catch(() => []);
+    return generateFeatureDescriptionFromRow(row, reasonOptions);
+  }
+
+  const enrichment = await enrichFromGtin(row);
+  if (enrichment?.foundMatch && (enrichment.text || hasMeaningfulFieldUpdates(enrichment.fieldUpdates))) {
+    return {
+      text: enrichment.text || "",
+      model: enrichment.model,
+      usage: enrichment.usage,
+      context: { eanGtin: gtin, name: row.Name || row["Display Name"] || "" },
+      fieldUpdates: enrichment.fieldUpdates,
+      enriched: true,
+      matchedProductName: enrichment.matchedProductName,
+      confidenceNotes: enrichment.confidenceNotes,
+    };
+  }
+
+  const reasonOptions = await fetchOptionFeed("Reasons To Buy", env).catch(() => []);
+  const fallback = await generateFeatureDescriptionFromRow(row, reasonOptions);
+  return {
+    ...fallback,
+    confidenceNotes: enrichment?.confidenceNotes || "",
+    matchedProductName: enrichment?.matchedProductName || "",
+  };
 }
 
 async function fetchOptionFeed(fieldName, env) {
@@ -139,7 +496,7 @@ async function fetchOptionFeed(fieldName, env) {
   const cached = optionsCache.get(cacheKey);
   if (cached && Date.now() - cached.loadedAt < 10 * 60 * 1000) return cached.options;
 
-  const url = optionUrlFor(fieldName, env);
+  const url = withSuiteletToken(optionUrlFor(fieldName, env), optionTokenFor(fieldName, env));
   if (!url) return [];
 
   const res = await fetch(url);
@@ -148,7 +505,7 @@ async function fetchOptionFeed(fieldName, env) {
 
   const data = parseJson(text);
   const rows = Array.isArray(data) ? data : data.results || data.items || [];
-  const options = rows.map(normalizeOption).filter((o) => o.id && o.name);
+  const options = rows.map((item) => normalizeOption(item, fieldName)).filter((o) => o.id && o.name);
   optionsCache.set(cacheKey, { loadedAt: Date.now(), options });
   return options;
 }
@@ -760,6 +1117,59 @@ router.get("/products", async (req, res) => {
   }
 });
 
+router.get("/web-management/config", (req, res) => {
+  const env = normalizeEnvironment(req.query.environment);
+  const cfg = envConfig(env);
+  const openai = openAIConfig();
+  const cleanFields = fields.map(({ optionFeed, ...field }) => ({
+    ...field,
+    hasOptions: !!optionFeed,
+    optionFeed,
+  }));
+  res.json({
+    ok: true,
+    environment: publicEnvironmentName(env),
+    fields: cleanFields,
+    webManagementFeedConfigured: !!cfg.webManagementUrl,
+    priceRestletConfigured: !!cfg.priceRestletUrl,
+    aiGenerationConfigured: !!openai.apiKey,
+    aiGenerationModel: openai.model,
+  });
+});
+
+router.get("/web-management", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    if (!cfg.webManagementUrl) {
+      return res.status(500).json({
+        ok: false,
+        error: `Missing ${env === "production" ? "SUITEPIM_PROD_WEB_MANAGEMENT_URL" : "SUITEPIM_SANDBOX_WEB_MANAGEMENT_URL"}`,
+      });
+    }
+
+    const response = await fetch(cfg.webManagementUrl);
+    const payload = parseJson(await response.text());
+    if (!response.ok) throw new Error(`Web management feed returned ${response.status}`);
+
+    const rawRows = Array.isArray(payload) ? payload : payload.results || payload.items || [];
+    const optionMap = {};
+    await Promise.all(
+      fields
+        .filter((f) => f.fieldType === "multiple-select" && f.optionFeed)
+        .map(async (field) => {
+          optionMap[field.name] = await fetchOptionFeed(field.optionFeed, env).catch(() => []);
+        })
+    );
+
+    const rows = rawRows.map((row) => recalcRow(normalizeMultipleSelects(row, optionMap)));
+    res.json({ ok: true, rows, count: rows.length, environment: publicEnvironmentName(env) });
+  } catch (err) {
+    console.error("SuitePim web management load failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 router.get("/validation/config", (req, res) => {
   const env = normalizeEnvironment(req.query.environment);
   const cfg = envConfig(env);
@@ -882,6 +1292,27 @@ router.get("/options/:fieldName", async (req, res) => {
     const options = await fetchOptionFeed(field.optionFeed, env);
     res.json({ ok: true, options });
   } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post("/generate-description", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const row = req.body?.row;
+    if (!row || typeof row !== "object") {
+      return res.status(400).json({ ok: false, error: "Missing row payload" });
+    }
+
+    const generated = await generateFeatureDescription(row, env);
+    res.json({
+      ok: true,
+      text: generated.text,
+      model: generated.model,
+      usage: generated.usage,
+    });
+  } catch (err) {
+    console.error("SuitePim description generation failed:", err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });

@@ -7,6 +7,26 @@ let lineCounter = 1;
 window.optionsCache = {};   // itemId -> options payload
 window.inventoryCache = {}; // itemId -> [{location, qty, bin, status, inventoryNumber}, ...]
 window.selectedWarehouse = ""; // order header warehouse
+window.salesNewItemEditor = {
+  addNewRow: (...args) => addNewRow(...args),
+  applyItemToRow: (...args) => applyItemToRow(...args),
+  selectionsToSummary: (...args) => selectionsToSummary(...args),
+  setInventoryDetailForRow: (...args) => setInventoryDetailForRow(...args),
+};
+
+function clampPercent(value) {
+  const amount = Number(value);
+  if (!Number.isFinite(amount)) return 0;
+  return Math.min(100, Math.max(0, amount));
+}
+
+function setInventoryDetailForRow(row, detailString) {
+  if (!row) return;
+  const normalized = String(detailString || "").trim();
+  const detailField = row.querySelector(".item-inv-detail");
+  if (detailField) detailField.value = normalized;
+  row.dataset.invdetail = normalized;
+}
 
 function buildLegacyOptionSchemaFromItem(item) {
   const opts = {};
@@ -354,6 +374,17 @@ async function selectItem(item) {
   if (!activeInput) return;
 
   const line = document.querySelector(`.order-line[data-line="${activeLineIndex}"]`);
+  applyItemToRow(line, item);
+
+  setTimeout(() => {
+    const addBtn = document.getElementById("addItemBtn");
+    if (addBtn) addBtn.click();
+  }, 50);
+
+  hideSuggestions();
+  updateOrderSummary();
+  return;
+
   const hiddenId = line.querySelector(".item-internal-id");
   const hiddenBase = line.querySelector(".item-baseprice");
   const discountField = line.querySelector(".item-discount");
@@ -439,6 +470,97 @@ async function selectItem(item) {
   updateOrderSummary();
 }
 
+function applyItemToRow(line, item, config = {}) {
+  if (!line || !item) return;
+
+  const quantity = Math.max(1, parseInt(config.quantity || 1, 10) || 1);
+  const hiddenId = line.querySelector(".item-internal-id");
+  const hiddenBase = line.querySelector(".item-baseprice");
+  const discountField = line.querySelector(".item-discount");
+  const qtyField = line.querySelector(".item-qty");
+  const salePriceField = line.querySelector(".item-saleprice");
+  const textInput = line.querySelector(".item-search");
+
+  if (textInput) textInput.value = item["Name"] || "";
+  if (hiddenId) hiddenId.value = item["Internal ID"] || "";
+  if (hiddenBase) hiddenBase.value = item["Base Price"] || "";
+  if (qtyField) qtyField.value = String(quantity);
+  if (discountField) discountField.value = "0";
+
+  const base = parseFloat(item["Base Price"] || 0);
+  const retailPerUnit = (base / 100) * 120;
+
+  if (!line.setUnitRetail) setupPriceSync(line);
+  line.setUnitRetail(retailPerUnit);
+
+  const itemId = hiddenId?.value || "";
+  const opts = getOptionSchemaForItem(itemId, item);
+  window.optionsCache[itemId] = opts;
+
+  const optCell = line.querySelector(".options-cell");
+  if (optCell) {
+    if (Object.keys(opts).length === 0) {
+      optCell.innerHTML = "";
+    } else {
+      optCell.innerHTML = `
+        <button type="button" class="open-options btn-secondary small-btn">âš™ï¸ Options</button>
+        <input type="hidden" class="item-options-json" value="{}" />
+        <div class="options-summary"></div>
+      `;
+      optCell.querySelector(".open-options")?.addEventListener("click", () => openOptionsWindow(line));
+    }
+  }
+
+  const selections = config.optionsSelections || {};
+  const optionsJsonEl = line.querySelector(".item-options-json");
+  const optionsSummaryEl = line.querySelector(".options-summary");
+  if (optionsJsonEl) optionsJsonEl.value = JSON.stringify(selections);
+  if (optionsSummaryEl) optionsSummaryEl.innerHTML = selectionsToSummary(selections);
+
+  setInventoryDetailForRow(line, config.inventoryDetail || "");
+  line.dataset.inventoryMeta = String(config.inventoryMeta || config.inventoryDetail || "").trim();
+  line.dataset.inventoryMetaJson = String(config.inventoryMetaJson || "").trim();
+  line.dataset.lotnumber = String(config.lotnumber || "").trim();
+
+  const fulfilCell = line.querySelector(".fulfilment-cell");
+  const fulfilSel = line.querySelector(".item-fulfilment");
+  const invCell = line.querySelector(".inventory-cell");
+  const itemClass = (item["Class"] || "").toLowerCase();
+  line.dataset.itemClass = itemClass;
+
+  ensure60NightTrialCell(line);
+  update60NightTrialColumnVisibility();
+
+  if (itemClass === "service" || itemClass.includes("service")) {
+    if (fulfilCell) fulfilCell.classList.add("hidden-cell");
+    if (fulfilSel) {
+      fulfilSel.value = "";
+      fulfilSel.style.display = "none";
+    }
+    if (invCell) invCell.classList.add("hidden-cell");
+  } else {
+    if (fulfilCell) fulfilCell.classList.remove("hidden-cell");
+    if (fulfilSel) fulfilSel.style.display = "inline-block";
+    if (invCell) invCell.classList.remove("hidden-cell");
+    if (fulfilSel && config.fulfilmentMethod) {
+      fulfilSel.dataset.pendingValue = String(config.fulfilmentMethod);
+      fulfilSel.value = String(config.fulfilmentMethod);
+      fulfilSel.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+    validateInventoryForRow(line);
+    if (String(config.inventoryDetail || "").trim() && typeof window.updateInventoryCellForRow === "function") {
+      window.updateInventoryCellForRow(Number(line.dataset.line || "0"));
+    }
+  }
+
+  if (salePriceField && Number.isFinite(Number(config.salePrice))) {
+    salePriceField.value = Number(config.salePrice).toFixed(2);
+    salePriceField.dispatchEvent(new Event("input", { bubbles: true }));
+  } else {
+    updateOrderSummary();
+  }
+}
+
 // === Convert selections to summary ===
 function selectionsToSummary(selections) {
   const parts = [];
@@ -467,8 +589,9 @@ function setupPriceSync(line) {
     const retailTotal = unitRetail * qty;
     amountField.value = retailTotal.toFixed(2);
 
-    const discount = parseFloat(discountField.value || 0);
-    const saleTotal = retailTotal * (1 - discount / 100);
+    const discountPercent = clampPercent(discountField.value || 0);
+    discountField.value = discountPercent.toFixed(1).replace(/\.0$/, "");
+    const saleTotal = retailTotal * (1 - discountPercent / 100);
     salePriceField.value = saleTotal.toFixed(2);
 
     validateInventoryForRow(line);
@@ -486,11 +609,15 @@ function setupPriceSync(line) {
   salePriceField.addEventListener("input", () => {
     const qty = parseInt(qtyField.value || 1, 10);
     const retailTotal = unitRetail * qty;
-    const saleTotal = parseFloat(salePriceField.value || 0);
+    const saleTotal = Math.max(0, parseFloat(salePriceField.value || 0) || 0);
+    salePriceField.value = saleTotal.toFixed(2);
     if (retailTotal > 0 && !isNaN(saleTotal)) {
-      const discount = ((retailTotal - saleTotal) / retailTotal) * 100;
-      discountField.value = discount.toFixed(1);
+      const discountPercent = clampPercent(((retailTotal - saleTotal) / retailTotal) * 100);
+      discountField.value = discountPercent.toFixed(1).replace(/\.0$/, "");
+    } else {
+      discountField.value = "0";
     }
+    validateInventoryForRow(line);
     updateOrderSummary();
   });
   qtyField.addEventListener("input", recalc);
@@ -586,6 +713,7 @@ async function loadFulfilmentMethods() {
 
 function fillFulfilmentSelect(select) {
   if (!select) return;
+  const pendingValue = String(select.dataset.pendingValue || select.value || "").trim();
   select.innerHTML = '<option value="">Select fulfilment method...</option>';
   fulfilmentMethodsCache.forEach(opt => {
     const option = document.createElement("option");
@@ -593,6 +721,10 @@ function fillFulfilmentSelect(select) {
     option.textContent = opt["Name"];
     select.appendChild(option);
   });
+  if (pendingValue) {
+    select.value = pendingValue;
+    if (select.value === pendingValue) delete select.dataset.pendingValue;
+  }
 }
 
 // === Inventory validation ===
@@ -740,8 +872,6 @@ function addNewRow() {
     }, 200);
   }
 
-  tr.querySelector(".open-inventory").addEventListener("click", () => openInventoryWindow(tr));
-
   tr.querySelector(".delete-row").addEventListener("click", () => {
     tr.remove();
     updateOrderSummary();
@@ -792,11 +922,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         <input type="hidden" class="item-inv-detail" />
         <span class="inv-summary"></span>
       `;
-    }
-
-    const firstInvBtn = firstRow.querySelector(".open-inventory");
-    if (firstInvBtn) {
-      firstInvBtn.addEventListener("click", () => openInventoryWindow(firstRow));
     }
 
     const firstFulfilSel = firstRow.querySelector(".item-fulfilment");

@@ -299,7 +299,8 @@
 }
 
 /* --- Multi-select (Roles) --- */
-#roleSelect {
+#roleSelect,
+#accessSelect {
   appearance: listbox;
   -webkit-appearance: listbox;
   min-height: 120px;
@@ -311,28 +312,33 @@
   overflow-y: auto;
   box-sizing: border-box;
 }
-#roleSelect option {
+#roleSelect option,
+#accessSelect option {
   padding: 0.4rem 0.5rem;
   border-radius: 4px;
   margin: 1px 0;
   cursor: pointer;
   transition: background 0.15s ease, color 0.15s ease;
 }
-#roleSelect option:hover {
+#roleSelect option:hover,
+#accessSelect option:hover {
   background: rgba(0, 129, 171, 0.08);
 }
-#roleSelect option:checked {
+#roleSelect option:checked,
+#accessSelect option:checked {
   background: var(--brand);
   color: #fff;
 }
 
 /* --- Scrollbars --- */
 .modal-body::-webkit-scrollbar,
-#roleSelect::-webkit-scrollbar {
+#roleSelect::-webkit-scrollbar,
+#accessSelect::-webkit-scrollbar {
   width: 8px;
 }
 .modal-body::-webkit-scrollbar-thumb,
-#roleSelect::-webkit-scrollbar-thumb {
+#roleSelect::-webkit-scrollbar-thumb,
+#accessSelect::-webkit-scrollbar-thumb {
   background: var(--line);
   border-radius: 4px;
 }

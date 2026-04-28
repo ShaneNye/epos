@@ -546,7 +546,7 @@ function validateOrderBeforeSave() {
     const lineNo = row.getAttribute("data-line") ?? String(idx + 1);
 
     const itemClass = (row.dataset.itemClass || "").trim().toLowerCase();
-    const isService = itemClass === "service";
+    const isService = itemClass === "service" || itemClass.includes("service");
 
     const fulfilSel = row.querySelector(".item-fulfilment");
     const fulfilId = (fulfilSel?.value || "").trim();

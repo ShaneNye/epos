@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+    <title>EPOS Promotions</title>
+
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/admin.css">
+    <link rel="stylesheet" href="/css/promotions.css">
+
+    <script src="/js/storage.js"></script>
+    <script src="/js/main.js" defer></script>
+    <script src="/js/menu.js" defer></script>
+    <script src="/js/promotions.js" defer></script>
+</head>
+<body>
+    <div id="menu"></div>
+
+    <main class="content promotions-page">
+        <header class="promotions-hero">
+            <div>
+                <h1 class="page-title">Promotions</h1>
+                <p>Configure kiosk upsells and automatic basket discounts without needing code changes.</p>
+            </div>
+            <div id="promotionsStatus" class="promotions-status" aria-live="polite">Loading promotions...</div>
+        </header>
+
+        <section class="promotions-grid">
+            <article class="promotions-panel">
+                <div class="promotions-panel-head">
+                    <div>
+                        <h2>Upsells</h2>
+                        <p>Suggest a discounted product when any selected trigger item, or any item in a chosen class, is already in the cart.</p>
+                    </div>
+                    <button id="addUpsellBtn" class="btn-primary" type="button">Add Upsell</button>
+                </div>
+                <div class="table-scroll-wrapper">
+                    <table id="upsellTable" class="promotions-table">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Triggers</th>
+                                <th>Suggested Item</th>
+                                <th>Discount</th>
+                                <th>Dates</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </article>
+
+            <article class="promotions-panel">
+                <div class="promotions-panel-head">
+                    <div>
+                        <h2>Basket Discounts</h2>
+                        <p>Force negative-value basket discount items into the cart based on basket value ranges.</p>
+                    </div>
+                    <button id="addBasketDiscountBtn" class="btn-primary" type="button">Add Basket Discount</button>
+                </div>
+                <div class="table-scroll-wrapper">
+                    <table id="basketDiscountTable" class="promotions-table">
+                        <thead>
+                            <tr>
+                                <th>Title</th>
+                                <th>Date Range</th>
+                                <th>Rules</th>
+                                <th>Status</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </article>
+        </section>
+    </main>
+
+    <datalist id="promotionItemOptions"></datalist>
+
+    <div id="upsellModal" class="modal hidden">
+        <div class="modal-content promotions-modal">
+            <h3 id="upsellModalTitle">Add Upsell</h3>
+            <div class="modal-body">
+                <form id="upsellForm" class="promotions-form">
+                    <input type="hidden" id="upsellPromotionId">
+
+                    <label>
+                        Promotion Title
+                        <input id="upsellTitle" type="text" required>
+                    </label>
+
+                    <label>
+                        Trigger Items
+                        <div class="promotion-trigger-picker">
+                            <div class="promotion-trigger-search-row">
+                                <input id="upsellTriggerSearch" type="text" list="promotionItemOptions" placeholder="Search item name or ID and add it">
+                                <button id="addUpsellTriggerBtn" class="btn-secondary" type="button">Add</button>
+                            </div>
+                            <div id="upsellTriggerItems" class="promotion-trigger-list"></div>
+                        </div>
+                    </label>
+                    <div class="promotion-help">Search for an item and add as many triggers as you need.</div>
+                    <div id="upsellTriggerPreview" class="promotion-item-preview"></div>
+
+                    <label>
+                        Or Trigger By Item Class
+                        <select id="upsellTriggerClass">
+                            <option value="">No class trigger</option>
+                        </select>
+                    </label>
+                    <div class="promotion-help">Leave this blank if you only want the upsell to trigger from specific items.</div>
+
+                    <label>
+                        Suggested Item
+                        <input id="upsellSuggestedItem" type="text" list="promotionItemOptions" placeholder="Start typing an item name or ID" required>
+                    </label>
+                    <div id="upsellSuggestedPreview" class="promotion-item-preview"></div>
+
+                    <label>
+                        Discount Percentage
+                        <input id="upsellDiscountPercent" type="number" min="0" max="100" step="0.1" required>
+                    </label>
+
+                    <label>
+                        Customer Message
+                        <textarea id="upsellMessage" rows="3" placeholder="e.g. 20% off boxed pillows with all H&A this month"></textarea>
+                    </label>
+
+                    <div class="promotions-form-grid">
+                        <label>
+                            Start Date
+                            <input id="upsellStartDate" type="date" required>
+                        </label>
+                        <label>
+                            End Date
+                            <input id="upsellEndDate" type="date" required>
+                        </label>
+                    </div>
+
+                    <label class="promotions-checkbox">
+                        <input id="upsellIsActive" type="checkbox" checked>
+                        <span>Promotion is active</span>
+                    </label>
+                </form>
+            </div>
+            <div class="modal-actions">
+                <button id="saveUpsellBtn" class="btn-primary" type="button">Save Upsell</button>
+                <button id="cancelUpsellBtn" class="btn-secondary" type="button">Cancel</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="basketDiscountModal" class="modal hidden">
+        <div class="modal-content promotions-modal promotions-modal-wide">
+            <h3 id="basketDiscountModalTitle">Add Basket Discount</h3>
+            <div class="modal-body">
+                <form id="basketDiscountForm" class="promotions-form">
+                    <input type="hidden" id="basketDiscountPromotionId">
+
+                    <label>
+                        Promotion Title
+                        <input id="basketDiscountTitle" type="text" required>
+                    </label>
+
+                    <label>
+                        Internal Notes / Message
+                        <textarea id="basketDiscountMessage" rows="2" placeholder="Optional notes for the team"></textarea>
+                    </label>
+
+                    <div class="promotions-form-grid">
+                        <label>
+                            Start Date
+                            <input id="basketDiscountStartDate" type="date" required>
+                        </label>
+                        <label>
+                            End Date
+                            <input id="basketDiscountEndDate" type="date" required>
+                        </label>
+                    </div>
+
+                    <label class="promotions-checkbox">
+                        <input id="basketDiscountIsActive" type="checkbox" checked>
+                        <span>Promotion is active</span>
+                    </label>
+
+                    <div class="promotions-rules-head">
+                        <div>
+                            <strong>Basket Value Rules</strong>
+                            <p>Each rule maps a basket range to the negative-value item that should be forced into the cart.</p>
+                        </div>
+                        <button id="addBasketRuleBtn" class="btn-secondary" type="button">Add Rule</button>
+                    </div>
+
+                    <div class="table-scroll-wrapper">
+                        <table class="promotions-table promotions-rules-table">
+                            <thead>
+                                <tr>
+                                    <th>Min Value</th>
+                                    <th>Max Value</th>
+                                    <th>Item</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody id="basketRulesBody"></tbody>
+                        </table>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-actions">
+                <button id="saveBasketDiscountBtn" class="btn-primary" type="button">Save Basket Discount</button>
+                <button id="cancelBasketDiscountBtn" class="btn-secondary" type="button">Cancel</button>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

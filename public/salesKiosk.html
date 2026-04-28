@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+    <title>EPOS : Sales Kiosk</title>
+
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/salesKiosk.css">
+
+    <script src="/js/storage.js"></script>
+    <script src="/js/main.js" defer></script>
+    <script src="/js/menu.js" defer></script>
+    <script src="/js/nsItemFeedCache.js" defer></script>
+    <script src="/js/itemOptionsCache.js" defer></script>
+    <script src="/js/salesKiosk.js" defer></script>
+</head>
+<body>
+    <div id="menu"></div>
+
+    <main class="content kiosk-page">
+        <header class="kiosk-hero">
+            <div class="kiosk-hero-copy">
+                <h1 class="page-title">Sales Kiosk</h1>
+            </div>
+            <div class="kiosk-toolbar">
+                <label class="kiosk-search">
+                    <span>Search</span>
+                    <input id="kioskSearch" type="search" placeholder="Search product name, class, or ID..." />
+                </label>
+                <label class="kiosk-filter">
+                    <span>Class</span>
+                    <select id="kioskClassFilter">
+                        <option value="">All classes</option>
+                    </select>
+                </label>
+            </div>
+        </header>
+
+        <section id="kioskStatus" class="kiosk-status" aria-live="polite">Loading catalogue...</section>
+        <section id="kioskProductGrid" class="kiosk-grid" aria-label="Sales kiosk catalogue"></section>
+        <footer id="kioskPageFooter" class="kiosk-page-footer" hidden>
+            <div class="kiosk-page-footer-summary">
+                <div class="kiosk-page-footer-metric">
+                    <span>No of items in cart</span>
+                    <strong id="kioskPageFooterCount">0</strong>
+                </div>
+                <div class="kiosk-page-footer-metric">
+                    <span>Sales total</span>
+                    <strong id="kioskPageFooterTotal">£0.00</strong>
+                </div>
+                <div class="kiosk-page-footer-metric">
+                    <span>Total discount applied</span>
+                    <strong id="kioskPageFooterDiscount">£0.00</strong>
+                </div>
+               <!--<div class="kiosk-page-footer-metric" id="kioskPageFooterTradeInWrap" hidden>
+                    <span>Trade in discount</span>
+                    <strong id="kioskPageFooterTradeIn">Â£0.00</strong>
+                </div> -->
+            </div>
+        </footer>
+    </main>
+
+    <button id="kioskCartToggle" class="kiosk-cart-toggle" type="button" aria-expanded="false" aria-controls="kioskCartDrawer">
+        <span class="kiosk-cart-toggle-label">Cart</span>
+        <strong id="kioskCartToggleCount">0</strong>
+    </button>
+
+    <aside id="kioskCartDrawer" class="kiosk-cart-drawer" aria-label="Sales kiosk cart" aria-hidden="true">
+        <div class="kiosk-cart-header">
+            <div>
+                <p class="kiosk-kicker"></p>
+                <h2>Cart</h2>
+            </div>
+            <button id="kioskCartClose" class="kiosk-icon-btn" type="button" aria-label="Close cart">×</button>
+        </div>
+
+        <div id="kioskCartItems" class="kiosk-cart-items"></div>
+
+        <div class="kiosk-cart-footer">
+            <div class="kiosk-cart-summary" id="kioskCartSummary" hidden>
+                <div class="kiosk-cart-summary-row">
+                    <span>Sales total</span>
+                    <strong id="kioskCartFooterTotal">£0.00</strong>
+                </div>
+                <div class="kiosk-cart-summary-row">
+                    <span>No of items in cart</span>
+                    <strong id="kioskCartFooterCount">0</strong>
+                </div>
+                <div class="kiosk-cart-summary-row">
+                    <span>Total discount applied</span>
+                    <strong id="kioskCartFooterDiscount">£0.00</strong>
+                </div>
+                <div class="kiosk-cart-summary-row" id="kioskCartFooterTradeInWrap" hidden>
+                    <span>Trade in discount</span>
+                    <strong id="kioskCartFooterTradeIn">Â£0.00</strong>
+                </div>
+            </div>
+            <section id="kioskCheckoutPanel" class="kiosk-checkout-panel" hidden>
+                <div class="kiosk-checkout-header">
+                    <div>
+                        <p class="kiosk-kicker">Checkout</p>
+                        <h3 id="kioskCheckoutTitleText">Customer details</h3>
+                    </div>
+                    <button id="kioskCheckoutClose" class="kiosk-icon-btn" type="button" aria-label="Close checkout">×</button>
+                </div>
+
+                <div class="kiosk-checkout-stepper" aria-label="Checkout steps">
+                    <div id="kioskCheckoutStepCustomer" class="kiosk-checkout-step is-active">1. Customer</div>
+                    <div id="kioskCheckoutStepOrder" class="kiosk-checkout-step">2. Order</div>
+                    <div id="kioskCheckoutStepPayment" class="kiosk-checkout-step">3. Payment</div>
+                </div>
+
+                <div id="kioskCheckoutMatchStatus" class="kiosk-checkout-status" aria-live="polite"></div>
+
+                <div id="kioskCheckoutCustomerStage" class="kiosk-checkout-stage">
+                <div class="kiosk-checkout-grid">
+                    <label class="kiosk-checkout-field">
+                        <span>Title</span>
+                        <select id="kioskCheckoutTitle">
+                            <option value="">Loading titles...</option>
+                        </select>
+                    </label>
+                    <label class="kiosk-checkout-field">
+                        <span>First name</span>
+                        <input id="kioskCheckoutFirstName" type="text" />
+                    </label>
+                    <label class="kiosk-checkout-field">
+                        <span>Last name</span>
+                        <input id="kioskCheckoutLastName" type="text" />
+                    </label>
+                    <label class="kiosk-checkout-field">
+                        <span>Email</span>
+                        <input id="kioskCheckoutEmail" type="email" autocomplete="email" spellcheck="false" />
+                    </label>
+                    <label class="kiosk-checkout-field">
+                        <span>Contact number</span>
+                        <input id="kioskCheckoutContactNumber" type="tel" inputmode="numeric" autocomplete="tel" />
+                    </label>
+                    <label class="kiosk-checkout-field">
+                        <span>Alt contact number</span>
+                        <input id="kioskCheckoutAltContactNumber" type="tel" inputmode="numeric" autocomplete="tel" />
+                    </label>
+                    <label class="kiosk-checkout-field kiosk-checkout-field-wide">
+                        <span>Postcode</span>
+                        <div class="kiosk-checkout-inline">
+                            <input id="kioskCheckoutPostcode" type="text" placeholder="e.g. BN27 1UX" />
+                            <button id="kioskCheckoutFindAddress" class="btn-secondary" type="button">Find</button>
+                        </div>
+                        <select id="kioskCheckoutAddressResults" hidden>
+                            <option value="">Select an address</option>
+                        </select>
+                    </label>
+                    <label class="kiosk-checkout-field kiosk-checkout-field-wide">
+                        <span>Address line 1</span>
+                        <input id="kioskCheckoutAddress1" type="text" />
+                    </label>
+                    <label class="kiosk-checkout-field kiosk-checkout-field-wide">
+                        <span>Address line 2</span>
+                        <input id="kioskCheckoutAddress2" type="text" />
+                    </label>
+                    <label class="kiosk-checkout-field kiosk-checkout-field-wide">
+                        <span>Address line 3</span>
+                        <input id="kioskCheckoutAddress3" type="text" />
+                    </label>
+                    <label class="kiosk-checkout-field kiosk-checkout-field-wide">
+                        <span>County</span>
+                        <input id="kioskCheckoutCounty" type="text" />
+                    </label>
+                    <label class="kiosk-checkout-field kiosk-checkout-field-checkbox kiosk-checkout-field-wide">
+                        <input id="kioskCheckoutNoAddress" type="checkbox" />
+                        <span>No address required</span>
+                    </label>
+                </div>
+
+                <div class="kiosk-checkout-actions">
+                    <button id="kioskCheckoutMatch" class="btn-secondary" type="button">Check Customer</button>
+                    <button id="kioskCheckoutNext" class="btn-primary" type="button">Continue To Order</button>
+                </div>
+                </div>
+
+                <div id="kioskCheckoutOrderStage" class="kiosk-checkout-stage" hidden>
+                <div class="kiosk-checkout-grid">
+                    <label class="kiosk-checkout-field">
+                        <span>Sales executive</span>
+                        <input id="kioskCheckoutSalesExec" type="text" readonly />
+                    </label>
+                    <label class="kiosk-checkout-field">
+                        <span>Store</span>
+                        <select id="kioskCheckoutStore">
+                            <option value="">Loading stores...</option>
+                        </select>
+                    </label>
+                    <label class="kiosk-checkout-field">
+                        <span>Lead source</span>
+                        <select id="kioskCheckoutLeadSource">
+                            <option value="">Loading lead sources...</option>
+                        </select>
+                    </label>
+                    <label class="kiosk-checkout-field">
+                        <span>Payment info</span>
+                        <select id="kioskCheckoutPaymentInfo">
+                            <option value="">Loading payment info...</option>
+                        </select>
+                    </label>
+                    <label class="kiosk-checkout-field kiosk-checkout-field-wide">
+                        <span>Warehouse</span>
+                        <select id="kioskCheckoutWarehouse">
+                            <option value="">Loading warehouses...</option>
+                        </select>
+                    </label>
+                    <label class="kiosk-checkout-field kiosk-checkout-field-wide">
+                        <span>Dispatch / delivery notes</span>
+                        <textarea id="kioskCheckoutMemo" rows="3"></textarea>
+                    </label>
+                </div>
+
+                <div class="kiosk-checkout-actions">
+                    <button id="kioskCheckoutBack" class="btn-secondary" type="button">Back To Customer</button>
+                    <button id="kioskCheckoutOrderNext" class="btn-primary" type="button">Continue To Payment</button>
+                </div>
+                </div>
+
+                <div id="kioskCheckoutPaymentStage" class="kiosk-checkout-stage" hidden>
+                <div class="kiosk-checkout-grid">
+                    <label class="kiosk-checkout-field">
+                        <span>Payment method</span>
+                        <select id="kioskCheckoutDepositMethod">
+                            <option value="">Loading methods...</option>
+                        </select>
+                    </label>
+                    <label class="kiosk-checkout-field">
+                        <span>Deposit amount (£)</span>
+                        <input id="kioskCheckoutDepositAmount" type="number" min="0" step="0.01" placeholder="£0.00" />
+                    </label>
+                </div>
+
+                <div class="kiosk-checkout-actions">
+                    <button id="kioskCheckoutPaymentBack" class="btn-secondary" type="button">Back To Order</button>
+                    <button id="kioskCheckoutCreateQuote" class="btn-secondary" type="button">Create Quote</button>
+                    <button id="kioskCheckoutCreateSale" class="btn-primary" type="button">Create Sale</button>
+                </div>
+                </div>
+            </section>
+            <button id="kioskCartCheckout" class="btn-primary" type="button">Checkout</button>
+            <button id="kioskCartClear" class="btn-secondary" type="button">Clear Cart</button>
+        </div>
+    </aside>
+
+    <button id="kioskPromotionToggle" class="kiosk-promotion-toggle" type="button" aria-expanded="false" aria-controls="kioskPromotionDrawer" hidden>
+        <span class="kiosk-promotion-toggle-label">Upsells</span>
+    </button>
+
+    <aside id="kioskPromotionDrawer" class="kiosk-promotion-drawer" aria-label="Suggested add-ons" aria-hidden="true" hidden>
+        <div class="kiosk-promotion-drawer-header">
+            <div>
+                <p class="kiosk-kicker">Upsells</p>
+                <h2>Suggested add-ons</h2>
+            </div>
+            <button id="kioskPromotionClose" class="kiosk-icon-btn" type="button" aria-label="Collapse suggestions">x</button>
+        </div>
+        <section id="kioskCartPromotions" class="kiosk-cart-promotions"></section>
+    </aside>
+
+    <div id="kioskLineModal" class="kiosk-line-modal" hidden aria-hidden="true">
+        <div id="kioskLineModalBackdrop" class="kiosk-line-modal-backdrop"></div>
+        <section class="kiosk-line-modal-dialog" role="dialog" aria-modal="true" aria-labelledby="kioskLineModalTitle">
+            <div class="kiosk-line-modal-header">
+                <div>
+                    <p class="kiosk-kicker">Configure line</p>
+                    <h2 id="kioskLineModalTitle">Add item to cart</h2>
+                </div>
+                <button id="kioskLineModalClose" class="kiosk-icon-btn" type="button" aria-label="Close line configuration">×</button>
+            </div>
+
+            <div class="kiosk-line-modal-body">
+                <div class="kiosk-line-item">
+                    <div id="kioskLineModalThumb" class="kiosk-line-item-thumb"></div>
+                    <div class="kiosk-line-item-copy">
+                        <strong id="kioskLineModalItemName">Item</strong>
+                        <div id="kioskLineModalItemMeta" class="kiosk-line-item-meta"></div>
+                    </div>
+                </div>
+
+                <div class="kiosk-line-fields">
+                    <label class="kiosk-line-field">
+                        <span>Quantity</span>
+                        <input id="kioskLineModalQty" type="number" min="1" step="1" value="1">
+                    </label>
+                    <label class="kiosk-line-field">
+                        <span>Discount %</span>
+                        <input id="kioskLineModalRetailPercent" type="number" min="0" max="100" step="0.1" value="0">
+                    </label>
+                    <label class="kiosk-line-field">
+                        <span>Sale price</span>
+                        <input id="kioskLineModalPrice" type="number" min="0" step="0.01" value="0.00">
+                    </label>
+                    <label class="kiosk-line-field kiosk-line-field-wide">
+                        <span>Fulfilment method</span>
+                        <select id="kioskLineModalFulfilment">
+                            <option value="">Select fulfilment method...</option>
+                        </select>
+                    </label>
+                </div>
+
+                <div id="kioskLineModalInventoryBlock" class="kiosk-line-options-block" hidden>
+                    <div class="kiosk-line-options-head">
+                        <div>
+                            <span class="kiosk-line-section-label">Inventory detail</span>
+                            <strong id="kioskLineModalInventoryState">Inventory allocation required</strong>
+                        </div>
+                        <button id="kioskLineModalInventoryBtn" class="btn-secondary" type="button">Allocate Inventory</button>
+                    </div>
+                    <div id="kioskLineModalInventorySummary" class="kiosk-line-options-summary">No inventory selected yet.</div>
+                </div>
+
+                <div id="kioskLineModalOptionsBlock" class="kiosk-line-options-block" hidden>
+                    <div class="kiosk-line-options-head">
+                        <div>
+                            <span class="kiosk-line-section-label">Item options</span>
+                            <strong id="kioskLineModalOptionsState">Options required before adding</strong>
+                        </div>
+                        <button id="kioskLineModalOptionsBtn" class="btn-secondary" type="button">Configure Options</button>
+                    </div>
+                    <div id="kioskLineModalOptionsSummary" class="kiosk-line-options-summary">No options selected yet.</div>
+                </div>
+
+                <div class="kiosk-line-summary">
+                    <div>
+                        <span>Retail total</span>
+                        <strong id="kioskLineModalRetailTotal">£0.00</strong>
+                    </div>
+                    <div>
+                        <span>Discount applied</span>
+                        <strong id="kioskLineModalDiscount">£0.00</strong>
+                    </div>
+                </div>
+            </div>
+
+            <div class="kiosk-line-modal-footer">
+                <button id="kioskLineModalCancel" class="btn-secondary" type="button">Cancel</button>
+                <button id="kioskLineModalSave" class="btn-primary" type="button">Add To Cart</button>
+            </div>
+        </section>
+    </div>
+</body>
+</html>

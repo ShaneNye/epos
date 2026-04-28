@@ -5,6 +5,13 @@ const productFeeds = {
     "https://7972741.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4349&deploy=1&compid=7972741&ns-at=AAEJ7tMQJry3Xg_bYRGo6Nb9K7z8_2rleWv3_ujrUWhzaxks0Io",
 };
 
+const webManagementFeeds = {
+  sandbox:
+    "https://7972741-sb1.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4070&deploy=1&compid=7972741_SB1&ns-at=AAEJ7tMQ36KHWv402slQtrHVQ0QIFZOqj2KRxW39ZEthF8eqhic",
+  production:
+    "https://7972741.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4365&deploy=1&compid=7972741&ns-at=AAEJ7tMQX3Lm8Lt3rpeFR1ezfurShY30Is8kgSGklUki_rKqMrQ",
+};
+
 const validationFeeds = {
   sandbox:
     "https://7972741-sb1.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4063&deploy=1&compid=7972741_SB1&ns-at=AAEJ7tMQ_MeqOHAMqQr_VxvEHRx5tpG9A7OFoZTvlCBduLahtfk",
@@ -142,12 +149,14 @@ const fields = [
   { name: "Description Preview", internalid: "custitem_sb_web_desc", fieldType: "rich-text" },
   { name: "reasons to buy", internalid: "custitem_sb_reasons_to_buy", fieldType: "multiple-select", optionFeed: "Reasons To Buy" },
   { name: "New Feature Desc", internalid: "custitem_sb_web_prod_description", fieldType: "rich-text" },
+  { name: "EAN/GTIN", internalid: "custitem_sb_ean_no", fieldType: "Free-Form Text", hiddenField: true },
 ];
 
 module.exports = {
   fields,
   optionFeeds,
   productFeeds,
+  webManagementFeeds,
   validationFeeds,
   validationFields,
 };
