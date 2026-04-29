@@ -380,6 +380,16 @@ router.post("/:id/save", async (req, res) => {
     const userId = await resolveUserIdFromAuth(req);
     console.log("🔐 Quote save request for user:", userId);
 
+    const salesExecNsId = await resolveSalesExecNsId(headerUpdates.salesExec);
+    const { storeNsId } = await resolveStoreData(headerUpdates.store);
+    const mappedHeaderUpdates = {
+      ...headerUpdates,
+      salesExec: salesExecNsId || "",
+      store: storeNsId || "",
+    };
+
+    console.log("Mapped headerUpdates for NetSuite:", JSON.stringify(mappedHeaderUpdates, null, 2));
+
     const restletUrl =
       `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl` +
       `?script=${process.env.NS_QUOTE_SAVE_RESTLET_SCRIPT}` +
@@ -402,7 +412,7 @@ router.post("/:id/save", async (req, res) => {
       body: JSON.stringify({
         id: String(id),
         updates,
-        headerUpdates,
+        headerUpdates: mappedHeaderUpdates,
         commit: false,
       }),
     });
@@ -631,25 +641,7 @@ router.post("/:id/convert", async (req, res) => {
     const quoteLines = Array.isArray(suiteql?.items) ? suiteql.items : [];
     if (!quoteLines.length) throw new Error(`No line items found in quote ${id}`);
 
-    const cleanedItems = quoteLines.map((line) => ({
-      item: { id: String(line.item) },
-      quantity: Number(line.quantity) || 1,
-      rate: Number(line.rate) || 0,
-      ...(line.taxcode && {
-        taxCode: { id: String(line.taxcode) },
-      }),
-      custcol_sb_itemoptionsdisplay: line.options || "",
-      ...(line.custcol_sb_fulfilmentlocation && {
-        custcol_sb_fulfilmentlocation: {
-          id: String(line.custcol_sb_fulfilmentlocation),
-        },
-      }),
-    }));
-
     const orderBody = {
-      entity: quote.entity,
-      subsidiary: quote.subsidiary,
-      location: quote.location,
       trandate: new Date().toISOString().split("T")[0],
       orderstatus: "A",
       leadsource: quote.leadsource,
@@ -657,11 +649,10 @@ router.post("/:id/convert", async (req, res) => {
       custbody_sb_bedspecialist: quote.custbody_sb_bedspecialist,
       custbody_sb_warehouse: quote.custbody_sb_warehouse,
       custbody_sb_primarystore: quote.custbody_sb_primarystore,
-      item: { items: cleanedItems },
     };
 
     console.log("🧾 Final Sales Order payload:", JSON.stringify(orderBody, null, 2));
-    const so = await nsPost("/salesOrder", orderBody, userId, "sb");
+    const so = await nsPost(`/estimate/${id}/!transform/salesOrder`, orderBody, userId, "sb");
 
     let salesOrderId = so.id || null;
     if (!salesOrderId && so._location) {
@@ -669,7 +660,16 @@ router.post("/:id/convert", async (req, res) => {
       if (match) salesOrderId = match[1];
     }
 
-    return res.json({ ok: true, salesOrderId, response: so });
+    return res.json({
+      ok: true,
+      salesOrderId,
+      quoteStatusUpdated: true,
+      quoteStatusResult: {
+        ok: true,
+        method: "estimate_transform_salesOrder",
+      },
+      response: so,
+    });
   } catch (err) {
     console.error("❌ Quote → Sales Order conversion failed:", err.message);
     res.status(500).json({ ok: false, error: err.message });

@@ -73,7 +73,7 @@
             optCell.innerHTML = "";
           } else {
             optCell.innerHTML = `
-              <button type="button" class="open-options btn-secondary small-btn">⚙️ Options</button>
+              <button type="button" class="open-options btn-secondary small-btn">Options</button>
               <input type="hidden" class="item-options-json" value="{}" />
               <div class="options-summary"></div>
             `;

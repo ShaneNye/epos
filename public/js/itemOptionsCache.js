@@ -12,7 +12,13 @@
 
   function isExcludedFieldName(fieldName) {
     const normalized = String(fieldName || "").trim().toLowerCase();
-    return normalized === "size.v1";
+    return [
+      "base option",
+      "base options",
+      "fabric type",
+      "mattress protector sizes",
+      "size.v1",
+    ].includes(normalized);
   }
 
   function sanitizeItemOptions(byItemId) {

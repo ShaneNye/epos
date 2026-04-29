@@ -19,6 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
     { value: "logistics", label: "Logistics" },
     { value: "suitepim", label: "SuitePim" },
     { value: "promotions", label: "Promotions" },
+    { value: "ai-access", label: "AI Access" },
     { value: "admin", label: "Admin" },
   ];
 

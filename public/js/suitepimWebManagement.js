@@ -24,10 +24,7 @@
       {
         name: "Web Description",
         fields: ["Name", "New Feature Desc", "reasons to buy", "Page Preview"],
-        filters: [
-          { field: "Is Parent", value: false },
-          { field: "Inactive", value: false },
-        ],
+        filters: [],
       },
       {
         name: "Mattress Metrics",
@@ -87,7 +84,7 @@
       "suitepimRefreshBtn",
       "suitepimPushBtn",
       "suitepimPresetSelect",
-      "suitepimApplyPresetBtn",
+      "suitepimShowChildren",
       "suitepimMount",
       "suitepimStatus",
       "suitepimPushReport",
@@ -179,11 +176,19 @@
     );
   }
 
+  function optionStoredValue(field, option) {
+    if (!option) return "";
+    if (field?.fieldType === "image") {
+      return optionImageUrl(option) || option.name || "";
+    }
+    return option.name || "";
+  }
+
   function imageThumb(url, alt) {
     if (!url) {
       return `<div class="suitepim-image-fallback" aria-hidden="true">No image</div>`;
     }
-    return `<img class="suitepim-image-thumb" src="${escapeHtml(url)}" alt="${escapeHtml(alt || "Image preview")}">`;
+    return `<img class="suitepim-image-thumb" src="${escapeHtml(url)}" alt="${escapeHtml(alt || "Image preview")}" loading="lazy" decoding="async">`;
   }
 
   function stripHtml(value) {
@@ -641,6 +646,10 @@
     return ["true", "t", "1", "yes", "y"].includes(String(value || "").trim().toLowerCase());
   }
 
+  function canManageFeatureDescription(row) {
+    return boolValue(row?.["Is Parent"]);
+  }
+
   function isCalculatedPriceField(column) {
     return ["Purchase Price", "Base Price", "Retail Price", "Margin"].includes(column);
   }
@@ -733,11 +742,19 @@
 
     el.suitepimPushReport.hidden = false;
     el.suitepimPushReport.innerHTML = `
-      <div class="suitepim-push-report-header">
-        <h2>Push report: ${success} successful, ${failed} failed, ${skipped} skipped</h2>
-        <button type="button" id="suitepimClearPushReport">Clear</button>
-      </div>
-      <div class="suitepim-result-list">${rows}</div>
+      <details class="suitepim-push-report-details">
+        <summary class="suitepim-push-report-summary">
+          <span>Push report: ${success} successful, ${failed} failed, ${skipped} skipped</span>
+          <span class="suitepim-push-report-chevron" aria-hidden="true">+</span>
+        </summary>
+        <div class="suitepim-push-report-body">
+          <div class="suitepim-push-report-header">
+            <h2>Push report details</h2>
+            <button type="button" id="suitepimClearPushReport">Clear</button>
+          </div>
+          <div class="suitepim-result-list">${rows}</div>
+        </div>
+      </details>
     `;
     document.getElementById("suitepimClearPushReport")?.addEventListener("click", () => {
       el.suitepimPushReport.hidden = true;
@@ -777,20 +794,14 @@
     state.aiGenerationModel = config.aiGenerationModel || "";
     state.visibleColumns = [
       "Name",
-      "Display Name",
-      "Class",
-      "Page Preview",
       "Category",
-      "Fabric",
-      "Catalogue Image One",
-      "Item Image",
-      "Short Description",
-      "New Short Desc",
-      "Description Preview",
-      "New Feature Desc",
       "reasons to buy",
+      "Catalogue Image One",
+      "New Feature Desc",
       "Lead Time",
+      "Online?",
       "Inactive",
+      "Page Preview",
     ];
     renderFieldSelectors();
     renderColumnChooser();
@@ -800,8 +811,8 @@
     renderPresetSelector();
   }
 
-  async function loadProducts() {
-    setLoading("Loading Web Management...");
+  async function loadProducts(forceRefresh = false) {
+    setLoading(forceRefresh ? "Refreshing Web Management from NetSuite..." : "Loading Web Management...");
     showStatus("");
     state.rows = [];
     state.filteredRows = [];
@@ -810,7 +821,7 @@
     state.selected.clear();
     state.page = 1;
 
-    const data = await api("/web-management");
+    const data = await api(`/web-management${forceRefresh ? "?refresh=1" : ""}`);
     state.rows = (data.rows || []).map((row, index) => ({ ...row, _suitepimKey: rowKey(row, index) }));
     state.rows.forEach((row) => state.baseline.set(row._suitepimKey, JSON.stringify(stripInternal(row))));
     const reasonsField = fieldByName("reasons to buy");
@@ -818,7 +829,13 @@
       await ensureOptions(reasonsField).catch(() => []);
     }
     applyFilters();
-    showStatus(`Loaded ${state.rows.length.toLocaleString()} ${data.environment} web record(s).`, "success");
+    const cache = data.cache || {};
+    const cacheSuffix = cache.source === "cache"
+      ? ` from cache (${Math.max(0, Math.round(Number(cache.ageSeconds || 0) / 60))} min old)`
+      : cache.source === "stale"
+      ? ` from cached data while NetSuite refreshes in the background (${Math.max(0, Math.round(Number(cache.ageSeconds || 0) / 60))} min old)`
+      : "";
+    showStatus(`Loaded ${state.rows.length.toLocaleString()} ${data.environment} web record(s)${cacheSuffix}.`, "success");
   }
 
   function stripInternal(row) {
@@ -841,21 +858,62 @@
     const payload = {
       "Internal ID": clean["Internal ID"],
       "Item ID": clean["Item ID"],
-      "Name": clean.Name,
+      "Name": childItemName(clean.Name),
       "Record Type": clean["Record Type"],
     };
 
     Object.keys(clean).forEach((key) => {
       if (key === "Internal ID" || key === "Item ID" || key === "Name") return;
       if (key.endsWith("_InternalId")) return;
-      if (JSON.stringify(clean[key] ?? null) === JSON.stringify(base[key] ?? null)) return;
+
+      const field = fieldByName(key) || {};
+      const internalIdKey = `${key}_InternalId`;
+      const valueChanged = JSON.stringify(clean[key] ?? null) !== JSON.stringify(base[key] ?? null);
+      const internalIdChanged = JSON.stringify(clean[internalIdKey] ?? null) !== JSON.stringify(base[internalIdKey] ?? null);
+
+      if (!valueChanged && !internalIdChanged) return;
+
+      if (field.fieldType === "image") {
+        if (clean[internalIdKey] !== undefined) payload[internalIdKey] = clean[internalIdKey];
+        return;
+      }
 
       payload[key] = clean[key];
-      const internalIdKey = `${key}_InternalId`;
       if (clean[internalIdKey] !== undefined) payload[internalIdKey] = clean[internalIdKey];
     });
 
+    state.fields.forEach((field) => {
+      const internalIdKey = `${field.name}_InternalId`;
+      if (clean[internalIdKey] === undefined && base[internalIdKey] === undefined) return;
+      if (JSON.stringify(clean[internalIdKey] ?? null) === JSON.stringify(base[internalIdKey] ?? null)) return;
+      payload[internalIdKey] = clean[internalIdKey];
+    });
+
     return payload;
+  }
+
+  function commitSuccessfulPushResults(results = []) {
+    const successful = results.filter((result) => result.status === "Success");
+    if (!successful.length) return;
+
+    const successIds = new Set(
+      successful
+        .map((result) => String(result.internalId || "").trim())
+        .filter(Boolean)
+    );
+
+    state.rows = state.rows.map((row) => {
+      const internalId = String(row["Internal ID"] || "").trim();
+      if (!successIds.has(internalId)) return row;
+
+      const clean = stripInternal(row);
+      state.baseline.set(row._suitepimKey, JSON.stringify(clean));
+      state.dirty.delete(row._suitepimKey);
+      return row;
+    });
+
+    updateSummary();
+    applyFilters();
   }
 
   function editableFields() {
@@ -890,8 +948,14 @@
   }
 
   function normalizePresetValue(field, value) {
-    if (field.fieldType === "Checkbox") return boolValue(value);
+    if (field.fieldType === "Checkbox") return boolValue(value) ? "true" : "false";
     return value;
+  }
+
+  function presetValueLabel(field, value) {
+    if (field.fieldType === "Checkbox") return value === "true" ? "Checked" : "Unchecked";
+    if (Array.isArray(value)) return value.join(", ");
+    return String(value);
   }
 
   function sameFilter(left, right) {
@@ -909,7 +973,6 @@
   function applyPreset() {
     const presetName = el.suitepimPresetSelect?.value;
     if (!presetName) {
-      showStatus("Choose a preset to apply.", "warning");
       return;
     }
 
@@ -925,7 +988,6 @@
     state.visibleColumns = [...new Set([...baseColumns, ...preset.fields])].filter((name) => fieldByName(name));
     renderColumnChooser();
 
-    const manualFilters = state.activeFilters.filter((filter) => filter?.source !== "preset");
     const presetFilters = preset.filters
       .map((filter) => {
         const field = fieldByName(filter.field);
@@ -934,13 +996,15 @@
         return {
           fieldName: filter.field,
           value: normalizedValue,
-          valueLabel: Array.isArray(normalizedValue)
-            ? normalizedValue.join(", ")
-            : String(normalizedValue),
+          valueLabel: presetValueLabel(field, normalizedValue),
           source: "preset",
         };
       })
       .filter(Boolean);
+    const presetFilterFields = new Set(presetFilters.map((filter) => filter.fieldName));
+    const manualFilters = state.activeFilters.filter((filter) =>
+      filter?.source !== "preset" && !presetFilterFields.has(filter.fieldName)
+    );
 
     state.activeFilters = [
       ...presetFilters,
@@ -953,8 +1017,8 @@
     const preservedCount = state.activeFilters.filter((filter) => filter?.source !== "preset").length;
     showStatus(
       preservedCount
-        ? `Applied ${preset.name} preset and kept ${preservedCount} manual filter${preservedCount === 1 ? "" : "s"}.`
-        : `Applied ${preset.name} preset.`,
+        ? `Loaded ${preset.name} preset and kept ${preservedCount} manual filter${preservedCount === 1 ? "" : "s"}.`
+        : `Loaded ${preset.name} preset.`,
       "success"
     );
   }
@@ -982,6 +1046,13 @@
     return String(value ?? "");
   }
 
+  function childItemName(value) {
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+    const parts = text.split(" : ").map((part) => part.trim()).filter(Boolean);
+    return parts.length ? parts[parts.length - 1] : text;
+  }
+
   function fieldUsesOptions(field) {
     return ["List/Record", "multiple-select", "image"].includes(field?.fieldType) || field?.hasOptions || field?.optionFeed;
   }
@@ -989,6 +1060,15 @@
   function optionNameById(field, id) {
     const options = state.options.get(field.name) || [];
     return options.find((option) => String(option.id) === String(id))?.name || "";
+  }
+
+  function findOptionByName(options, name) {
+    const wanted = String(name || "").trim().toLowerCase();
+    if (!wanted) return null;
+
+    return options.find((option) => option.name.toLowerCase() === wanted)
+      || options.find((option) => String(option.name).split(" : ").pop().trim().toLowerCase() === wanted)
+      || null;
   }
 
   function filterLabel(filter) {
@@ -1016,15 +1096,16 @@
     const button = document.createElement("button");
     button.type = "button";
     button.className = "suitepim-value-btn";
+    let displayValueLabel = valueLabel;
 
     const setLabel = () => {
       if (multiple) {
-        const names = Array.isArray(valueLabel) ? valueLabel : String(valueLabel || "").split(",").filter(Boolean);
+        const names = Array.isArray(displayValueLabel) ? displayValueLabel : String(displayValueLabel || "").split(",").filter(Boolean);
         button.textContent = names.length ? `${names.length} selected` : "Select";
         button.title = names.join(", ");
       } else {
-        button.textContent = valueLabel || "Select";
-        button.title = valueLabel || "";
+        button.textContent = displayValueLabel || "Select";
+        button.title = displayValueLabel || "";
       }
     };
 
@@ -1044,11 +1125,12 @@
         multiple,
         options,
         selected,
-        onSave(ids, names) {
+        onSave(ids, values, labels) {
           value = multiple ? ids : ids[0] || "";
-          valueLabel = multiple ? names : names[0] || "";
+          valueLabel = multiple ? values : values[0] || "";
+          displayValueLabel = multiple ? labels : labels[0] || "";
           setLabel();
-          onChange(value, valueLabel);
+          onChange(value, valueLabel, multiple ? ids : ids[0] || "");
         },
       };
       el.suitepimModalTitle.textContent = `Select ${field.name}`;
@@ -1200,13 +1282,13 @@
       host: el.suitepimBulkValueHost,
       field,
       mode: "bulk",
-      onChange(value, valueLabel) {
+      onChange(value, valueLabel, internalIds = null) {
         state.bulkDraft = {
           fieldName: field.name,
           mode: isBulkPricingField(field.name) ? el.suitepimBulkMode.value : "set",
           value: field.fieldType === "Checkbox" ? value === "true" : value,
           valueLabel,
-          internalIds: fieldUsesOptions(field) ? value : null,
+          internalIds: fieldUsesOptions(field) ? (internalIds ?? value) : null,
         };
       },
     }).catch((err) => showStatus(err.message, "error"));
@@ -1265,6 +1347,7 @@
   function applyFilters() {
     const search = el.suitepimSearch.value.trim().toLowerCase();
     const stateFilter = el.suitepimStateFilter.value;
+    const showChildren = !!el.suitepimShowChildren?.checked;
 
     state.filteredRows = state.rows.filter((row) => {
       if (search) {
@@ -1280,11 +1363,9 @@
         if (!haystack.includes(search)) return false;
       }
 
-      if (stateFilter === "active" && boolValue(row.Inactive)) return false;
-      if (stateFilter === "inactive" && !boolValue(row.Inactive)) return false;
-      if (stateFilter === "parent" && !boolValue(row["Is Parent"])) return false;
-      if (stateFilter === "changed" && !state.dirty.has(row._suitepimKey)) return false;
-      if (stateFilter === "selected" && !state.selected.has(row._suitepimKey)) return false;
+      if (!showChildren && !boolValue(row["Is Parent"])) return false;
+      if (stateFilter === "online" && !boolValue(row["Online?"])) return false;
+      if (stateFilter === "offline" && boolValue(row["Online?"])) return false;
 
       if (!state.activeFilters.every((filter) => matchesFieldFilter(row, filter))) return false;
 
@@ -1298,10 +1379,10 @@
   }
 
   function updateSummary() {
-    el.suitepimTotalCount.textContent = state.rows.length.toLocaleString();
-    el.suitepimVisibleCount.textContent = state.filteredRows.length.toLocaleString();
-    el.suitepimSelectedCount.textContent = state.selected.size.toLocaleString();
-    el.suitepimChangedCount.textContent = state.dirty.size.toLocaleString();
+    if (el.suitepimTotalCount) el.suitepimTotalCount.textContent = state.rows.length.toLocaleString();
+    if (el.suitepimVisibleCount) el.suitepimVisibleCount.textContent = state.filteredRows.length.toLocaleString();
+    if (el.suitepimSelectedCount) el.suitepimSelectedCount.textContent = state.selected.size.toLocaleString();
+    if (el.suitepimChangedCount) el.suitepimChangedCount.textContent = state.dirty.size.toLocaleString();
   }
 
   function pageRows() {
@@ -1396,9 +1477,12 @@
       button.type = "button";
       button.className = "suitepim-value-btn suitepim-preview-btn";
       const isGenerating = state.generating.has(row._suitepimKey);
+      const canGenerate = canManageFeatureDescription(row);
       button.textContent = isGenerating ? "Generating..." : "Generate";
-      button.disabled = isGenerating || !state.aiGenerationConfigured;
-      button.title = !state.aiGenerationConfigured
+      button.disabled = isGenerating || !state.aiGenerationConfigured || !canGenerate;
+      button.title = !canGenerate
+        ? "AI descriptions can only be generated on parent lines."
+        : !state.aiGenerationConfigured
         ? "OpenAI generation is not configured on the server."
         : state.aiGenerationModel
           ? `Generate feature description with ${state.aiGenerationModel}`
@@ -1467,10 +1551,16 @@
     if (column === "New Feature Desc") {
       const wrap = document.createElement("div");
       wrap.className = "suitepim-rich-editor";
+      const canEditFeatureDescription = canManageFeatureDescription(row);
+      if (!canEditFeatureDescription) wrap.classList.add("is-disabled");
       const textarea = document.createElement("textarea");
       textarea.rows = 2;
       textarea.value = valueText(value);
-      textarea.addEventListener("input", () => updateCell(row, column, textarea.value));
+      textarea.disabled = !canEditFeatureDescription;
+      textarea.title = canEditFeatureDescription ? "" : "Feature descriptions can only be edited on parent lines.";
+      if (canEditFeatureDescription) {
+        textarea.addEventListener("input", () => updateCell(row, column, textarea.value));
+      }
       wrap.appendChild(textarea);
 
       const button = document.createElement("button");
@@ -1478,8 +1568,10 @@
       button.className = "suitepim-inline-generate-btn";
       const isGenerating = state.generating.has(row._suitepimKey);
       button.textContent = isGenerating ? "Generating..." : "Generate";
-      button.disabled = isGenerating || !state.aiGenerationConfigured;
-      button.title = !state.aiGenerationConfigured
+      button.disabled = isGenerating || !state.aiGenerationConfigured || !canEditFeatureDescription;
+      button.title = !canEditFeatureDescription
+        ? "AI descriptions can only be generated on parent lines."
+        : !state.aiGenerationConfigured
         ? "OpenAI generation is not configured on the server."
         : state.aiGenerationModel
           ? `Generate feature description with ${state.aiGenerationModel}`
@@ -1539,6 +1631,11 @@
     cell.replaceChildren(renderCell(row, column));
   }
 
+  function shouldRefreshEditedCell(column) {
+    const field = fieldByName(column) || {};
+    return ["List/Record", "image", "multiple-select", "Preview", "Generate"].includes(field.fieldType);
+  }
+
   function applyGeneratedFieldUpdates(row, fieldUpdates = {}) {
     const keys = Object.keys(fieldUpdates || {});
     if (!keys.length) return row;
@@ -1553,6 +1650,8 @@
   }
 
   function updateCell(row, column, value, internalIds = null, options = {}) {
+    if (column === "New Feature Desc" && !canManageFeatureDescription(row)) return;
+
     const idx = state.rows.findIndex((item) => item._suitepimKey === row._suitepimKey);
     if (idx === -1) return;
 
@@ -1577,7 +1676,7 @@
     }
     updateSummary();
     updateRenderedRow(updated._suitepimKey, updated, column);
-    if (options.refreshCell) {
+    if (options.refreshCell || shouldRefreshEditedCell(column)) {
       rerenderCell(updated._suitepimKey, column);
     }
   }
@@ -1585,6 +1684,10 @@
   async function generateDescription(rowKeyValue) {
     const row = state.rows.find((item) => item._suitepimKey === rowKeyValue);
     if (!row) return;
+    if (!canManageFeatureDescription(row)) {
+      showStatus("AI descriptions can only be generated on parent lines.", "warning");
+      return;
+    }
     if (!state.aiGenerationConfigured) {
       showStatus("OpenAI generation is not configured on this server yet.", "warning");
       return;
@@ -1616,16 +1719,20 @@
   }
 
   async function generateDescriptionsBulk(targetRows) {
-    if (!targetRows.length) {
+    const rowsToGenerate = targetRows.filter(canManageFeatureDescription);
+    const skippedRows = targetRows.length - rowsToGenerate.length;
+
+    if (!rowsToGenerate.length) {
       showStatus("No rows match the selected bulk action scope.", "warning");
       return;
     }
 
     let completed = 0;
     let totalTokens = 0;
-    showStatus(`Generating descriptions for ${targetRows.length.toLocaleString()} row(s)...`, "info");
+    const skippedSuffix = skippedRows ? ` (${skippedRows.toLocaleString()} non-parent row(s) skipped)` : "";
+    showStatus(`Generating descriptions for ${rowsToGenerate.length.toLocaleString()} parent row(s)${skippedSuffix}...`, "info");
 
-    for (const targetRow of targetRows) {
+    for (const targetRow of rowsToGenerate) {
       const row = state.rows.find((item) => item._suitepimKey === targetRow._suitepimKey);
       if (!row) continue;
 
@@ -1648,10 +1755,10 @@
       }
 
       completed += 1;
-      showStatus(`Generated ${completed}/${targetRows.length} description(s)...`, "info");
+      showStatus(`Generated ${completed}/${rowsToGenerate.length} description(s)...`, "info");
     }
 
-    showStatus(`Generated descriptions for ${completed.toLocaleString()} row(s) using ${totalTokens.toLocaleString()} tokens. Review before pushing.`, "success");
+    showStatus(`Generated descriptions for ${completed.toLocaleString()} parent row(s) using ${totalTokens.toLocaleString()} tokens.${skippedSuffix} Review before pushing.`, "success");
   }
 
   async function ensureOptions(field) {
@@ -1670,7 +1777,17 @@
     const currentIds = Array.isArray(row[`${field.name}_InternalId`])
       ? row[`${field.name}_InternalId`].map(String)
       : row[`${field.name}_InternalId`] ? [String(row[`${field.name}_InternalId`])] : [];
+    const currentNames = Array.isArray(row[field.name])
+      ? row[field.name].map((item) => String(item).trim()).filter(Boolean)
+      : String(row[field.name] || "").split(",").map((item) => item.trim()).filter(Boolean);
     const selected = new Set(currentIds);
+
+    currentNames.forEach((name) => {
+      const match = findOptionByName(options, name);
+      if (match?.id != null && match.id !== "") {
+        selected.add(String(match.id));
+      }
+    });
 
     state.modal = { row, field, multiple, options, selected };
     el.suitepimModalTitle.textContent = `Select ${field.name}`;
@@ -1683,14 +1800,19 @@
     const modal = state.modal;
     if (!modal) return;
     const term = el.suitepimModalSearch.value.trim().toLowerCase();
-    const filtered = modal.options.filter((option) => option.name.toLowerCase().includes(term));
+    const filtered = modal.options
+      .filter((option) => option.name.toLowerCase().includes(term))
+      .sort((left, right) => {
+        const leftSelected = modal.selected.has(String(left.id));
+        const rightSelected = modal.selected.has(String(right.id));
+        if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
+        return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+      });
     el.suitepimModalOptions.innerHTML = "";
 
     filtered.forEach((option) => {
       const label = document.createElement("label");
-      label.className = modal.field?.fieldType === "image"
-        ? "suitepim-modal-option suitepim-modal-option-image"
-        : "suitepim-modal-option";
+      label.className = "suitepim-modal-option";
       const input = document.createElement("input");
       input.type = modal.multiple ? "checkbox" : "radio";
       input.name = "suitepim-modal-option";
@@ -1700,24 +1822,15 @@
         if (input.checked) modal.selected.add(String(option.id));
         else modal.selected.delete(String(option.id));
       });
-      if (modal.field?.fieldType === "image") {
-        const media = document.createElement("div");
-        media.className = "suitepim-modal-image";
-        media.innerHTML = imageThumb(optionImageUrl(option), option.name);
-
-        const copy = document.createElement("div");
-        copy.className = "suitepim-modal-copy";
-        copy.innerHTML = `
+      const copy = document.createElement("div");
+      copy.className = "suitepim-modal-copy";
+      copy.innerHTML = modal.field?.fieldType === "image"
+        ? `
           <strong>${escapeHtml(option.name)}</strong>
           <small>${escapeHtml(String(option.id || ""))}</small>
-        `;
-        label.append(input, media, copy);
-      } else {
-        const copy = document.createElement("div");
-        copy.className = "suitepim-modal-copy";
-        copy.innerHTML = `<strong>${escapeHtml(option.name)}</strong>`;
-        label.append(input, copy);
-      }
+        `
+        : `<strong>${escapeHtml(option.name)}</strong>`;
+      label.append(input, copy);
       el.suitepimModalOptions.appendChild(label);
     });
 
@@ -1735,17 +1848,23 @@
     const modal = state.modal;
     if (!modal) return;
     const ids = Array.from(modal.selected);
-    const names = ids
-      .map((id) => modal.options.find((option) => String(option.id) === String(id))?.name)
+    const selectedOptions = ids
+      .map((id) => modal.options.find((option) => String(option.id) === String(id)))
+      .filter(Boolean);
+    const values = selectedOptions
+      .map((option) => optionStoredValue(modal.field, option))
+      .filter(Boolean);
+    const labels = selectedOptions
+      .map((option) => option.name)
       .filter(Boolean);
 
     if (typeof modal.onSave === "function") {
-      modal.onSave(ids, names);
+      modal.onSave(ids, values, labels);
       closeModal();
       return;
     }
 
-    updateCell(modal.row, modal.field.name, modal.multiple ? names : names[0] || "", modal.multiple ? ids : ids[0] || "");
+    updateCell(modal.row, modal.field.name, modal.multiple ? values : values[0] || "", modal.multiple ? ids : ids[0] || "");
     closeModal();
   }
 
@@ -1792,9 +1911,13 @@
       let value = draft.value;
       let internalIds = draft.internalIds;
       if (fieldUsesOptions(field)) {
-        value = field.fieldType === "multiple-select"
-          ? Array.isArray(draft.valueLabel) ? draft.valueLabel : String(draft.valueLabel || "").split(",").filter(Boolean)
-          : draft.valueLabel || optionNameById(field, draft.value) || "";
+        if (field.fieldType === "multiple-select") {
+          value = Array.isArray(draft.valueLabel) ? draft.valueLabel : String(draft.valueLabel || "").split(",").filter(Boolean);
+        } else if (field.fieldType === "image") {
+          value = draft.valueLabel || "";
+        } else {
+          value = draft.valueLabel || optionNameById(field, draft.value) || "";
+        }
       }
 
       let updated = { ...state.rows[idx], [field.name]: value };
@@ -1875,6 +1998,7 @@
         if (job.status === "completed" || job.status === "error") {
           clearInterval(timer);
           el.suitepimPushBtn.disabled = false;
+          commitSuccessfulPushResults(job.results || []);
           const ok = (job.results || []).filter((result) => result.status === "Success").length;
           const failed = (job.results || []).filter((result) => result.status === "Error").length;
           showStatus(`Push finished. ${ok} successful, ${failed} failed.`, failed ? "warning" : "success");
@@ -1897,6 +2021,10 @@
       state.page = 1;
       applyFilters();
     });
+    el.suitepimShowChildren?.addEventListener("change", () => {
+      state.page = 1;
+      applyFilters();
+    });
     el.suitepimFilterField.addEventListener("change", renderFilterValueControl);
     el.suitepimAddFilterBtn.addEventListener("click", addFilter);
     el.suitepimClearFiltersBtn.addEventListener("click", clearFilters);
@@ -1907,9 +2035,9 @@
     el.suitepimApplyBulkBtn.addEventListener("click", applyBulkUpdate);
     el.suitepimToggleFiltersBtn.addEventListener("click", () => togglePanel(el.suitepimToggleFiltersBtn));
     el.suitepimToggleBulkBtn.addEventListener("click", () => togglePanel(el.suitepimToggleBulkBtn));
-    el.suitepimRefreshBtn.addEventListener("click", () => loadProducts().catch((err) => showStatus(err.message, "error")));
+    el.suitepimRefreshBtn.addEventListener("click", () => loadProducts(true).catch((err) => showStatus(err.message, "error")));
     el.suitepimPushBtn.addEventListener("click", pushSelected);
-    el.suitepimApplyPresetBtn?.addEventListener("click", applyPreset);
+    el.suitepimPresetSelect?.addEventListener("change", applyPreset);
     el.suitepimPrevPage.addEventListener("click", () => {
       state.page = Math.max(1, state.page - 1);
       renderTable();

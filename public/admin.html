@@ -24,6 +24,8 @@
     <script defer src="/js/adminMain.js"></script>
     <script defer src="/js/adminUserSearch.js"></script>
     <script defer src="/js/adminRoles.js"></script>
+    <script defer src="/js/adminAiAccess.js"></script>
+    <script defer src="/js/adminAiPromptManager.js"></script>
     <script defer src="/js/adminLocations.js"></script>
     <script defer src="/js/adminManagementRules.js"></script>
 
@@ -45,6 +47,7 @@
             <div class="tab" data-target="fields">Field Mapping</div> -->
             
             <div class="tab" data-target="dashboard-widgets">Dashboard Widgets</div>
+            <div class="tab" data-target="ai-manager">AI Manager</div>
         </div>
 
         <!-- === USER MANAGEMENT MASTER TAB === -->
@@ -392,6 +395,86 @@
             </div>
         </div>
 
+        <!-- === AI Manager === -->
+        <div id="ai-manager" class="tab-content hidden">
+            <h2>AI Manager</h2>
+
+            <div class="subtabs" data-subtab-group="ai-manager">
+                <div class="subtab active" data-target="sub-ai-access">AI Access</div>
+                <div class="subtab" data-target="sub-ai-product-descriptions">Product Descriptions</div>
+            </div>
+
+            <div id="sub-ai-access" class="subtab-content active">
+                <div class="user-toolbar">
+                    <p style="margin:0;">Enable or disable the typed AI assistant prompt for each role.</p>
+                </div>
+
+                <table id="aiAccessTable">
+                    <thead>
+                        <tr>
+                            <th>Role</th>
+                            <th>AI Access</th>
+                            <th>Status</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div id="sub-ai-product-descriptions" class="subtab-content hidden">
+                <div class="subtabs" data-subtab-group="ai-product-descriptions">
+                    <div class="subtab active" data-target="sub-ai-product-netsuite">Netsuite driven data</div>
+                    <div class="subtab" data-target="sub-ai-product-ean">EAN Driven Data</div>
+                </div>
+
+                <div id="sub-ai-product-netsuite" class="subtab-content active ai-prompt-panel" data-prompt-scope="netsuite">
+                    <div class="user-toolbar">
+                        <p style="margin:0;">Prompt elements used when the description is generated from NetSuite product fields.</p>
+                        <button type="button" class="btn-primary ai-prompt-add">+ Add Row</button>
+                    </div>
+                    <div class="table-scroll-wrapper">
+                        <table class="aiPromptTable">
+                            <thead>
+                                <tr>
+                                    <th>Prompt Element</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="ai-prompt-actions">
+                        <button type="button" class="btn-primary ai-prompt-save">Save Prompt</button>
+                        <button type="button" class="btn-secondary ai-prompt-reset">Reset To Default</button>
+                        <span class="ai-prompt-status" aria-live="polite"></span>
+                    </div>
+                </div>
+
+                <div id="sub-ai-product-ean" class="subtab-content hidden ai-prompt-panel" data-prompt-scope="ean">
+                    <div class="user-toolbar">
+                        <p style="margin:0;">Prompt elements used when the description and enrichment are generated from an EAN or GTIN lookup.</p>
+                        <button type="button" class="btn-primary ai-prompt-add">+ Add Row</button>
+                    </div>
+                    <div class="table-scroll-wrapper">
+                        <table class="aiPromptTable">
+                            <thead>
+                                <tr>
+                                    <th>Prompt Element</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody></tbody>
+                        </table>
+                    </div>
+                    <div class="ai-prompt-actions">
+                        <button type="button" class="btn-primary ai-prompt-save">Save Prompt</button>
+                        <button type="button" class="btn-secondary ai-prompt-reset">Reset To Default</button>
+                        <span class="ai-prompt-status" aria-live="polite"></span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
     </main>
     <!-- MAIN + SUB TAB SWITCHING LOGIC -->
     <script>
@@ -413,16 +496,20 @@
             });
 
             /* ===============================
-               USER MANAGEMENT SUBTABS
+               SUBTABS
                =============================== */
-            document.querySelectorAll("#users .subtab").forEach(subtab => {
+            document.querySelectorAll(".subtabs").forEach(group => {
+                const container = group.parentElement;
+                const subtabs = group.querySelectorAll(":scope > .subtab");
+
+                subtabs.forEach(subtab => {
                 subtab.addEventListener("click", () => {
                     // Toggle subtab buttons
-                    document.querySelectorAll("#users .subtab").forEach(t => t.classList.remove("active"));
+                    subtabs.forEach(t => t.classList.remove("active"));
                     subtab.classList.add("active");
 
                     // Hide all subtab panels
-                    document.querySelectorAll("#users .subtab-content").forEach(c => {
+                    container.querySelectorAll(":scope > .subtab-content").forEach(c => {
                         c.classList.add("hidden");
                         c.classList.remove("active");
                     });
@@ -433,6 +520,7 @@
                         target.classList.remove("hidden");
                         target.classList.add("active");
                     }
+                });
                 });
             });
 

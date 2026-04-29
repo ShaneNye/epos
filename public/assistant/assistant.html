@@ -1,40 +1,37 @@
 <!-- Virtual Sales Assistant HTML -->
 <div id="salesAssistant" class="assistant">
-  <!-- 🧭 Header (draggable area) -->
   <div class="assistant-header" id="assistantHeader">
-    <span> Virtual Sales Assistant</span>
-    <button id="closeAssistant" title="Close">×</button>
-  </div>
-
-  <!-- 🧾 Page validation line -->
-  <div id="assistantLocation" class="assistant-location"></div>
-
-  <!-- 💬 Chat body -->
-  <div class="assistant-body" id="assistantBody">
-    <div class="assistant-message bot">
-      Hi there! 👋 I’m your virtual sales assistant. How can I help today?
+    <span>Virtual Sales Assistant</span>
+    <div class="assistant-header-actions">
+      <button id="resetAssistant" title="Reset">Reset</button>
+      <button id="closeAssistant" title="Close">x</button>
     </div>
   </div>
 
-  <!-- ⌨️ Input area -->
+  <div id="assistantLocation" class="assistant-location"></div>
+
+  <div class="assistant-body" id="assistantBody">
+    <div class="assistant-message bot">
+      Hi there! I'm your virtual sales assistant. How can I help today?
+    </div>
+  </div>
+
   <form id="assistantForm">
     <input
       type="text"
       id="assistantInput"
-      placeholder="Type your question..."
+      placeholder="Ask anything..."
       autocomplete="off"
     />
-    <button type="submit">Send</button>
+    <button type="submit" id="assistantSendBtn">Send</button>
   </form>
 
-  <!-- 🖱️ Resize handles (invisible but clickable) -->
   <div class="resize-handle bottom-right"></div>
   <div class="resize-handle bottom-left"></div>
   <div class="resize-handle top-right"></div>
   <div class="resize-handle top-left"></div>
 </div>
 
-<!-- 💬 Floating toggle button -->
 <button
   id="assistantToggle"
   class="assistant-toggle"

@@ -1,6 +1,7 @@
 const express = require("express");
 const fetch = require("node-fetch");
 const crypto = require("crypto");
+const pool = require("../db");
 const { getSession } = require("../sessions");
 const { getAuthHeader } = require("../netsuiteClient");
 const { fields, optionFeeds, productFeeds, webManagementFeeds, validationFeeds, validationFields } = require("./suitepimFields");
@@ -9,7 +10,13 @@ const router = express.Router();
 const jobs = {};
 const jobQueue = [];
 const optionsCache = new Map();
-const MAX_CONCURRENT = Number(process.env.SUITEPIM_PUSH_CONCURRENCY || 4);
+const webManagementCache = new Map();
+const MAX_CONCURRENT = Number(process.env.SUITEPIM_PUSH_CONCURRENCY || 1);
+const WEB_MANAGEMENT_CACHE_TTL_MS = Number(process.env.SUITEPIM_WEB_MANAGEMENT_CACHE_TTL_MS || 15 * 60 * 1000);
+const WEB_MANAGEMENT_STALE_MS = Number(process.env.SUITEPIM_WEB_MANAGEMENT_STALE_MS || 6 * 60 * 60 * 1000);
+const WEB_MANAGEMENT_REFRESH_INTERVAL_MS = Number(
+  process.env.SUITEPIM_WEB_MANAGEMENT_REFRESH_INTERVAL_MS || WEB_MANAGEMENT_CACHE_TTL_MS
+);
 
 function normalizeEnvironment(value) {
   return String(value || process.env.ENVIRONMENT || "sandbox").toLowerCase() === "production"
@@ -56,9 +63,17 @@ function envConfig(env) {
       productFeeds[env] ||
       "",
     webManagementUrl:
+      process.env[`SUITEPIM_${upper}_WEB_DATA_URL`] ||
+      process.env.SUITEPIM_WEB_DATA_URL ||
       process.env[`SUITEPIM_${upper}_WEB_MANAGEMENT_URL`] ||
       process.env[`NETSUITE_${upper}_WEB_MANAGEMENT_URL`] ||
       webManagementFeeds[env] ||
+      "",
+    webManagementToken:
+      process.env[`SUITEPIM_${upper}_WEB_DATA`] ||
+      process.env.SUITEPIM_WEB_DATA ||
+      process.env[`SUITEPIM_${upper}_WEB_MANAGEMENT`] ||
+      process.env.SUITEPIM_WEB_MANAGEMENT ||
       "",
     validationUrl:
       process.env[`SUITEPIM_${upper}_VALIDATION_URL`] ||
@@ -77,7 +92,15 @@ function envConfig(env) {
       process.env[`NETSUITE_${upper}_SAVED_SEARCH_RESTLET_URL`] ||
       process.env.NETSUITE_SAVED_SEARCH_RESTLET_URL ||
       "",
-    imageEndpoint: process.env[`NETSUITE_${upper}_IMAGE_ENDPOINT`] || "",
+    imageEndpoint:
+      process.env[`SUITEPIM_${upper}_IMAGE_UPDATE_URL`] ||
+      process.env.SUITEPIM_IMAGE_UPDATE_URL ||
+      process.env[`NETSUITE_${upper}_IMAGE_ENDPOINT`] ||
+      "",
+    imageToken:
+      process.env[`SUITEPIM_${upper}_IMAGE_UPDATE`] ||
+      process.env.SUITEPIM_IMAGE_UPDATE ||
+      "",
     priceRestletUrl:
       process.env[`NETSUITE_${upper}_PRICE_RESTLET_URL`] ||
       process.env.NETSUITE_PRICE_RESTLET_URL ||
@@ -91,6 +114,54 @@ function parseJson(text) {
   } catch {
     return { raw: text };
   }
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function extractNetSuiteErrorDetail(body) {
+  const detail = body?.["o:errorDetails"]?.[0]?.detail;
+  return typeof detail === "string" ? detail : "";
+}
+
+function normalizeResolvedRecordType(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (!text) return "";
+  if (text === "inventoryitem") return "inventoryItem";
+  if (text === "lotnumberedinventoryitem") return "lotNumberedInventoryItem";
+  if (text === "servicesaleitem") return "serviceSaleItem";
+  return "";
+}
+
+function inferRecordTypeFromError(body) {
+  const detail = extractNetSuiteErrorDetail(body);
+  const match = detail.match(/different type:\s*([a-z0-9]+)\s+from the type specified/i);
+  return normalizeResolvedRecordType(match?.[1] || "");
+}
+
+async function fetchNetSuiteWithRetry(url, options, attempts = 3) {
+  let lastResponse = null;
+  let lastBody = null;
+
+  for (let attempt = 1; attempt <= attempts; attempt += 1) {
+    const res = await fetch(url, options);
+    const text = await res.text();
+    const body = parseJson(text);
+
+    lastResponse = res;
+    lastBody = body;
+
+    if (res.status !== 429) {
+      return { res, body };
+    }
+
+    if (attempt < attempts) {
+      await sleep(500 * attempt);
+    }
+  }
+
+  return { res: lastResponse, body: lastBody };
 }
 
 function recalcRow(row, changedField = null) {
@@ -142,12 +213,18 @@ function optionUrlFor(fieldName, env) {
   if (fieldName === "Reasons To Buy" && process.env.REASONS_TO_BUY_URL) {
     return process.env.REASONS_TO_BUY_URL;
   }
+  if (fieldName === "Web Images" && process.env.SUITEPIM_IMAGE_URL) {
+    return process.env.SUITEPIM_IMAGE_URL;
+  }
   return process.env[feed[env]] || feed[fallbackKey] || "";
 }
 
 function optionTokenFor(fieldName, env) {
   if (fieldName === "Reasons To Buy") {
     return process.env.REASONS_TO_BUY || "";
+  }
+  if (fieldName === "Web Images") {
+    return process.env.SUITEPIM_IMAGE || "";
   }
   return "";
 }
@@ -166,6 +243,109 @@ function openAIConfig() {
     apiKey: process.env.OPENAI_API_KEY || "",
     model: process.env.OPENAI_SUITEPIM_MODEL || process.env.OPENAI_DESCRIPTION_MODEL || "gpt-4.1-mini",
   };
+}
+
+const PRODUCT_DESCRIPTION_PROMPT_SCOPES = {
+  netsuite: [
+    "You write ecommerce mattress and bed product copy for Sussex Beds.",
+    "Generate one benefit-led feature description in UK English.",
+    "Use only the provided product data.",
+    "Keep it concise: 55 to 95 words.",
+    "Focus on customer benefits, comfort, support, practicality, and reassurance.",
+    "Do not use bullet points, markdown, headings, or HTML.",
+    "Do not invent specs, certifications, or claims not present in the input.",
+    "Return plain text only.",
+  ],
+  ean: [
+    "Search the web to identify the product that matches the supplied EAN or GTIN.",
+    "Prioritise exact EAN or GTIN matches over product-name similarity.",
+    "If the GTIN does not confidently match a product, return found_match false.",
+    "If it matches, extract only the requested attributes and write one short benefit-led product description in UK English.",
+    "Use the supplied EPOS product name as the canonical product name in the description.",
+    "Do not mention the supplier name, external retailer name, or a different source product name in the description.",
+    "Return a single valid JSON object only, with no markdown fences and no explanatory text.",
+    "Do not invent values. Use empty strings for unknown fields.",
+  ],
+};
+
+const VALID_PRODUCT_DESCRIPTION_PROMPT_SCOPES = new Set(Object.keys(PRODUCT_DESCRIPTION_PROMPT_SCOPES));
+let promptTableReady = false;
+
+async function ensureProductDescriptionPromptTable() {
+  if (promptTableReady) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS ai_product_description_prompt_elements (
+      id SERIAL PRIMARY KEY,
+      scope TEXT NOT NULL,
+      prompt_text TEXT NOT NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS idx_ai_product_description_prompt_elements_scope
+      ON ai_product_description_prompt_elements (scope, sort_order, id)
+  `);
+  promptTableReady = true;
+}
+
+function cleanPromptElements(elements) {
+  return (Array.isArray(elements) ? elements : [])
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .slice(0, 40);
+}
+
+async function loadProductDescriptionPromptElements(scope) {
+  if (!VALID_PRODUCT_DESCRIPTION_PROMPT_SCOPES.has(scope)) {
+    throw new Error("Invalid prompt scope");
+  }
+
+  await ensureProductDescriptionPromptTable();
+  const result = await pool.query(
+    `SELECT prompt_text
+       FROM ai_product_description_prompt_elements
+      WHERE scope = $1
+      ORDER BY sort_order ASC, id ASC`,
+    [scope]
+  );
+
+  const saved = result.rows.map((row) => String(row.prompt_text || "").trim()).filter(Boolean);
+  return saved.length ? saved : PRODUCT_DESCRIPTION_PROMPT_SCOPES[scope];
+}
+
+async function saveProductDescriptionPromptElements(scope, elements) {
+  if (!VALID_PRODUCT_DESCRIPTION_PROMPT_SCOPES.has(scope)) {
+    throw new Error("Invalid prompt scope");
+  }
+
+  const cleaned = cleanPromptElements(elements);
+  if (!cleaned.length) {
+    throw new Error("At least one prompt element is required");
+  }
+
+  await ensureProductDescriptionPromptTable();
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM ai_product_description_prompt_elements WHERE scope = $1", [scope]);
+    for (let i = 0; i < cleaned.length; i += 1) {
+      await client.query(
+        `INSERT INTO ai_product_description_prompt_elements (scope, prompt_text, sort_order)
+         VALUES ($1, $2, $3)`,
+        [scope, cleaned[i], i]
+      );
+    }
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  return cleaned;
 }
 
 function compactList(value) {
@@ -312,16 +492,7 @@ async function generateFeatureDescriptionFromRow(row, reasonOptions = []) {
   if (!openai.apiKey) throw new Error("Missing OPENAI_API_KEY");
 
   const context = buildDescriptionContext(row, reasonOptions);
-  const instructions = [
-    "You write ecommerce mattress and bed product copy for Sussex Beds.",
-    "Generate one benefit-led feature description in UK English.",
-    "Use only the provided product data.",
-    "Keep it concise: 55 to 95 words.",
-    "Focus on customer benefits, comfort, support, practicality, and reassurance.",
-    "Do not use bullet points, markdown, headings, or HTML.",
-    "Do not invent specs, certifications, or claims not present in the input.",
-    "Return plain text only.",
-  ].join(" ");
+  const instructions = (await loadProductDescriptionPromptElements("netsuite")).join(" ");
 
   const input = [
     "Create a product feature description from this JSON product context:",
@@ -385,16 +556,7 @@ async function enrichFromGtin(row) {
     },
   };
 
-  const instructions = [
-    "Search the web to identify the product that matches the supplied EAN or GTIN.",
-    "Prioritise exact EAN or GTIN matches over product-name similarity.",
-    "If the GTIN does not confidently match a product, return found_match false.",
-    "If it matches, extract only the requested attributes and write one short benefit-led product description in UK English.",
-    "Use the supplied EPOS product name as the canonical product name in the description.",
-    "Do not mention the supplier name, external retailer name, or a different source product name in the description.",
-    "Return a single valid JSON object only, with no markdown fences and no explanatory text.",
-    "Do not invent values. Use empty strings for unknown fields.",
-  ].join(" ");
+  const instructions = (await loadProductDescriptionPromptElements("ean")).join(" ");
 
   const input = [
     "Find and enrich this product using the EAN/GTIN. Return JSON with these keys exactly:",
@@ -495,19 +657,74 @@ async function fetchOptionFeed(fieldName, env) {
   const cacheKey = `${env}:${fieldName}`;
   const cached = optionsCache.get(cacheKey);
   if (cached && Date.now() - cached.loadedAt < 10 * 60 * 1000) return cached.options;
+  if (cached?.inFlight) return cached.inFlight;
 
   const url = withSuiteletToken(optionUrlFor(fieldName, env), optionTokenFor(fieldName, env));
   if (!url) return [];
 
-  const res = await fetch(url);
-  const text = await res.text();
-  if (!res.ok) throw new Error(`Option feed failed for ${fieldName}: ${res.status}`);
+  const inFlight = (async () => {
+    const res = await fetch(url);
+    const text = await res.text();
+    if (!res.ok) throw new Error(`Option feed failed for ${fieldName}: ${res.status}`);
 
-  const data = parseJson(text);
-  const rows = Array.isArray(data) ? data : data.results || data.items || [];
-  const options = rows.map((item) => normalizeOption(item, fieldName)).filter((o) => o.id && o.name);
-  optionsCache.set(cacheKey, { loadedAt: Date.now(), options });
-  return options;
+    const data = parseJson(text);
+    const rows = Array.isArray(data) ? data : data.results || data.items || [];
+    const options = rows.map((item) => normalizeOption(item, fieldName)).filter((o) => o.id && o.name);
+    optionsCache.set(cacheKey, { loadedAt: Date.now(), options, inFlight: null });
+    return options;
+  })();
+
+  optionsCache.set(cacheKey, {
+    loadedAt: cached?.loadedAt || 0,
+    options: cached?.options || [],
+    inFlight,
+  });
+
+  try {
+    return await inFlight;
+  } catch (err) {
+    optionsCache.delete(cacheKey);
+    throw err;
+  }
+}
+
+function buildOptionLookup(options = []) {
+  const byName = new Map();
+  options.forEach((option) => {
+    const fullName = String(option.name || "").trim().toLowerCase();
+    if (fullName && !byName.has(fullName)) byName.set(fullName, option);
+
+    const leafName = String(option.name || "").split(" : ").pop().trim().toLowerCase();
+    if (leafName && !byName.has(leafName)) byName.set(leafName, option);
+  });
+  return byName;
+}
+
+async function loadMultipleSelectOptionMap(env) {
+  const optionFeedPromises = new Map();
+  const optionMap = {};
+
+  fields
+    .filter((field) => field.fieldType === "multiple-select" && field.optionFeed)
+    .forEach((field) => {
+      if (!optionFeedPromises.has(field.optionFeed)) {
+        optionFeedPromises.set(field.optionFeed, fetchOptionFeed(field.optionFeed, env).catch(() => []));
+      }
+    });
+
+  await Promise.all(
+    fields
+      .filter((field) => field.fieldType === "multiple-select" && field.optionFeed)
+      .map(async (field) => {
+        const options = await optionFeedPromises.get(field.optionFeed);
+        optionMap[field.name] = {
+          options,
+          byName: buildOptionLookup(options),
+        };
+      })
+  );
+
+  return optionMap;
 }
 
 function normalizeMultipleSelects(row, optionMap) {
@@ -521,15 +738,57 @@ function normalizeMultipleSelects(row, optionMap) {
     next[field.name] = names;
 
     if (!Array.isArray(next[`${field.name}_InternalId`])) {
-      const options = optionMap[field.name] || [];
+      const optionEntry = Array.isArray(optionMap[field.name])
+        ? { options: optionMap[field.name] }
+        : optionMap[field.name] || {};
+      const byName = optionEntry.byName || buildOptionLookup(optionEntry.options || []);
       next[`${field.name}_InternalId`] = names
         .map((name) => {
-          const match = options.find((o) => o.name.toLowerCase() === name.toLowerCase());
+          const wanted = String(name || "").trim().toLowerCase();
+          const match = byName.get(wanted);
           return match?.id || null;
         })
         .filter(Boolean);
     }
   });
+  return next;
+}
+
+function firstDefinedValue(row, keys = []) {
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && String(row[key]).trim() !== "") {
+      return row[key];
+    }
+  }
+  return row[keys[0]];
+}
+
+function childItemName(value) {
+  const text = String(value ?? "").trim();
+  if (!text) return "";
+  const parts = text.split(" : ").map((part) => part.trim()).filter(Boolean);
+  return parts.length ? parts[parts.length - 1] : text;
+}
+
+function normalizeRowAliases(row) {
+  const next = { ...row };
+
+  next.Name = childItemName(firstDefinedValue(next, [
+    "Name",
+    "Item Name/Number",
+    "Item Name",
+    "itemid",
+    "itemId",
+  ]) || "");
+
+  next["Display Name"] = firstDefinedValue(next, [
+    "Display Name",
+    "Display Name/Code",
+    "Display Name Code",
+    "DisplayName",
+    "displayname",
+  ]) || "";
+
   return next;
 }
 
@@ -723,22 +982,23 @@ async function resolveRecordType(cfg, userId, internalId, preferredType = "") {
   if (feedRecordType) return feedRecordType;
 
   const candidates = [
+    "inventoryItem",
     "lotNumberedInventoryItem",
     "serviceSaleItem",
-    "inventoryItem",
   ].filter(Boolean);
   const uniqueCandidates = [...new Set(candidates)];
   const attempts = [];
 
   for (const recordType of uniqueCandidates) {
     const url = `${cfg.restUrl}/${recordType}/${encodeURIComponent(internalId)}`;
-    const res = await fetch(url, {
+    const { res, body } = await fetchNetSuiteWithRetry(url, {
       headers: await netSuiteHeaders(url, "GET", userId, cfg),
     });
-    const text = await res.text();
-    const body = parseJson(text);
     attempts.push({ recordType, url, status: res.status, statusText: res.statusText, body });
     if (res.ok) return recordType;
+
+    const inferred = inferRecordTypeFromError(body);
+    if (inferred) return inferred;
   }
 
   const err = new Error(`Unable to resolve NetSuite record type for ${internalId}`);
@@ -882,10 +1142,18 @@ async function processRow(row, job) {
 
       if (field.fieldType === "image") {
         const fileId = row[`${field.name}_InternalId`];
-        if (fileId && job.cfg.imageEndpoint) {
-          const imageUrl = `${job.cfg.imageEndpoint}&itemid=${encodeURIComponent(internalId)}&fileid=${encodeURIComponent(fileId)}&fieldid=${encodeURIComponent(field.internalid)}`;
-          const res = await fetch(imageUrl);
-          result.response.images.push({ field: field.name, result: parseJson(await res.text()) });
+        if (fileId && String(fileId).trim() !== "" && job.cfg.imageEndpoint) {
+          const suiteletUrl = job.cfg.imageToken
+            ? withSuiteletToken(job.cfg.imageEndpoint, job.cfg.imageToken)
+            : job.cfg.imageEndpoint;
+          const imageUrl = `${suiteletUrl}&itemid=${encodeURIComponent(internalId)}&fileid=${encodeURIComponent(fileId)}&fieldid=${encodeURIComponent(field.internalid)}`;
+          const res = await fetch(imageUrl, { method: "GET" });
+          result.response.images.push({
+            field: field.name,
+            fileId: String(fileId),
+            mode: "suitelet",
+            result: parseJson(await res.text()),
+          });
         }
         continue;
       }
@@ -898,6 +1166,8 @@ async function processRow(row, job) {
       } else if (field.fieldType === "Checkbox") {
         const v = typeof value === "string" ? value.trim().toLowerCase() : value;
         payload[field.internalid] = v === true || v === 1 || ["true", "t", "1", "y", "yes"].includes(v);
+      } else if (field.name === "Name") {
+        payload[field.internalid] = childItemName(value);
       } else {
         payload[field.internalid] = String(value);
       }
@@ -905,7 +1175,7 @@ async function processRow(row, job) {
 
     if (Object.keys(payload).length) {
       const url = `${job.cfg.restUrl}/${recordType}/${encodeURIComponent(internalId)}`;
-      const response = await fetch(url, {
+      const { res: response, body: responseBody } = await fetchNetSuiteWithRetry(url, {
         method: "PATCH",
         headers: {
           ...(await netSuiteHeaders(url, "PATCH", job.userId, job.cfg)),
@@ -913,8 +1183,7 @@ async function processRow(row, job) {
         },
         body: JSON.stringify(payload),
       });
-      const responseText = await response.text();
-      result.response.main = parseJson(responseText) || { status: response.status };
+      result.response.main = responseBody || { status: response.status };
       result.response.diagnostics = {
         url,
         method: "PATCH",
@@ -1065,6 +1334,138 @@ async function runNextJob() {
   runNextJob().catch((err) => console.error("SuitePim job queue error:", err));
 }
 
+async function fetchWebManagementRows(cfg) {
+  const url = withSuiteletToken(cfg.webManagementUrl, cfg.webManagementToken);
+  const response = await fetch(url);
+  const payload = parseJson(await response.text());
+  if (!response.ok) throw new Error(`Web management feed returned ${response.status}`);
+  return Array.isArray(payload) ? payload : payload.results || payload.items || [];
+}
+
+async function buildWebManagementPayload(env, cfg) {
+  const startedAt = Date.now();
+  const [rawRows, optionMap] = await Promise.all([
+    fetchWebManagementRows(cfg),
+    loadMultipleSelectOptionMap(env),
+  ]);
+  const rows = rawRows.map((row) => recalcRow(normalizeMultipleSelects(normalizeRowAliases(row), optionMap)));
+
+  return {
+    ok: true,
+    rows,
+    count: rows.length,
+    environment: publicEnvironmentName(env),
+    generatedAt: new Date().toISOString(),
+    buildDurationMs: Date.now() - startedAt,
+  };
+}
+
+function webManagementCacheKey(env) {
+  return `web-management:${env}`;
+}
+
+function withWebManagementCacheMeta(payload, entry, source) {
+  const loadedAt = entry?.loadedAt || Date.now();
+  return {
+    ...payload,
+    cache: {
+      source,
+      generatedAt: payload.generatedAt || new Date(loadedAt).toISOString(),
+      ageSeconds: Math.max(0, Math.round((Date.now() - loadedAt) / 1000)),
+      refreshInProgress: !!entry?.inFlight,
+      buildDurationMs: payload.buildDurationMs || 0,
+    },
+  };
+}
+
+function refreshWebManagementCache(key, env, cfg) {
+  const existing = webManagementCache.get(key);
+  if (existing?.inFlight) return existing.inFlight;
+
+  const inFlight = buildWebManagementPayload(env, cfg)
+    .then((payload) => {
+      webManagementCache.set(key, {
+        payload,
+        loadedAt: Date.now(),
+        inFlight: null,
+      });
+      return payload;
+    })
+    .catch((err) => {
+      const current = webManagementCache.get(key);
+      if (current) webManagementCache.set(key, { ...current, inFlight: null, lastError: err.message });
+      throw err;
+    });
+
+  webManagementCache.set(key, {
+    payload: existing?.payload || null,
+    loadedAt: existing?.loadedAt || 0,
+    inFlight,
+    lastError: existing?.lastError || "",
+  });
+
+  return inFlight;
+}
+
+async function getWebManagementPayload(env, cfg, { forceRefresh = false } = {}) {
+  const key = webManagementCacheKey(env);
+  const cached = webManagementCache.get(key);
+  const age = cached?.loadedAt ? Date.now() - cached.loadedAt : Infinity;
+
+  if (!forceRefresh && cached?.payload && age < WEB_MANAGEMENT_CACHE_TTL_MS) {
+    return withWebManagementCacheMeta(cached.payload, cached, "cache");
+  }
+
+  if (!forceRefresh && cached?.payload && age < WEB_MANAGEMENT_STALE_MS) {
+    refreshWebManagementCache(key, env, cfg).catch((err) => {
+      console.error("SuitePim web management background refresh failed:", err);
+    });
+    return withWebManagementCacheMeta(cached.payload, webManagementCache.get(key), "stale");
+  }
+
+  const payload = await refreshWebManagementCache(key, env, cfg);
+  return withWebManagementCacheMeta(payload, webManagementCache.get(key), forceRefresh ? "refresh" : "origin");
+}
+
+function prewarmWebManagementCache() {
+  if (String(process.env.SUITEPIM_WEB_MANAGEMENT_PREWARM || "true").toLowerCase() === "false") return;
+
+  ["production", "sandbox"].forEach((env, index) => {
+    setTimeout(() => {
+      const cfg = envConfig(env);
+      if (!cfg.webManagementUrl) return;
+      const key = webManagementCacheKey(env);
+      refreshWebManagementCache(key, env, cfg)
+        .then((payload) => {
+          console.log(`SuitePim ${env} web management cache warmed: ${payload.count} rows`);
+        })
+        .catch((err) => {
+          console.warn(`SuitePim ${env} web management cache warm failed:`, err.message);
+        });
+    }, 5000 + index * 30000);
+  });
+}
+
+function startWebManagementCacheRefreshTimer() {
+  if (String(process.env.SUITEPIM_WEB_MANAGEMENT_AUTO_REFRESH || "true").toLowerCase() === "false") return;
+  if (!Number.isFinite(WEB_MANAGEMENT_REFRESH_INTERVAL_MS) || WEB_MANAGEMENT_REFRESH_INTERVAL_MS <= 0) return;
+
+  setInterval(() => {
+    ["production", "sandbox"].forEach((env) => {
+      const cfg = envConfig(env);
+      if (!cfg.webManagementUrl) return;
+      const key = webManagementCacheKey(env);
+      refreshWebManagementCache(key, env, cfg)
+        .then((payload) => {
+          console.log(`SuitePim ${env} web management cache refreshed: ${payload.count} rows`);
+        })
+        .catch((err) => {
+          console.warn(`SuitePim ${env} web management cache refresh failed:`, err.message);
+        });
+    });
+  }, WEB_MANAGEMENT_REFRESH_INTERVAL_MS);
+}
+
 router.use(requireSuitePimSession);
 
 router.get("/config", (req, res) => {
@@ -1100,16 +1501,9 @@ router.get("/products", async (req, res) => {
     if (!response.ok) throw new Error(`Product feed returned ${response.status}`);
 
     const rawRows = Array.isArray(payload) ? payload : payload.results || payload.items || [];
-    const optionMap = {};
-    await Promise.all(
-      fields
-        .filter((f) => f.fieldType === "multiple-select" && f.optionFeed)
-        .map(async (field) => {
-          optionMap[field.name] = await fetchOptionFeed(field.optionFeed, env).catch(() => []);
-        })
-    );
+    const optionMap = await loadMultipleSelectOptionMap(env);
 
-    const rows = rawRows.map((row) => recalcRow(normalizeMultipleSelects(row, optionMap)));
+    const rows = rawRows.map((row) => recalcRow(normalizeMultipleSelects(normalizeRowAliases(row), optionMap)));
     res.json({ ok: true, rows, count: rows.length, environment: publicEnvironmentName(env) });
   } catch (err) {
     console.error("SuitePim product load failed:", err);
@@ -1144,26 +1538,13 @@ router.get("/web-management", async (req, res) => {
     if (!cfg.webManagementUrl) {
       return res.status(500).json({
         ok: false,
-        error: `Missing ${env === "production" ? "SUITEPIM_PROD_WEB_MANAGEMENT_URL" : "SUITEPIM_SANDBOX_WEB_MANAGEMENT_URL"}`,
+        error: `Missing ${env === "production" ? "SUITEPIM_WEB_DATA_URL or SUITEPIM_PROD_WEB_DATA_URL" : "SUITEPIM_WEB_DATA_URL or SUITEPIM_SANDBOX_WEB_DATA_URL"}`,
       });
     }
 
-    const response = await fetch(cfg.webManagementUrl);
-    const payload = parseJson(await response.text());
-    if (!response.ok) throw new Error(`Web management feed returned ${response.status}`);
-
-    const rawRows = Array.isArray(payload) ? payload : payload.results || payload.items || [];
-    const optionMap = {};
-    await Promise.all(
-      fields
-        .filter((f) => f.fieldType === "multiple-select" && f.optionFeed)
-        .map(async (field) => {
-          optionMap[field.name] = await fetchOptionFeed(field.optionFeed, env).catch(() => []);
-        })
-    );
-
-    const rows = rawRows.map((row) => recalcRow(normalizeMultipleSelects(row, optionMap)));
-    res.json({ ok: true, rows, count: rows.length, environment: publicEnvironmentName(env) });
+    const forceRefresh = req.query.refresh === "1" || req.query.force === "1";
+    const payload = await getWebManagementPayload(env, cfg, { forceRefresh });
+    res.json(payload);
   } catch (err) {
     console.error("SuitePim web management load failed:", err);
     res.status(500).json({ ok: false, error: err.message });
@@ -1296,6 +1677,38 @@ router.get("/options/:fieldName", async (req, res) => {
   }
 });
 
+router.get("/ai-prompts/product-descriptions", async (req, res) => {
+  try {
+    const [netsuite, ean] = await Promise.all([
+      loadProductDescriptionPromptElements("netsuite"),
+      loadProductDescriptionPromptElements("ean"),
+    ]);
+    res.json({
+      ok: true,
+      prompts: {
+        netsuite,
+        ean,
+      },
+      defaults: PRODUCT_DESCRIPTION_PROMPT_SCOPES,
+    });
+  } catch (err) {
+    console.error("SuitePim prompt config load failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.put("/ai-prompts/product-descriptions/:scope", async (req, res) => {
+  try {
+    const scope = String(req.params.scope || "").trim().toLowerCase();
+    const elements = await saveProductDescriptionPromptElements(scope, req.body?.elements);
+    res.json({ ok: true, scope, elements });
+  } catch (err) {
+    console.error("SuitePim prompt config save failed:", err);
+    const status = /invalid|required/i.test(err.message) ? 400 : 500;
+    res.status(status).json({ ok: false, error: err.message });
+  }
+});
+
 router.post("/generate-description", async (req, res) => {
   try {
     const env = normalizeEnvironment(req.query.environment);
@@ -1310,6 +1723,10 @@ router.post("/generate-description", async (req, res) => {
       text: generated.text,
       model: generated.model,
       usage: generated.usage,
+      fieldUpdates: generated.fieldUpdates || {},
+      enriched: !!generated.enriched,
+      matchedProductName: generated.matchedProductName || "",
+      confidenceNotes: generated.confidenceNotes || "",
     });
   } catch (err) {
     console.error("SuitePim description generation failed:", err);
@@ -1398,5 +1815,8 @@ router.get("/push-status/:jobId", (req, res) => {
     finishedAt: job.finishedAt,
   });
 });
+
+prewarmWebManagementCache();
+startWebManagementCacheRefreshTimer();
 
 module.exports = router;

@@ -122,7 +122,9 @@
 /* --- Shared Table Styles (Users, Roles, Locations) --- */
 #userTable,
 #roleTable,
-#locationTable {
+#locationTable,
+#aiAccessTable,
+.aiPromptTable {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.9rem;
@@ -132,7 +134,9 @@
 }
 #userTable th,
 #roleTable th,
-#locationTable th {
+#locationTable th,
+#aiAccessTable th,
+.aiPromptTable th {
   background: var(--brand);
   color: #fff;
   font-weight: 600;
@@ -144,24 +148,31 @@
 }
 #userTable td,
 #roleTable td,
-#locationTable td {
+#locationTable td,
+#aiAccessTable td,
+.aiPromptTable td {
   padding: 0.65rem 0.8rem;
   border-bottom: 1px solid var(--line);
 }
 #userTable tr:nth-child(even),
 #roleTable tr:nth-child(even),
-#locationTable tr:nth-child(even) {
+#locationTable tr:nth-child(even),
+#aiAccessTable tr:nth-child(even),
+.aiPromptTable tr:nth-child(even) {
   background: #fafafa;
 }
 #userTable tr:last-child td,
 #roleTable tr:last-child td,
-#locationTable tr:last-child td {
+#locationTable tr:last-child td,
+#aiAccessTable tr:last-child td,
+.aiPromptTable tr:last-child td {
   border-bottom: none;
 }
 /* --- Actions Column Consistency --- */
 #userTable td.actions,
 #roleTable td.actions,
-#locationTable td.actions {
+#locationTable td.actions,
+.aiPromptTable td.actions {
   white-space: nowrap;
   text-align: right;
 }
@@ -328,6 +339,37 @@
 #accessSelect option:checked {
   background: var(--brand);
   color: #fff;
+}
+
+.aiPromptTable textarea {
+  width: 100%;
+  min-height: 68px;
+  resize: vertical;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 0.55rem 0.6rem;
+  font: inherit;
+  color: var(--ink);
+  box-sizing: border-box;
+}
+
+.aiPromptTable textarea:focus {
+  outline: none;
+  border-color: var(--brand);
+  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.15);
+}
+
+.ai-prompt-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 1rem;
+  flex-wrap: wrap;
+}
+
+.ai-prompt-status {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 /* --- Scrollbars --- */
@@ -528,7 +570,9 @@
 
   #userTable,
   #roleTable,
-  #locationTable {
+  #locationTable,
+  #aiAccessTable,
+  .aiPromptTable {
     min-width: 760px;
   }
 

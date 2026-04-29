@@ -13,10 +13,9 @@
   flex-direction: column;
   overflow: hidden;
   font-family: system-ui, sans-serif;
-  z-index: 1000;
+  z-index: 999999 !important;
 }
 
-/* Header */
 .assistant-header {
   background-color: #0081ab;
   color: white;
@@ -27,15 +26,29 @@
   align-items: center;
 }
 
+.assistant-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
 .assistant-header button {
   background: transparent;
   color: white;
   border: none;
-  font-size: 1.2rem;
+  font-size: 0.85rem;
   cursor: pointer;
 }
 
-/* Chat Body */
+.assistant-location {
+  background: #f4fdfd;
+  color: #0081ab;
+  font-size: 0.85rem;
+  padding: 6px 12px;
+  border-bottom: 1px solid #e0e0e0;
+  font-style: italic;
+}
+
 .assistant-body {
   flex: 1;
   padding: 10px;
@@ -49,6 +62,7 @@
   border-radius: 10px;
   line-height: 1.4;
   max-width: 90%;
+  white-space: pre-wrap;
 }
 
 .assistant-message.bot {
@@ -61,18 +75,19 @@
   background: #0081ab;
   color: white;
   align-self: flex-end;
+  margin-left: auto;
 }
 
-/* Input form */
 #assistantForm {
   display: flex;
+  align-items: stretch;
   border-top: 1px solid #ddd;
 }
 
 #assistantInput {
   flex: 1;
   border: none;
-  padding: 8px;
+  padding: 10px 12px;
   outline: none;
 }
 
@@ -80,11 +95,15 @@
   background: #0081ab;
   color: white;
   border: none;
-  padding: 0 12px;
+  padding: 0 16px;
   cursor: pointer;
+  transition: background 0.2s ease;
 }
 
-/* Floating toggle button */
+#assistantForm button:hover {
+  background: #006d8c;
+}
+
 .assistant-toggle {
   position: fixed;
   bottom: 20px;
@@ -101,11 +120,11 @@
   align-items: center;
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
   transition: all 0.3s ease;
-  z-index: 999;
+  z-index: 999999 !important;
 }
 
 .assistant-toggle:hover {
-  background: #FFD700;;
+  background: #ffd700;
   transform: scale(1.05);
 }
 
@@ -113,28 +132,10 @@
   transform: scale(0.95);
 }
 
-/* Icon styling */
 #assistantIcon {
   transition: all 0.3s ease;
 }
 
-/* Glowing alert when assistant has a message (future use) */
-.assistant-toggle.has-message {
-  background: #00c3c3;
-  box-shadow: 0 0 10px 3px rgba(0, 195, 195, 0.6);
-  animation: pulse 1.5s infinite;
-}
-
-@keyframes pulse {
-  0%, 100% {
-    transform: scale(1);
-    box-shadow: 0 0 8px rgba(0, 195, 195, 0.4);
-  }
-  50% {
-    transform: scale(1.08);
-    box-shadow: 0 0 15px rgba(0, 195, 195, 0.8);
-  }
-}
 .assistant-toggle svg {
   width: 28px;
   height: 28px;
@@ -146,20 +147,12 @@
   color: #0081ab;
   filter: drop-shadow(0 0 4px rgba(0, 200, 200, 0.5));
 }
-/* Sub-header showing current page */
-.assistant-location {
-  background: #f4fdfd;
-  color: #0081ab;
-  font-size: 0.85rem;
-  padding: 6px 12px;
-  border-bottom: 1px solid #e0e0e0;
-  font-style: italic;
-}
+
 #assistantHeader {
   cursor: move;
   user-select: none;
 }
-/* Resizable handles */
+
 .resize-handle {
   position: absolute;
   width: 12px;
@@ -168,7 +161,6 @@
   z-index: 10;
 }
 
-/* Position each handle */
 .resize-handle.bottom-right {
   right: 0;
   bottom: 0;
@@ -193,12 +185,11 @@
   cursor: nwse-resize;
 }
 
-/* Optional: small visual cue when resizing */
 .assistant.resizing {
   opacity: 0.95;
   transition: none;
 }
-/* Buttons inside chat */
+
 .assistant-btn {
   background: #0081ab;
   color: white;
@@ -215,7 +206,6 @@
   background: #00a1a1;
 }
 
-/* Dropdown styling */
 .assistant-select {
   margin-top: 6px;
   padding: 4px 6px;
@@ -224,17 +214,14 @@
   border: 1px solid #ccc;
   background: #fff;
 }
-.assistant,
-.assistant-toggle {
-  z-index: 999999 !important;
-}
+
 .assistant-toggle.locked-input,
 .assistant-toggle[disabled] {
   pointer-events: auto !important;
   opacity: 1 !important;
   cursor: pointer !important;
 }
-/* Small stock result table inside chat */
+
 .assistant-stock-table {
   width: 100%;
   margin-top: 8px;
@@ -245,6 +232,7 @@
   overflow: hidden;
   font-size: 0.85rem;
 }
+
 .assistant-stock-table th {
   background: #0081ab;
   color: white;
@@ -252,45 +240,16 @@
   padding: 4px 8px;
   font-weight: 600;
 }
+
 .assistant-stock-table td {
   padding: 4px 8px;
   border-top: 1px solid #e0ecef;
 }
+
 .assistant-stock-table tr:nth-child(even) {
   background: #edf8fa;
 }
-/* === Reset Button Styling === */
-#assistantForm button {
-  flex: 1;
-  background: transparent;
-  color: #0081ab;
-  border: none;
-  padding: 8px;
-  font-size: 0.85rem;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  cursor: pointer;
-  transition: all 0.25s ease;
-  border-top: 1px solid #e0e0e0;
-  border-radius: 0 0 12px 12px;
-}
 
-/* Hover / focus styles */
-#assistantForm button:hover {
-  background: #f4fdfd;
-  color: #006d8c;
-}
-
-/* Optional subtle icon look */
-#assistantForm button::before {
-  content: "↻ ";
-  font-weight: bold;
-  font-size: 1rem;
-  vertical-align: middle;
-  opacity: 0.8;
-}
-/* Small inline spinner for Daily Digest */
 .vsa-spinner {
   display: inline-block;
   width: 14px;
@@ -304,6 +263,10 @@
 }
 
 @keyframes vsaSpin {
-  from { transform: rotate(0deg); }
-  to   { transform: rotate(360deg); }
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }

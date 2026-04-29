@@ -295,7 +295,7 @@ function applyItemToSalesViewRow(row, item) {
       `;
     } else {
       optCell.innerHTML = `
-        <button type="button" class="open-options btn-secondary small-btn">⚙️ Options</button>
+        <button type="button" class="open-options btn-secondary small-btn">Options</button>
         <input type="hidden" class="item-options-json" value="{}" />
         <div class="options-summary"></div>
       `;
@@ -546,7 +546,7 @@ window.onOptionsSaved = function onOptionsSaved(itemId, selections) {
 
   if (!jsonEl && optCell) {
     optCell.innerHTML = `
-      <button type="button" class="open-options btn-secondary small-btn">⚙️ Options</button>
+      <button type="button" class="open-options btn-secondary small-btn">Options</button>
       <input type="hidden" class="item-options-json" />
       <div class="options-summary"></div>
     `;
@@ -784,7 +784,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
           isPending
             ? canEditOptions
               ? `
-                <button type="button" class="open-options btn-secondary small-btn">⚙️ Options</button>
+                <button type="button" class="open-options btn-secondary small-btn">Options</button>
                 <input type="hidden" class="item-options-json" value='${JSON.stringify(existingSelections).replace(/'/g, "&apos;")}' />
                 <div class="options-summary">${optsHtml}</div>
               `

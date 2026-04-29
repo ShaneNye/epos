@@ -13,6 +13,7 @@
 
   <script src="/js/storage.js"></script>
   <script src="/js/menu.js"></script>
+  <script src="/js/suitepimPreload.js" defer></script>
   <script src="/assistant/assistant.js"></script>
   <script type="module" src="/assistant/assistantHooks.js"></script>
   <script src="/js/suitepimWebManagement.js" defer></script>
@@ -75,20 +76,25 @@
         <input id="suitepimSearch" type="search" placeholder="Search item, supplier, ID, class..." />
       </div>
 
-      <select id="suitepimStateFilter" aria-label="Row state filter">
-        <option value="all">All records</option>
-        <option value="active">Active only</option>
-        <option value="inactive">Inactive only</option>
-        <option value="parent">Parent items</option>
-        <option value="changed">Changed rows</option>
-        <option value="selected">Selected rows</option>
+      <select id="suitepimStateFilter" aria-label="Product visibility filter">
+        <option value="all">All Products</option>
+        <option value="online">Online Products</option>
+        <option value="offline">Offline Products</option>
       </select>
 
       <select id="suitepimPresetSelect" aria-label="Web management preset">
         <option value="">Choose preset</option>
       </select>
 
-      <button id="suitepimApplyPresetBtn" type="button">Apply preset</button>
+      <label class="suitepim-switch-control" for="suitepimShowChildren" title="Show or hide child item lines">
+        <span>Show children</span>
+        <input id="suitepimShowChildren" type="checkbox" checked />
+        <span class="suitepim-switch" aria-hidden="true">
+          <span class="suitepim-switch-state suitepim-switch-on">ON</span>
+          <span class="suitepim-switch-state suitepim-switch-off">OFF</span>
+          <span class="suitepim-switch-knob"></span>
+        </span>
+      </label>
 
       <button id="suitepimColumnsBtn" class="suitepim-icon-btn" type="button" title="Columns" aria-label="Columns">
         <svg aria-hidden="true" viewBox="0 0 24 24">
@@ -173,13 +179,6 @@
           <button id="suitepimApplyBulkBtn" class="suitepim-primary-btn" type="button">Apply bulk update</button>
         </div>
       </div>
-    </section>
-
-    <section class="suitepim-summary" aria-label="Product data summary">
-      <div><span id="suitepimTotalCount">0</span><small>records</small></div>
-      <div><span id="suitepimVisibleCount">0</span><small>visible</small></div>
-      <div><span id="suitepimSelectedCount">0</span><small>selected</small></div>
-      <div><span id="suitepimChangedCount">0</span><small>changed</small></div>
     </section>
 
     <section id="suitepimStatus" class="suitepim-status" aria-live="polite"></section>

@@ -65,16 +65,20 @@ function cleanText(value) {
   return String(value ?? "").trim();
 }
 
+const EXCLUDED_OPTION_FIELD_NAMES = new Set([
+  "base option",
+  "base options",
+  "fabric type",
+  "mattress protector sizes",
+  "size.v1",
+]);
+
 function isExcludedOptionField(option) {
   const label = cleanText(option?.label).toLowerCase();
   const selectText = cleanText(option?.selectrecordtype_text).toLowerCase();
   const sourceName = cleanText(option?.sourceResult?.source?.name).toLowerCase();
 
-  return [label, selectText, sourceName].some((value) =>
-    /^base\s+options?$/i.test(value) ||
-    /^fabric\s+type$/i.test(value) ||
-    /^Size\.v1$/i.test(value)
-  );
+  return [label, selectText, sourceName].some((value) => EXCLUDED_OPTION_FIELD_NAMES.has(value));
 }
 
 function makePageUrl(page, pageSize) {
@@ -435,12 +439,17 @@ async function getOptions(itemId) {
     WHERE f.inactive = FALSE
       AND f.applies_to_sales = TRUE
       AND f.source_ok = TRUE
+      AND NOT (
+        LOWER(TRIM(f.label)) = ANY($${params.length + 1})
+        OR LOWER(TRIM(COALESCE(f.select_record_type_text, ''))) = ANY($${params.length + 1})
+        OR LOWER(TRIM(COALESCE(f.source_name, ''))) = ANY($${params.length + 1})
+      )
       AND ai.inactive = FALSE
       AND v.inactive = FALSE
       ${itemFilter}
     ORDER BY ai.item_id, f.label, v.sort_order, v.name
     `,
-    params
+    [...params, Array.from(EXCLUDED_OPTION_FIELD_NAMES)]
   );
 
   return rowsToOptionMap(result.rows);

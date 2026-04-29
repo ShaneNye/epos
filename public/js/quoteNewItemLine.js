@@ -480,7 +480,7 @@ window.onOptionsSaved = function (itemId, selections) {
 
   if (!jsonEl && optCell) {
     optCell.innerHTML = `
-      <button type="button" class="open-options btn-secondary small-btn">⚙️ Options</button>
+      <button type="button" class="open-options btn-secondary small-btn">Options</button>
       <input type="hidden" class="item-options-json" />
       <div class="options-summary"></div>
     `;
@@ -730,7 +730,7 @@ const retailPerUnitGross = Number.isFinite(rawBase) ? rawBase * 1.2 : 0;
       optCell.innerHTML = "";
     } else {
       optCell.innerHTML = `
-        <button type="button" class="open-options btn-secondary small-btn">⚙️ Options</button>
+        <button type="button" class="open-options btn-secondary small-btn">Options</button>
         <input type="hidden" class="item-options-json" />
         <div class="options-summary"></div>
       `;

@@ -360,7 +360,7 @@ function wireEditableQuoteRow(tr, line, idx) {
       ${
         canEditOptions
           ? `
-        <button type="button" class="open-options btn-secondary small-btn">⚙️ Options</button>
+        <button type="button" class="open-options btn-secondary small-btn">Options</button>
         <input
           type="hidden"
           class="item-options-json"
@@ -719,6 +719,9 @@ function updateActionButtonForQuote() {
 
       const soTranId = data.tranId || data.salesOrderTranId || null;
       const soId = data.salesOrderId || data.id || null;
+      if (data.quoteStatusUpdated === false) {
+        console.warn("Quote converted, but quote status was not updated:", data.quoteStatusResult);
+      }
 
       showToast?.("✅ Converted to Sales Order! Redirecting...", "success");
 
