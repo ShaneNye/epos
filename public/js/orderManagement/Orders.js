@@ -62,7 +62,10 @@ const storeRes = await fetch(`/api/meta/store/${storeId}`, { headers });        
   /* === FETCH ORDER MANAGEMENT DATA === */
   let allOrders = [];
   try {
-const res = await fetch("/api/netsuite/order-management", { headers });
+    const res = await fetch(`/api/netsuite/order-management?refresh=1&_=${Date.now()}`, {
+      headers,
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 

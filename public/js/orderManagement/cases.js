@@ -51,7 +51,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   /* === FETCH CASES === */
   let allCases = [];
   try {
-    const res = await fetch("/api/netsuite/case-management");
+    const res = await fetch(`/api/netsuite/case-management?refresh=1&_=${Date.now()}`, {
+      headers,
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 

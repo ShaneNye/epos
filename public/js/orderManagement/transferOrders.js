@@ -96,7 +96,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   let allTOs = [];
 
   try {
-    const res = await fetch("/api/netsuite/transfer-order-management", { headers });
+    const res = await fetch(`/api/netsuite/transfer-order-management?refresh=1&_=${Date.now()}`, {
+      headers,
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();

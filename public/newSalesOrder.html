@@ -22,6 +22,7 @@
     <script src="/js/salesNewFetchify.js" defer></script>
     <script src="/js/salesCustomerLock.js" defer></script>
     <script src="/js/salesNewItemLine.js" defer></script>
+    <script src="/js/orderPromotions.js" defer></script>
     <script src="/js/salesKioskDraft.js" defer></script>
     <!-- <script src="/js/salesNew60Night.js"></script> -->
     <script src="/js/salesInventoryModal.js" defer></script>
@@ -240,6 +241,7 @@
                         <th>Amount</th>
                         <th>Discount %</th>
                         <th>Sale Price</th>
+                        <th style="display: none;" id="vatFreeHeader">Vat Free</th>
                         <th style="display: none;" id="60ntheader">60 Night Trial</th>
                         <th>Fulfilment Method</th>
                         <th>Inventory Detail</th>
@@ -266,6 +268,11 @@
                         <td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
 
                         <!-- ✅ UPDATED: 60 Night Trial cell uses class (NOT id) and includes placeholder -->
+                        <td class="vat-free-cell" style="display:none;">
+                            <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />
+                            <span class="vat-free-placeholder"></span>
+                        </td>
+
                         <td class="sixty-night-cell" style="display:none;">
                             <select class="sixty-night-select" style="display:none;">
                                 <option selected disabled hidden>Select</option>

@@ -28,6 +28,7 @@
   <script src="/js/salesNewFetchify.js" defer></script>
   <script src="/js/salesCustomerLock.js" defer></script>
   <script src="/js/quoteNewItemLine.js" defer></script>
+  <script src="/js/orderPromotions.js" defer></script>
 
   <!-- Virtual Sales Assistant -->
   <script src="/assistant/assistant.js"></script>
@@ -283,6 +284,7 @@
               <th>Amount</th>
               <th>Discount %</th>
               <th>Sale Price</th>
+              <th id="vatFreeHeader" style="display:none;">Vat Free</th>
 
               <!-- ✅ 60NT header (hidden unless a mattress is on the quote) -->
               <th id="60ntheader" style="display:none;">60 Night Trial</th>
@@ -319,6 +321,11 @@
 
               <td>
                 <input type="number" class="item-saleprice" placeholder="£" step="0.01" />
+              </td>
+
+              <td class="vat-free-cell" style="display:none;">
+                <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />
+                <span class="vat-free-placeholder"></span>
               </td>
 
               <!-- 60NT cell is injected/repositioned by quoteNewItemLine.js when needed -->

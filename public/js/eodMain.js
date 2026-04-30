@@ -142,8 +142,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   ------------------------------------------------- */
   let footfall = [];
   try {
-    const res = await fetch("/api/eod/footfall", {
+    const res = await fetch(`/api/eod/footfall?refresh=1&_=${Date.now()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
     });
     const data = await res.json();
     footfall = data.results || [];
@@ -725,8 +726,9 @@ async function initDailyBalancing() {
      LOAD DEPOSIT DATA
   ------------------------------------------------- */
   try {
-    const res = await fetch("/api/eod/daily-balance", {
+    const res = await fetch(`/api/eod/daily-balance?refresh=1&_=${Date.now()}`, {
       headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
     });
     const data = await res.json();
     allDeposits = data.results || [];

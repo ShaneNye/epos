@@ -32,7 +32,7 @@
                 <div class="promotions-panel-head">
                     <div>
                         <h2>Upsells</h2>
-                        <p>Suggest a discounted product when any selected trigger item, or any item in a chosen class, is already in the cart.</p>
+                        <p>Suggest a discounted product when selected trigger items, class, size, or category rules match the basket.</p>
                     </div>
                     <button id="addUpsellBtn" class="btn-primary" type="button">Add Upsell</button>
                 </div>
@@ -113,7 +113,21 @@
                             <option value="">No class trigger</option>
                         </select>
                     </label>
-                    <div class="promotion-help">Leave this blank if you only want the upsell to trigger from specific items.</div>
+                    <div class="promotions-form-grid promotions-trigger-grid">
+                        <label>
+                            Trigger By Size
+                            <select id="upsellTriggerSize">
+                                <option value="">No size trigger</option>
+                            </select>
+                        </label>
+                        <label>
+                            Trigger By Web Category
+                            <select id="upsellTriggerCategory">
+                                <option value="">No category trigger</option>
+                            </select>
+                        </label>
+                    </div>
+                    <div class="promotion-help">Choose any combination of class, size, and category. If more than one is selected, the basket item must match all selected filters.</div>
 
                     <label>
                         Suggested Item
@@ -186,6 +200,11 @@
                     <label class="promotions-checkbox">
                         <input id="basketDiscountIsActive" type="checkbox" checked>
                         <span>Promotion is active</span>
+                    </label>
+
+                    <label class="promotions-checkbox">
+                        <input id="basketDiscountExcludeClearance" type="checkbox">
+                        <span>Exclude warehouse clearance lines from basket value</span>
                     </label>
 
                     <div class="promotions-rules-head">

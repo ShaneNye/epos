@@ -433,6 +433,10 @@ router.post("/create", async (req, res) => {
             line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
           }
 
+          if (i.taxCode) {
+            line.taxCode = { id: String(i.taxCode) };
+          }
+
           /* ======================================================
              createpo logic — ONLY for subsidiary 6
           ====================================================== */

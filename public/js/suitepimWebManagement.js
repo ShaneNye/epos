@@ -1,4 +1,16 @@
 (function () {
+  const defaultVisibleColumns = [
+    "Name",
+    "Category",
+    "reasons to buy",
+    "Catalogue Image One",
+    "New Feature Desc",
+    "Lead Time",
+    "Online?",
+    "Inactive",
+    "Page Preview",
+  ];
+
   const state = {
     environment: "production",
     fields: [],
@@ -22,12 +34,7 @@
     aiGenerationModel: "",
     presets: [
       {
-        name: "Web Description",
-        fields: ["Name", "New Feature Desc", "reasons to buy", "Page Preview"],
-        filters: [],
-      },
-      {
-        name: "Mattress Metrics",
+        name: "Step 1 : Mattress Metrics",
         fields: ["Name", "Comfort", "Type", "Depth", "Fillings", "Height", "Width", "Length", "Spring Type"],
         filters: [
           { field: "Class", value: "Mattress" },
@@ -35,7 +42,7 @@
         ],
       },
       {
-        name: "Bed Frame Metrics",
+        name: "Step 1 : Bed Frame Metrics",
         fields: ["Name", "Type", "Built/Flat Packed", "Colour Filter", "Depth", "Head End Height", "Height", "Width", "Length", "Storage"],
         filters: [
           { field: "Class", value: "Bed Frames" },
@@ -43,14 +50,19 @@
         ],
       },
       {
-        name: "Imagery",
+        name: "Step 2 : Imagery",
         fields: ["Name", "Catalogue Image One", "Catalogue Image Two", "Catalogue Image Three", "Catalogue Image Four", "Catalogue Image Five", "Item Image"],
         filters: [{ field: "Inactive", value: false }],
       },
       {
-        name: "Meta Data",
+        name: "Step 3 : Meta Data",
         fields: ["Name", "Category", "Tags", "Lead Time"],
         filters: [{ field: "Inactive", value: false }],
+      },
+      {
+        name: "Step 4 : Web Description",
+        fields: ["Name", "New Feature Desc", "reasons to buy", "Page Preview"],
+        filters: [],
       },
     ],
   };
@@ -792,17 +804,7 @@
     state.fields = [...config.fields, ...toolFields];
     state.aiGenerationConfigured = !!config.aiGenerationConfigured;
     state.aiGenerationModel = config.aiGenerationModel || "";
-    state.visibleColumns = [
-      "Name",
-      "Category",
-      "reasons to buy",
-      "Catalogue Image One",
-      "New Feature Desc",
-      "Lead Time",
-      "Online?",
-      "Inactive",
-      "Page Preview",
-    ];
+    state.visibleColumns = [...defaultVisibleColumns];
     renderFieldSelectors();
     renderColumnChooser();
     renderFilterValueControl();
@@ -941,10 +943,96 @@
 
   function renderPresetSelector() {
     if (!el.suitepimPresetSelect) return;
+    const currentPreset = el.suitepimPresetSelect.value;
+    el.suitepimPresetSelect.classList.add("suitepim-preset-native");
     el.suitepimPresetSelect.innerHTML = `
-      <option value="">Choose preset</option>
+      <option value="">Default</option>
       ${state.presets.map((preset) => `<option value="${escapeHtml(preset.name)}">${escapeHtml(preset.name)}</option>`).join("")}
     `;
+    if (state.presets.some((preset) => preset.name === currentPreset)) {
+      el.suitepimPresetSelect.value = currentPreset;
+    }
+
+    let dropdown = document.getElementById("suitepimPresetDropdown");
+    if (!dropdown) {
+      dropdown = document.createElement("div");
+      dropdown.id = "suitepimPresetDropdown";
+      dropdown.className = "suitepim-preset-dropdown";
+      el.suitepimPresetSelect.insertAdjacentElement("afterend", dropdown);
+    }
+
+    const selected = state.presets.find((preset) => preset.name === el.suitepimPresetSelect.value);
+    dropdown.innerHTML = `
+      <button class="suitepim-preset-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
+        ${selected ? presetLabelHtml(selected.name, state.presets.indexOf(selected)) : `<span class="suitepim-preset-placeholder">Default</span>`}
+        <span class="suitepim-preset-chevron" aria-hidden="true"></span>
+      </button>
+      <div class="suitepim-preset-menu" role="listbox" aria-label="Web management presets">
+        <button class="suitepim-preset-option suitepim-preset-clear" type="button" role="option" data-preset-name="" aria-selected="${selected ? "false" : "true"}">
+          <span class="suitepim-preset-placeholder">Default</span>
+        </button>
+        ${state.presets.map((preset, index) => `
+          <button class="suitepim-preset-option ${presetToneClass(index)}" type="button" role="option" data-preset-name="${escapeHtml(preset.name)}" aria-selected="${preset.name === selected?.name ? "true" : "false"}">
+            ${presetLabelHtml(preset.name, index)}
+          </button>
+        `).join("")}
+      </div>
+    `;
+
+    dropdown.querySelector(".suitepim-preset-trigger")?.addEventListener("click", () => {
+      const isOpen = dropdown.classList.toggle("open");
+      dropdown.querySelector(".suitepim-preset-trigger")?.setAttribute("aria-expanded", String(isOpen));
+    });
+
+    dropdown.querySelectorAll(".suitepim-preset-option").forEach((button) => {
+      button.addEventListener("click", () => {
+        el.suitepimPresetSelect.value = button.dataset.presetName || "";
+        closePresetDropdown();
+        el.suitepimPresetSelect.dispatchEvent(new Event("change", { bubbles: true }));
+        renderPresetSelector();
+      });
+    });
+  }
+
+  function presetParts(name) {
+    const marker = " : ";
+    const markerIndex = name.indexOf(marker);
+    if (markerIndex === -1) return { step: "", title: name };
+    return {
+      step: name.slice(0, markerIndex + marker.length),
+      title: name.slice(markerIndex + marker.length),
+    };
+  }
+
+  function presetToneClass(index) {
+    return `suitepim-preset-tone-${(index % 5) + 1}`;
+  }
+
+  function presetLabelHtml(name, index) {
+    const parts = presetParts(name);
+    return `
+      <span class="suitepim-preset-dot ${presetToneClass(index)}" aria-hidden="true"></span>
+      <span class="suitepim-preset-text ${presetToneClass(index)}">
+        ${parts.step ? `<span class="suitepim-preset-step">${escapeHtml(parts.step)}</span>` : ""}
+        <strong>${escapeHtml(parts.title)}</strong>
+      </span>
+    `;
+  }
+
+  function closePresetDropdown() {
+    const dropdown = document.getElementById("suitepimPresetDropdown");
+    dropdown?.classList.remove("open");
+    dropdown?.querySelector(".suitepim-preset-trigger")?.setAttribute("aria-expanded", "false");
+  }
+
+  function applyDefaultPreset() {
+    state.visibleColumns = [...defaultVisibleColumns].filter((name) => fieldByName(name));
+    state.activeFilters = state.activeFilters.filter((filter) => filter?.source !== "preset");
+    state.page = 1;
+    renderColumnChooser();
+    renderActiveFilters();
+    applyFilters();
+    showStatus("Restored default table layout.", "success");
   }
 
   function normalizePresetValue(field, value) {
@@ -973,6 +1061,7 @@
   function applyPreset() {
     const presetName = el.suitepimPresetSelect?.value;
     if (!presetName) {
+      applyDefaultPreset();
       return;
     }
 
@@ -982,9 +1071,9 @@
       return;
     }
 
-    const baseColumns = preset.name === "Web Description"
+    const baseColumns = preset.name === "Step 4 : Web Description"
       ? ["Name"]
-      : ["Name", "Display Name", "Class", "Inactive", "Page Preview"];
+      : ["Name", "Class", "Inactive"];
     state.visibleColumns = [...new Set([...baseColumns, ...preset.fields])].filter((name) => fieldByName(name));
     renderColumnChooser();
 
@@ -1125,6 +1214,8 @@
         multiple,
         options,
         selected,
+        requiresSearch: field.fieldType === "image",
+        minSearchLength: field.fieldType === "image" ? 4 : 0,
         onSave(ids, values, labels) {
           value = multiple ? ids : ids[0] || "";
           valueLabel = multiple ? values : values[0] || "";
@@ -1135,6 +1226,9 @@
       };
       el.suitepimModalTitle.textContent = `Select ${field.name}`;
       el.suitepimModalSearch.value = "";
+      el.suitepimModalSearch.placeholder = field.fieldType === "image"
+        ? "Type at least 4 characters to search images..."
+        : "Search options...";
       el.suitepimModal.classList.remove("hidden");
       renderModalOptions();
     });
@@ -1789,9 +1883,20 @@
       }
     });
 
-    state.modal = { row, field, multiple, options, selected };
+    state.modal = {
+      row,
+      field,
+      multiple,
+      options,
+      selected,
+      requiresSearch: field.fieldType === "image",
+      minSearchLength: field.fieldType === "image" ? 4 : 0,
+    };
     el.suitepimModalTitle.textContent = `Select ${field.name}`;
     el.suitepimModalSearch.value = "";
+    el.suitepimModalSearch.placeholder = field.fieldType === "image"
+      ? "Type at least 4 characters to search images..."
+      : "Search options...";
     el.suitepimModal.classList.remove("hidden");
     renderModalOptions();
   }
@@ -1800,6 +1905,12 @@
     const modal = state.modal;
     if (!modal) return;
     const term = el.suitepimModalSearch.value.trim().toLowerCase();
+    const minSearchLength = Number(modal.minSearchLength || 0);
+    if (modal.requiresSearch && term.length < minSearchLength) {
+      el.suitepimModalOptions.innerHTML = `<div class="suitepim-empty-option">Type at least ${minSearchLength} characters to search.</div>`;
+      return;
+    }
+
     const filtered = modal.options
       .filter((option) => option.name.toLowerCase().includes(term))
       .sort((left, right) => {
@@ -1841,6 +1952,7 @@
 
   function closeModal() {
     state.modal = null;
+    el.suitepimModalSearch.placeholder = "Search options...";
     el.suitepimModal.classList.add("hidden");
   }
 
@@ -2038,6 +2150,13 @@
     el.suitepimRefreshBtn.addEventListener("click", () => loadProducts(true).catch((err) => showStatus(err.message, "error")));
     el.suitepimPushBtn.addEventListener("click", pushSelected);
     el.suitepimPresetSelect?.addEventListener("change", applyPreset);
+    document.addEventListener("click", (event) => {
+      const dropdown = document.getElementById("suitepimPresetDropdown");
+      if (dropdown && !dropdown.contains(event.target)) closePresetDropdown();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closePresetDropdown();
+    });
     el.suitepimPrevPage.addEventListener("click", () => {
       state.page = Math.max(1, state.page - 1);
       renderTable();

@@ -9,11 +9,21 @@ const db = require("../db");
 
 const router = express.Router();
 
+function setNoStore(res) {
+  res.set({
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+  });
+}
+
 /* ============================================================
    GET FOOTFALL DATA — via NetSuite Scriptlet
    ============================================================ */
 router.get("/footfall", async (req, res) => {
   try {
+    setNoStore(res);
+
     const baseUrl = process.env.EOD_FOOTFALL_URL;
     const token = process.env.EOD_FOOTFALL;
 
@@ -175,6 +185,8 @@ router.patch("/footfall/update", async (req, res) => {
    ============================================================ */
 router.get("/daily-balance", async (req, res) => {
   try {
+    setNoStore(res);
+
     const baseUrl = process.env.EOD_CUST_DEP_URL;
     const token = process.env.EOD_CUST_DEP;
 

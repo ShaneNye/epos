@@ -2,7 +2,10 @@
   const state = {
     promotions: [],
     items: [],
+    webItemsById: new Map(),
     classes: [],
+    sizes: [],
+    categories: [],
     selectedTriggerIds: [],
     labelToItem: new Map(),
     idToItem: new Map(),
@@ -62,6 +65,21 @@
     return String(itemField(item, ["class", "item class"]) || "Unclassified").trim();
   }
 
+  function splitValues(value) {
+    if (Array.isArray(value)) return value.map((entry) => String(entry || "").trim()).filter(Boolean);
+    return String(value || "").split(",").map((entry) => entry.trim()).filter(Boolean);
+  }
+
+  function getItemSize(item) {
+    return splitValues(itemField(item, ["standard-sizes", "standard sizes", "size"]));
+  }
+
+  function getItemCategory(item) {
+    const id = getItemId(item);
+    const webItem = state.webItemsById.get(id) || {};
+    return splitValues(webItem.Category || itemField(item, ["category", "categories", "web category"]));
+  }
+
   function makeItemLabel(item) {
     return `${getItemName(item)} | ID ${getItemId(item)} | ${getItemClass(item)}`;
   }
@@ -71,6 +89,8 @@
       ? promotion.triggerItemNames.filter(Boolean)
       : [];
     const triggerClass = String(promotion.triggerClass || "").trim();
+    const triggerSize = String(promotion.triggerSize || "").trim();
+    const triggerCategory = String(promotion.triggerCategory || "").trim();
     const parts = [];
 
     if (triggerNames.length) {
@@ -81,6 +101,12 @@
 
     if (triggerClass) {
       parts.push(`Any ${triggerClass}`);
+    }
+    if (triggerSize) {
+      parts.push(`Size ${triggerSize}`);
+    }
+    if (triggerCategory) {
+      parts.push(`Category ${triggerCategory}`);
     }
 
     return parts.join(" | ") || "No triggers";
@@ -123,6 +149,8 @@
   function setTriggerPreview() {
     const container = byId("upsellTriggerItems");
     const classSelect = byId("upsellTriggerClass");
+    const sizeSelect = byId("upsellTriggerSize");
+    const categorySelect = byId("upsellTriggerCategory");
     const preview = byId("upsellTriggerPreview");
     if (!container || !preview) return;
 
@@ -131,6 +159,8 @@
       .filter(Boolean)
       .map((item) => `${getItemName(item)} | ID ${getItemId(item)} | ${getItemClass(item)}`);
     const triggerClass = String(classSelect?.value || "").trim();
+    const triggerSize = String(sizeSelect?.value || "").trim();
+    const triggerCategory = String(categorySelect?.value || "").trim();
     const parts = [];
 
     if (names.length) {
@@ -139,9 +169,15 @@
     if (triggerClass) {
       parts.push(`Class trigger: Any ${triggerClass}`);
     }
+    if (triggerSize) {
+      parts.push(`Size trigger: ${triggerSize}`);
+    }
+    if (triggerCategory) {
+      parts.push(`Category trigger: ${triggerCategory}`);
+    }
 
     if (!parts.length) {
-      preview.textContent = "No trigger items or class selected yet.";
+      preview.textContent = "No trigger items, class, size, or category selected yet.";
       preview.classList.remove("is-error");
       return;
     }
@@ -201,17 +237,38 @@
   }
 
   async function loadCatalogue() {
-    const payload = await fetchJson("/api/netsuite/kiosk-items");
+    const [payload, webPayload, sizePayload] = await Promise.all([
+      fetchJson("/api/netsuite/kiosk-items"),
+      fetchJson("/api/suitepim/web-management").catch((err) => {
+        console.warn("Unable to load SuitePIM web category data for promotions:", err.message);
+        return { rows: [] };
+      }),
+      fetchJson("/api/netsuite/sales-order-item-size").catch((err) => {
+        console.warn("Unable to load sales order size data for promotions:", err.message);
+        return { results: [] };
+      }),
+    ]);
     state.items = Array.isArray(payload.results) ? payload.results : [];
+    state.webItemsById.clear();
+    (Array.isArray(webPayload.rows) ? webPayload.rows : []).forEach((row) => {
+      const id = String(row["Internal ID"] || row["Item ID"] || row.id || "").trim();
+      if (id) state.webItemsById.set(id, row);
+    });
     state.classes = [];
+    state.sizes = [];
+    state.categories = [];
     state.labelToItem.clear();
     state.idToItem.clear();
 
     const datalist = byId("promotionItemOptions");
     const classSelect = byId("upsellTriggerClass");
+    const sizeSelect = byId("upsellTriggerSize");
+    const categorySelect = byId("upsellTriggerCategory");
 
     const options = [];
     const classSet = new Set();
+    const sizeSet = new Set();
+    const categorySet = new Set();
     state.items.forEach((item) => {
       const id = getItemId(item);
       if (!id) return;
@@ -222,9 +279,19 @@
       state.idToItem.set(id, item);
       options.push(`<option value="${escapeHtml(label)}"></option>`);
       if (itemClass) classSet.add(itemClass);
+      getItemCategory(item).forEach((category) => categorySet.add(category));
+    });
+    state.webItemsById.forEach((item) => {
+      getItemCategory(item).forEach((category) => categorySet.add(category));
+    });
+    (Array.isArray(sizePayload.results) ? sizePayload.results : []).forEach((row) => {
+      const size = String(row.size || row.Size || row.name || row.Name || "").trim();
+      if (size && size !== "- None -") sizeSet.add(size);
     });
 
     state.classes = Array.from(classSet).sort((a, b) => a.localeCompare(b));
+    state.sizes = Array.from(sizeSet).sort((a, b) => a.localeCompare(b));
+    state.categories = Array.from(categorySet).sort((a, b) => a.localeCompare(b));
 
     if (datalist) {
       datalist.innerHTML = options.join("");
@@ -233,6 +300,18 @@
       classSelect.innerHTML = `
         <option value="">No class trigger</option>
         ${state.classes.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}
+      `;
+    }
+    if (sizeSelect) {
+      sizeSelect.innerHTML = `
+        <option value="">No size trigger</option>
+        ${state.sizes.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}
+      `;
+    }
+    if (categorySelect) {
+      categorySelect.innerHTML = `
+        <option value="">No category trigger</option>
+        ${state.categories.map((name) => `<option value="${escapeHtml(name)}">${escapeHtml(name)}</option>`).join("")}
       `;
     }
     renderSelectedTriggers();
@@ -324,6 +403,7 @@
             <td>
               <strong>${escapeHtml(promotion.title)}</strong>
               ${promotion.message ? `<span class="promotion-note">${escapeHtml(promotion.message)}</span>` : ""}
+              ${promotion.excludeClearance ? `<span class="promotion-note">Excludes warehouse clearance lines</span>` : ""}
             </td>
             <td>${escapeHtml(formatDateRange(promotion.startDate, promotion.endDate))}</td>
             <td>${rulesSummary}</td>
@@ -358,6 +438,8 @@
     byId("upsellIsActive").checked = true;
     byId("upsellModalTitle").textContent = "Add Upsell";
     byId("upsellTriggerClass").value = "";
+    byId("upsellTriggerSize").value = "";
+    byId("upsellTriggerCategory").value = "";
     state.selectedTriggerIds = [];
     if (byId("upsellTriggerSearch")) byId("upsellTriggerSearch").value = "";
     renderSelectedTriggers();
@@ -376,6 +458,8 @@
         : [];
     state.selectedTriggerIds = triggerIds.map((value) => String(value || "").trim()).filter(Boolean);
     byId("upsellTriggerClass").value = promotion.triggerClass || "";
+    byId("upsellTriggerSize").value = promotion.triggerSize || "";
+    byId("upsellTriggerCategory").value = promotion.triggerCategory || "";
     byId("upsellSuggestedItem").value = promotion.suggestedItemName && promotion.suggestedItemId
       ? `${promotion.suggestedItemName} | ID ${promotion.suggestedItemId}`
       : promotion.suggestedItemId || "";
@@ -436,6 +520,7 @@
     byId("basketDiscountForm")?.reset();
     byId("basketDiscountPromotionId").value = "";
     byId("basketDiscountIsActive").checked = true;
+    byId("basketDiscountExcludeClearance").checked = false;
     byId("basketDiscountModalTitle").textContent = "Add Basket Discount";
     const body = byId("basketRulesBody");
     body.innerHTML = "";
@@ -451,6 +536,7 @@
     byId("basketDiscountStartDate").value = promotion.startDate || "";
     byId("basketDiscountEndDate").value = promotion.endDate || "";
     byId("basketDiscountIsActive").checked = promotion.isActive !== false;
+    byId("basketDiscountExcludeClearance").checked = promotion.excludeClearance === true;
     byId("basketDiscountModalTitle").textContent = "Edit Basket Discount";
 
     const body = byId("basketRulesBody");
@@ -464,9 +550,11 @@
       .map((id) => state.idToItem.get(String(id || "").trim()))
       .filter(Boolean);
     const triggerClass = String(byId("upsellTriggerClass").value || "").trim();
+    const triggerSize = String(byId("upsellTriggerSize").value || "").trim();
+    const triggerCategory = String(byId("upsellTriggerCategory").value || "").trim();
     const suggestedItem = findItem(byId("upsellSuggestedItem").value);
-    if (!selectedTriggerItems.length && !triggerClass) {
-      throw new Error("Choose at least one trigger item or a trigger class.");
+    if (!selectedTriggerItems.length && !triggerClass && !triggerSize && !triggerCategory) {
+      throw new Error("Choose at least one trigger item, class, size, or category.");
     }
     if (!suggestedItem) throw new Error("Choose a valid suggested item.");
 
@@ -485,6 +573,8 @@
       triggerItemIds: selectedTriggerItems.map((item) => getItemId(item)),
       triggerItemNames: selectedTriggerItems.map((item) => getItemName(item)),
       triggerClass,
+      triggerSize,
+      triggerCategory,
       suggestedItemId: getItemId(suggestedItem),
       suggestedItemName: getItemName(suggestedItem),
       discountPercent: Number(byId("upsellDiscountPercent").value || 0),
@@ -516,6 +606,7 @@
       type: "basket_discount",
       title,
       message: String(byId("basketDiscountMessage").value || "").trim(),
+      excludeClearance: !!byId("basketDiscountExcludeClearance").checked,
       startDate,
       endDate,
       isActive: !!byId("basketDiscountIsActive").checked,
@@ -571,6 +662,8 @@
       }
     });
     byId("upsellTriggerClass")?.addEventListener("change", setTriggerPreview);
+    byId("upsellTriggerSize")?.addEventListener("change", setTriggerPreview);
+    byId("upsellTriggerCategory")?.addEventListener("change", setTriggerPreview);
 
     byId("upsellSuggestedItem")?.addEventListener("input", () => {
       setItemPreview("upsellSuggestedItem", "upsellSuggestedPreview");

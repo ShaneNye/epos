@@ -159,7 +159,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     const headers = saved?.token ? { Authorization: `Bearer ${saved.token}` } : {};
     const usernameEmail = String(saved?.username || "").trim().toLowerCase();
 
-    const res = await fetch("/api/netsuite/widget-sales", { headers });
+    const res = await fetch(`/api/netsuite/widget-sales?refresh=1&_=${Date.now()}`, {
+      headers,
+      cache: "no-store",
+    });
     const data = await res.json();
 
     if (!res.ok || !data.ok || !Array.isArray(data.results)) {

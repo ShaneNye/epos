@@ -203,7 +203,7 @@ body.sidebar-expanded .suitepim-page-wide {
 }
 
 .suitepim-toolbar-web {
-  grid-template-columns: minmax(240px, 1fr) 170px 180px auto 42px 42px auto;
+  grid-template-columns: minmax(240px, 1fr) 170px minmax(270px, 340px) auto 42px 42px auto;
 }
 
 .suitepim-dashboard-controls {
@@ -612,6 +612,138 @@ body.sidebar-expanded .suitepim-page-wide {
   outline: none;
 }
 
+.suitepim-preset-native {
+  display: none;
+}
+
+.suitepim-preset-dropdown {
+  position: relative;
+  min-width: 270px;
+}
+
+.suitepim-preset-trigger,
+.suitepim-preset-option {
+  display: flex;
+  width: 100%;
+  min-height: 42px;
+  align-items: center;
+  gap: 9px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  text-align: left;
+}
+
+.suitepim-preset-trigger {
+  padding: 8px 10px;
+}
+
+.suitepim-preset-trigger:focus,
+.suitepim-preset-option:focus {
+  border-color: var(--brand, #0081ab);
+  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.16);
+  outline: none;
+}
+
+.suitepim-preset-menu {
+  position: absolute;
+  z-index: 30;
+  top: calc(100% + 6px);
+  left: 0;
+  right: 0;
+  display: none;
+  padding: 6px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 18px 38px rgba(15, 23, 42, 0.18);
+}
+
+.suitepim-preset-dropdown.open .suitepim-preset-menu {
+  display: grid;
+  gap: 5px;
+}
+
+.suitepim-preset-option {
+  --preset-color: #64748b;
+  padding: 8px 10px;
+  border-color: transparent;
+  cursor: pointer;
+}
+
+.suitepim-preset-option:hover,
+.suitepim-preset-option[aria-selected="true"] {
+  border-color: color-mix(in srgb, var(--preset-color) 45%, #cbd5e1);
+  background: color-mix(in srgb, var(--preset-color) 10%, #fff);
+}
+
+.suitepim-preset-placeholder {
+  color: #64748b;
+}
+
+.suitepim-preset-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: var(--preset-color);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--preset-color) 16%, transparent);
+}
+
+.suitepim-preset-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: #64748b;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suitepim-preset-text strong {
+  color: var(--preset-color);
+  font-weight: 900;
+}
+
+.suitepim-preset-step {
+  font-weight: 500;
+}
+
+.suitepim-preset-chevron {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 9px;
+  height: 9px;
+  border-right: 2px solid #64748b;
+  border-bottom: 2px solid #64748b;
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.suitepim-preset-dropdown.open .suitepim-preset-chevron {
+  transform: translateY(2px) rotate(225deg);
+}
+
+.suitepim-preset-tone-1 {
+  --preset-color: #0f766e;
+}
+
+.suitepim-preset-tone-2 {
+  --preset-color: #2563eb;
+}
+
+.suitepim-preset-tone-3 {
+  --preset-color: #b45309;
+}
+
+.suitepim-preset-tone-4 {
+  --preset-color: #7c3aed;
+}
+
+.suitepim-preset-tone-5 {
+  --preset-color: #be123c;
+}
+
 .suitepim-icon-btn,
 .suitepim-primary-btn,
 .suitepim-pagination button,
@@ -668,8 +800,15 @@ body.sidebar-expanded .suitepim-page-wide {
   border: 1px solid #e2e8f0;
   border-radius: 8px;
   background: #fff;
-  margin-bottom: 14px;
   padding: 14px;
+}
+
+.suitepim-management-panels {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+  margin-bottom: 14px;
 }
 
 .suitepim-panel-heading {
@@ -762,6 +901,13 @@ body.sidebar-expanded .suitepim-page-wide {
 
 .suitepim-bulk-row:has(.suitepim-bulk-mode[hidden]) {
   grid-template-columns: minmax(190px, 260px) minmax(240px, 1fr) 160px auto;
+}
+
+.suitepim-management-panels .suitepim-filter-row,
+.suitepim-management-panels .suitepim-bulk-row,
+.suitepim-management-panels .suitepim-bulk-row:has(.suitepim-bulk-mode[hidden]) {
+  grid-template-columns: minmax(0, 1fr);
+  align-items: stretch;
 }
 
 .suitepim-control-host {
@@ -1489,6 +1635,10 @@ body.sidebar-expanded .suitepim-page-wide {
 
   .suitepim-toolbar-web {
     grid-template-columns: 1fr 1fr;
+  }
+
+  .suitepim-management-panels {
+    grid-template-columns: 1fr;
   }
 
   .suitepim-search {

@@ -691,6 +691,7 @@ function validateOrderBeforeSave() {
 
           const trialSel = tr.querySelector(".sixty-night-select");
           const trialOption = (trialSel?.value || "").trim();
+          const vatFree = !!tr.querySelector(".vat-free-checkbox")?.checked;
 
           return {
             item,
@@ -701,6 +702,7 @@ function validateOrderBeforeSave() {
             lotnumber,
             inventoryMeta,
             trialOption,
+            taxCode: vatFree ? "10" : "",
           };
         })
         .filter((line) => line !== null);

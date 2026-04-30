@@ -28,6 +28,7 @@
     <script defer src="/js/adminAiPromptManager.js"></script>
     <script defer src="/js/adminLocations.js"></script>
     <script defer src="/js/adminManagementRules.js"></script>
+    <script defer src="/js/adminPromotionSettings.js"></script>
 
     <script src="/assistant/assistant.js"></script>
     <link rel="stylesheet" href="/assistant/assistant.css" />
@@ -47,6 +48,7 @@
             <div class="tab" data-target="fields">Field Mapping</div> -->
             
             <div class="tab" data-target="dashboard-widgets">Dashboard Widgets</div>
+            <div class="tab" data-target="sales-features">Sales Features</div>
             <div class="tab" data-target="ai-manager">AI Manager</div>
         </div>
 
@@ -393,6 +395,62 @@
                     </div>
                 </div>
             </div>
+        </div>
+
+        <!-- === Sales Features === -->
+        <div id="sales-features" class="tab-content hidden">
+            <h2>Sales Features</h2>
+            <p>Turn promotion helpers on or off for new sales orders and new quotes.</p>
+
+            <section class="admin-feature-panel" aria-labelledby="promotionFeatureTitle">
+                <div>
+                    <h3 id="promotionFeatureTitle">Promotion Suggestions</h3>
+                    <p>These toggles hide the promotion features without deleting any promotion records.</p>
+                </div>
+
+                <div class="admin-environment-settings">
+                    <div class="admin-environment-card">
+                        <h4>Production</h4>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Upsells</strong>
+                                <small>Show suggested add-ons in the sales/quote side panel.</small>
+                            </span>
+                            <input id="adminProductionUpsellsEnabled" type="checkbox">
+                        </label>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Basket Discounts</strong>
+                                <small>Automatically add basket discount lines based on basket rules.</small>
+                            </span>
+                            <input id="adminProductionBasketDiscountsEnabled" type="checkbox">
+                        </label>
+                    </div>
+
+                    <div class="admin-environment-card">
+                        <h4>Sandbox</h4>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Upsells</strong>
+                                <small>Show suggested add-ons in the sales/quote side panel.</small>
+                            </span>
+                            <input id="adminSandboxUpsellsEnabled" type="checkbox">
+                        </label>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Basket Discounts</strong>
+                                <small>Automatically add basket discount lines based on basket rules.</small>
+                            </span>
+                            <input id="adminSandboxBasketDiscountsEnabled" type="checkbox">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="admin-feature-actions">
+                    <button id="adminSavePromotionSettings" type="button" class="btn-primary">Save Promotion Settings</button>
+                    <span id="adminPromotionSettingsStatus" class="admin-feature-status" aria-live="polite"></span>
+                </div>
+            </section>
         </div>
 
         <!-- === AI Manager === -->

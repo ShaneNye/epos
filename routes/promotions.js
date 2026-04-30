@@ -158,9 +158,12 @@ async function ensureTables() {
       trigger_item_ids TEXT[],
       trigger_item_names TEXT[],
       trigger_class TEXT,
+      trigger_size TEXT,
+      trigger_category TEXT,
       suggested_item_id TEXT,
       suggested_item_name TEXT,
       discount_percent NUMERIC(5,2),
+      exclude_clearance BOOLEAN NOT NULL DEFAULT FALSE,
       start_date DATE NOT NULL,
       end_date DATE NOT NULL,
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -184,15 +187,103 @@ async function ensureTables() {
 
     CREATE INDEX IF NOT EXISTS idx_promotion_basket_rules_parent
       ON promotion_basket_rules(promotion_id);
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 
   await pool.query(`
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_item_ids TEXT[];
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_item_names TEXT[];
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_class TEXT;
+    ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_size TEXT;
+    ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_category TEXT;
+    ALTER TABLE promotions ADD COLUMN IF NOT EXISTS exclude_clearance BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 
   initialized = true;
+}
+
+function settingBool(value, fallback = true) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  const text = cleanText(value).toLowerCase();
+  if (["true", "1", "yes", "on"].includes(text)) return true;
+  if (["false", "0", "no", "off"].includes(text)) return false;
+  return fallback;
+}
+
+function normalizePromotionEnvironment(value) {
+  return String(value || process.env.ENVIROMENT || process.env.ENVIRONMENT || "sandbox").trim().toLowerCase() === "production"
+    ? "production"
+    : "sandbox";
+}
+
+function promotionSettingKeys(env) {
+  const normalized = normalizePromotionEnvironment(env);
+  return {
+    upsells: `promotions.${normalized}.upsells.enabled`,
+    basketDiscounts: `promotions.${normalized}.basket_discounts.enabled`,
+  };
+}
+
+async function getPromotionFeatureSettings(env) {
+  await ensureTables();
+  const keys = promotionSettingKeys(env);
+  const result = await pool.query(
+    "SELECT key, value FROM app_settings WHERE key = ANY($1::text[])",
+    [[keys.upsells, keys.basketDiscounts]]
+  );
+  const settings = Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
+  return {
+    environment: normalizePromotionEnvironment(env),
+    upsellsEnabled: settingBool(settings[keys.upsells], true),
+    basketDiscountsEnabled: settingBool(settings[keys.basketDiscounts], true),
+  };
+}
+
+async function getAllPromotionFeatureSettings() {
+  const [production, sandbox] = await Promise.all([
+    getPromotionFeatureSettings("production"),
+    getPromotionFeatureSettings("sandbox"),
+  ]);
+  return { production, sandbox };
+}
+
+async function savePromotionFeatureSettings(payload, env) {
+  await ensureTables();
+  const keys = promotionSettingKeys(env);
+  const settings = {
+    [keys.upsells]: settingBool(payload?.upsellsEnabled, true),
+    [keys.basketDiscounts]: settingBool(payload?.basketDiscountsEnabled, true),
+  };
+
+  for (const [key, value] of Object.entries(settings)) {
+    await pool.query(
+      `
+        INSERT INTO app_settings (key, value, updated_at)
+        VALUES ($1, $2, NOW())
+        ON CONFLICT (key)
+        DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+      `,
+      [key, value ? "true" : "false"]
+    );
+  }
+
+  return getPromotionFeatureSettings(env);
+}
+
+async function saveAllPromotionFeatureSettings(payload) {
+  const productionPayload = payload?.production || {};
+  const sandboxPayload = payload?.sandbox || {};
+  const [production, sandbox] = await Promise.all([
+    savePromotionFeatureSettings(productionPayload, "production"),
+    savePromotionFeatureSettings(sandboxPayload, "sandbox"),
+  ]);
+  return { production, sandbox };
 }
 
 async function listPromotions() {
@@ -209,9 +300,12 @@ async function listPromotions() {
       p.trigger_item_ids,
       p.trigger_item_names,
       p.trigger_class,
+      p.trigger_size,
+      p.trigger_category,
       p.suggested_item_id,
       p.suggested_item_name,
       p.discount_percent,
+      p.exclude_clearance,
       p.start_date,
       p.end_date,
       p.is_active,
@@ -256,9 +350,12 @@ async function listPromotions() {
         ? [cleanText(row.trigger_item_name)]
         : [],
     triggerClass: row.trigger_class || "",
+    triggerSize: row.trigger_size || "",
+    triggerCategory: row.trigger_category || "",
     suggestedItemId: row.suggested_item_id || "",
     suggestedItemName: row.suggested_item_name || "",
     discountPercent: Number(row.discount_percent || 0),
+    excludeClearance: !!row.exclude_clearance,
     startDate: formatDateOnly(row.start_date),
     endDate: formatDateOnly(row.end_date),
     isActive: !!row.is_active,
@@ -303,11 +400,13 @@ async function savePromotion(client, promotionId, payload, createdBy) {
     const triggerItemId = cleanText(payload.triggerItemId) || triggerItemIds[0] || "";
     const triggerItemName = cleanText(payload.triggerItemName) || triggerItemNames[0] || "";
     const triggerClass = cleanText(payload.triggerClass);
+    const triggerSize = cleanText(payload.triggerSize);
+    const triggerCategory = cleanText(payload.triggerCategory);
     const suggestedItemId = cleanText(payload.suggestedItemId);
     const discountPercent = cleanPercent(payload.discountPercent);
 
-    if (!triggerItemIds.length && !triggerClass) {
-      throw new Error("An upsell needs at least one trigger item or a trigger class.");
+    if (!triggerItemIds.length && !triggerClass && !triggerSize && !triggerCategory) {
+      throw new Error("An upsell needs at least one trigger item, class, size, or category.");
     }
     if (!suggestedItemId) {
       throw new Error("An upsell needs a suggested item.");
@@ -325,6 +424,8 @@ async function savePromotion(client, promotionId, payload, createdBy) {
       cleanNullableTextArray(triggerItemIds),
       cleanNullableTextArray(triggerItemNames),
       cleanNullableText(triggerClass),
+      cleanNullableText(triggerSize),
+      cleanNullableText(triggerCategory),
       suggestedItemId,
       cleanNullableText(payload.suggestedItemName),
       discountPercent,
@@ -347,17 +448,19 @@ async function savePromotion(client, promotionId, payload, createdBy) {
                  trigger_item_ids = $6,
                  trigger_item_names = $7,
                  trigger_class = $8,
-                 suggested_item_id = $9,
-                 suggested_item_name = $10,
-                 discount_percent = $11,
-                 start_date = $12,
-                 end_date = $13,
-                 is_active = $14,
+                 trigger_size = $9,
+                 trigger_category = $10,
+                 suggested_item_id = $11,
+                 suggested_item_name = $12,
+                 discount_percent = $13,
+                 start_date = $14,
+                 end_date = $15,
+                 is_active = $16,
                  updated_at = NOW()
-           WHERE id = $15
+           WHERE id = $17
            RETURNING id
         `,
-        [...params.slice(0, 14), promotionId]
+        [...params.slice(0, 16), promotionId]
       );
       await client.query("DELETE FROM promotion_basket_rules WHERE promotion_id = $1", [promotionId]);
     } else {
@@ -372,6 +475,8 @@ async function savePromotion(client, promotionId, payload, createdBy) {
             trigger_item_ids,
             trigger_item_names,
             trigger_class,
+            trigger_size,
+            trigger_category,
             suggested_item_id,
             suggested_item_name,
             discount_percent,
@@ -380,7 +485,7 @@ async function savePromotion(client, promotionId, payload, createdBy) {
             is_active,
             created_by
           )
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
           RETURNING id
         `,
         params
@@ -392,6 +497,7 @@ async function savePromotion(client, promotionId, payload, createdBy) {
 
   const rules = Array.isArray(payload.rules) ? payload.rules.map(normalizeRule) : [];
   const ruleError = validateBasketRules(rules);
+  const excludeClearance = payload.excludeClearance === true;
   if (ruleError) {
     throw new Error(ruleError);
   }
@@ -409,17 +515,20 @@ async function savePromotion(client, promotionId, payload, createdBy) {
                trigger_item_ids = NULL,
                trigger_item_names = NULL,
                trigger_class = NULL,
+               trigger_size = NULL,
+               trigger_category = NULL,
                suggested_item_id = NULL,
                suggested_item_name = NULL,
                discount_percent = NULL,
-               start_date = $3,
-               end_date = $4,
-               is_active = $5,
+               exclude_clearance = $3,
+               start_date = $4,
+               end_date = $5,
+               is_active = $6,
                updated_at = NOW()
-         WHERE id = $6
+         WHERE id = $7
          RETURNING id
       `,
-      [title, message, startDate, endDate, isActive, promotionId]
+      [title, message, excludeClearance, startDate, endDate, isActive, promotionId]
     );
     await client.query("DELETE FROM promotion_basket_rules WHERE promotion_id = $1", [promotionId]);
   } else {
@@ -429,15 +538,16 @@ async function savePromotion(client, promotionId, payload, createdBy) {
           type,
           title,
           message,
+          exclude_clearance,
           start_date,
           end_date,
           is_active,
           created_by
         )
-        VALUES ('basket_discount',$1,$2,$3,$4,$5,$6)
+        VALUES ('basket_discount',$1,$2,$3,$4,$5,$6,$7)
         RETURNING id
       `,
-      [title, message, startDate, endDate, isActive, cleanNullableText(createdBy)]
+      [title, message, excludeClearance, startDate, endDate, isActive, cleanNullableText(createdBy)]
     );
   }
 
@@ -463,6 +573,8 @@ async function savePromotion(client, promotionId, payload, createdBy) {
 
 router.get("/active", requireSession, async (req, res) => {
   try {
+    const activeEnvironment = normalizePromotionEnvironment(req.query.environment);
+    const settings = await getPromotionFeatureSettings(activeEnvironment);
     const promotions = await listPromotions();
     const today = new Date().toISOString().slice(0, 10);
     const active = promotions.filter(
@@ -471,14 +583,40 @@ router.get("/active", requireSession, async (req, res) => {
 
     res.json({
       ok: true,
+      environment: activeEnvironment,
+      settings,
       promotions: {
-        upsells: active.filter((promotion) => promotion.type === "upsell"),
-        basketDiscounts: active.filter((promotion) => promotion.type === "basket_discount"),
+        upsells: settings.upsellsEnabled ? active.filter((promotion) => promotion.type === "upsell") : [],
+        basketDiscounts: settings.basketDiscountsEnabled ? active.filter((promotion) => promotion.type === "basket_discount") : [],
       },
     });
   } catch (err) {
     console.error("GET /api/promotions/active error:", err.message);
     res.status(500).json({ ok: false, error: "Failed to load active promotions" });
+  }
+});
+
+router.get("/settings", requireSession, async (req, res) => {
+  try {
+    const activeEnvironment = normalizePromotionEnvironment(req.query.environment);
+    const settings = await getAllPromotionFeatureSettings();
+    res.json({ ok: true, environment: activeEnvironment, settings });
+  } catch (err) {
+    console.error("GET /api/promotions/settings error:", err.message);
+    res.status(500).json({ ok: false, error: "Failed to load promotion settings" });
+  }
+});
+
+router.put("/settings", requireSession, async (req, res) => {
+  try {
+    const activeEnvironment = normalizePromotionEnvironment(req.body?.environment || req.query.environment);
+    const settings = req.body?.settings
+      ? await saveAllPromotionFeatureSettings(req.body.settings)
+      : { [activeEnvironment]: await savePromotionFeatureSettings(req.body || {}, activeEnvironment) };
+    res.json({ ok: true, environment: activeEnvironment, settings });
+  } catch (err) {
+    console.error("PUT /api/promotions/settings error:", err.message);
+    res.status(400).json({ ok: false, error: err.message || "Failed to save promotion settings" });
   }
 });
 

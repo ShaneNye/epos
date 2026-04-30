@@ -51,6 +51,10 @@ function getOptionSchemaForItem(itemId, itemData) {
   return buildLegacyOptionSchemaFromItem(itemData);
 }
 
+function getItemClassText(item) {
+  return String(item?.["Class"] || "").trim().toLowerCase();
+}
+
 // === Load items from shared cache ===
 async function loadItems() {
   try {
@@ -141,7 +145,9 @@ async function populateBaseOptionFilter() {
 // === Load inventory balances (bulk) ===
 async function loadInventoryBalances() {
   try {
-    const res = await fetch("/api/netsuite/inventorybalance");
+    const res = await fetch(`/api/netsuite/inventorybalance?refresh=1&_=${Date.now()}`, {
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
@@ -321,7 +327,7 @@ function ensure60NightTrialCell(row) {
 
   // ✅ Reposition into correct column order:
   // after Sale Price td, before Fulfilment td
-  const saleTd = row.querySelector(".item-saleprice")?.closest("td");
+  const saleTd = row.querySelector(".vat-free-cell") || row.querySelector(".item-saleprice")?.closest("td");
   const fulfilTd = row.querySelector(".fulfilment-cell");
 
   if (saleTd) {
@@ -366,6 +372,58 @@ function update60NightTrialColumnVisibility() {
     if (ph) ph.style.display = isMattress ? "none" : "inline";
 
     if (!isMattress && sel) sel.value = "N/A";
+  });
+}
+
+function ensureVatFreeCell(row) {
+  if (!row) return null;
+
+  let td = row.querySelector("td.vat-free-cell");
+  if (!td) {
+    td = document.createElement("td");
+    td.className = "vat-free-cell";
+    td.innerHTML = `
+      <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />
+      <span class="vat-free-placeholder"></span>
+    `;
+  }
+
+  const saleTd = row.querySelector(".item-saleprice")?.closest("td");
+  if (saleTd) {
+    if (td.parentNode === row) td.remove();
+    insertAfter(td, saleTd);
+  } else if (!td.parentNode) {
+    row.appendChild(td);
+  }
+
+  return td;
+}
+
+function updateVatFreeColumnVisibility() {
+  const header = document.getElementById("vatFreeHeader");
+  const rows = document.querySelectorAll("#orderItemsBody .order-line");
+  if (!header) return;
+
+  rows.forEach(row => ensureVatFreeCell(row));
+
+  const anyAdjustable = [...rows].some(row => (row.dataset.itemClass || "").toLowerCase().includes("adjustable"));
+  header.style.display = anyAdjustable ? "table-cell" : "none";
+
+  rows.forEach(row => {
+    const cell = row.querySelector("td.vat-free-cell");
+    if (!cell) return;
+
+    const isAdjustable = (row.dataset.itemClass || "").toLowerCase().includes("adjustable");
+    const checkbox = cell.querySelector(".vat-free-checkbox");
+    const placeholder = cell.querySelector(".vat-free-placeholder");
+
+    cell.style.display = anyAdjustable ? "table-cell" : "none";
+    if (checkbox) checkbox.style.display = isAdjustable ? "inline-block" : "none";
+    if (placeholder) {
+      placeholder.textContent = "";
+      placeholder.style.display = "none";
+    }
+    if (!isAdjustable && checkbox) checkbox.checked = false;
   });
 }
 
@@ -428,11 +486,12 @@ async function selectItem(item) {
   const invCell = line.querySelector(".inventory-cell");
 
   // ✅ Track item class on the row for global 60NT logic
-  const itemClass = (item["Class"] || "").toLowerCase();
+  const itemClass = getItemClassText(item);
   line.dataset.itemClass = itemClass;
 
   // Ensure 60NT cell is correct and update entire table column state
   ensure60NightTrialCell(line);
+  updateVatFreeColumnVisibility();
   update60NightTrialColumnVisibility();
 
   if (item["Class"] && item["Class"].toLowerCase() === "service") {
@@ -525,10 +584,11 @@ function applyItemToRow(line, item, config = {}) {
   const fulfilCell = line.querySelector(".fulfilment-cell");
   const fulfilSel = line.querySelector(".item-fulfilment");
   const invCell = line.querySelector(".inventory-cell");
-  const itemClass = (item["Class"] || "").toLowerCase();
+  const itemClass = getItemClassText(item);
   line.dataset.itemClass = itemClass;
 
   ensure60NightTrialCell(line);
+  updateVatFreeColumnVisibility();
   update60NightTrialColumnVisibility();
 
   if (itemClass === "service" || itemClass.includes("service")) {
@@ -829,6 +889,11 @@ function addNewRow() {
 <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" /></td>
 <td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
 
+<td class="vat-free-cell" style="display:none;">
+  <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />
+  <span class="vat-free-placeholder"></span>
+</td>
+
 <td class="sixty-night-cell" style="display:none;">
   <select class="sixty-night-select" style="display:none;">
     <option value="N/A">N/A</option>
@@ -855,6 +920,7 @@ function addNewRow() {
 
   // ✅ Ensure correct position + adopt legacy if needed (belt & braces)
   ensure60NightTrialCell(tr);
+  updateVatFreeColumnVisibility();
   update60NightTrialColumnVisibility();
 
   setupAutocomplete(newLine);
@@ -875,6 +941,7 @@ function addNewRow() {
   tr.querySelector(".delete-row").addEventListener("click", () => {
     tr.remove();
     updateOrderSummary();
+    updateVatFreeColumnVisibility();
     update60NightTrialColumnVisibility(); // ✅ if a mattress row was removed
   });
 
@@ -910,11 +977,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // ✅ Ensure the first row's 60NT cell is adopted/repositioned (prevents duplicate columns)
     ensure60NightTrialCell(firstRow);
+    ensureVatFreeCell(firstRow);
+    updateVatFreeColumnVisibility();
     update60NightTrialColumnVisibility();
 
     const invCell =
       firstRow.querySelector(".inventory-cell") ||
-      firstRow.querySelector("td:nth-child(8)");
+      firstRow.querySelector("td:nth-child(9)");
 
     if (invCell && !invCell.querySelector(".open-inventory")) {
       invCell.innerHTML = `

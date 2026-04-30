@@ -42,6 +42,10 @@ function getOptionSchemaForItem(itemId, itemData) {
   return buildLegacyOptionSchemaFromItem(itemData);
 }
 
+function getItemClassText(item) {
+  return String(item?.["Class"] || "").trim().toLowerCase();
+}
+
 /* =========================================================
    Load items from shared cache / proxy
 ========================================================= */
@@ -310,7 +314,7 @@ function ensure60NightTrialCell(row) {
   if (sel) sel.style.display = "none";
   if (ph) ph.style.display = "inline";
 
-  const saleTd = row.querySelector(".item-saleprice")?.closest("td");
+  const saleTd = row.querySelector(".vat-free-cell") || row.querySelector(".item-saleprice")?.closest("td");
   if (saleTd) {
     if (td.parentNode === row) td.remove();
     insertAfter(td, saleTd);
@@ -348,6 +352,58 @@ function update60NightTrialColumnVisibility() {
     if (ph) ph.style.display = isMattress ? "none" : "inline";
 
     if (!isMattress && sel) sel.value = "N/A";
+  });
+}
+
+function ensureVatFreeCell(row) {
+  if (!row) return null;
+
+  let td = row.querySelector("td.vat-free-cell");
+  if (!td) {
+    td = document.createElement("td");
+    td.className = "vat-free-cell";
+    td.innerHTML = `
+      <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />
+      <span class="vat-free-placeholder"></span>
+    `;
+  }
+
+  const saleTd = row.querySelector(".item-saleprice")?.closest("td");
+  if (saleTd) {
+    if (td.parentNode === row) td.remove();
+    insertAfter(td, saleTd);
+  } else if (!td.parentNode) {
+    row.appendChild(td);
+  }
+
+  return td;
+}
+
+function updateVatFreeColumnVisibility() {
+  const header = document.getElementById("vatFreeHeader");
+  const rows = document.querySelectorAll("#orderItemsBody .order-line");
+  if (!header) return;
+
+  rows.forEach((row) => ensureVatFreeCell(row));
+
+  const anyAdjustable = [...rows].some((row) => (row.dataset.itemClass || "").toLowerCase().includes("adjustable"));
+  header.style.display = anyAdjustable ? "table-cell" : "none";
+
+  rows.forEach((row) => {
+    const cell = row.querySelector("td.vat-free-cell");
+    if (!cell) return;
+
+    const isAdjustable = (row.dataset.itemClass || "").toLowerCase().includes("adjustable");
+    const checkbox = cell.querySelector(".vat-free-checkbox");
+    const placeholder = cell.querySelector(".vat-free-placeholder");
+
+    cell.style.display = anyAdjustable ? "table-cell" : "none";
+    if (checkbox) checkbox.style.display = isAdjustable ? "inline-block" : "none";
+    if (placeholder) {
+      placeholder.textContent = "";
+      placeholder.style.display = "none";
+    }
+    if (!isAdjustable && checkbox) checkbox.checked = false;
   });
 }
 
@@ -714,10 +770,11 @@ const retailPerUnitGross = Number.isFinite(rawBase) ? rawBase * 1.2 : 0;
   line.dataset.hasItem = "1";
 
   const itemId = (hiddenId?.value || "").trim();
-  const itemClass = (item["Class"] || "").toLowerCase();
+  const itemClass = getItemClassText(item);
   line.dataset.itemClass = itemClass;
 
   ensure60NightTrialCell(line);
+  updateVatFreeColumnVisibility();
   update60NightTrialColumnVisibility();
 
   const opts = getOptionSchemaForItem(itemId, item);
@@ -741,6 +798,32 @@ const retailPerUnitGross = Number.isFinite(rawBase) ? rawBase * 1.2 : 0;
   setTimeout(() => ensureNextEmptyRowAndFocus(), 0);
 
   hideSuggestions();
+  recalcTotals();
+}
+
+function applyItemToRow(line, item, config = {}) {
+  const input = line?.querySelector(".item-search");
+  if (!line || !input || !item) return;
+
+  selectItemForRow(line, input, item);
+
+  const quantity = Math.max(1, parseInt(config.quantity || 1, 10) || 1);
+  const qtyField = line.querySelector(".item-qty");
+  const salePriceField = line.querySelector(".item-saleprice");
+  const discountField = line.querySelector(".item-discount");
+
+  if (qtyField) qtyField.value = String(quantity);
+
+  if (salePriceField && Number.isFinite(Number(config.salePrice))) {
+    salePriceField.value = Number(config.salePrice).toFixed(2);
+    salePriceField.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
+  if (discountField && Number.isFinite(Number(config.discountPercent))) {
+    discountField.value = String(Number(config.discountPercent || 0));
+    discountField.dispatchEvent(new Event("input", { bubbles: true }));
+  }
+
   recalcTotals();
 }
 
@@ -796,6 +879,11 @@ function addNewRow() {
       <input type="number" class="item-saleprice" placeholder="£" step="0.01" />
     </td>
 
+    <td class="vat-free-cell" style="display:none;">
+      <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />
+      <span class="vat-free-placeholder"></span>
+    </td>
+
     <td class="sixty-night-cell" style="display:none;"></td>
 
     <td>
@@ -806,6 +894,7 @@ function addNewRow() {
   tbody.appendChild(tr);
 
   ensure60NightTrialCell(tr);
+  updateVatFreeColumnVisibility();
   update60NightTrialColumnVisibility();
 
   setupAutocompleteForRow(tr);
@@ -817,6 +906,7 @@ function addNewRow() {
 
   tr.querySelector(".delete-row")?.addEventListener("click", () => {
     tr.remove();
+    updateVatFreeColumnVisibility();
     update60NightTrialColumnVisibility();
     recalcTotals();
   });
@@ -839,6 +929,11 @@ window.update60NightTrialColumnVisibility = update60NightTrialColumnVisibility;
 window.ensureNextEmptyRowAndFocus = ensureNextEmptyRowAndFocus;
 window.addNewRow = addNewRow;
 window.openOptionsWindow = openOptionsWindow;
+window.quoteNewItemEditor = {
+  addNewRow: (...args) => addNewRow(...args),
+  applyItemToRow: (...args) => applyItemToRow(...args),
+  selectionsToSummary: (...args) => selectionsToSummary(...args),
+};
 
 /* =========================================================
    Init
@@ -865,6 +960,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     setupAutocompleteForRow(row);
     setupPriceSync(row);
     ensure60NightTrialCell(row);
+    ensureVatFreeCell(row);
 
     const hasItem = row.querySelector(".item-internal-id")?.value?.trim();
     row.dataset.hasItem = hasItem ? "1" : (row.dataset.hasItem || "0");
@@ -874,11 +970,13 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     row.querySelector(".delete-row")?.addEventListener("click", () => {
       row.remove();
+      updateVatFreeColumnVisibility();
       update60NightTrialColumnVisibility();
       recalcTotals();
     });
   });
 
+  updateVatFreeColumnVisibility();
   update60NightTrialColumnVisibility();
 
   const addBtn = document.getElementById("addItemBtn");

@@ -227,6 +227,93 @@
   background: #c0392b;
 }
 
+.admin-feature-panel {
+  display: grid;
+  gap: 1rem;
+  max-width: 720px;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.admin-feature-panel h3 {
+  margin: 0 0 0.25rem;
+  color: var(--brand);
+}
+
+.admin-feature-panel p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.admin-environment-settings {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.admin-environment-card {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.admin-environment-card h4 {
+  margin: 0;
+  color: var(--ink);
+}
+
+.admin-toggle-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.admin-toggle-row span {
+  display: grid;
+  gap: 0.2rem;
+}
+
+.admin-toggle-row small {
+  color: var(--muted);
+}
+
+.admin-toggle-row input {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.admin-feature-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.admin-feature-status {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+.admin-feature-status[data-tone="success"] {
+  color: #166534;
+}
+
+.admin-feature-status[data-tone="error"] {
+  color: #b91c1c;
+}
+
+@media (max-width: 760px) {
+  .admin-environment-settings {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* --- Modal --- */
 .modal {
   position: fixed;

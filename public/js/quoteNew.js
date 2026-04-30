@@ -314,6 +314,7 @@ if (window.location.pathname.includes("/quote/view/")) {
 
           const trialSel = tr.querySelector(".sixty-night-select");
           const trialOption = (trialSel?.value || "").trim();
+          const vatFree = !!tr.querySelector(".vat-free-checkbox")?.checked;
 
           return {
             item,
@@ -321,6 +322,7 @@ if (window.location.pathname.includes("/quote/view/")) {
             amount: Number.isFinite(amount) ? amount : 0,
             options,
             trialOption,
+            taxCode: vatFree ? "10" : "",
           };
         })
         .filter(Boolean);

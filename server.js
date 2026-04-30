@@ -75,9 +75,30 @@ app.use(
 
 const suiteletCache = new Map();
 
-function sendCachedJson(req, res, payload, { ttlMs = 5 * 60 * 1000 } = {}) {
+function wantsFreshData(req) {
+  const flag = String(req.query.refresh || req.query.force || req.query.fresh || "").toLowerCase();
+  const cacheControl = String(req.headers["cache-control"] || "").toLowerCase();
+  const pragma = String(req.headers.pragma || "").toLowerCase();
+
+  return (
+    ["1", "true", "yes"].includes(flag) ||
+    cacheControl.includes("no-cache") ||
+    pragma.includes("no-cache")
+  );
+}
+
+function sendCachedJson(req, res, payload, { ttlMs = 5 * 60 * 1000, noStore = false } = {}) {
   const body = JSON.stringify(payload);
   const etag = `"${crypto.createHash("sha1").update(body).digest("hex")}"`;
+
+  if (noStore || ttlMs <= 0) {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+    return res.type("application/json").send(body);
+  }
 
   res.set({
     "Cache-Control": `private, max-age=${Math.floor(ttlMs / 1000)}, stale-while-revalidate=300`,
@@ -98,16 +119,18 @@ function sendCachedJson(req, res, payload, { ttlMs = 5 * 60 * 1000 } = {}) {
 async function fetchNetSuiteData(envUrlKey, envTokenKey, req, res, label, options = {}) {
   try {
     const ttlMs = Number(options.ttlMs || process.env.SUITELET_CACHE_TTL_MS || 60 * 60 * 1000);
+    const forceRefresh = Boolean(options.forceRefresh || wantsFreshData(req));
+    const noStore = Boolean(options.noStore || forceRefresh || ttlMs <= 0);
     const cacheKey = `${envUrlKey}:${envTokenKey}`;
     const cached = suiteletCache.get(cacheKey);
 
-    if (!options.forceRefresh && cached?.expiresAt > Date.now() && cached.payload) {
+    if (!forceRefresh && cached?.expiresAt > Date.now() && cached.payload) {
       return sendCachedJson(req, res, cached.payload, { ttlMs });
     }
 
-    if (!options.forceRefresh && cached?.inFlight) {
+    if (cached?.inFlight) {
       const payload = await cached.inFlight;
-      return sendCachedJson(req, res, payload, { ttlMs });
+      return sendCachedJson(req, res, payload, { ttlMs, noStore });
     }
 
     const baseUrl = process.env[envUrlKey];
@@ -122,26 +145,35 @@ async function fetchNetSuiteData(envUrlKey, envTokenKey, req, res, label, option
     console.log(`📡 [NetSuite] ${label}: ${nsUrl}`);
 
     const inFlight = (async () => {
-      const response = await fetch(nsUrl);
-      if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
+      try {
+        const response = await fetch(nsUrl);
+        if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
 
-      const json = await response.json();
-      suiteletCache.set(cacheKey, {
-        payload: json,
-        expiresAt: Date.now() + ttlMs,
-        inFlight: null,
-      });
-      return json;
+        const json = await response.json();
+        if (noStore) {
+          suiteletCache.delete(cacheKey);
+        } else {
+          suiteletCache.set(cacheKey, {
+            payload: json,
+            expiresAt: Date.now() + ttlMs,
+            inFlight: null,
+          });
+        }
+        return json;
+      } catch (err) {
+        suiteletCache.delete(cacheKey);
+        throw err;
+      }
     })();
 
     suiteletCache.set(cacheKey, {
-      payload: cached?.payload || null,
-      expiresAt: cached?.expiresAt || 0,
+      payload: noStore ? null : cached?.payload || null,
+      expiresAt: noStore ? 0 : cached?.expiresAt || 0,
       inFlight,
     });
 
     const json = await inFlight;
-    return sendCachedJson(req, res, json, { ttlMs });
+    return sendCachedJson(req, res, json, { ttlMs, noStore });
   } catch (err) {
     console.error(`❌ NetSuite ${label} proxy error:`, err);
     res.status(500).json({ ok: false, error: `Failed to fetch ${label} data` });
@@ -568,6 +600,12 @@ app.get("/api/netsuite/fulfilmentmethods", (req, res) =>
 // === Inventory Balance ===
 app.get("/api/netsuite/inventorybalance", async (req, res) => {
   try {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
     const baseUrl = process.env.SALES_ORDER_INV_BALANCE_URL;
     const token = process.env.SALES_ORDER_INV_BALANCE;
     if (!baseUrl || !token) throw new Error("Missing env vars for inventory balance");
@@ -598,7 +636,10 @@ app.get("/api/netsuite/inventory-status", (req, res) =>
 );
 
 app.get("/api/netsuite/order-management", (req, res) =>
-  fetchNetSuiteData("ORDER_MANAGEMENT_URL", "ORDER_MANAGEMENT", req, res, "order management")
+  fetchNetSuiteData("ORDER_MANAGEMENT_URL", "ORDER_MANAGEMENT", req, res, "order management", {
+    noStore: true,
+    forceRefresh: true,
+  })
 );
 
 
@@ -606,17 +647,26 @@ app.get("/api/netsuite/order-management", (req, res) =>
 
 // === Quote Management ===
 app.get("/api/netsuite/quote-management", (req, res) =>
-  fetchNetSuiteData("QUOTE_MANAGEMENT_URL", "QUOTE_MANAGEMENT", req, res, "quote management")
+  fetchNetSuiteData("QUOTE_MANAGEMENT_URL", "QUOTE_MANAGEMENT", req, res, "quote management", {
+    noStore: true,
+    forceRefresh: true,
+  })
 );
 
 // === Case Management ===
 app.get("/api/netsuite/case-management", (req, res) =>
-  fetchNetSuiteData("CASE_MANAGEMENT_URL", "CASE_MANAGEMENT", req, res, "case management")
+  fetchNetSuiteData("CASE_MANAGEMENT_URL", "CASE_MANAGEMENT", req, res, "case management", {
+    noStore: true,
+    forceRefresh: true,
+  })
 );
 
 // === Transfer Order Management ===
 app.get("/api/netsuite/transfer-order-management", (req, res) =>
-  fetchNetSuiteData("TRANSFER_ORDER_MANAGEMENT_URL", "TRANSFER_ORDER_MANAGEMENT", req, res, "transfer order management")
+  fetchNetSuiteData("TRANSFER_ORDER_MANAGEMENT_URL", "TRANSFER_ORDER_MANAGEMENT", req, res, "transfer order management", {
+    noStore: true,
+    forceRefresh: true,
+  })
 );
 
 // === Customer Lookup Report ===
@@ -633,7 +683,10 @@ app.get("/api/netsuite/glaccounts", (req, res) =>
 
 // === Customer Deposits ===
 app.get("/api/netsuite/customer-deposits", (req, res) =>
-  fetchNetSuiteData("CUSTOMER_DEPOSITS_URL", "CUSTOMER_DEPOSITS", req, res, "customer deposits")
+  fetchNetSuiteData("CUSTOMER_DEPOSITS_URL", "CUSTOMER_DEPOSITS", req, res, "customer deposits", {
+    noStore: true,
+    forceRefresh: true,
+  })
 );
 
 // === VSA Item Data ===
@@ -643,7 +696,10 @@ app.get("/api/netsuite/vsa-item-data", (req, res) =>
 
 // === Widget Sales ===
 app.get("/api/netsuite/widget-sales", (req, res) =>
-  fetchNetSuiteData("WIDGET_SALES_URL", "WIDGET_SALES", req, res, "Widget Sales data")
+  fetchNetSuiteData("WIDGET_SALES_URL", "WIDGET_SALES", req, res, "Widget Sales data", {
+    noStore: true,
+    forceRefresh: true,
+  })
 );
 
 // == sales order item size ==
