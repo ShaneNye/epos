@@ -227,6 +227,8 @@ function promotionSettingKeys(env) {
   return {
     upsells: `promotions.${normalized}.upsells.enabled`,
     basketDiscounts: `promotions.${normalized}.basket_discounts.enabled`,
+    legacyUpsells: "promotions.upsells.enabled",
+    legacyBasketDiscounts: "promotions.basket_discounts.enabled",
   };
 }
 
@@ -235,13 +237,16 @@ async function getPromotionFeatureSettings(env) {
   const keys = promotionSettingKeys(env);
   const result = await pool.query(
     "SELECT key, value FROM app_settings WHERE key = ANY($1::text[])",
-    [[keys.upsells, keys.basketDiscounts]]
+    [[keys.upsells, keys.basketDiscounts, keys.legacyUpsells, keys.legacyBasketDiscounts]]
   );
   const settings = Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
   return {
     environment: normalizePromotionEnvironment(env),
-    upsellsEnabled: settingBool(settings[keys.upsells], true),
-    basketDiscountsEnabled: settingBool(settings[keys.basketDiscounts], true),
+    upsellsEnabled: settingBool(settings[keys.upsells] ?? settings[keys.legacyUpsells], true),
+    basketDiscountsEnabled: settingBool(
+      settings[keys.basketDiscounts] ?? settings[keys.legacyBasketDiscounts],
+      true
+    ),
   };
 }
 

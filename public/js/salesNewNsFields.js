@@ -117,11 +117,19 @@ document.addEventListener("DOMContentLoaded", async () => {
 // === Fulfilment Methods ===
 async function populateFulfilmentMethods() {
   try {
-    const res = await fetch("/api/netsuite/fulfilmentmethods");
+    const res = await fetch(`/api/netsuite/fulfilmentmethods?refresh=1&_=${Date.now()}`, {
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
 
     if (data.ok && Array.isArray(data.results)) {
+      const methods = data.results.filter((opt) => {
+        const id = String(opt["Internal ID"] || "").trim();
+        const name = String(opt["Name"] || "").trim();
+        return id && name && name !== ".";
+      });
+
       // Find all fulfilment dropdowns in the table
       const selects = document.querySelectorAll("select.item-fulfilment");
 
@@ -129,7 +137,7 @@ async function populateFulfilmentMethods() {
         // reset options
         select.innerHTML = '<option value="">Select fulfilment method...</option>';
 
-        data.results.forEach(opt => {
+        methods.forEach(opt => {
           const option = document.createElement("option");
           option.value = opt["Internal ID"];
           option.textContent = opt["Name"];

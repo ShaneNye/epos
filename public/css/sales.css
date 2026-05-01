@@ -89,6 +89,8 @@ textarea:focus {
 .postcode-label {
   max-width: 100%;
   margin-bottom: 0.4rem;
+  position: relative;
+  z-index: 20;
 }
 
 .postcode-row {
@@ -115,6 +117,18 @@ textarea:focus {
 
 #findAddressBtn:hover {
   background: var(--brand-600);
+}
+
+#addressResults {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  width: 100%;
+  z-index: 2000;
+  background: #fff;
+  border: 1px solid #d8dee2;
+  box-shadow: 0 8px 18px rgba(16, 24, 40, 0.14);
 }
 
 /* === ADDRESS BLOCK === */

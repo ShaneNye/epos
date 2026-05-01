@@ -17,6 +17,12 @@ const {
 // =====================================================
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
+const LOCATION_FEED_TTL_MS = 10 * 60 * 1000;
+const locationFeedCache = { expiresAt: 0, rows: null, inFlight: null };
+const inventoryNumberCache = new Map();
+const SALES_ORDER_PENDING_APPROVAL_STATUS = { id: "A" };
+const TRANSFER_ORDER_APPROVED_STATUS = { id: "B" };
+const SALES_ORDER_PENDING_APPROVAL_LEGACY_STATUS = "A";
 
 function cachePrefix(id) {
   return `so:${String(id).trim()}`;
@@ -31,6 +37,174 @@ function cacheDeleteSalesOrder(id) {
   for (const key of soCache.keys()) {
     if (key === cachePrefix(id) || key.startsWith(prefix)) soCache.delete(key);
   }
+}
+
+function suiteQlUrl() {
+  return `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`;
+}
+
+function normalizeLocationLookupName(value) {
+  return String(value || "")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function normalizeBroadLocationLookupName(value) {
+  return String(value || "")
+    .replace(/\b(store|warehouse)\b/gi, "")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .trim()
+    .toLowerCase();
+}
+
+async function loadLocationFeedRows() {
+  if (locationFeedCache.rows && locationFeedCache.expiresAt > Date.now()) {
+    return locationFeedCache.rows;
+  }
+
+  if (locationFeedCache.inFlight) return locationFeedCache.inFlight;
+
+  locationFeedCache.inFlight = (async () => {
+    const baseUrl = process.env.SALES_ORD_LOCATION_URL;
+    const token = process.env.SALES_ORDER_TKN_LOCATION;
+    if (!baseUrl || !token) return [];
+
+    const url = `${baseUrl}&token=${encodeURIComponent(token)}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Location feed response ${response.status}`);
+    const payload = await response.json();
+    const rows = Array.isArray(payload.results) ? payload.results : Array.isArray(payload) ? payload : [];
+
+    locationFeedCache.rows = rows;
+    locationFeedCache.expiresAt = Date.now() + LOCATION_FEED_TTL_MS;
+    locationFeedCache.inFlight = null;
+    return rows;
+  })();
+
+  try {
+    return await locationFeedCache.inFlight;
+  } catch (err) {
+    locationFeedCache.inFlight = null;
+    console.warn("⚠️ Failed to load NetSuite location feed:", err.message);
+    return [];
+  }
+}
+
+async function resolveNetSuiteLocationIdByName(name) {
+  const wanted = normalizeLocationLookupName(name);
+  if (!wanted) return "";
+
+  const rows = await loadLocationFeedRows();
+  const rowNameFor = (row) => row.Name || row.name || row.Location || row.location;
+  const exact = rows.find((row) => normalizeLocationLookupName(rowNameFor(row)) === wanted);
+  const broadWanted = normalizeBroadLocationLookupName(name);
+  const broad = exact || rows.find((row) => {
+    const rowName = normalizeBroadLocationLookupName(rowNameFor(row));
+    return rowName && broadWanted && rowName === broadWanted;
+  });
+
+  return String(broad?.["Internal ID"] || broad?.id || broad?.internalid || "").trim();
+}
+
+async function getInventoryNumberInfo(inventoryNumberId, userId) {
+  const id = String(inventoryNumberId || "").trim();
+  if (!id) return null;
+  if (inventoryNumberCache.has(id)) return inventoryNumberCache.get(id);
+
+  try {
+    const record = await nsGet(`/inventoryNumber/${encodeURIComponent(id)}`, userId);
+    const info = {
+      id: String(record?.id || id),
+      number: String(record?.inventoryNumber || record?.inventorynumber || record?.name || ""),
+      itemId: String(record?.item?.id || record?.item || ""),
+      itemName: String(record?.item?.refName || ""),
+    };
+    inventoryNumberCache.set(id, info);
+    return info;
+  } catch (err) {
+    console.warn(`⚠️ Unable to validate inventory number ${id}:`, err.message);
+  }
+  return null;
+}
+
+async function getLinkedTransferOrders(salesOrderId, userId) {
+  const numericId = Number(salesOrderId);
+  if (!Number.isFinite(numericId) || numericId <= 0) return [];
+
+  const query = `
+    SELECT id, tranid, status
+    FROM transaction
+    WHERE custbody_sb_relatedsalesorder = ${numericId}
+  `;
+
+  const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId);
+  return Array.isArray(result?.items) ? result.items : [];
+}
+
+async function approveLinkedTransferOrders(salesOrderId, userId) {
+  const transfers = await getLinkedTransferOrders(salesOrderId, userId);
+  const approved = [];
+  const failed = [];
+
+  for (const transfer of transfers) {
+    const transferId = transfer?.id;
+    if (!transferId) continue;
+
+    try {
+      await nsPatch(
+        `/transferOrder/${transferId}`,
+        { orderStatus: TRANSFER_ORDER_APPROVED_STATUS },
+        userId
+      );
+      approved.push({
+        id: String(transferId),
+        tranid: transfer.tranid || null,
+      });
+      console.log(`✅ Linked Transfer Order ${transfer.tranid || transferId} approved`);
+    } catch (err) {
+      failed.push({
+        id: String(transferId),
+        tranid: transfer.tranid || null,
+        error: err.message,
+      });
+      console.error(
+        `❌ Failed to approve linked Transfer Order ${transfer.tranid || transferId}:`,
+        err.message
+      );
+    }
+  }
+
+  return {
+    ok: failed.length === 0,
+    found: transfers.length,
+    approved,
+    failed,
+  };
+}
+
+async function forceSalesOrderPendingApproval(salesOrderId, userId) {
+  const attempts = [
+    { orderstatus: SALES_ORDER_PENDING_APPROVAL_LEGACY_STATUS },
+    { orderStatus: SALES_ORDER_PENDING_APPROVAL_STATUS },
+  ];
+
+  let lastError = null;
+  for (const body of attempts) {
+    try {
+      await nsPatch(`/salesOrder/${salesOrderId}`, body, userId);
+      console.log(`✅ Sales Order ${salesOrderId} forced to Pending Approval`);
+      return true;
+    } catch (err) {
+      lastError = err;
+      console.warn(
+        `⚠️ Pending Approval PATCH failed for Sales Order ${salesOrderId}:`,
+        err.message
+      );
+    }
+  }
+
+  throw lastError || new Error("Unable to set Sales Order to Pending Approval");
 }
 
 function isProductionEnv() {
@@ -274,7 +448,7 @@ function buildSalesOrderFields() {
     "id",
     "tranId",
     "trandate",
-    "orderstatus",
+    "orderStatus",
     "entity",
     "location",
     "leadsource",
@@ -445,7 +619,8 @@ router.post("/create", async (req, res) => {
       entity: { id: customerId },
       subsidiary: storeNsId ? { id: String(storeNsId) } : undefined,
       trandate: new Date().toISOString().split("T")[0],
-      orderstatus: "A",
+      orderStatus: SALES_ORDER_PENDING_APPROVAL_STATUS,
+      orderstatus: SALES_ORDER_PENDING_APPROVAL_LEGACY_STATUS,
       location: invoiceLocationId ? { id: String(invoiceLocationId) } : undefined,
       custbody_sb_bedspecialist: salesExecNsId ? { id: salesExecNsId } : undefined,
       custbody_sb_primarystore: storeNsId ? { id: storeNsId } : undefined,
@@ -566,6 +741,14 @@ router.post("/create", async (req, res) => {
       });
 
     console.log("✅ Sales Order created successfully with ID:", salesOrderId);
+    try {
+      await forceSalesOrderPendingApproval(salesOrderId, userId);
+    } catch (err) {
+      console.error(
+        `Sales Order ${salesOrderId} was created but could not be forced to Pending Approval:`,
+        err.message
+      );
+    }
 
     // ==========================================================
     // 💰 Create Customer Deposit(s) if provided in payload
@@ -767,25 +950,34 @@ router.post("/create", async (req, res) => {
           console.log(`🔍 Resolving LOT source for LOT ${line.lotnumber}`);
 
           try {
-            const lotRes = await pool.query(
-              `SELECT location_name, location_id, distribution_location_id
-               FROM epos_lots
-               WHERE lot_id = $1
-               LIMIT 1`,
-              [line.lotnumber]
+            const lotTable = await pool.query(
+              `SELECT to_regclass('public.epos_lots') AS table_name`
             );
 
-            if (lotRes.rows.length) {
-              const row = lotRes.rows[0];
-              const srcName = row.location_name || "";
-              const srcInv = row.location_id || "";
-              const srcDist = row.distribution_location_id || srcInv;
-
-              console.log(`📦 LOT ${line.lotnumber} → ${srcName} (dist ${srcDist})`);
-              line.inventoryMeta = `1|${srcName}|${srcInv}|||LOT|${line.lotnumber}`;
-            } else {
-              console.warn(`⚠️ No LOT source found → cannot create transfer`);
+            if (!lotTable.rows[0]?.table_name) {
+              console.warn("⚠️ epos_lots table missing; cannot resolve lot-only transfer source");
               skipTransfer = true;
+            } else {
+              const lotRes = await pool.query(
+                `SELECT location_name, location_id, distribution_location_id
+                 FROM epos_lots
+                 WHERE lot_id = $1
+                 LIMIT 1`,
+                [line.lotnumber]
+              );
+
+              if (lotRes.rows.length) {
+                const row = lotRes.rows[0];
+                const srcName = row.location_name || "";
+                const srcInv = row.location_id || "";
+                const srcDist = row.distribution_location_id || srcInv;
+
+                console.log(`📦 LOT ${line.lotnumber} → ${srcName} (dist ${srcDist})`);
+                line.inventoryMeta = `1|${srcName}|${srcInv}|||LOT|${line.lotnumber}`;
+              } else {
+                console.warn(`⚠️ No LOT source found → cannot create transfer`);
+                skipTransfer = true;
+              }
             }
           } catch (err) {
             console.error("❌ LOT lookup failed:", err.message);
@@ -846,15 +1038,26 @@ router.post("/create", async (req, res) => {
         for (const part of metaParts) {
           let sourceLocId = null;
 
-          const [qty, locName, locIdRaw, , , , invIdRaw] = part.split("|");
+          const [qty, locName, locIdRaw, , statusIdRaw, , invIdRaw] = part.split("|");
 
           const quantity = parseFloat(qty || 0) || 0;
           const invId = (invIdRaw || "").trim();
           const locId = (locIdRaw || "").trim();
+          const statusId = (statusIdRaw || "").trim();
+          let transferItemId = String(line.item || "").trim();
 
           if (!quantity || !invId) {
             console.log(`⚠️ [Line ${idx + 1}] Invalid meta row → skip`);
             continue;
+          }
+
+          const invInfo = await getInventoryNumberInfo(invId, userId);
+          if (invInfo?.itemId && invInfo.itemId !== transferItemId) {
+            console.warn(
+              `⚠️ [Line ${idx + 1}] Inventory number ${invId} belongs to item ${invInfo.itemId}, ` +
+              `but sales line item is ${transferItemId}; using inventory-number item for transfer`
+            );
+            transferItemId = invInfo.itemId;
           }
 
           try {
@@ -863,10 +1066,28 @@ router.post("/create", async (req, res) => {
                 `SELECT distribution_location_id
                  FROM locations
                  WHERE netsuite_internal_id = $1
+                    OR distribution_location_id = $1
+                    OR invoice_location_id::text = $1
                  LIMIT 1`,
                 [locId]
               );
               sourceLocId = (q.rows[0]?.distribution_location_id || "").trim();
+            }
+
+            if (!sourceLocId && locName) {
+              sourceLocId = await resolveNetSuiteLocationIdByName(locName);
+              if (sourceLocId) {
+                console.log(
+                  `📍 Source location resolved from NetSuite feed: ${locName} → ${sourceLocId}`
+                );
+              }
+            }
+
+            if (!sourceLocId && locId) {
+              sourceLocId = locId;
+              console.log(
+                `📍 Source location using inventory meta location ID: ${locName || "(unknown)"} → ${sourceLocId}`
+              );
             }
 
             if (!sourceLocId && locName) {
@@ -879,13 +1100,29 @@ router.post("/create", async (req, res) => {
               );
               sourceLocId = (q2.rows[0]?.distribution_location_id || "").trim();
             }
+
+            if (!sourceLocId && locName) {
+              sourceLocId = await resolveNetSuiteLocationIdByName(locName);
+              if (sourceLocId) {
+                console.log(
+                  `📍 Source location resolved from NetSuite feed: ${locName} → ${sourceLocId}`
+                );
+              }
+            }
           } catch (err) {
             console.error("❌ Source lookup failed:", err.message);
           }
 
           if (!sourceLocId) {
-            console.log(`⚠️ No source location resolved → skip`);
-            continue;
+            if (locId) {
+              sourceLocId = locId;
+              console.log(
+                `⚠️ No local source mapping for ${locId}; using inventory meta location ID as source`
+              );
+            } else {
+              console.log(`⚠️ No source location resolved → skip`);
+              continue;
+            }
           }
 
           let destinationLocId = "";
@@ -911,6 +1148,29 @@ router.post("/create", async (req, res) => {
 
           if (!destinationLocId) continue;
 
+          console.log("🔎 Transfer preflight:", {
+            line: idx + 1,
+            salesLineItem: line.item,
+            transferItem: transferItemId,
+            inventoryNumberId: invId,
+            inventoryNumber: invInfo?.number || "",
+            sourceLocation: sourceLocId,
+            destinationLocation: destinationLocId,
+            inventoryStatusId: statusId,
+            quantity,
+          });
+
+          const inventoryAssignment = {
+            issueInventoryNumber: { id: invId },
+            receiptInventoryNumber: invInfo?.number || "",
+            quantity: quantity,
+            toLocation: { id: destinationLocId },
+          };
+          if (statusId) {
+            inventoryAssignment.inventoryStatus = { id: statusId };
+            inventoryAssignment.toInventoryStatus = { id: statusId };
+          }
+
           const transferBody = {
             subsidiary: { id: "6" },
             custbody_sb_needed_by: new Date(Date.now() + 3 * 86400000)
@@ -923,16 +1183,12 @@ router.post("/create", async (req, res) => {
             item: {
               items: [
                 {
-                  item: { id: line.item },
+                  item: { id: transferItemId },
+                  location: { id: sourceLocId },
                   quantity: quantity,
-                  inventorydetail: {
-                    inventoryassignment: {
-                      items: [
-                        {
-                          issueinventorynumber: { id: invId },
-                          quantity: quantity,
-                        },
-                      ],
+                  inventoryDetail: {
+                    inventoryAssignment: {
+                      items: [inventoryAssignment],
                     },
                   },
                 },
@@ -1401,6 +1657,25 @@ router.post("/:id/commit", async (req, res) => {
 
     console.log(`✅ Sales Order ${id} approved via RESTlet`);
     cacheDeleteSalesOrder(id);
+    let linkedTransferOrders = {
+      ok: true,
+      found: 0,
+      approved: [],
+      failed: [],
+    };
+
+    try {
+      linkedTransferOrders = await approveLinkedTransferOrders(id, userId);
+    } catch (err) {
+      linkedTransferOrders = {
+        ok: false,
+        found: 0,
+        approved: [],
+        failed: [{ id: null, tranid: null, error: err.message }],
+      };
+      console.error("Failed to approve linked Transfer Orders:", err.message);
+    }
+
     let comsSalesValue = {
       ok: false,
       skipped: false,
@@ -1473,7 +1748,17 @@ router.post("/:id/commit", async (req, res) => {
       ok: true,
       message: data.message || "Sales Order approved",
       restletResult: data,
-      warnings: comsSalesValue.ok ? [] : [comsSalesValue.error],
+      warnings: [
+        ...(linkedTransferOrders.ok
+          ? []
+          : [
+              `Linked Transfer Order approval failed for ${
+                linkedTransferOrders.failed.length || 1
+              } order(s).`,
+            ]),
+        ...(comsSalesValue.ok ? [] : [comsSalesValue.error]),
+      ],
+      linkedTransferOrders,
       comsSalesValue,
     });
   } catch (err) {

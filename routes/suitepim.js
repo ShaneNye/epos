@@ -1430,7 +1430,11 @@ async function getWebManagementPayload(env, cfg, { forceRefresh = false } = {}) 
 function prewarmWebManagementCache() {
   if (String(process.env.SUITEPIM_WEB_MANAGEMENT_PREWARM || "true").toLowerCase() === "false") return;
 
-  ["production", "sandbox"].forEach((env, index) => {
+  const envs = String(process.env.SUITEPIM_WEB_MANAGEMENT_PREWARM_ALL || "false").toLowerCase() === "true"
+    ? ["production", "sandbox"]
+    : [normalizeEnvironment()];
+
+  envs.forEach((env, index) => {
     setTimeout(() => {
       const cfg = envConfig(env);
       if (!cfg.webManagementUrl) return;
@@ -1451,7 +1455,11 @@ function startWebManagementCacheRefreshTimer() {
   if (!Number.isFinite(WEB_MANAGEMENT_REFRESH_INTERVAL_MS) || WEB_MANAGEMENT_REFRESH_INTERVAL_MS <= 0) return;
 
   setInterval(() => {
-    ["production", "sandbox"].forEach((env) => {
+    const envs = String(process.env.SUITEPIM_WEB_MANAGEMENT_REFRESH_ALL || "false").toLowerCase() === "true"
+      ? ["production", "sandbox"]
+      : [normalizeEnvironment()];
+
+    envs.forEach((env) => {
       const cfg = envConfig(env);
       if (!cfg.webManagementUrl) return;
       const key = webManagementCacheKey(env);

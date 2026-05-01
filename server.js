@@ -1,5 +1,17 @@
 // server.js
-require("dotenv").config();
+const isRenderRuntime = Boolean(process.env.RENDER || process.env.RENDER_SERVICE_ID);
+require("dotenv").config({
+  override: !isRenderRuntime || String(process.env.DOTENV_OVERRIDE || "").toLowerCase() === "true",
+});
+
+function normalizeEnvironmentName(value) {
+  const env = String(value || "").trim().toUpperCase();
+  if (env === "PROD") return "PRODUCTION";
+  if (env === "SB" || env === "SANBOX" || env === "SANDBOX") return "SANDBOX";
+  return env || "SANDBOX";
+}
+
+process.env.ENVIRONMENT = normalizeEnvironmentName(process.env.ENVIRONMENT);
 console.log("🟦 Loaded salesMemos.js FROM:", __filename);
 
 console.log("🟢 Server starting from directory:", __dirname);
@@ -17,6 +29,59 @@ const fetch = require("node-fetch");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const itemOptionsRoute = require("./routes/itemOptions");
+
+function assertNetSuiteEnvironment() {
+  const env = process.env.ENVIRONMENT;
+  const accountDash = String(process.env.NS_ACCOUNT_DASH || "");
+  const isSandboxAccount = /-sb\d*$/i.test(accountDash);
+
+  console.log("NetSuite target:", {
+    environment: env,
+    accountDash,
+    account: process.env.NS_ACCOUNT || "",
+  });
+
+  if (env === "SANDBOX" && !isSandboxAccount) {
+    throw new Error(
+      `Refusing to start: ENVIRONMENT=SANDBOX but NS_ACCOUNT_DASH=${accountDash || "(missing)"} is not a sandbox account.`
+    );
+  }
+
+  if (env === "PRODUCTION" && isSandboxAccount) {
+    throw new Error(
+      `Refusing to start: ENVIRONMENT=PRODUCTION but NS_ACCOUNT_DASH=${accountDash} is a sandbox account.`
+    );
+  }
+
+  const mismatchedUrls = Object.entries(process.env)
+    .filter(([key, value]) => /URL$/.test(key) && /netsuite\.com/i.test(String(value || "")))
+    .filter(([, value]) => {
+      let host = "";
+      try {
+        host = new URL(String(value).replace(/^"|"$/g, "")).host;
+      } catch {
+        return false;
+      }
+
+      const isSandboxHost = /\.?sb\d*\.|\.?sb\d*-|(-sb\d*)\./i.test(host) || /-sb\d*\./i.test(host);
+      return env === "SANDBOX" ? !isSandboxHost : isSandboxHost;
+    })
+    .map(([key, value]) => {
+      try {
+        return `${key}=${new URL(String(value).replace(/^"|"$/g, "")).host}`;
+      } catch {
+        return key;
+      }
+    });
+
+  if (mismatchedUrls.length) {
+    throw new Error(
+      `Refusing to start: NetSuite URL environment mismatch for ${env}: ${mismatchedUrls.join(", ")}`
+    );
+  }
+}
+
+assertNetSuiteEnvironment();
 
 process.on("unhandledRejection", (reason) => {
   console.error("Unhandled promise rejection:", reason);

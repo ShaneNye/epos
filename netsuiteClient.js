@@ -7,6 +7,15 @@ const pool = require("./db");
    ===============  Base Config  =========================
    ====================================================== */
 
+function normalizeEnvironmentName(value) {
+  const env = String(value || "").trim().toUpperCase();
+  if (env === "PROD") return "PRODUCTION";
+  if (env === "SB" || env === "SANBOX" || env === "SANDBOX") return "SANDBOX";
+  return env || "SANDBOX";
+}
+
+process.env.ENVIRONMENT = normalizeEnvironmentName(process.env.ENVIRONMENT);
+
 const config = {
   account: process.env.NS_ACCOUNT,
   accountDash: process.env.NS_ACCOUNT_DASH,
@@ -14,6 +23,24 @@ const config = {
   consumerSecret: process.env.NS_CONSUMER_SECRET,
   restUrl: `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/record/v1`,
 };
+
+function isSandboxAccount(accountDash = config.accountDash) {
+  return /-sb\d*$/i.test(String(accountDash || ""));
+}
+
+function assertNetSuiteEnvironment() {
+  if (currentEnvLabel() === "SANDBOX" && !isSandboxAccount()) {
+    throw new Error(
+      `Refusing NetSuite call: ENVIRONMENT=SANDBOX but NS_ACCOUNT_DASH=${config.accountDash || "(missing)"} is not a sandbox account.`
+    );
+  }
+
+  if (currentEnvLabel() === "PRODUCTION" && isSandboxAccount()) {
+    throw new Error(
+      `Refusing NetSuite call: ENVIRONMENT=PRODUCTION but NS_ACCOUNT_DASH=${config.accountDash} is a sandbox account.`
+    );
+  }
+}
 
 /* ======================================================
    ===============  Environment Resolver  =================
@@ -63,11 +90,25 @@ function cacheUserTokens(userId, tokens) {
   });
 }
 
+function clearUserTokenCache(userId = null) {
+  if (userId == null) {
+    userTokenCache.clear();
+    return;
+  }
+
+  const suffix = `:${String(userId)}`;
+  for (const key of userTokenCache.keys()) {
+    if (key.endsWith(suffix)) userTokenCache.delete(key);
+  }
+}
+
 /* ======================================================
    ===============  Auth Header Helper  =================
    ====================================================== */
 
 async function getAuthHeader(url, method, userId = null) {
+  assertNetSuiteEnvironment();
+
   let tokenId = process.env.NS_TOKEN_ID;
   let tokenSecret = process.env.NS_TOKEN_SECRET;
 
@@ -321,4 +362,5 @@ module.exports = {
   nsPostRaw,
   nsRestlet,
   getAuthHeader,
+  clearUserTokenCache,
 };

@@ -241,7 +241,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const data = await res.json();
         if (!data.ok) throw new Error(data.error || "Save failed");
 
-        console.log("✅ User saved successfully:", body);
+        const safeBody = { ...body };
+        ["sb_netsuite_token_id", "sb_netsuite_token_secret", "prod_netsuite_token_id", "prod_netsuite_token_secret"]
+          .forEach(field => {
+            if (safeBody[field]) safeBody[field] = "************";
+          });
+        console.log("✅ User saved successfully:", safeBody);
         closeModal();
         fetchUsers();
       } catch (err) {

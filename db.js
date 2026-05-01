@@ -1,8 +1,27 @@
 // db.js
 const { Pool } = require("pg");
 
+if (!process.env.DATABASE_URL) {
+  throw new Error("Missing DATABASE_URL. Refusing to start without an explicit database target.");
+}
+
+function logDatabaseTarget() {
+  try {
+    const url = new URL(process.env.DATABASE_URL);
+    console.log("Database target:", {
+      host: url.host,
+      database: url.pathname.replace(/^\//, ""),
+      user: url.username,
+    });
+  } catch {
+    console.warn("Database target: DATABASE_URL is set but could not be parsed.");
+  }
+}
+
+logDatabaseTarget();
+
 const pool = new Pool({
-  connectionString: process.env.DATABASE_URL || "postgresql://eposdb_user:aobpjyQlCEEi4sN1uf61rAFDttL2Er7i@dpg-d3rq7a24d50c73de1d7g-a.frankfurt-postgres.render.com/eposdb",
+  connectionString: process.env.DATABASE_URL,
   ssl: {
     rejectUnauthorized: false, // Required for Render-managed PostgreSQL
   },

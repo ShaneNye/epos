@@ -760,10 +760,16 @@ let fulfilmentLoaded = false;
 
 async function loadFulfilmentMethods() {
   try {
-    const res = await fetch("/api/netsuite/fulfilmentmethods");
+    const res = await fetch(`/api/netsuite/fulfilmentmethods?refresh=1&_=${Date.now()}`, {
+      cache: "no-store",
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    fulfilmentMethodsCache = data.results || [];
+    fulfilmentMethodsCache = (data.results || []).filter((opt) => {
+      const id = String(opt["Internal ID"] || "").trim();
+      const name = String(opt["Name"] || "").trim();
+      return id && name && name !== ".";
+    });
     fulfilmentLoaded = true;
     document.querySelectorAll("select.item-fulfilment").forEach(sel => fillFulfilmentSelect(sel));
   } catch (err) {

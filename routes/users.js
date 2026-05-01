@@ -3,6 +3,7 @@ const bcrypt = require("bcrypt");
 const pool = require("../db");
 const router = express.Router();
 const { getSession } = require("../sessions");
+const { clearUserTokenCache } = require("../netsuiteClient");
 
 
 /* -------------------- Helper -------------------- */
@@ -295,6 +296,7 @@ router.post("/", async (req, res) => {
     }
 
     await client.query("COMMIT");
+    clearUserTokenCache(userId);
     res.json({ ok: true, id: userId });
   } catch (err) {
     await client.query("ROLLBACK");
@@ -371,6 +373,7 @@ router.put("/:id", async (req, res) => {
     }
 
     await client.query("COMMIT");
+    clearUserTokenCache(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     await client.query("ROLLBACK");
@@ -385,6 +388,7 @@ router.put("/:id", async (req, res) => {
 router.delete("/:id", async (req, res) => {
   try {
     await pool.query("DELETE FROM users WHERE id = $1", [req.params.id]);
+    clearUserTokenCache(req.params.id);
     res.json({ ok: true });
   } catch (err) {
     console.error("DELETE /api/users/:id failed:", err.message);

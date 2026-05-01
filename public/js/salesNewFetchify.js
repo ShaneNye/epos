@@ -61,6 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
           a.line_3 || a.post_town || "";
         document.querySelector('input[name="county"]').value = a.county || "";
         document.querySelector('input[name="postcode"]').value = a.postcode || "";
+        resultsSelect.classList.add("hidden");
 
         ["address1", "address2", "address3", "county", "postcode"].forEach((name) => {
           const field = document.querySelector(`input[name="${name}"]`);
