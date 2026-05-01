@@ -39,6 +39,16 @@ window.addEventListener('DOMContentLoaded', () => {
 
   const apiBase = window.location.origin;
 
+  function getSafeNextPath() {
+    const params = new URLSearchParams(window.location.search);
+    const next = params.get('next') || sessionStorage.getItem('eposLoginNext') || '';
+
+    if (!next || !next.startsWith('/') || next.startsWith('//')) return '';
+    if (next.startsWith('/index') || next.startsWith('/forgot') || next.startsWith('/reset')) return '';
+
+    return next;
+  }
+
   // --- Handle login ---
   const loginButton = form.querySelector('button[type="submit"]');
   loginButton.addEventListener('click', async () => {
@@ -89,7 +99,9 @@ window.addEventListener('DOMContentLoaded', () => {
 
       setTimeout(() => {
         console.log('➡️ Redirecting to home.html');
-        window.location.replace(data.redirect || '/home.html');
+        const nextPath = getSafeNextPath();
+        sessionStorage.removeItem('eposLoginNext');
+        window.location.replace(nextPath || data.redirect || '/home.html');
       }, 800);
 
     } catch (err) {

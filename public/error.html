@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico" />
+  <title>Sussex Beds : Epos : Error</title>
+  <link rel="stylesheet" href="/css/index.css" />
+  <script src="/js/storage.js"></script>
+</head>
+
+<body>
+  <main class="auth-wrap">
+    <section class="brand-side">
+      <div class="brand-content">
+        <img class="brand-logo" src="/assets/moon-man-logo-in-circle.png" alt="Sussex Beds logo" />
+        <h1 class="brand-title">Sussex Beds</h1>
+        <p class="brand-sub">Epos</p>
+      </div>
+    </section>
+
+    <section class="portal">
+      <header class="portal-head">
+        <h2>Something went wrong</h2>
+        <p>The server hit an unexpected problem. Your session has not been cleared.</p>
+        <span class="accent-bar" aria-hidden="true"></span>
+      </header>
+
+      <div class="auth-form">
+        <button class="btn-primary" type="button" onclick="history.length > 1 ? history.back() : window.location.href='/home'">
+          Go back
+        </button>
+        <button class="btn-secondary" type="button" onclick="window.location.href='/home'">
+          Home
+        </button>
+      </div>
+    </section>
+  </main>
+</body>
+
+</html>

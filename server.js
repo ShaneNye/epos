@@ -18,6 +18,18 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const itemOptionsRoute = require("./routes/itemOptions");
 
+process.on("unhandledRejection", (reason) => {
+  console.error("Unhandled promise rejection:", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("Uncaught exception:", err);
+});
+
+function isApiRequest(req) {
+  return req.path.startsWith("/api/") || req.get("accept")?.includes("application/json");
+}
+
 function normalizeAccessPath(value) {
   const slug = String(value || "")
     .replace(/^\//, "")
@@ -897,6 +909,9 @@ app.get("/sales/view/:id", (req, res) => {
 app.get("/engagement", (req, res) =>
   sendNoCacheFile(res, path.join(__dirname, "public", "engagement.html"))
 );
+app.get("/error", (req, res) =>
+  sendNoCacheFile(res, path.join(__dirname, "public", "error.html"))
+);
 
 
 
@@ -908,6 +923,40 @@ app.get("/engagement", (req, res) =>
 app.use((req, res, next) => {
   console.warn("⚠️  Unhandled path reached end of middleware stack:", req.path);
   next();
+});
+
+app.use((err, req, res, next) => {
+  console.error("Unhandled request error:", {
+    path: req.path,
+    method: req.method,
+    message: err.message,
+  });
+
+  if (res.headersSent) return next(err);
+
+  if (isApiRequest(req)) {
+    return res.status(err.status || 500).json({
+      ok: false,
+      error: "Unexpected server error. Please try again or contact support.",
+      code: "SERVER_ERROR",
+    });
+  }
+
+  return res.status(err.status || 500).redirect("/error");
+});
+
+app.use((req, res) => {
+  console.warn("Unhandled path reached end of middleware stack:", req.path);
+
+  if (isApiRequest(req)) {
+    return res.status(404).json({
+      ok: false,
+      error: "Not found",
+      code: "NOT_FOUND",
+    });
+  }
+
+  return res.status(404).redirect("/error");
 });
 
 app.listen(PORT, () => {

@@ -33,6 +33,58 @@ function cacheDeleteSalesOrder(id) {
   }
 }
 
+function isProductionEnv() {
+  return (process.env.ENVIRONMENT || "").toUpperCase() === "PRODUCTION";
+}
+
+function getComsSalesValueRestletUrl() {
+  const configuredUrl =
+    process.env.COMS_SALES_VALUE_RESTLET_URL ||
+    process.env.NS_COMS_SALES_VALUE_RESTLET_URL ||
+    "";
+
+  if (configuredUrl) return configuredUrl;
+
+  if (isProductionEnv()) return "";
+
+  return "https://7972741-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=4193&deploy=1";
+}
+
+function parseMaybeJson(text) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return { raw: text };
+  }
+}
+
+function isNetSuiteAuthError(payload) {
+  const code = String(payload?.error?.code || payload?.code || "");
+  const message = String(payload?.error?.message || payload?.message || payload?.raw || "");
+
+  return (
+    code === "INVALID_LOGIN_ATTEMPT" ||
+    /invalid login attempt/i.test(message) ||
+    /oauth|authentication|authorization/i.test(message)
+  );
+}
+
+function publicNetSuiteError(payload, fallback = "NetSuite RESTlet call failed") {
+  if (isNetSuiteAuthError(payload)) {
+    return {
+      error: "NetSuite authentication failed. Please contact support.",
+      code: "NETSUITE_AUTH_FAILED",
+      retryable: false,
+    };
+  }
+
+  return {
+    error: payload?.error?.message || payload?.error || payload?.message || fallback,
+    code: payload?.error?.code || payload?.code || "NETSUITE_RESTLET_FAILED",
+    retryable: true,
+  };
+}
+
 function cacheGet(key) {
   const e = soCache.get(key);
   if (!e) return null;
@@ -1336,24 +1388,24 @@ router.post("/:id/commit", async (req, res) => {
     });
 
     const text = await response.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { raw: text };
-    }
+    const data = parseMaybeJson(text);
 
     if (!response.ok || !data.ok) {
       console.error("❌ RESTlet returned error:", text);
+      const safeError = publicNetSuiteError(data);
       return res.status(500).json({
         ok: false,
-        error: data?.error || "NetSuite RESTlet call failed",
-        raw: text,
+        ...safeError,
       });
     }
 
     console.log(`✅ Sales Order ${id} approved via RESTlet`);
     cacheDeleteSalesOrder(id);
+    let comsSalesValue = {
+      ok: false,
+      skipped: false,
+      error: "COMS sales value record was not created.",
+    };
 
     // ==========================================================
     // 🧾 Create custom record: customrecord_sb_coms_sales_value
@@ -1379,27 +1431,39 @@ router.post("/:id/commit", async (req, res) => {
 
       console.log("🧾 Custom record payload:", recordBody);
 
-      const restletUrl =
-        "https://7972741-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=4193&deploy=1";
+      const restletUrl = getComsSalesValueRestletUrl();
 
-      const resCreate = await fetch(restletUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(recordBody),
-      });
+      if (!restletUrl) {
+        comsSalesValue = {
+          ok: false,
+          skipped: true,
+          error: "COMS sales value RESTlet URL is not configured for production.",
+        };
+        console.warn("Skipping COMS sales value custom record:", comsSalesValue.error);
+      } else {
+        const comsAuthHeader = await getAuthHeader(restletUrl, "POST", userId);
+        const resCreate = await fetch(restletUrl, {
+          method: "POST",
+          headers: {
+            ...comsAuthHeader,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(recordBody),
+        });
 
-      const t = await resCreate.text();
-      let json;
-      try {
-        json = JSON.parse(t);
-      } catch {
-        json = { ok: false, raw: t };
-      }
+        const t = await resCreate.text();
+        const json = parseMaybeJson(t);
+        if (!resCreate.ok || !json.ok) {
+          const safeError = publicNetSuiteError(json, "COMS sales value record creation failed");
+          comsSalesValue = { ok: false, skipped: false, ...safeError };
+        }
 
-      if (resCreate.ok && json.ok) {
+        if (resCreate.ok && json.ok) {
+          comsSalesValue = { ok: true, skipped: false, id: json.id || null };
         console.log(`✅ Custom record created successfully → ID ${json.id}`);
       } else {
         console.error("❌ RESTlet returned error:", json);
+      }
       }
     } catch (err) {
       console.error("❌ Failed to create customrecord_sb_coms_sales_value:", err.message);
@@ -1409,6 +1473,8 @@ router.post("/:id/commit", async (req, res) => {
       ok: true,
       message: data.message || "Sales Order approved",
       restletResult: data,
+      warnings: comsSalesValue.ok ? [] : [comsSalesValue.error],
+      comsSalesValue,
     });
   } catch (err) {
     console.error("❌ Commit Sales Order failed:", err);

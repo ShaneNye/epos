@@ -543,6 +543,14 @@ body.sidebar-expanded .order-upsell-panel {
   font-weight: bold;
 }
 
+.order-summary .netsuite-return-btn {
+  display: block;
+  width: 100%;
+  margin-top: 12px;
+  text-align: center;
+  text-decoration: none;
+}
+
 /* === GLOBAL AUTOCOMPLETE DROPDOWN (floating) === */
 #global-suggestions {
   position: absolute;          /* make it float under the input */

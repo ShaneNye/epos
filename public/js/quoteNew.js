@@ -13,7 +13,11 @@ if (window.location.pathname.includes("/quote/view/")) {
 } else {
   document.addEventListener("DOMContentLoaded", async () => {
     let saved = storageGet?.();
-    if (!saved || !saved.token) return (window.location.href = "/index.html");
+    if (!saved || !saved.token) {
+      const next = `${window.location.pathname}${window.location.search || ""}`;
+      sessionStorage.setItem("eposLoginNext", next);
+      return (window.location.href = `/index.html?next=${encodeURIComponent(next)}`);
+    }
 
     const headers = { Authorization: `Bearer ${saved.token}` };
     let currentUser = null;

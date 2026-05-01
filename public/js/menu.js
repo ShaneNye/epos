@@ -114,11 +114,17 @@ function applyUserTheme(themeHex) {
   }
 }
 
+function redirectToLoginWithReturn() {
+  const next = `${window.location.pathname}${window.location.search || ""}`;
+  sessionStorage.setItem("eposLoginNext", next);
+  window.location.href = `/index.html?next=${encodeURIComponent(next)}`;
+}
+
 
 async function loadUser() {
   const saved = storageGet(); // from storage.js
   if (!saved || !saved.token) {
-    return (window.location.href = "/index.html");
+    return redirectToLoginWithReturn();
   }
 
   try {
@@ -203,7 +209,7 @@ roleSelect.addEventListener("change", async e => {
     }
   } catch (err) {
     console.error("Failed to load user:", err);
-    window.location.href = "/index.html";
+    redirectToLoginWithReturn();
   }
 }
 

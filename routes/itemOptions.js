@@ -12,11 +12,20 @@ const OPTIONS_URL = process.env.ITEM_OPTIONS_URL || DEFAULT_OPTIONS_URL;
 const SYNC_INTERVAL_MS = 24 * 60 * 60 * 1000;
 const FETCH_TIMEOUT_MS = Number(process.env.ITEM_OPTIONS_FETCH_TIMEOUT_MS || 30000);
 const RESPONSE_CACHE_TTL_MS = Number(process.env.ITEM_OPTIONS_RESPONSE_CACHE_TTL_MS || 60 * 60 * 1000);
+const INSERT_CHUNK_SIZE = Number(process.env.ITEM_OPTIONS_INSERT_CHUNK_SIZE || 200);
+const SYNC_ON_START = String(process.env.ITEM_OPTIONS_SYNC_ON_START || "true").toLowerCase() !== "false";
 
 let initialized = false;
 let syncInFlight = null;
 let schedulerStarted = false;
 const responseCache = new Map();
+
+function pruneResponseCache(max = 100) {
+  while (responseCache.size > max) {
+    const firstKey = responseCache.keys().next().value;
+    responseCache.delete(firstKey);
+  }
+}
 
 function sendCachedJson(req, res, payload, cacheKey) {
   const body = JSON.stringify(payload);
@@ -27,6 +36,7 @@ function sendCachedJson(req, res, payload, cacheKey) {
     etag,
     expiresAt: Date.now() + RESPONSE_CACHE_TTL_MS,
   });
+  pruneResponseCache();
 
   res.set({
     "Cache-Control": `private, max-age=${Math.floor(RESPONSE_CACHE_TTL_MS / 1000)}, stale-while-revalidate=300`,
@@ -190,6 +200,199 @@ async function fetchAllOptionPages() {
   };
 }
 
+function slimRawOption(option) {
+  return {
+    id: option?.id || null,
+    label: option?.label || null,
+    scriptId: option?.scriptId || null,
+    inactive: !!option?.inactive,
+    selectrecordtype: option?.selectrecordtype || null,
+    selectrecordtype_text: option?.selectrecordtype_text || null,
+    includeChildItems: !!option?.includeChildItems,
+    appliesToSales: !!option?.appliesToSales,
+    sourceResult: {
+      kind: option?.sourceResult?.kind || null,
+      ok: !!option?.sourceResult?.ok,
+      source: option?.sourceResult?.source || null,
+    },
+  };
+}
+
+function buildRowsFromOptions(options) {
+  const fieldRows = [];
+  const valueRows = [];
+  const appliedItemRows = [];
+
+  for (const option of options) {
+    if (isExcludedOptionField(option)) continue;
+
+    const fieldId = cleanText(option.id);
+    const label = cleanText(option.label);
+    if (!fieldId || !label) continue;
+
+    const source = option.sourceResult?.source || {};
+    fieldRows.push({
+      id: fieldId,
+      label,
+      script_id: cleanText(option.scriptId) || null,
+      inactive: !!option.inactive,
+      select_record_type: cleanText(option.selectrecordtype) || null,
+      select_record_type_text: cleanText(option.selectrecordtype_text) || null,
+      include_child_items: !!option.includeChildItems,
+      applies_to_sales: !!option.appliesToSales,
+      source_kind: cleanText(option.sourceResult?.kind) || null,
+      source_id: cleanText(source.id) || null,
+      source_script_id: cleanText(source.scriptId) || null,
+      source_name: cleanText(source.name) || null,
+      source_ok: !!option.sourceResult?.ok,
+      raw: slimRawOption(option),
+    });
+
+    const values = Array.isArray(option.sourceResult?.values)
+      ? option.sourceResult.values
+      : [];
+
+    for (const [idx, value] of values.entries()) {
+      const valueId = cleanText(value.id);
+      const name = cleanText(value.name);
+      if (!valueId || !name) continue;
+
+      valueRows.push({
+        field_id: fieldId,
+        value_id: valueId,
+        name,
+        inactive: !!value.inactive,
+        sort_order: idx,
+      });
+    }
+
+    const appliedItems = Array.isArray(option.appliedItems)
+      ? option.appliedItems
+      : [];
+
+    for (const item of appliedItems) {
+      const itemId = cleanText(item.id);
+      if (!itemId) continue;
+
+      appliedItemRows.push({
+        field_id: fieldId,
+        item_id: itemId,
+        item_name: cleanText(item.itemId) || null,
+        display_name: cleanText(item.displayName) || null,
+        item_type: cleanText(item.type) || null,
+        inactive: !!item.inactive,
+      });
+    }
+  }
+
+  return { fieldRows, valueRows, appliedItemRows };
+}
+
+function chunks(rows, size = INSERT_CHUNK_SIZE) {
+  const chunkSize = Math.max(1, size);
+  const out = [];
+  for (let i = 0; i < rows.length; i += chunkSize) out.push(rows.slice(i, i + chunkSize));
+  return out;
+}
+
+async function insertOptionRows(client, { fieldRows, valueRows, appliedItemRows }) {
+  for (const batch of chunks(fieldRows)) {
+    await client.query(
+      `
+      INSERT INTO item_option_fields (
+        id, label, script_id, inactive, select_record_type,
+        select_record_type_text, include_child_items, applies_to_sales,
+        source_kind, source_id, source_script_id, source_name, source_ok,
+        raw, updated_at
+      )
+      SELECT
+        id, label, script_id, inactive, select_record_type,
+        select_record_type_text, include_child_items, applies_to_sales,
+        source_kind, source_id, source_script_id, source_name, source_ok,
+        raw, NOW()
+      FROM jsonb_to_recordset($1::jsonb) AS x(
+        id TEXT,
+        label TEXT,
+        script_id TEXT,
+        inactive BOOLEAN,
+        select_record_type TEXT,
+        select_record_type_text TEXT,
+        include_child_items BOOLEAN,
+        applies_to_sales BOOLEAN,
+        source_kind TEXT,
+        source_id TEXT,
+        source_script_id TEXT,
+        source_name TEXT,
+        source_ok BOOLEAN,
+        raw JSONB
+      )
+      ON CONFLICT (id) DO UPDATE SET
+        label = EXCLUDED.label,
+        script_id = EXCLUDED.script_id,
+        inactive = EXCLUDED.inactive,
+        select_record_type = EXCLUDED.select_record_type,
+        select_record_type_text = EXCLUDED.select_record_type_text,
+        include_child_items = EXCLUDED.include_child_items,
+        applies_to_sales = EXCLUDED.applies_to_sales,
+        source_kind = EXCLUDED.source_kind,
+        source_id = EXCLUDED.source_id,
+        source_script_id = EXCLUDED.source_script_id,
+        source_name = EXCLUDED.source_name,
+        source_ok = EXCLUDED.source_ok,
+        raw = EXCLUDED.raw,
+        updated_at = NOW()
+      `,
+      [JSON.stringify(batch)]
+    );
+  }
+
+  for (const batch of chunks(valueRows)) {
+    await client.query(
+      `
+      INSERT INTO item_option_values (field_id, value_id, name, inactive, sort_order)
+      SELECT field_id, value_id, name, inactive, sort_order
+      FROM jsonb_to_recordset($1::jsonb) AS x(
+        field_id TEXT,
+        value_id TEXT,
+        name TEXT,
+        inactive BOOLEAN,
+        sort_order INTEGER
+      )
+      ON CONFLICT (field_id, value_id) DO UPDATE SET
+        name = EXCLUDED.name,
+        inactive = EXCLUDED.inactive,
+        sort_order = EXCLUDED.sort_order
+      `,
+      [JSON.stringify(batch)]
+    );
+  }
+
+  for (const batch of chunks(appliedItemRows)) {
+    await client.query(
+      `
+      INSERT INTO item_option_applied_items (
+        field_id, item_id, item_name, display_name, item_type, inactive
+      )
+      SELECT field_id, item_id, item_name, display_name, item_type, inactive
+      FROM jsonb_to_recordset($1::jsonb) AS x(
+        field_id TEXT,
+        item_id TEXT,
+        item_name TEXT,
+        display_name TEXT,
+        item_type TEXT,
+        inactive BOOLEAN
+      )
+      ON CONFLICT (field_id, item_id) DO UPDATE SET
+        item_name = EXCLUDED.item_name,
+        display_name = EXCLUDED.display_name,
+        item_type = EXCLUDED.item_type,
+        inactive = EXCLUDED.inactive
+      `,
+      [JSON.stringify(batch)]
+    );
+  }
+}
+
 async function syncItemOptions() {
   if (syncInFlight) return syncInFlight;
 
@@ -199,7 +402,69 @@ async function syncItemOptions() {
     const startedAt = new Date();
     console.log("📡 Item options sync starting...");
 
+    const useStreamingSync = true;
+
     try {
+      if (useStreamingSync) {
+        const pageSize = Number(process.env.ITEM_OPTIONS_PAGE_SIZE || 25);
+        console.log("Item options page 1 fetching...");
+        const firstPage = await fetchJsonWithTimeout(makePageUrl(1, pageSize));
+        const totalPages = Number(firstPage?.meta?.totalPages || 1);
+        const configuredCount = Number(firstPage?.meta?.configuredCount || 0);
+        const totalRecords = Number(firstPage?.meta?.totalRecords || 0);
+        let syncedRecords = 0;
+
+        const client = await pool.connect();
+
+        try {
+          await client.query("BEGIN");
+          await client.query("DELETE FROM item_option_applied_items");
+          await client.query("DELETE FROM item_option_values");
+          await client.query("DELETE FROM item_option_fields");
+
+          for (let page = 1; page <= totalPages; page += 1) {
+            const pageJson =
+              page === 1 ? firstPage : await fetchJsonWithTimeout(makePageUrl(page, pageSize));
+            const options = Array.isArray(pageJson?.results) ? pageJson.results : [];
+            syncedRecords += options.length;
+
+            await insertOptionRows(client, buildRowsFromOptions(options));
+            console.log(`Item options page ${page}/${totalPages} synced`, {
+              pageRecords: options.length,
+              syncedRecords,
+            });
+          }
+
+          await client.query(
+            `
+            UPDATE item_option_sync_state
+            SET status = 'ok',
+                last_synced_at = NOW(),
+                configured_count = $1,
+                total_records = $2,
+                error = NULL
+            WHERE id = 1
+            `,
+            [configuredCount || syncedRecords, totalRecords || syncedRecords]
+          );
+
+          await client.query("COMMIT");
+        } catch (err) {
+          await client.query("ROLLBACK");
+          throw err;
+        } finally {
+          client.release();
+        }
+
+        console.log("Item options sync complete", {
+          records: syncedRecords,
+          ms: Date.now() - startedAt.getTime(),
+        });
+
+        responseCache.clear();
+        return { ok: true, synced: syncedRecords };
+      }
+
       const payload = await fetchAllOptionPages();
       const client = await pool.connect();
 
@@ -493,9 +758,13 @@ function startScheduler() {
   if (schedulerStarted) return;
   schedulerStarted = true;
 
-  setTimeout(() => {
-    syncItemOptions().catch(() => {});
-  }, 5000);
+  if (SYNC_ON_START) {
+    setTimeout(() => {
+      syncItemOptions().catch(() => {});
+    }, 5000);
+  } else {
+    console.log("Item options startup sync disabled by ITEM_OPTIONS_SYNC_ON_START=false");
+  }
 
   setInterval(() => {
     syncItemOptions().catch(() => {});

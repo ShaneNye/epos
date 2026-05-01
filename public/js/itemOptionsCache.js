@@ -5,6 +5,7 @@
 
   let memoryCache = null;
   let inFlight = null;
+  const itemInFlight = new Map();
 
   function now() {
     return Date.now();
@@ -58,9 +59,10 @@
   }
 
   function writeLocalCache(byItemId) {
+    const existing = isFresh(memoryCache) ? memoryCache.byItemId : readLocalCache()?.byItemId || {};
     const payload = {
       cachedAt: now(),
-      byItemId: sanitizeItemOptions(byItemId),
+      byItemId: sanitizeItemOptions({ ...existing, ...byItemId }),
     };
 
     memoryCache = payload;
@@ -74,12 +76,15 @@
     return payload;
   }
 
-  async function fetchFresh() {
-    const res = await fetch("/api/item-options", { credentials: "same-origin" });
+  async function fetchFresh(itemId = "") {
+    const qs = itemId ? `?itemId=${encodeURIComponent(itemId)}` : "";
+    const res = await fetch(`/api/item-options${qs}`, { credentials: "same-origin" });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();
-    const byItemId = sanitizeItemOptions(data.byItemId || data.options || {});
+    const byItemId = itemId
+      ? { [String(itemId)]: data.options || {} }
+      : sanitizeItemOptions(data.byItemId || data.options || {});
     writeLocalCache(byItemId);
     return byItemId;
   }
@@ -95,13 +100,7 @@
       }
     }
 
-    if (inFlight) return inFlight;
-
-    inFlight = fetchFresh().finally(() => {
-      inFlight = null;
-    });
-
-    return inFlight;
+    return {};
   }
 
   function getOptionsForItemSync(itemId) {
@@ -126,8 +125,14 @@
     const cached = getOptionsForItemSync(id);
     if (Object.keys(cached).length) return cached;
 
-    const all = await getAll();
-    return all[id] || {};
+    if (itemInFlight.has(id)) return itemInFlight.get(id);
+
+    const pending = fetchFresh(id)
+      .then((fresh) => fresh[id] || {})
+      .finally(() => itemInFlight.delete(id));
+
+    itemInFlight.set(id, pending);
+    return pending;
   }
 
   function clear() {
@@ -148,15 +153,5 @@
     ttlMs: TTL_MS,
   };
 
-  const warmup = () => {
-    getAll().catch((err) => {
-      console.warn("Item options cache warmup failed:", err.message);
-    });
-  };
-
-  if ("requestIdleCallback" in window) {
-    window.requestIdleCallback(warmup, { timeout: 5000 });
-  } else {
-    setTimeout(warmup, 2500);
-  }
+  // Item options are fetched lazily per item to avoid large all-item payloads.
 })();
