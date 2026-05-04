@@ -12,6 +12,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (!quoteId) {
     console.error("❌ No Quote ID in URL");
+    document.body.classList.remove("receipt-loading");
     return;
   }
 
@@ -24,6 +25,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (!saved || !saved.token) {
     console.error("🚫 No auth token found");
+    document.body.classList.remove("receipt-loading");
     return;
   }
 
@@ -43,6 +45,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     el.textContent = v.trim() ? v : "-";
   };
 
+  const escapeHtml = (str) =>
+    String(str ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const formatMoney =
+    window.EposFinancials?.formatMoney ||
+    ((value) => `£${(Number(value || 0) || 0).toFixed(2)}`);
+
   const fmtDateDDMMYYYY = (raw) => {
     if (!raw) return "-";
     // Supports "YYYY-MM-DD" (NetSuite) or ISO
@@ -52,16 +66,46 @@ document.addEventListener("DOMContentLoaded", async () => {
     return `${d}/${m}/${y}`;
   };
 
+  const waitForReceiptAssets = async () => {
+    const images = [...document.images].filter((img) => !img.complete);
+    if (!images.length) return;
+
+    await Promise.race([
+      Promise.all(
+        images.map((img) =>
+          img.decode
+            ? img.decode().catch(() => {})
+            : new Promise((resolve) => {
+                img.addEventListener("load", resolve, { once: true });
+                img.addEventListener("error", resolve, { once: true });
+              })
+        )
+      ),
+      new Promise((resolve) => setTimeout(resolve, 700)),
+    ]);
+  };
+
+  const revealReceipt = async () => {
+    await waitForReceiptAssets();
+    document.body.classList.remove("receipt-loading");
+    document.body.classList.add("receipt-ready");
+  };
+
   /* ============================
      3️⃣ Fetch Quote / Estimate
      ============================ */
   try {
     // ✅ You need this endpoint (or adjust URL to your actual quote-get route):
     // GET /api/netsuite/quote/:id   -> { ok:true, quote:{...} } or { ok:true, estimate:{...} }
-    const res = await fetch(
+    const quotePromise = fetch(
       `/api/netsuite/quote/${encodeURIComponent(quoteId)}`,
       { headers }
     );
+    const locationsPromise = fetch("/api/meta/locations", { headers }).catch(() =>
+      fetch("/api/meta/locations")
+    );
+
+    const res = await quotePromise;
 
     console.log("🌐 Fetch response status:", res.status);
 
@@ -70,6 +114,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!res.ok || data.ok === false) {
       console.error("❌ Quote fetch failed:", data.error || res.status);
+      await revealReceipt();
       return;
     }
 
@@ -77,6 +122,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const q = data.quote || data.estimate || data.estimateObj || data.salesOrder || data;
     if (!q) {
       console.error("❌ quote/estimate object missing from response");
+      await revealReceipt();
       return;
     }
 
@@ -93,9 +139,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     // Fetch locations and match store
     try {
-      const locRes = await fetch("/api/meta/locations", { headers }).catch(() =>
-        fetch("/api/meta/locations")
-      );
+      const locRes = await locationsPromise;
       const locJson = await locRes.json();
 
       if (locRes.ok && locJson.ok && Array.isArray(locJson.locations)) {
@@ -159,25 +203,25 @@ document.addEventListener("DOMContentLoaded", async () => {
     const salesRep = q.custbody_sb_bedspecialist?.refName || "";
 
     // CUSTOMER DETAILS
-    document.getElementById("customerName").innerHTML = customerName || "-";
-    document.getElementById("custadd1").innerHTML = customerAddressLine1 || "-";
-    document.getElementById("custadd2").innerHTML = customerAddressLine2 || "";
-    document.getElementById("custadd3").innerHTML = customerAddressLine3 || "";
-    document.getElementById("custzip").innerHTML = customerPostcode || "-";
-    document.getElementById("custEmail").innerHTML = customerEmail || "-";
-    document.getElementById("custTel").innerHTML = customerTel || "-";
+    setText("customerName", customerName || "-");
+    setText("custadd1", customerAddressLine1 || "-");
+    setText("custadd2", customerAddressLine2 || "");
+    setText("custadd3", customerAddressLine3 || "");
+    setText("custzip", customerPostcode || "-");
+    setText("custEmail", customerEmail || "-");
+    setText("custTel", customerTel || "-");
 
     // QUOTE DETAILS (IDs differ from sales receipt)
-    document.getElementById("quoteNo").innerHTML = quoteNo || "-";
-    document.getElementById("quoteDate").innerHTML = quoteDate || "-";
+    setText("quoteNo", quoteNo || "-");
+    setText("quoteDate", quoteDate || "-");
 
     const formPaymentMethod = document.getElementById("pymtMthd");
     if (formPaymentMethod) {
       formPaymentMethod.style.verticalAlign = "middle";
-      formPaymentMethod.innerHTML = paymentMethod || "—"; // optional
+      formPaymentMethod.textContent = paymentMethod || "—"; // optional
     }
 
-    document.getElementById("salesRep").innerHTML = salesRep || "-";
+    setText("salesRep", salesRep || "-");
 
     /* ============================
        6️⃣ PRODUCT TABLE
@@ -187,6 +231,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!tableBody) {
       console.error("❌ productTableBody not found");
+      await revealReceipt();
       return;
     }
 
@@ -195,15 +240,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     (items || []).forEach((line) => {
       const itemName = line.item?.refName || line.itemName || "";
       const optionsRaw = line.custcol_sb_itemoptionsdisplay || line.optionsDisplay || "";
-      const options = String(optionsRaw).replace(/\n/g, "<br>");
+      const options = escapeHtml(optionsRaw).replace(/\n/g, "<br>");
 
       const qty = Number(line.quantity || 0);
-
-      // IMPORTANT:
-      // Your SO receipt assumes `line.amount` and `line.saleprice` are already GROSS totals.
-      // We'll keep identical behaviour for consistency.
-      const price = Number(line.amount || 0);       // original gross total (or retail)
-      const total = Number(line.saleprice || 0);    // actual charged gross total
+      const normalised = window.EposFinancials?.normaliseLine
+        ? window.EposFinancials.normaliseLine(line)
+        : {
+            retailGross: Number(line.amount || 0),
+            saleGross: Number(line.saleprice || 0),
+          };
+      const price = normalised.retailGross;
+      const total = normalised.saleGross;
 
       let discountPct = 0;
       if (price > 0 && total > 0 && total < price) {
@@ -212,12 +259,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>${itemName}</td>
+        <td>${escapeHtml(itemName)}</td>
         <td>${options}</td>
         <td>${qty}</td>
-        <td>£${price.toFixed(2)}</td>
+        <td>${formatMoney(price)}</td>
         <td>${discountPct.toFixed(1)}%</td>
-        <td>£${total.toFixed(2)}</td>
+        <td>${formatMoney(total)}</td>
       `;
       tableBody.appendChild(tr);
     });
@@ -230,6 +277,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!depositTableBody) {
       console.error("❌ depositTableBody not found");
+      await revealReceipt();
       return;
     }
 
@@ -245,15 +293,15 @@ document.addEventListener("DOMContentLoaded", async () => {
       depositTableBody.appendChild(tr);
     } else {
       deposits.forEach((dep) => {
-        const linkHtml = dep.link || "-";
+        const linkHtml = escapeHtml(dep.link || "-");
         const method = dep.method || "-";
         const amount = Number(dep.amount || 0);
 
         const tr = document.createElement("tr");
         tr.innerHTML = `
           <td>${linkHtml}</td>
-          <td>${method}</td>
-          <td>£${amount.toFixed(2)}</td>
+          <td>${escapeHtml(method)}</td>
+          <td>${formatMoney(amount)}</td>
         `;
         depositTableBody.appendChild(tr);
       });
@@ -262,50 +310,24 @@ document.addEventListener("DOMContentLoaded", async () => {
     /* ==========================================
       8️⃣ QUOTE SUMMARY TABLE
       =========================================== */
-    const vatAmounts = items || [];
+    const summary = window.EposFinancials?.summariseLines
+      ? window.EposFinancials.summariseLines(items || [], deposits || [])
+      : { vatTotal: 0, grossTotal: 0, remainingBalance: 0, totalRetail: 0, discountTotal: 0, discountPct: 0 };
 
-    // Sum deposits from API response (reliable)
-    const depositTotal = (deposits || []).reduce(
-      (sum, d) => sum + (Number(d.amount || 0) || 0),
-      0
-    );
-
-    let vatTotal = 0;
-    let quoteTotal = 0;
-    let remainingBalance = 0;
-    let totalRetail = 0;
-    let totalOrdDiscount = 0;
-
-    vatAmounts.forEach((line) => {
-      const vat = Number(line.vat || 0);
-      const amount = Number(line.saleprice || 0); // charged gross
-      const retail = Number(line.amount || 0);    // original gross
-
-      vatTotal += vat;
-      quoteTotal += amount;
-      totalRetail += retail;
-    });
-
-    totalOrdDiscount = totalRetail - quoteTotal;
-    remainingBalance = quoteTotal - depositTotal;
-
-    document.getElementById("vatTotal").innerHTML = `£${vatTotal.toFixed(2)}`;
-    document.getElementById("quoteTotal").innerHTML = `£${quoteTotal.toFixed(2)}`;
-    document.getElementById("balance").innerHTML = `£${remainingBalance.toFixed(2)}`;
+    setText("vatTotal", formatMoney(summary.vatTotal));
+    setText("quoteTotal", formatMoney(summary.grossTotal));
+    setText("balance", formatMoney(summary.remainingBalance));
 
     /* ===========================================
       9️⃣ DISCOUNT SUMMARY
       ============================================= */
-    document.getElementById("originalPrice").innerHTML = `£${totalRetail.toFixed(2)}`;
-    document.getElementById("discAmount").innerHTML = `£${totalOrdDiscount.toFixed(2)}`;
+    setText("originalPrice", formatMoney(summary.totalRetail));
+    setText("discAmount", formatMoney(summary.discountTotal));
+    setText("totalDiscPerc", `${Number(summary.discountPct || 0).toFixed(2)}%`);
 
-    let totalDiscountPct = 0;
-    if (totalRetail > 0) {
-      totalDiscountPct = ((totalRetail - quoteTotal) / totalRetail) * 100;
-    }
-
-    document.getElementById("totalDiscPerc").innerHTML = `${totalDiscountPct.toFixed(2)}%`;
+    await revealReceipt();
   } catch (err) {
     console.error("💥 Fetch error:", err);
+    await revealReceipt();
   }
 });

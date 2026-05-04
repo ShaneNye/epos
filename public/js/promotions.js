@@ -121,7 +121,8 @@
     if (idMatch && state.idToItem.has(idMatch[1].trim())) {
       return state.idToItem.get(idMatch[1].trim());
     }
-    return null;
+    const lowered = raw.toLowerCase();
+    return state.items.find((item) => getItemName(item).toLowerCase() === lowered) || null;
   }
 
   function setItemPreview(inputId, previewId) {
@@ -248,7 +249,13 @@
         return { results: [] };
       }),
     ]);
-    state.items = Array.isArray(payload.results) ? payload.results : [];
+    state.items = Array.isArray(payload.results)
+      ? payload.results
+      : Array.isArray(payload.data)
+      ? payload.data
+      : Array.isArray(payload)
+      ? payload
+      : [];
     state.webItemsById.clear();
     (Array.isArray(webPayload.rows) ? webPayload.rows : []).forEach((row) => {
       const id = String(row["Internal ID"] || row["Item ID"] || row.id || "").trim();

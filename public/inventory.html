@@ -253,6 +253,7 @@
     <button type="button" id="cancelBtn" onclick="window.close()">Cancel</button>
   </div>
 
+  <script src="/js/storage.js"></script>
   <script>
     /* ============================================================
        Inventory Detail Popup Script
@@ -423,6 +424,23 @@
           inventoryNumber: String(bal["Inventory Number"] || "").trim(),
           inventoryNumberId: String(agg.invNumberId || "").trim(),
         };
+      });
+
+      Object.entries(numberAgg).forEach(([key, agg]) => {
+        if (collapsed[key]) return;
+        merged.push({
+          itemId: agg.itemId || "",
+          itemName: agg.itemName || "",
+          location: agg.location || "",
+          locationId: agg.locationId || "",
+          qty: safeInt(agg.available),
+          onHand: safeInt(agg.onHand),
+          bin: "",
+          status: "",
+          statusId: "",
+          inventoryNumber: key.split("||")[1] || "",
+          inventoryNumberId: String(agg.invNumberId || "").trim(),
+        });
       });
 
       // 4) Match stockSearch.js behaviour: only rows with available > 0

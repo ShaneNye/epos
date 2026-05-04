@@ -153,10 +153,13 @@
     const itemId = row.querySelector(".item-internal-id")?.value;
     if (!itemId) return alert("⚠️ Please select an item first.");
 
-    if (!window.optionsCache?.[itemId] || !Object.keys(window.optionsCache[itemId]).length) {
-      window.optionsCache = window.optionsCache || {};
-      window.optionsCache[itemId] =
-        await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
+    window.optionsCache = window.optionsCache || {};
+
+    const dbSchema = await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
+    if (Object.keys(dbSchema).length) {
+      window.optionsCache[itemId] = dbSchema;
+    } else if (!window.optionsCache[itemId]) {
+      window.optionsCache[itemId] = {};
     }
 
     const existingSelections =

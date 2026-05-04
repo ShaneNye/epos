@@ -172,10 +172,10 @@ if (window.location.pathname.includes("/quote/view/")) {
 
         let actualGrossLine;
 
-        if (discountPct > 0 && defaultGrossLine !== 0) {
-          actualGrossLine = defaultGrossLine * (1 - discountPct / 100);
-        } else if (hasSale) {
+        if (hasSale) {
           actualGrossLine = salePriceGrossLine;
+        } else if (discountPct > 0 && defaultGrossLine !== 0) {
+          actualGrossLine = defaultGrossLine * (1 - discountPct / 100);
         } else {
           actualGrossLine = defaultGrossLine;
         }
@@ -369,8 +369,6 @@ if (window.location.pathname.includes("/quote/view/")) {
       lockForm("Creating quote…");
       console.log("📦 Sending quote payload:", quotePayload);
 
-      await new Promise((resolve) => setTimeout(resolve, 50));
-
       const savedAuth = storageGet?.();
       const token = savedAuth?.token;
 
@@ -416,7 +414,7 @@ if (window.location.pathname.includes("/quote/view/")) {
         } else {
           window.location.href = "/home";
         }
-      }, 1500);
+      }, 250);
     } catch (err) {
       console.error("❌ Error submitting quote:", err);
       (window.showToast || alert)("❌ Something went wrong while creating the quote.", "error");

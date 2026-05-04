@@ -5,9 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Receipt</title>
     <link rel="stylesheet" href="/css/reciepts/SalesOrdReciept.css" />
+    <style>
+      body.receipt-loading .page {
+        visibility: hidden;
+      }
+      body.receipt-loading::before {
+        content: "Loading receipt...";
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font: 16px Arial, sans-serif;
+        color: #333;
+      }
+      @media print {
+        body.receipt-loading::before {
+          display: none;
+        }
+      }
+    </style>
   </head>
 
-  <body>
+  <body class="receipt-loading">
     <div class="page">
       <!-- HEADER -->
       <div class="header">
@@ -203,5 +222,6 @@
   </body>
 
   <script src="/js/storage.js"></script>
+  <script src="/js/financialSummary.js"></script>
   <script src="/js/salesOrdReceipt.js"></script>
 </html>

@@ -6,6 +6,7 @@ const { getSession } = require("../sessions");
 const nsClient = require("../netsuiteClient");
 const pool = require("../db");
 const db = require("../db");
+const { getBusinessDate } = require("../utils/businessDate");
 
 const router = express.Router();
 
@@ -275,7 +276,6 @@ router.post("/submit", async (req, res) => {
         const {
             store,
             locationId,
-            date,
             signoffUserId,
             confirmation,
             deposits,
@@ -284,7 +284,9 @@ router.post("/submit", async (req, res) => {
             totals
         } = req.body;
 
-        if (!store || !locationId || !date) {
+        const businessDate = getBusinessDate();
+
+        if (!store || !locationId) {
             return res.status(400).json({ ok: false, error: "Missing required fields" });
         }
 
@@ -307,7 +309,7 @@ router.post("/submit", async (req, res) => {
             const eodResult = await client.query(insertEod, [
                 store,
                 locationId,
-                date,
+                businessDate,
                 signoffUserId,
                 confirmation,
                 JSON.stringify(deposits),
@@ -342,6 +344,7 @@ router.post("/submit", async (req, res) => {
             return res.json({
                 ok: true,
                 eodId,
+                date: businessDate,
                 message: "End of Day submitted successfully"
             });
 
@@ -371,17 +374,19 @@ router.get("/check-today", async (req, res) => {
       return res.json({ ok: true, exists: false });
     }
 
+    const businessDate = getBusinessDate();
+
     const sql = `
       SELECT id, date, store_name
       FROM end_of_day
       WHERE location_id = $1
-      AND date = CURRENT_DATE
+      AND date = $2
       ORDER BY id DESC
       LIMIT 1
     `;
 
     // ✅ FIXED — use pool.query
-    const result = await pool.query(sql, [storeId]);
+    const result = await pool.query(sql, [storeId, businessDate]);
 
     console.log("🟢 Query result:", result.rows);
 

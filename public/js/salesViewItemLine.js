@@ -197,28 +197,7 @@ function getItemClass(item) {
 
 function buildOptionSchemaForItem(itemId) {
   const fromDb = window.itemOptionsCache?.getOptionsForItemSync?.(itemId) || {};
-  if (Object.keys(fromDb).length) return fromDb;
-
-  const itemData = (window.items || []).find((it) => getItemInternalId(it) === String(itemId));
-
-  if (!itemData) return {};
-
-  const opts = {};
-  Object.entries(itemData).forEach(([key, val]) => {
-    if (!String(key).toLowerCase().startsWith("option :")) return;
-
-    const fieldName = String(key).replace(/^option\s*:\s*/i, "").trim();
-    const values = String(val || "")
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean);
-
-    if (fieldName && values.length) {
-      opts[fieldName] = values;
-    }
-  });
-
-  return opts;
+  return Object.keys(fromDb).length ? fromDb : {};
 }
 
 function setInventoryButtonState(row) {
@@ -667,15 +646,16 @@ window.renderSalesViewLines = function renderSalesViewLines({
 
     const itemName = String(line.item?.refName || "").toLowerCase();
 
-    const isNegativeValueLine =
-      itemName.includes("discount") ||
-      itemName.includes("blue light") ||
-      itemName.includes("promo") ||
-      itemName.includes("promotion") ||
-      itemName.includes("voucher") ||
-      itemName.includes("trade in") ||
-      itemName.includes("recommendation card (as a minus)") ||
-      itemName.includes("trade-in");
+    const isNegativeValueLine = window.EposFinancials?.isNegativeValueLine
+      ? window.EposFinancials.isNegativeValueLine(itemName)
+      : itemName.includes("discount") ||
+        itemName.includes("blue light") ||
+        itemName.includes("promo") ||
+        itemName.includes("promotion") ||
+        itemName.includes("voucher") ||
+        itemName.includes("trade in") ||
+        itemName.includes("recommendation card (as a minus)") ||
+        itemName.includes("trade-in");
 
     if (isNegativeValueLine) {
       if (retailGrossLineTotal > 0) retailGrossLineTotal = -retailGrossLineTotal;
@@ -711,10 +691,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
     const itemClass = getItemClass(itemData);
     tr.dataset.itemClass = itemClass;
 
-    const hasExistingOptions =
-      !!optsHtml || (existingSelections && Object.keys(existingSelections).length > 0);
-    const canEditOptions =
-      Object.keys(optionSchema).length > 0 || hasExistingOptions;
+    const hasEditableOptions = Object.keys(optionSchema).length > 0;
 
     const discountCell = isPending
       ? `<input type="number" class="item-discount" value="${discountPct.toFixed(1)}" min="0" max="100" step="0.1" />`
@@ -782,7 +759,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
       <td class="options-cell">
         ${
           isPending
-            ? canEditOptions
+            ? hasEditableOptions
               ? `
                 <button type="button" class="open-options btn-secondary small-btn">Options</button>
                 <input type="hidden" class="item-options-json" value='${JSON.stringify(existingSelections).replace(/'/g, "&apos;")}' />

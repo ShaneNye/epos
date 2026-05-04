@@ -447,10 +447,10 @@ async function openOptionsWindow(row) {
     existingSelections = {};
   }
 
-  let schema = window.optionsCache?.[itemId] || {};
+  let schema = await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
 
   if (!schema || !Object.keys(schema).length) {
-    schema = await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
+    schema = window.optionsCache?.[itemId] || {};
   }
 
   if (!schema || !Object.keys(schema).length) {

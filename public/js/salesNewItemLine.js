@@ -669,7 +669,7 @@ function setupPriceSync(line) {
   salePriceField.addEventListener("input", () => {
     const qty = parseInt(qtyField.value || 1, 10);
     const retailTotal = unitRetail * qty;
-    const saleTotal = Math.max(0, parseFloat(salePriceField.value || 0) || 0);
+    const saleTotal = parseFloat(salePriceField.value || 0) || 0;
     salePriceField.value = saleTotal.toFixed(2);
     if (retailTotal > 0 && !isNaN(saleTotal)) {
       const discountPercent = clampPercent(((retailTotal - saleTotal) / retailTotal) * 100);
@@ -830,10 +830,13 @@ async function openOptionsWindow(row) {
   const itemId = row.querySelector(".item-internal-id")?.value;
   if (!itemId) return alert("⚠️ Please select an item first.");
 
-  if (!window.optionsCache?.[itemId] || !Object.keys(window.optionsCache[itemId]).length) {
-    window.optionsCache = window.optionsCache || {};
-    window.optionsCache[itemId] =
-      await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
+  window.optionsCache = window.optionsCache || {};
+
+  const dbSchema = await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
+  if (Object.keys(dbSchema).length) {
+    window.optionsCache[itemId] = dbSchema;
+  } else if (!window.optionsCache[itemId]) {
+    window.optionsCache[itemId] = {};
   }
 
   const existingSelections = row.querySelector(".item-options-json")?.value || "{}";

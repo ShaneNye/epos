@@ -58,11 +58,242 @@ async function loadItemCache() {
   };
 })();
 
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function setupSalesViewTabs() {
+  const tabs = [...document.querySelectorAll(".sales-view-tab")];
+  if (!tabs.length) return;
+
+  const panels = {
+    items: document.getElementById("salesTabItems"),
+    related: document.getElementById("salesTabRelated"),
+  };
+
+  tabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const target = tab.dataset.salesTab;
+      tabs.forEach((next) => {
+        const active = next === tab;
+        next.classList.toggle("active", active);
+        next.setAttribute("aria-selected", active ? "true" : "false");
+      });
+
+      Object.entries(panels).forEach(([name, panel]) => {
+        if (!panel) return;
+        const active = name === target;
+        panel.hidden = !active;
+        panel.classList.toggle("active", active);
+      });
+    });
+  });
+}
+
+function recordList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (Array.isArray(value.items)) return value.items;
+  if (Array.isArray(value.values)) return value.values;
+
+  if (typeof value === "object") {
+    if (value.id || value.refName || value.name || value.text) return [value];
+    return [];
+  }
+
+  return String(value)
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean)
+    .map((text) => ({ refName: text }));
+}
+
+function recordLabel(record) {
+  return String(record?.refName || record?.name || record?.text || record?.value || record?.id || "").trim();
+}
+
+function recordId(record) {
+  return String(record?.id || record?.internalId || record?.internalid || "").trim();
+}
+
+function netSuiteRecordUrl(so, recordType, id) {
+  const base = String(so?._netSuiteAppBaseUrl || "").replace(/\/$/, "");
+  if (!base || !id) return "";
+
+  const paths = {
+    salesorder: "/app/accounting/transactions/salesord.nl",
+    purchaseorder: "/app/accounting/transactions/purchord.nl",
+    estimate: "/app/accounting/transactions/estimate.nl",
+  };
+
+  const path = paths[recordType];
+  return path ? `${base}${path}?id=${encodeURIComponent(id)}` : "";
+}
+
+function renderOrderNumberLink(containerId, tranId, so, recordType = "salesorder") {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const label = escapeHtml(tranId || "");
+  const url = netSuiteRecordUrl(so, recordType, so?.id || so?.internalId || so?.internalid);
+  
+  if (url) {
+    container.innerHTML = `<a href="${escapeHtml(url)}" class="related-popup-link" title="Open in NetSuite">${label}</a>`;
+  } else {
+    container.textContent = label;
+  }
+}
+
+function renderRecordLinks(containerId, records, so, recordType, emptyText = "-") {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const list = recordList(records);
+  if (!list.length) {
+    container.textContent = emptyText;
+    return;
+  }
+
+  const html = list
+    .map((record) => {
+      const id = recordId(record);
+      const label = escapeHtml(recordLabel(record) || id || "Open");
+      const url = netSuiteRecordUrl(so, recordType, id);
+      return url
+        ? `<a href="${escapeHtml(url)}" class="related-popup-link">${label}</a>`
+        : `<span>${label}</span>`;
+    })
+    .join("");
+
+  container.innerHTML = list.length > 1 ? `<div class="related-records-list">${html}</div>` : html;
+}
+
+function isCheckedNetSuiteField(value) {
+  if (value === true) return true;
+  if (value === false || value == null) return false;
+  if (typeof value === "object") {
+    return isCheckedNetSuiteField(value.id ?? value.value ?? value.refName ?? value.text);
+  }
+  const text = String(value).trim().toLowerCase();
+  return text === "t" || text === "true" || text === "yes" || text === "1";
+}
+
+function extractHref(html) {
+  const text = String(html || "");
+  const hrefMatch = text.match(/href=["']([^"']+)["']/i);
+  if (hrefMatch?.[1]) return hrefMatch[1].replace(/&amp;/g, "&");
+  if (/^https?:\/\//i.test(text.trim())) return text.trim();
+  return "";
+}
+
+function renderDispatchTrack(value, scheduleHtml = "") {
+  const container = document.getElementById("relatedDispatchTrack");
+  if (!container) return;
+
+  if (!isCheckedNetSuiteField(value)) {
+    container.textContent = "Not exported";
+    return;
+  }
+
+  const href = extractHref(scheduleHtml);
+  if (href) {
+    container.innerHTML = `<a href="${escapeHtml(href)}" class="related-popup-link">Schedule</a>`;
+    return;
+  }
+
+  container.textContent = "Schedule unavailable";
+}
+
+function renderRelatedRecords(so, orderManagementRow = null) {
+  const related = so?.relatedRecords || {};
+  renderRecordLinks(
+    "relatedIntercompanySalesOrder",
+    related.custbody_sb_pairedsalesorder || so?.custbody_sb_pairedsalesorder,
+    so,
+    "salesorder",
+    "-"
+  );
+  renderRecordLinks(
+    "relatedSupplierPurchaseOrders",
+    related.custbody_sb_relatedpurchaseorders || so?.custbody_sb_relatedpurchaseorders,
+    so,
+    "purchaseorder",
+    "-"
+  );
+  renderDispatchTrack(
+    related.custbody_exported_to_dispatchtrack ?? so?.custbody_exported_to_dispatchtrack,
+    orderManagementRow?.Schedule || ""
+  );
+}
+
+async function loadRelatedRecords(headers, so, tranId) {
+  try {
+    const res = await fetch(
+      `/api/netsuite/salesorder/${encodeURIComponent(tranId)}/related-records?_=${Date.now()}`,
+      { headers, cache: "no-store" }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Related records request failed");
+
+    so._netSuiteAppBaseUrl = data.netSuiteAppBaseUrl || so._netSuiteAppBaseUrl;
+    so.relatedRecords = data.relatedRecords || {};
+    renderRelatedRecords(so);
+    return so.relatedRecords;
+  } catch (err) {
+    console.warn("⚠️ Could not load related records:", err.message || err);
+    return null;
+  }
+}
+
+async function loadOrderManagementRow(headers, so, tranId) {
+  const related = so?.relatedRecords || {};
+  if (!isCheckedNetSuiteField(related.custbody_exported_to_dispatchtrack ?? so?.custbody_exported_to_dispatchtrack)) {
+    return null;
+  }
+
+  try {
+    const res = await fetch("/api/netsuite/order-management", { headers });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    const rows = data.results || data.data || (Array.isArray(data) ? data : []);
+    return rows.find((row) => {
+      return (
+        String(row.ID || row.Id || row.id || "") === String(so?.id || tranId) ||
+        String(row["Document Number"] || "").trim() === String(so?.tranId || "").trim()
+      );
+    }) || null;
+  } catch (err) {
+    console.warn("⚠️ Could not load DispatchTrack schedule link:", err.message || err);
+    return null;
+  }
+}
+
+document.addEventListener("click", (event) => {
+  const link = event.target.closest(".related-popup-link");
+  if (!link) return;
+
+  event.preventDefault();
+  const win = window.open(
+    link.href,
+    "RelatedRecord",
+    "width=1200,height=800,resizable=yes,scrollbars=yes"
+  );
+  if (win) win.focus();
+  else window.location.href = link.href;
+});
+
 /* =====================================================
    Main Sales Order View Loader
 ===================================================== */
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("💡 SalesOrderView init");
+  setupSalesViewTabs();
 
   function normaliseStoreName(name) {
     return String(name || "")
@@ -244,8 +475,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ==================================================
     // 1️⃣ Load everything in parallel where possible
     // ==================================================
-    const [_items, soRes, locJson, userJson, fulfilRes] = await Promise.all([
+    const [_items, _itemOptions, soRes, locJson, userJson, fulfilRes] = await Promise.all([
       loadItemCache(),
+      window.itemOptionsCache?.getAll?.().catch((err) => {
+        console.warn("⚠️ Failed to preload item options:", err.message || err);
+        return {};
+      }),
       fetch(`/api/netsuite/salesorder/${tranId}?lite=1`, { headers }),
       locationsPromise,
       usersPromise,
@@ -260,6 +495,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     const so = soJson.salesOrder || soJson;
     if (!so) throw new Error("No salesOrder object in response");
     console.log("✅ Sales Order loaded:", so.tranId || tranId);
+    renderRelatedRecords(so);
+    loadRelatedRecords(headers, so, tranId).then(() => {
+      loadOrderManagementRow(headers, so, tranId).then((orderManagementRow) => {
+        if (orderManagementRow) renderRelatedRecords(so, orderManagementRow);
+      });
+    });
 
     const locations = locJson.locations || locJson.data || [];
 
@@ -290,7 +531,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ==================================================
     // 3️⃣ Populate header + customer + order meta
     // ==================================================
-    document.getElementById("orderNumber").textContent = so.tranId || tranId;
+    renderOrderNumberLink("orderNumber", so.tranId || tranId, so, "salesorder");
 
     function formatOrderStatus(so) {
       const codeMap = {
@@ -599,7 +840,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           el.id === "commitOrderBtn" ||
           el.id === "newMemoBtn" ||
           el.id === "printBtn" ||
-          el.id === "addDepositBtn";
+          el.id === "addDepositBtn" ||
+          el.classList.contains("sales-view-tab");
 
         if (allowEdit && !isStoreField) {
           el.disabled = false;
@@ -616,7 +858,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (el.name === "memo") {
           el.disabled = false;
           el.classList.remove("locked-input");
-        } else if (el.id === "newMemoBtn" || el.id === "printBtn") {
+        } else if (
+          el.id === "newMemoBtn" ||
+          el.id === "printBtn" ||
+          el.classList.contains("sales-view-tab")
+        ) {
           el.disabled = false;
           el.classList.remove("locked-input");
         } else {
@@ -634,7 +880,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("🔒 Not pending approval or fulfillment – lock everything (read-only)");
 
       document.querySelectorAll("input, select, textarea, button").forEach((el) => {
-        if (el.id === "newMemoBtn" || el.id === "printBtn") return;
+        if (
+          el.id === "newMemoBtn" ||
+          el.id === "printBtn" ||
+          el.classList.contains("sales-view-tab")
+        ) return;
 
         el.disabled = true;
         el.classList.add("locked-input");
@@ -1109,6 +1359,125 @@ function hideCommitInline() {
   document.getElementById("commitInlineStatus")?.classList.add("hidden");
 }
 
+function validateSalesViewItemsBeforeSave() {
+  const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
+  const errors = [];
+
+  rows.forEach((row) => {
+    row.classList.remove("row-error");
+    row.querySelectorAll(".field-error").forEach((el) => el.classList.remove("field-error"));
+  });
+
+  const dirtyEmptyRows = rows.filter((row) => {
+    const itemId = (row.querySelector(".item-internal-id")?.value || "").trim();
+    if (itemId) return false;
+
+    const itemText = (row.querySelector(".item-search")?.value || "").trim();
+    const amount = (row.querySelector(".item-amount")?.value || "").trim();
+    const sale = (row.querySelector(".item-saleprice")?.value || "").trim();
+    const options = (row.querySelector(".options-summary")?.innerText || "").trim();
+    return !!(itemText || amount || sale || options);
+  });
+
+  dirtyEmptyRows.forEach((row) => {
+    const lineNo = row.getAttribute("data-line") || "?";
+    errors.push(`• Line ${lineNo}: Select a valid item from the item search.`);
+    row.classList.add("row-error");
+    row.querySelector(".item-search")?.classList.add("field-error");
+  });
+
+  const itemRows = rows.filter((row) =>
+    (row.querySelector(".item-internal-id")?.value || "").trim()
+  );
+
+  if (itemRows.length === 0) {
+    alert("⚠️ Please add at least one item to the sales order before saving.");
+    return false;
+  }
+
+  itemRows.forEach((row, idx) => {
+    const lineNo = row.getAttribute("data-line") || String(idx + 1);
+    const itemClass = (row.dataset.itemClass || "").trim().toLowerCase();
+    const isService = itemClass === "service" || itemClass.includes("service");
+
+    const qtyEl = row.querySelector(".item-qty") || row.querySelector(".item-qty-cache");
+    const quantity = parseFloat(qtyEl?.value || "0") || 0;
+    if (quantity <= 0) {
+      errors.push(`• Line ${lineNo}: Quantity must be greater than zero.`);
+      row.classList.add("row-error");
+      qtyEl?.classList.add("field-error");
+    }
+
+    const fulfilSel = row.querySelector(".item-fulfilment") || row.querySelector(".fulfilmentSelect");
+    const fulfilId = (fulfilSel?.value || "").trim();
+    const fulfilText =
+      fulfilSel?.options?.[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() ||
+      row.querySelector(".fulfilment-cell")?.textContent?.trim().toLowerCase() ||
+      "";
+
+    if (!isService && !fulfilId) {
+      errors.push(`• Line ${lineNo}: Fulfilment Method is required.`);
+      row.classList.add("row-error");
+      fulfilSel?.classList.add("field-error");
+    }
+
+    const hasOptionsButton = !!row.querySelector(".open-options");
+    if (hasOptionsButton) {
+      const optionsJson = (row.querySelector(".item-options-json")?.value || "").trim();
+      const optionsSummary = (row.querySelector(".options-summary")?.innerText || "").trim();
+
+      let hasJsonValue = false;
+      if (optionsJson && optionsJson !== "{}") {
+        try {
+          const parsed = JSON.parse(optionsJson);
+          hasJsonValue = Object.values(parsed).some((val) => {
+            if (Array.isArray(val)) return val.length > 0;
+            return !!String(val || "").trim();
+          });
+        } catch {
+          hasJsonValue = false;
+        }
+      }
+
+      if (!hasJsonValue && !optionsSummary) {
+        errors.push(`• Line ${lineNo}: Item Options must be selected.`);
+        row.classList.add("row-error");
+        row.querySelector(".options-cell")?.classList.add("field-error");
+      }
+    }
+
+    const requiresInventory =
+      !isService && (fulfilText === "warehouse" || fulfilText === "in store");
+
+    if (requiresInventory) {
+      const invHidden = row.querySelector(".item-inv-detail");
+      const invHasValue = !!(invHidden?.value || "").trim();
+      const hasLot = !!(row.dataset.lotnumber || "").trim();
+      const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
+
+      if (!invHasValue && !hasLot && !hasMeta) {
+        errors.push(
+          `• Line ${lineNo}: Inventory Detail is required for "${
+            fulfilText === "warehouse" ? "Warehouse" : "In Store"
+          }".`
+        );
+        row.classList.add("row-error");
+        (
+          row.querySelector(".inventory-cell") ||
+          row.querySelector(".inventory-cell-wrapper")
+        )?.classList.add("field-error");
+      }
+    }
+  });
+
+  if (errors.length) {
+    alert("Please fix the following before saving:\n\n" + errors.join("\n"));
+    return false;
+  }
+
+  return true;
+}
+
 function updateActionButton(orderStatusObj, tranId, so) {
   const wrapper = document.getElementById("orderActionWrapper");
   if (!wrapper) return;
@@ -1208,15 +1577,27 @@ function updateActionButton(orderStatusObj, tranId, so) {
             ?.innerHTML?.trim()
             .replace(/<br\s*\/?>/gi, "\n") || "";
 
+        const netAmount = Number.isFinite(amountGrossLine)
+          ? Number((amountGrossLine / 1.2).toFixed(2))
+          : 0;
+
         return {
           lineId: row.dataset.lineid || "",
           itemId,
+          item: itemId ? { id: itemId } : undefined,
           quantity,
           fulfilmentMethod: fulfilmentMethod || null,
           inventoryDetail: inventoryDetail || null,
+          inventoryMeta: inventoryDetail || null,
           discountPct,
+          discount: discountPct,
           saleGrossLine,
           amountGrossLine,
+          grossAmount: amountGrossLine,
+          grossSaleprice: saleGrossLine,
+          netAmount,
+          amount: amountGrossLine,
+          saleprice: saleGrossLine,
           optionsSummary: optionsText || null,
           isNew: !row.dataset.lineid,
         };
@@ -1283,11 +1664,6 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
     const deletedLineIds = originalLineIds.filter((id) => !visibleLineIds.has(id));
 
-    console.log("🧪 Sales Exec payload mapping:", {
-      selectedUiUserId: selectedSalesExecUserId,
-      mappedNsId: selectedSalesExecNsId,
-    });
-
     console.log("Sales order save payload summary:", {
       lines: lines.length,
       deletedLines: deletedLineIds.length,
@@ -1301,6 +1677,12 @@ function updateActionButton(orderStatusObj, tranId, so) {
     };
   }
 
+  function stableSalesSaveSignature(payload) {
+    return JSON.stringify(payload || {});
+  }
+
+  window._lastSalesOrderSaveSignature = stableSalesSaveSignature(buildPayloadFromUI());
+
   const saveBtn = document.getElementById("saveOrderBtn");
   if (saveBtn) {
     saveBtn.replaceWith(saveBtn.cloneNode(true));
@@ -1311,11 +1693,22 @@ function updateActionButton(orderStatusObj, tranId, so) {
       const token = savedAuth?.token;
       if (!token) return (window.location.href = "/index.html");
 
+      if (isPendingApproval && !validateSalesViewItemsBeforeSave()) return;
+
       freshSaveBtn.disabled = true;
       freshSaveBtn.classList.add("locked-input");
       showCommitInlineLocal("Saving…");
 
       const payload = buildPayloadFromUI();
+      const signature = stableSalesSaveSignature(payload);
+      if (signature === window._lastSalesOrderSaveSignature) {
+        showToast?.("No order changes to save.", "success");
+        showCommitInlineLocal("No changes ✅");
+        setTimeout(() => hideCommitInlineLocal(), 800);
+        freshSaveBtn.disabled = false;
+        freshSaveBtn.classList.remove("locked-input");
+        return;
+      }
 
       try {
         const res = await fetch(`/api/netsuite/salesorder/${tranId}/save`, {
@@ -1331,6 +1724,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
         if (!res.ok || !data.ok) throw new Error(data.error || "Failed to save order");
 
         showToast?.("✅ Saved (not committed)", "success");
+        window._lastSalesOrderSaveSignature = signature;
         showCommitInlineLocal("Saved ✅");
         setTimeout(() => hideCommitInlineLocal(), 800);
       } catch (err) {
@@ -1437,6 +1831,8 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
     const savedAuth = storageGet?.();
     const token = savedAuth?.token;
     if (!token) return (window.location.href = "/index.html");
+
+    if (!validateSalesViewItemsBeforeSave()) return;
 
     freshCommitBtn.disabled = true;
     freshCommitBtn.classList.add("locked-input");

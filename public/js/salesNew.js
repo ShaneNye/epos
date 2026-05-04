@@ -789,7 +789,7 @@ function validateOrderBeforeSave() {
           console.warn("⚠️ No tranId or soId found — redirecting to /home as fallback");
           window.location.href = "/home";
         }
-      }, 1500);
+      }, 250);
     } catch (err) {
       console.error("❌ Error submitting order:", err);
       showToast("❌ Something went wrong while creating the order.", "error");

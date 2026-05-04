@@ -11,6 +11,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (!salesOrderId) {
     console.error("❌ No Sales Order ID in URL");
+    document.body.classList.remove("receipt-loading");
     return;
   }
 
@@ -23,6 +24,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (!saved || !saved.token) {
     console.error("🚫 No auth token found");
+    document.body.classList.remove("receipt-loading");
     return;
   }
 
@@ -55,11 +57,17 @@ document.addEventListener("DOMContentLoaded", async () => {
     String(v).trim() !== "";
 
   const formatMoney = (value) => {
+    if (window.EposFinancials?.formatMoney) {
+      return window.EposFinancials.formatMoney(value);
+    }
     const n = Number(value || 0) || 0;
     return `£${n.toFixed(2)}`;
   };
 
   const isNegativeValueLine = (name = "") => {
+    if (window.EposFinancials?.isNegativeValueLine) {
+      return window.EposFinancials.isNegativeValueLine(name);
+    }
     const text = String(name || "").toLowerCase();
     return (
       text.includes("discount") ||
@@ -78,23 +86,54 @@ document.addEventListener("DOMContentLoaded", async () => {
      ============================ */
   let hasTriggeredPrint = false;
 
-  const triggerPrint = () => {
+  const waitForReceiptAssets = async () => {
+    const images = [...document.images].filter((img) => !img.complete);
+    if (!images.length) return;
+
+    await Promise.race([
+      Promise.all(
+        images.map((img) =>
+          img.decode
+            ? img.decode().catch(() => {})
+            : new Promise((resolve) => {
+                img.addEventListener("load", resolve, { once: true });
+                img.addEventListener("error", resolve, { once: true });
+              })
+        )
+      ),
+      new Promise((resolve) => setTimeout(resolve, 700)),
+    ]);
+  };
+
+  const revealReceipt = async () => {
+    await waitForReceiptAssets();
+    document.body.classList.remove("receipt-loading");
+    document.body.classList.add("receipt-ready");
+  };
+
+  const triggerPrint = async () => {
     if (hasTriggeredPrint) return;
     hasTriggeredPrint = true;
 
+    await revealReceipt();
+
     setTimeout(() => {
       window.print();
-    }, 400);
+    }, 100);
   };
 
   /* ============================
      3️⃣ Fetch Sales Order
      ============================ */
   try {
-    const res = await fetch(
+    const salesOrderPromise = fetch(
       `/api/netsuite/salesorder/${encodeURIComponent(salesOrderId)}`,
       { headers }
     );
+    const locationsPromise = fetch("/api/meta/locations", { headers })
+      .catch(() => fetch("/api/meta/locations"));
+
+    const res = await salesOrderPromise;
 
     console.log("🌐 Fetch response status:", res.status);
 
@@ -103,12 +142,14 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!res.ok || data.ok === false) {
       console.error("❌ Sales order fetch failed:", data.error || res.status);
+      await revealReceipt();
       return;
     }
 
     const so = data.salesOrder;
     if (!so) {
       console.error("❌ salesOrder missing from response");
+      await revealReceipt();
       return;
     }
 
@@ -124,9 +165,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.log("🏬 Store NS ID resolved from SO:", storeNsId);
 
     try {
-      const locRes = await fetch("/api/meta/locations", { headers }).catch(() =>
-        fetch("/api/meta/locations")
-      );
+      const locRes = await locationsPromise;
       const locJson = await locRes.json();
 
       if (locRes.ok && locJson.ok && Array.isArray(locJson.locations)) {
@@ -217,6 +256,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!tableBody) {
       console.error("❌ productTableBody not found");
+      await revealReceipt();
       return;
     }
 
@@ -305,6 +345,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (!depositTableBody) {
       console.error("❌ depositTableBody not found");
+      await revealReceipt();
       return;
     }
 
@@ -408,5 +449,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   } catch (err) {
     console.error("💥 Fetch error:", err);
+    await revealReceipt();
   }
 });

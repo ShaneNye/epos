@@ -20,3 +20,45 @@ function storageClear() {
   localStorage.removeItem(key);
   sessionStorage.removeItem(key);
 }
+
+(function installAuthenticatedFetch() {
+  if (typeof window === "undefined" || typeof window.fetch !== "function") return;
+  if (window.__eposAuthenticatedFetchInstalled) return;
+
+  const nativeFetch = window.fetch.bind(window);
+  window.__eposAuthenticatedFetchInstalled = true;
+
+  window.fetch = function eposAuthenticatedFetch(input, init = {}) {
+    try {
+      const rawUrl =
+        typeof input === "string"
+          ? input
+          : input instanceof URL
+            ? input.href
+            : input?.url || "";
+
+      const url = new URL(rawUrl, window.location.origin);
+      const isSameOriginApi =
+        url.origin === window.location.origin && url.pathname.startsWith("/api/");
+
+      if (!isSameOriginApi) {
+        return nativeFetch(input, init);
+      }
+
+      const saved = storageGet();
+      const token = saved?.token;
+      if (!token) {
+        return nativeFetch(input, init);
+      }
+
+      const headers = new Headers(init.headers || {});
+      if (!headers.has("Authorization")) {
+        headers.set("Authorization", `Bearer ${token}`);
+      }
+
+      return nativeFetch(input, { ...init, headers });
+    } catch {
+      return nativeFetch(input, init);
+    }
+  };
+})();

@@ -25,6 +25,11 @@ const OAuth = require("oauth-1.0a");
 const { getSession } = require("./sessions");
 const pool = require("./db"); // for user token lookup if stored in DB
 const fetch = require("node-fetch");
+const {
+  isAlwaysAllowedPath,
+  isPageShellPath,
+  isPublicPath,
+} = require("./utils/accessControlRules");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -136,9 +141,9 @@ app.use((req, res, next) => {
 
 
 
-// --- Serve static files ---
-app.use(
-  express.static(path.join(__dirname, "public"), {
+// --- Serve static assets. HTML pages are served through named routes below so
+// access control can run consistently.
+const publicStatic = express.static(path.join(__dirname, "public"), {
     setHeaders(res, filePath) {
       if (/\.(html|js|css)$/i.test(filePath)) {
         res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
@@ -146,7 +151,25 @@ app.use(
         res.setHeader("Expires", "0");
       }
     },
-  })
+  });
+
+app.use((req, res, next) => {
+  if (/\.html$/i.test(req.path) && req.path !== "/index.html") {
+    return next();
+  }
+  return publicStatic(req, res, next);
+});
+
+app.use((req, res, next) => {
+  const nestedAsset = req.path.match(/^\/[^/]+\/(css|js|assets|fonts)\/(.+)$/i);
+  if (!nestedAsset) return next();
+
+  req.url = `/${nestedAsset[1]}/${nestedAsset[2]}`;
+  return publicStatic(req, res, next);
+});
+
+app.get("/favicon.ico", (req, res) =>
+  res.sendFile(path.join(__dirname, "public", "assets", "moon-man-logo.ico"))
 );
 
 
@@ -374,6 +397,103 @@ function startPrewarmScheduler() {
 
 
 /* ==========================================================
+   ===============  ACCESS CONTROL MIDDLEWARE  ===============
+   ========================================================== */
+
+async function accessControlMiddleware(req, res, next) {
+  if (isPublicPath(req.path)) {
+    return next();
+  }
+
+  try {
+    const authHeader = req.headers.authorization || req.query.token;
+    const token = authHeader?.replace("Bearer ", "");
+    const prewarmKey = req.headers["x-prewarm-key"];
+    const allowPrewarm =
+      prewarmKey &&
+      process.env.PREWARM_KEY &&
+      String(prewarmKey) === String(process.env.PREWARM_KEY);
+
+    if (isAlwaysAllowedPath(req.path)) {
+      return next();
+    }
+
+    if (isPageShellPath(req.path)) {
+      return next();
+    }
+
+    if (allowPrewarm) {
+      return next();
+    }
+
+    if (!token) {
+      console.warn("🚫 No token provided for path:", req.path);
+      return res.status(401).send("Not authenticated");
+    }
+
+    const session = await getSession(token);
+    if (!session) {
+      console.warn("🚫 Invalid session for token");
+      return res.status(401).send("Invalid session");
+    }
+
+    const activeRole = session.activeRole;
+    const activeRoleName =
+      typeof activeRole === "string" ? activeRole : activeRole?.name || null;
+
+    let allowed = [];
+    if (activeRoleName) {
+      const roleResult = await pool.query(
+        "SELECT access FROM roles WHERE LOWER(name) = LOWER($1) LIMIT 1",
+        [activeRoleName]
+      );
+      const rawAccess = roleResult.rows[0]?.access;
+
+      if (Array.isArray(rawAccess)) {
+        allowed = rawAccess.map(normalizeAccessPath);
+      } else if (typeof rawAccess === "string") {
+        try {
+          allowed = JSON.parse(rawAccess || "[]").map(normalizeAccessPath);
+        } catch {
+          allowed = [];
+        }
+      }
+    }
+
+    const accessPath = normalizeAccessPath(req.path);
+    const cleanPath = req.path;
+
+    if (
+      allowed.includes(accessPath) ||
+      accessPath === "" ||
+      accessPath === "home" ||
+      req.path.startsWith("/api/")
+    ) {
+      return next();
+    }
+
+    console.warn(
+      `🚫 Access denied to '${cleanPath}' for role '${
+        activeRole?.name || "unknown"
+      }'`
+    );
+    return res.status(403).send("Access denied");
+  } catch (err) {
+    console.error("❌ Access middleware error:", err);
+    return res.status(500).send("Internal access control error");
+  }
+}
+
+app.use(accessControlMiddleware);
+
+app.use((req, res, next) => {
+  if (/\.html$/i.test(req.path)) {
+    return publicStatic(req, res, next);
+  }
+  return next();
+});
+
+/* ==========================================================
    ===============  API ROUTES (Public + Protected)  =========
    ========================================================== */
 
@@ -422,118 +542,6 @@ app.use("/", dispatchTrackRoutes);
 
 
 
-
-
-/* ==========================================================
-   ===============  ACCESS CONTROL MIDDLEWARE  ===============
-   ========================================================== */
-
-app.use(async (req, res, next) => {
-  const publicPaths = [
-    "/",
-    "/index.html",
-    "/api/login",
-    "/api/me",
-    "/api/session/role",
-    "/api/vsa",   
-    "/api/meta",
-    "/health",
-  ];
-
-  // detect static files (css, js, images, icons)
-  const staticFiles = req.path.match(/\.(css|js|png|jpg|jpeg|svg|ico|gif|html)$/i);
-
-  // ✅ Allow public + static + assistant assets (html, js, css)
-  if (
-    publicPaths.some((p) => req.path.startsWith(p)) ||
-    staticFiles ||
-    req.path.startsWith("/assistant")
-  ) {
-    return next();
-  }
-
-  try {
-    const authHeader = req.headers.authorization || req.query.token;
-    const token = authHeader?.replace("Bearer ", "");
-
-    // ==========================================================
-    // ✅ Always-allowed routes (Sales, Quotes, and NS APIs)
-    // ==========================================================
-    const alwaysAllowed = [
-      "/sales/view",
-      "/sales/reciept",
-      "/quote/view",
-      "/quote/reciept",
-      "/api/netsuite/salesorder",
-      "/api/netsuite/quote",
-      "/api/netsuite/order-management",
-      "/api/netsuite/quote-management",
-      "/api/dispatchtrack/open-jobs",
-    ];
-
-    if (alwaysAllowed.some((prefix) => req.path.startsWith(prefix))) {
-      return next();
-    }
-
-    // ==========================================================
-    // 🔒 Standard token/session validation
-    // ==========================================================
-    if (!token) {
-      console.warn("🚫 No token provided for path:", req.path);
-      return res.status(401).send("Not authenticated");
-    }
-
-    const session = await getSession(token);
-    if (!session) {
-      console.warn("🚫 Invalid session for token");
-      return res.status(401).send("Invalid session");
-    }
-
-    const activeRole = session.activeRole;
-    const activeRoleName =
-      typeof activeRole === "string" ? activeRole : activeRole?.name || null;
-
-    let allowed = [];
-    if (activeRoleName) {
-      const roleResult = await pool.query(
-        "SELECT access FROM roles WHERE LOWER(name) = LOWER($1) LIMIT 1",
-        [activeRoleName]
-      );
-      const rawAccess = roleResult.rows[0]?.access;
-
-      if (Array.isArray(rawAccess)) {
-        allowed = rawAccess.map(normalizeAccessPath);
-      } else if (typeof rawAccess === "string") {
-        try {
-          allowed = JSON.parse(rawAccess || "[]").map(normalizeAccessPath);
-        } catch {
-          allowed = [];
-        }
-      }
-    }
-    const accessPath = normalizeAccessPath(req.path);
-    const cleanPath = req.path;
-
-    // ✅ Role-based access
-    if (
-      allowed.includes(accessPath) ||
-      accessPath === "" ||
-      accessPath === "home"
-    ) {
-      return next();
-    }
-
-    console.warn(
-      `🚫 Access denied to '${cleanPath}' for role '${
-        activeRole?.name || "unknown"
-      }'`
-    );
-    return res.status(403).send("Access denied");
-  } catch (err) {
-    console.error("❌ Access middleware error:", err);
-    return res.status(500).send("Internal access control error");
-  }
-});
 
 
 /*==============================================================
@@ -694,7 +702,20 @@ app.get("/api/netsuite/inventorybalance", async (req, res) => {
 
     const itemId = req.query.id;
     let results = json.results || json;
-    if (itemId) results = results.filter(r => String(r["Item ID"]) === String(itemId));
+    if (itemId) {
+      const wanted = String(itemId).trim();
+      results = results.filter((r) => {
+        const rowItemId = String(
+          r["Item ID"] ||
+            r["Item Id"] ||
+            r.itemid ||
+            r.itemId ||
+            r.Item ||
+            ""
+        ).trim();
+        return rowItemId === wanted;
+      });
+    }
     res.json({ ok: true, results });
   } catch (err) {
     console.error("❌ Inventory balance proxy error:", err);

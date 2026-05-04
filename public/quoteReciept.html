@@ -6,9 +6,28 @@
     <title>Quote</title>
     <!-- Reuse the same styling as Sales Order receipt -->
     <link rel="stylesheet" href="/css/reciepts/SalesOrdReciept.css" />
+    <style>
+      body.receipt-loading .page {
+        visibility: hidden;
+      }
+      body.receipt-loading::before {
+        content: "Loading receipt...";
+        position: fixed;
+        inset: 0;
+        display: grid;
+        place-items: center;
+        font: 16px Arial, sans-serif;
+        color: #333;
+      }
+      @media print {
+        body.receipt-loading::before {
+          display: none;
+        }
+      }
+    </style>
   </head>
 
-  <body>
+  <body class="receipt-loading">
     <div class="page">
       <!-- HEADER -->
       <div class="header">
@@ -209,6 +228,7 @@
 
   <!-- Scripts -->
   <script src="/js/storage.js"></script>
+  <script src="/js/financialSummary.js"></script>
 
   <!-- ✅ New quote receipt JS (mirror salesOrdReceipt.js but reading estimate/quote) -->
   <script src="/js/quoteReceipt.js"></script>

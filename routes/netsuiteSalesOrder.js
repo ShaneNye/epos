@@ -16,6 +16,7 @@ const {
 // ✅ In-memory cache for GET /:id sales order payloads
 // =====================================================
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
+const SO_CACHE_VERSION = "related-records-v2";
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
 const LOCATION_FEED_TTL_MS = 10 * 60 * 1000;
 const locationFeedCache = { expiresAt: 0, rows: null, inFlight: null };
@@ -29,7 +30,7 @@ function cachePrefix(id) {
 }
 
 function cacheKey(id, { lite = false, includeDeposits = true } = {}) {
-  return `${cachePrefix(id)}:lite:${lite ? 1 : 0}:dep:${includeDeposits ? 1 : 0}`;
+  return `${cachePrefix(id)}:${SO_CACHE_VERSION}:lite:${lite ? 1 : 0}:dep:${includeDeposits ? 1 : 0}`;
 }
 
 function cacheDeleteSalesOrder(id) {
@@ -457,6 +458,9 @@ function buildSalesOrderFields() {
     "custbody_sb_paymentinfo",
     "custbody_sb_warehouse",
     "custbody_sb_is_web_order",
+    "custbody_sb_pairedsalesorder",
+    "custbody_sb_relatedpurchaseorders",
+    "custbody_exported_to_dispatchtrack",
     "memo",
     // totals (field IDs vary; keep what works in your account)
     "subtotal",
@@ -482,6 +486,80 @@ function buildCustomerFields() {
     // optional address-related fields if you rely on them
     "addressbook",
   ].join(",");
+}
+
+function netSuiteAppBaseUrl() {
+  return `https://${process.env.NS_ACCOUNT_DASH}.app.netsuite.com`;
+}
+
+function splitNetSuiteMultiValue(value) {
+  return String(value || "")
+    .split(/\s*,\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean);
+}
+
+function relatedRecordList(ids, names) {
+  const idList = splitNetSuiteMultiValue(ids);
+  const nameList = splitNetSuiteMultiValue(names);
+  const length = Math.max(idList.length, nameList.length);
+
+  return Array.from({ length }, (_, index) => ({
+    id: idList[index] || "",
+    refName: nameList[index] || idList[index] || "",
+  })).filter((record) => record.id || record.refName);
+}
+
+async function getSalesOrderRelatedRecords(salesOrderId, userId) {
+  const numericId = Number(salesOrderId);
+  if (!Number.isFinite(numericId) || numericId <= 0) return {};
+
+  const query = `
+    SELECT
+      custbody_sb_pairedsalesorder AS paired_sales_order_id,
+      BUILTIN.DF(custbody_sb_pairedsalesorder) AS paired_sales_order_name,
+      custbody_sb_relatedpurchaseorders AS related_purchase_order_ids,
+      BUILTIN.DF(custbody_sb_relatedpurchaseorders) AS related_purchase_order_names,
+      custbody_exported_to_dispatchtrack AS exported_to_dispatchtrack
+    FROM transaction
+    WHERE id = ${numericId}
+  `;
+
+  const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId);
+  const row = Array.isArray(result?.items) ? result.items[0] : null;
+  if (!row) return {};
+
+  const pairedSalesOrder = relatedRecordList(
+    row.paired_sales_order_id,
+    row.paired_sales_order_name
+  )[0] || null;
+
+  const relatedPurchaseOrders = relatedRecordList(
+    row.related_purchase_order_ids,
+    row.related_purchase_order_names
+  );
+
+  return {
+    custbody_sb_pairedsalesorder: pairedSalesOrder,
+    custbody_sb_relatedpurchaseorders: relatedPurchaseOrders,
+    custbody_exported_to_dispatchtrack:
+      row.exported_to_dispatchtrack === true ||
+      String(row.exported_to_dispatchtrack || "").trim().toUpperCase() === "T",
+  };
+}
+
+async function resolveUserIdFromRequest(req) {
+  const auth = req.headers.authorization || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  if (!token) return null;
+
+  try {
+    const session = await getSession(token);
+    return session?.id || null;
+  } catch (err) {
+    console.warn("⚠️ Could not resolve session:", err.message);
+    return null;
+  }
 }
 
 /* =====================================================
@@ -566,51 +644,44 @@ router.post("/create", async (req, res) => {
     }
 
     /* ======================================================
-       2️⃣ LOOKUP SALES EXEC NETSUITE ID
+       2️⃣ LOOKUP SALES EXEC + STORE INFORMATION
     ====================================================== */
-    let salesExecNsId = null;
-    if (order.salesExec) {
-      try {
-        const resultExec = await pool.query(
-          "SELECT netsuiteid FROM users WHERE id = $1",
-          [order.salesExec]
-        );
-        salesExecNsId = resultExec.rows[0]?.netsuiteid || null;
-        console.log("👤 Sales Executive NS ID:", salesExecNsId);
-      } catch (err) {
-        console.error("❌ Sales Exec lookup failed:", err.message);
-      }
-    }
+    const [salesExecLookup, storeLookup] = await Promise.all([
+      order.salesExec
+        ? pool
+            .query("SELECT netsuiteid FROM users WHERE id = $1", [order.salesExec])
+            .then((resultExec) => resultExec.rows[0]?.netsuiteid || null)
+            .catch((err) => {
+              console.error("❌ Sales Exec lookup failed:", err.message);
+              return null;
+            })
+        : Promise.resolve(null),
+      order.store
+        ? pool
+            .query(
+              `SELECT name, netsuite_internal_id, invoice_location_id
+               FROM locations WHERE id = $1`,
+              [order.store]
+            )
+            .then((resultLoc) => resultLoc.rows[0] || null)
+            .catch((err) => {
+              console.error("❌ Store lookup failed:", err.message);
+              return null;
+            })
+        : Promise.resolve(null),
+    ]);
 
-    /* ======================================================
-       3️⃣ LOOKUP STORE INFORMATION
-    ====================================================== */
-    let invoiceLocationId = null;
-    let storeNsId = null;
-    let storeName = "";
+    const salesExecNsId = salesExecLookup;
+    const invoiceLocationId = storeLookup?.invoice_location_id || null;
+    const storeNsId = storeLookup?.netsuite_internal_id || null;
+    const storeName = storeLookup?.name || "";
 
-    if (order.store) {
-      try {
-        const resultLoc = await pool.query(
-          `SELECT name, netsuite_internal_id, invoice_location_id
-           FROM locations WHERE id = $1`,
-          [order.store]
-        );
-        if (resultLoc.rows.length) {
-          const row = resultLoc.rows[0];
-          storeNsId = row.netsuite_internal_id;
-          invoiceLocationId = row.invoice_location_id;
-          storeName = row.name;
-          console.log("🏬 Store lookup →", {
-            storeNsId,
-            invoiceLocationId,
-            storeName,
-          });
-        }
-      } catch (err) {
-        console.error("❌ Store lookup failed:", err.message);
-      }
-    }
+    console.log("👤 Sales Executive NS ID:", salesExecNsId);
+    console.log("🏬 Store lookup →", {
+      storeNsId,
+      invoiceLocationId,
+      storeName,
+    });
 
     /* ======================================================
        4️⃣ BUILD ORDER BODY (BEFORE INTERCOPO + WEB ORDER)
@@ -1238,6 +1309,30 @@ router.post("/create", async (req, res) => {
 });
 
 /* =====================================================
+   === GET SALES ORDER RELATED RECORDS ==================
+   ===================================================== */
+router.get("/:id/related-records", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = await resolveUserIdFromRequest(req);
+    const relatedRecords = await getSalesOrderRelatedRecords(id, userId);
+
+    return res.json({
+      ok: true,
+      salesOrderId: id,
+      netSuiteAppBaseUrl: netSuiteAppBaseUrl(),
+      relatedRecords,
+    });
+  } catch (err) {
+    console.error("❌ GET /salesorder/:id/related-records error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to fetch related records",
+    });
+  }
+});
+
+/* =====================================================
    === GET SALES ORDER (for read-only view) =============
    ===================================================== */
 router.get("/:id", async (req, res) => {
@@ -1339,6 +1434,14 @@ router.get("/:id", async (req, res) => {
       : `/salesOrder/${id}`;
 
     const so = await nsGet(soPath, userId, "sb");
+    so._netSuiteAppBaseUrl = netSuiteAppBaseUrl();
+
+    try {
+      const relatedRecords = await getSalesOrderRelatedRecords(id, userId);
+      Object.assign(so, relatedRecords);
+    } catch (err) {
+      console.warn("⚠️ Could not enrich sales order related records:", err.message);
+    }
 
     // 🔎 Fetch *minimal* entity/customer record
     let entityFull = null;
@@ -1411,10 +1514,10 @@ router.get("/:id", async (req, res) => {
 
           const sign = net < 0 || rawRate < 0 ? -1 : 1;
 
-          // ✅ amount is the full displayed retail gross line amount, signed
+          // amount is the full displayed retail gross line total, signed.
           const retailNet = parseFloat(info.baseprice || 0);
           const retailGross = +(retailNet * 1.2).toFixed(2);
-          const amount = +(retailGross * sign).toFixed(2);
+          const amount = +(retailGross * qty * sign).toFixed(2);
 
           const vat = +(net * 0.2).toFixed(2);
           const saleprice = +(net + vat).toFixed(2);
@@ -1508,7 +1611,17 @@ router.get("/:id", async (req, res) => {
         );
 
         const depRes = await fetch(
-          `${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`
+          `${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`,
+          {
+            headers: bearerToken
+              ? { Authorization: `Bearer ${bearerToken}` }
+              : allowPrewarm
+                ? {
+                    "x-prewarm-key": String(prewarmKey),
+                    "x-prewarm-user-id": String(prewarmUserId),
+                  }
+                : {},
+          }
         );
         if (!depRes.ok) throw new Error(`Deposit route returned ${depRes.status}`);
 
@@ -1633,7 +1746,45 @@ router.post("/:id/commit", async (req, res) => {
     }
     global._recentCommits[id] = now;
 
-    const payload = { id, lines, headerUpdates, deletedLineIds, commit: true };
+    const normalizedLines = (Array.isArray(lines) ? lines : []).map((line) => {
+      const grossAmount = Number(
+        line.grossAmount ?? line.amountGrossLine ?? line.amount ?? line.saleGrossLine ?? line.grossSaleprice ?? 0
+      );
+      const grossSaleprice = Number(
+        line.grossSaleprice ?? line.saleGrossLine ?? line.saleprice ?? line.amountGrossLine ?? line.grossAmount ?? 0
+      );
+      const quantity = Number(line.quantity) || 0;
+      const qty = quantity || 1;
+      const netAmount = Number.isFinite(grossAmount)
+        ? Number((grossAmount / 1.2).toFixed(2))
+        : 0;
+      const rate = Number.isFinite(netAmount)
+        ? Number((netAmount / qty).toFixed(2))
+        : 0;
+
+      return {
+        ...line,
+        lineId: line.lineId || line.lineid || "",
+        item: line.item || (line.itemId ? { id: String(line.itemId) } : undefined),
+        quantity: qty,
+        amount: grossAmount,
+        saleprice: grossSaleprice,
+        netAmount,
+        rate,
+        discountPct: Number(line.discountPct ?? line.discount ?? 0),
+        inventoryMeta: line.inventoryMeta ?? line.inventoryDetail ?? null,
+        grossAmount,
+        grossSaleprice,
+      };
+    });
+
+    const payload = {
+      id,
+      lines: normalizedLines,
+      headerUpdates,
+      deletedLineIds,
+      commit: true,
+    };
     const payloadText = JSON.stringify(payload);
     console.log("Calling NetSuite RESTlet with payload bytes:", payloadText.length);
 
@@ -2055,10 +2206,42 @@ router.post("/:id/save", async (req, res) => {
     }
     global._recentSaves[id] = now;
 
+    const normalizedLines = (Array.isArray(lines) ? lines : []).map((line) => {
+      const grossAmount = Number(
+        line.grossAmount ?? line.amountGrossLine ?? line.amount ?? line.saleGrossLine ?? line.grossSaleprice ?? 0
+      );
+      const grossSaleprice = Number(
+        line.grossSaleprice ?? line.saleGrossLine ?? line.saleprice ?? line.amountGrossLine ?? line.grossAmount ?? 0
+      );
+      const quantity = Number(line.quantity) || 0;
+      const qty = quantity || 1;
+      const netAmount = Number.isFinite(grossAmount)
+        ? Number((grossAmount / 1.2).toFixed(2))
+        : 0;
+      const rate = Number.isFinite(netAmount)
+        ? Number((netAmount / qty).toFixed(2))
+        : 0;
+
+      return {
+        ...line,
+        lineId: line.lineId || line.lineid || "",
+        item: line.item || (line.itemId ? { id: String(line.itemId) } : undefined),
+        quantity: qty,
+        amount: grossAmount,
+        saleprice: grossSaleprice,
+        netAmount,
+        rate,
+        discountPct: Number(line.discountPct ?? line.discount ?? 0),
+        inventoryMeta: line.inventoryMeta ?? line.inventoryDetail ?? null,
+        grossAmount,
+        grossSaleprice,
+      };
+    });
+
     // ✅ IMPORTANT: tell RESTlet NOT to approve
     const payload = {
       id,
-      lines,
+      lines: normalizedLines,
       headerUpdates,
       deletedLineIds,
       commit: false,

@@ -9,6 +9,83 @@ const fetch = require("node-fetch");
 /* =====================================================
    Helpers
 ===================================================== */
+const LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
+const lookupCache = new Map();
+const ITEM_FEED_TTL_MS = 10 * 60 * 1000;
+const itemFeedCache = {
+  data: null,
+  expiresAt: 0,
+  inFlight: null,
+};
+
+function getCachedLookup(key) {
+  const cached = lookupCache.get(key);
+  if (!cached || cached.expiresAt <= Date.now()) {
+    lookupCache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedLookup(key, value) {
+  lookupCache.set(key, {
+    value,
+    expiresAt: Date.now() + LOOKUP_CACHE_TTL_MS,
+  });
+  return value;
+}
+
+async function getItemMapCached() {
+  if (itemFeedCache.data && itemFeedCache.expiresAt > Date.now()) {
+    return itemFeedCache.data;
+  }
+
+  if (itemFeedCache.inFlight) return itemFeedCache.inFlight;
+
+  itemFeedCache.inFlight = (async () => {
+    const baseUrlItems = process.env.SALES_ORDER_ITEMS_URL;
+    const itemFeedToken = process.env.SALES_ORDER_ITEMS;
+
+    if (!baseUrlItems || !itemFeedToken) {
+      throw new Error("Missing SALES_ORDER_ITEMS_URL or SALES_ORDER_ITEMS in .env");
+    }
+
+    const nsUrlItems = `${baseUrlItems}&token=${encodeURIComponent(itemFeedToken)}`;
+    const respItems = await fetch(nsUrlItems);
+    if (!respItems.ok) throw new Error(`NetSuite item feed returned ${respItems.status}`);
+
+    const rawItems = await respItems.json();
+    let itemList = [];
+    if (Array.isArray(rawItems)) itemList = rawItems;
+    else if (rawItems.results) itemList = rawItems.results;
+    else if (rawItems.data) itemList = rawItems.data;
+
+    const itemMap = {};
+    for (const i of itemList) {
+      const id = String(i.id || i.internalId || i.itemId || i["Internal ID"] || "").trim();
+      if (!id) continue;
+
+      const name = i.name || i.itemName || i["Name"] || i["Item Name"] || "";
+      const baseprice = parseFloat(
+        i.baseprice || i["Base Price"] || i["base price"] || i.price || 0
+      );
+
+      itemMap[id] = { name, baseprice: Number.isFinite(baseprice) ? baseprice : 0 };
+    }
+
+    itemFeedCache.data = itemMap;
+    itemFeedCache.expiresAt = Date.now() + ITEM_FEED_TTL_MS;
+    itemFeedCache.inFlight = null;
+    return itemMap;
+  })();
+
+  try {
+    return await itemFeedCache.inFlight;
+  } finally {
+    if (itemFeedCache.inFlight && !itemFeedCache.data) itemFeedCache.inFlight = null;
+  }
+}
+
 async function resolveUserIdFromAuth(req) {
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
@@ -28,13 +105,16 @@ async function resolveUserIdFromAuth(req) {
 
 async function resolveSalesExecNsId(appUserId) {
   if (!appUserId) return null;
+  const cacheKey = `salesExec:${appUserId}`;
+  const cached = getCachedLookup(cacheKey);
+  if (cached !== null) return cached;
 
   try {
     const result = await pool.query(
       "SELECT netsuiteid FROM users WHERE id = $1 LIMIT 1",
       [appUserId]
     );
-    return result.rows[0]?.netsuiteid || null;
+    return setCachedLookup(cacheKey, result.rows[0]?.netsuiteid || null);
   } catch (err) {
     console.error("❌ Failed to lookup Sales Exec NetSuite ID:", err.message);
     return null;
@@ -48,6 +128,9 @@ async function resolveStoreData(appStoreId) {
       invoiceLocationId: null,
     };
   }
+  const cacheKey = `store:${appStoreId}`;
+  const cached = getCachedLookup(cacheKey);
+  if (cached !== null) return cached;
 
   try {
     const result = await pool.query(
@@ -59,16 +142,16 @@ async function resolveStoreData(appStoreId) {
     );
 
     if (!result.rows.length) {
-      return {
+      return setCachedLookup(cacheKey, {
         storeNsId: null,
         invoiceLocationId: null,
-      };
+      });
     }
 
-    return {
+    return setCachedLookup(cacheKey, {
       storeNsId: result.rows[0].netsuite_internal_id || null,
       invoiceLocationId: result.rows[0].invoice_location_id || null,
-    };
+    });
   } catch (err) {
     console.error("❌ Failed to lookup store NetSuite ID:", err.message);
     return {
@@ -76,6 +159,10 @@ async function resolveStoreData(appStoreId) {
       invoiceLocationId: null,
     };
   }
+}
+
+function netSuiteAppBaseUrl() {
+  return `https://${process.env.NS_ACCOUNT_DASH}.app.netsuite.com`;
 }
 
 /* =====================================================
@@ -138,8 +225,11 @@ router.post("/create", async (req, res) => {
 
     console.log("🧩 Using Customer ID for Quote:", customerId);
 
-    const salesExecNsId = await resolveSalesExecNsId(order?.salesExec);
-    const { storeNsId, invoiceLocationId } = await resolveStoreData(order?.store);
+    const [salesExecNsId, storeData] = await Promise.all([
+      resolveSalesExecNsId(order?.salesExec),
+      resolveStoreData(order?.store),
+    ]);
+    const { storeNsId, invoiceLocationId } = storeData;
 
     const estimateBody = {
       entity: { id: String(customerId) },
@@ -287,17 +377,24 @@ router.get("/:id", async (req, res) => {
       ORDER BY t.linesequencenumber
     `;
 
-    const suiteql = await nsPostRaw(
-      `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
-      { q: query },
-      userId,
-      "sb"
-    );
+    const [suiteql, itemMap] = await Promise.all([
+      nsPostRaw(
+        `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
+        { q: query },
+        userId,
+        "sb"
+      ),
+      getItemMapCached().catch((err) => {
+        console.warn("⚠️ Could not load item retail map for quote:", err.message);
+        return {};
+      }),
+    ]);
 
     if (suiteql && Array.isArray(suiteql.items)) {
       const items = suiteql.items.map((r) => {
         const itemId = String(r.item || "");
-        const itemName = r.itemname || `Item ${itemId}`;
+        const itemInfo = itemMap[itemId] || {};
+        const itemName = itemInfo.name || r.itemname || `Item ${itemId}`;
         const qty = Math.abs(Number(r.quantity) || 0);
 
         const itemNameLower = String(itemName || "").toLowerCase();
@@ -314,7 +411,7 @@ router.get("/:id", async (req, res) => {
         let saleNet = Number(r.netamount) || 0;
         let saleGross = Number(r.grossamt) || 0;
         let vat = Number(r.tax1amt) || 0;
-        let retailNetPerUnit = Number(r.rate) || 0;
+        let saleNetPerUnit = Number(r.rate) || 0;
 
         // NetSuite can return quote sales lines as negative internally.
         // Normal items should display positive; trade-ins/discounts should display negative.
@@ -322,15 +419,20 @@ router.get("/:id", async (req, res) => {
           saleNet = -Math.abs(saleNet);
           saleGross = saleGross ? -Math.abs(saleGross) : +(saleNet * 1.2).toFixed(2);
           vat = vat ? -Math.abs(vat) : +(saleGross - saleGross / 1.2).toFixed(2);
-          retailNetPerUnit = -Math.abs(retailNetPerUnit);
+          saleNetPerUnit = -Math.abs(saleNetPerUnit);
         } else {
           saleNet = Math.abs(saleNet);
           saleGross = saleGross ? Math.abs(saleGross) : +(saleNet * 1.2).toFixed(2);
           vat = vat ? Math.abs(vat) : +(saleGross - saleGross / 1.2).toFixed(2);
-          retailNetPerUnit = Math.abs(retailNetPerUnit);
+          saleNetPerUnit = Math.abs(saleNetPerUnit);
         }
 
-        const retailGross = +(retailNetPerUnit * qty * 1.2).toFixed(2);
+        const baseRetailNetPerUnit = Number(itemInfo.baseprice || 0);
+        const fallbackRetailNetPerUnit = Math.abs(saleNetPerUnit);
+        const retailNetPerUnit =
+          baseRetailNetPerUnit > 0 ? baseRetailNetPerUnit : fallbackRetailNetPerUnit;
+        let retailGross = +(retailNetPerUnit * qty * 1.2).toFixed(2);
+        if (isNegativeValueLine) retailGross = -Math.abs(retailGross || saleGross);
 
         return {
           lineId: r.lineid ? String(r.lineid) : "",
@@ -340,6 +442,7 @@ router.get("/:id", async (req, res) => {
           vat: +vat.toFixed(2),
           saleprice: +saleGross.toFixed(2),
           retailNetPerUnit: +retailNetPerUnit.toFixed(2),
+          saleNetPerUnit: +saleNetPerUnit.toFixed(2),
           taxCode: r.taxcode ? String(r.taxcode) : "",
           custcol_sb_itemoptionsdisplay: r.options || "",
           custcol_sb_fulfilmentlocation: r.custcol_sb_fulfilmentlocation || null,
@@ -351,6 +454,7 @@ router.get("/:id", async (req, res) => {
     }
 
     console.log("✅ Quote fetched successfully:", quote.tranId || quote.id);
+    quote._netSuiteAppBaseUrl = netSuiteAppBaseUrl();
     return res.json({ ok: true, quote });
   } catch (err) {
     console.error("❌ GET /quote/:id error:", err.message);
@@ -368,8 +472,10 @@ router.post("/:id/save", async (req, res) => {
     const { updates = [], headerUpdates = {} } = req.body;
 
     console.log(`💾 Saving Quote ${id} via NetSuite RESTlet`);
-    console.log("📦 Incoming updates:", JSON.stringify(updates, null, 2));
-    console.log("🧾 Incoming headerUpdates:", JSON.stringify(headerUpdates, null, 2));
+    console.log("Quote save payload summary:", {
+      updates: Array.isArray(updates) ? updates.length : 0,
+      headerFields: Object.keys(headerUpdates || {}).filter((key) => headerUpdates[key] != null),
+    });
 
     if (!id || !Array.isArray(updates)) {
       return res
@@ -380,15 +486,20 @@ router.post("/:id/save", async (req, res) => {
     const userId = await resolveUserIdFromAuth(req);
     console.log("🔐 Quote save request for user:", userId);
 
-    const salesExecNsId = await resolveSalesExecNsId(headerUpdates.salesExec);
-    const { storeNsId } = await resolveStoreData(headerUpdates.store);
+    const [salesExecNsId, storeData] = await Promise.all([
+      resolveSalesExecNsId(headerUpdates.salesExec),
+      resolveStoreData(headerUpdates.store),
+    ]);
+    const { storeNsId } = storeData;
     const mappedHeaderUpdates = {
       ...headerUpdates,
       salesExec: salesExecNsId || "",
       store: storeNsId || "",
     };
 
-    console.log("Mapped headerUpdates for NetSuite:", JSON.stringify(mappedHeaderUpdates, null, 2));
+    console.log("Mapped quote header fields for NetSuite:", {
+      headerFields: Object.keys(mappedHeaderUpdates).filter((key) => mappedHeaderUpdates[key] != null),
+    });
 
     const restletUrl =
       `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl` +
@@ -464,9 +575,6 @@ router.patch("/:id", async (req, res) => {
     const userId = await resolveUserIdFromAuth(req);
     console.log("🔐 Authenticated user for quote save:", userId);
 
-    const existingQuote = await nsGet(`/estimate/${id}`, userId, "sb");
-    if (!existingQuote) throw new Error("Quote not found");
-
     /* -----------------------------------------------------
        Pull current line metadata from NetSuite so we can
        preserve required fields like taxCode when doing
@@ -486,12 +594,19 @@ router.patch("/:id", async (req, res) => {
       ORDER BY t.linesequencenumber
     `;
 
-    const existingLinesRes = await nsPostRaw(
-      `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
-      { q: existingLinesQuery },
-      userId,
-      "sb"
-    );
+    const [existingQuote, existingLinesRes, salesExecNsId, storeData] = await Promise.all([
+      nsGet(`/estimate/${id}`, userId, "sb"),
+      nsPostRaw(
+        `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
+        { q: existingLinesQuery },
+        userId,
+        "sb"
+      ),
+      resolveSalesExecNsId(order.salesExec),
+      resolveStoreData(order.store),
+    ]);
+
+    if (!existingQuote) throw new Error("Quote not found");
 
     const existingLines = Array.isArray(existingLinesRes?.items)
       ? existingLinesRes.items
@@ -507,8 +622,7 @@ router.patch("/:id", async (req, res) => {
         : "",
     }));
 
-    const salesExecNsId = await resolveSalesExecNsId(order.salesExec);
-    const { storeNsId, invoiceLocationId } = await resolveStoreData(order.store);
+    const { storeNsId, invoiceLocationId } = storeData;
 
     const patchBody = {
       leadsource: order.leadSource

@@ -51,6 +51,71 @@ function parseMoneyInput(val) {
   return parseFloat(String(val || "0").replace(/[£,]/g, "")) || 0;
 }
 
+function getItemInternalId(item) {
+  return String(
+    item?.["Internal ID"] ??
+      item?.["InternalId"] ??
+      item?.["InternalID"] ??
+      item?.["internalid"] ??
+      item?.["internal id"] ??
+      item?.["Id"] ??
+      item?.["id"] ??
+      ""
+  ).trim();
+}
+
+function findCachedItem(itemId) {
+  return (window.items || []).find((it) => getItemInternalId(it) === String(itemId));
+}
+
+function itemBaseNet(item) {
+  const value = Number(
+    item?.["Base Price"] ??
+      item?.baseprice ??
+      item?.["base price"] ??
+      item?.price ??
+      0
+  );
+  return Number.isFinite(value) ? value : 0;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function netSuiteRecordUrl(quote, recordType, id) {
+  const base = String(quote?._netSuiteAppBaseUrl || "").replace(/\/$/, "");
+  if (!base || !id) return "";
+
+  const paths = {
+    salesorder: "/app/accounting/transactions/salesord.nl",
+    purchaseorder: "/app/accounting/transactions/purchord.nl",
+    estimate: "/app/accounting/transactions/estimate.nl",
+  };
+
+  const path = paths[recordType];
+  return path ? `${base}${path}?id=${encodeURIComponent(id)}` : "";
+}
+
+function renderOrderNumberLink(containerId, tranId, quote, recordType = "estimate") {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+
+  const label = escapeHtml(tranId || "");
+  const url = netSuiteRecordUrl(quote, recordType, quote?.id || quote?.internalId || quote?.internalid);
+  
+  if (url) {
+    container.innerHTML = `<a href="${escapeHtml(url)}" class="related-popup-link" title="Open in NetSuite">${label}</a>`;
+  } else {
+    container.textContent = label;
+  }
+}
+
 /* =========================================================
    Convert / Save spinner overlay
 ========================================================= */
@@ -144,28 +209,38 @@ async function populateSalesExecAndStore(headers) {
 ========================================================= */
 function updateQuoteSummaryFromTable() {
   const rows = document.querySelectorAll("#orderItemsBody tr.order-line");
-  let grossTotal = 0;
-  let discountTotal = 0;
+  const lines = [...rows]
+    .filter((row) => {
+      return (
+        row.dataset.hasItem === "1" ||
+        row.querySelector(".item-internal-id")?.value?.trim()
+      );
+    })
+    .map((row) => ({
+      item: {
+        refName: row.querySelector(".item-search")?.value?.trim() || "",
+      },
+      amount: parseMoneyInput(row.querySelector(".item-amount")?.value),
+      saleprice: parseMoneyInput(row.querySelector(".item-saleprice")?.value),
+      vat: parseMoneyInput(row.querySelector(".item-vat")?.value),
+      quantity: parseMoneyInput(row.querySelector(".item-qty")?.value) || 1,
+    }));
 
-  rows.forEach((row) => {
-    const hasItem =
-      row.dataset.hasItem === "1" ||
-      row.querySelector(".item-internal-id")?.value?.trim();
+  const summary = window.EposFinancials?.summariseLines
+    ? window.EposFinancials.summariseLines(lines)
+    : lines.reduce(
+        (acc, line) => {
+          const amount = Number(line.amount || 0);
+          const sale = Number(line.saleprice || 0);
+          acc.grossTotal += sale;
+          acc.discountTotal += Math.max(0, amount - sale);
+          return acc;
+        },
+        { grossTotal: 0, discountTotal: 0 }
+      );
 
-    if (!hasItem) return;
-
-    const amountInput = row.querySelector(".item-amount");
-    const saleInput = row.querySelector(".item-saleprice");
-
-    const amount = parseMoneyInput(amountInput?.value);
-    const sale = parseMoneyInput(saleInput?.value);
-
-    grossTotal += sale;
-    discountTotal += Math.max(0, amount - sale);
-
-    if (sale < 0) discountTotal += Math.abs(sale);
-  });
-
+  const grossTotal = Number(summary.grossTotal || 0);
+  const discountTotal = Number(summary.discountTotal || 0);
   const netTotal = grossTotal / 1.2;
   const taxTotal = grossTotal - netTotal;
 
@@ -290,10 +365,15 @@ function wireEditableQuoteRow(tr, line, idx) {
   const itemId = String(line.item?.id || "");
   const itemName = line.item?.refName || line.itemName || "—";
   const quantity = Number(line.quantity || 1);
+  const itemData = findCachedItem(itemId);
+  const negativeLine = window.EposFinancials?.isNegativeValueLine?.(itemName) || false;
 
-  const grossRrp = Number(line.amount || 0);
+  const savedAmount = Number(line.amount || 0);
   const sale = Number(line.saleprice || 0);
   const vat = Number(line.vat || 0);
+  const baseNet = itemBaseNet(itemData);
+  const fullRetailGross = baseNet > 0 ? +(baseNet * 1.2 * quantity).toFixed(2) : savedAmount;
+  const grossRrp = negativeLine ? savedAmount : fullRetailGross;
 
   const retailGrossPerUnit =
     quantity > 0 && grossRrp > 0 ? grossRrp / quantity : 0;
@@ -309,19 +389,6 @@ function wireEditableQuoteRow(tr, line, idx) {
   if (itemId && Object.keys(optionSchema).length) {
     window.optionsCache[itemId] = optionSchema;
   }
-
-  const itemData = (window.items || []).find((it) => {
-    const internalId =
-      it["Internal ID"] ??
-      it["InternalId"] ??
-      it["InternalID"] ??
-      it["internalid"] ??
-      it["internal id"] ??
-      it["Id"] ??
-      it["id"] ??
-      "";
-    return String(internalId) === String(itemId);
-  });
 
   const className = String(itemData?.["Class"] || "").toLowerCase();
 
@@ -615,6 +682,10 @@ function buildQuoteSavePayload() {
   };
 }
 
+function stableSaveSignature(payload) {
+  return JSON.stringify(payload || {});
+}
+
 /* =========================================================
    Quote action buttons
 ========================================================= */
@@ -653,7 +724,16 @@ function updateActionButtonForQuote() {
       showToast?.("⏳ Saving quote...", "success");
 
       const payload = buildQuoteSavePayload();
-      console.log("🧾 Quote save payload:", payload);
+      console.log("🧾 Quote save payload summary:", {
+        updates: payload.updates?.length || 0,
+        headerFields: Object.keys(payload.headerUpdates || {}).filter((key) => payload.headerUpdates[key]),
+      });
+
+      const signature = stableSaveSignature(payload);
+      if (signature === window._lastQuoteSaveSignature) {
+        showToast?.("No quote changes to save.", "success");
+        return;
+      }
 
       const res = await fetch(
         `/api/netsuite/quote/${encodeURIComponent(quoteIdOrTran)}/save`,
@@ -671,6 +751,7 @@ function updateActionButtonForQuote() {
       }
 
       showToast?.("✅ Quote saved successfully!", "success");
+      window._lastQuoteSaveSignature = signature;
     } catch (err) {
       console.error("❌ Save quote error:", err.message || err);
       showToast?.(`❌ ${err.message || err}`, "error");
@@ -730,7 +811,7 @@ function updateActionButtonForQuote() {
         if (soId) return (window.location.href = `/sales/view/${soId}`);
         if (data.redirectUrl) return (window.location.href = data.redirectUrl);
         window.location.href = "/sales";
-      }, 800);
+      }, 250);
     } catch (err) {
       console.error("❌ Convert error:", err.message || err);
       showToast?.(`❌ ${err.message || err}`, "error");
@@ -809,8 +890,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     console.log("✅ Quote loaded:", quote.tranId || tranId);
 
-    safeText(document.getElementById("ordernumber"), quote.tranId || tranId);
-    safeText(document.getElementById("orderNumber"), quote.tranId || tranId);
+    renderOrderNumberLink("ordernumber", quote.tranId || tranId, quote, "estimate");
+    renderOrderNumberLink("orderNumber", quote.tranId || tranId, quote, "estimate");
 
     try {
       const addressText = quote.billingAddress_text || quote.billaddress || "";
@@ -926,6 +1007,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     updateQuoteSummaryFromTable();
+    window._lastQuoteSaveSignature = stableSaveSignature(buildQuoteSavePayload());
     updateActionButtonForQuote();
     ensureQuoteAddButton();
 

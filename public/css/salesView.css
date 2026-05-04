@@ -193,6 +193,19 @@ textarea:focus {
   width: 35%;
 }
 
+.order-table .tax-column,
+.order-table .vat {
+  display: none;
+}
+
+.order-table .saleprice {
+  min-width: 120px;
+}
+
+.order-table .saleprice input {
+  min-width: 96px;
+}
+
 /* === BUTTONS === */
 .actions {
   display: flex;
@@ -843,6 +856,92 @@ textarea:focus {
   padding: 12px;
   color: #7a869a;
   font-style: italic;
+}
+
+.sales-view-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #d8e0e8;
+  margin-bottom: 14px;
+}
+
+.sales-view-tab {
+  appearance: none;
+  border: 1px solid transparent;
+  border-bottom: 0;
+  background: transparent;
+  color: #43515c;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  padding: 8px 12px;
+}
+
+.sales-view-tab.active {
+  background: #fff;
+  border-color: #d8e0e8;
+  color: #0081ab;
+}
+
+.sales-tab-panel[hidden] {
+  display: none;
+}
+
+.related-records-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.related-records-table th,
+.related-records-table td {
+  border-bottom: 1px solid #e8eef3;
+  padding: 12px 10px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.related-records-table th {
+  width: 240px;
+  background: #f7f9fc;
+  color: #2f3e46;
+  font-weight: 700;
+}
+
+.related-records-table a {
+  color: #0081ab;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.related-records-table a:hover {
+  text-decoration: underline;
+}
+
+.related-popup-link {
+  color: #0081ab;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.related-popup-link:hover {
+  text-decoration: underline;
+}
+
+.related-records-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.row-error {
+  outline: 2px solid rgba(210, 38, 38, 0.35);
+  outline-offset: -2px;
+}
+
+.field-error {
+  box-shadow: 0 0 0 2px rgba(210, 38, 38, 0.35);
+  border-radius: 6px;
 }
 /* =========================================================
    ORDER VIEW — TOAST NOTIFICATION

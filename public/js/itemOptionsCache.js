@@ -58,11 +58,14 @@
     }
   }
 
-  function writeLocalCache(byItemId) {
-    const existing = isFresh(memoryCache) ? memoryCache.byItemId : readLocalCache()?.byItemId || {};
+  function writeLocalCache(byItemId, { complete = false } = {}) {
+    const localCache = readLocalCache();
+    const existingCache = isFresh(memoryCache) ? memoryCache : localCache;
+    const existing = existingCache?.byItemId || {};
     const payload = {
       cachedAt: now(),
       byItemId: sanitizeItemOptions({ ...existing, ...byItemId }),
+      complete: Boolean(complete || existingCache?.complete),
     };
 
     memoryCache = payload;
@@ -85,22 +88,32 @@
     const byItemId = itemId
       ? { [String(itemId)]: data.options || {} }
       : sanitizeItemOptions(data.byItemId || data.options || {});
-    writeLocalCache(byItemId);
-    return byItemId;
+    return writeLocalCache(byItemId, { complete: !itemId }).byItemId;
   }
 
   async function getAll({ forceRefresh = false } = {}) {
     if (!forceRefresh) {
-      if (isFresh(memoryCache)) return memoryCache.byItemId;
+      if (isFresh(memoryCache) && memoryCache.complete) return memoryCache.byItemId;
 
       const local = readLocalCache();
-      if (isFresh(local)) {
+      if (isFresh(local) && local.complete) {
         memoryCache = local;
         return local.byItemId;
       }
     }
 
-    return {};
+    if (inFlight) return inFlight;
+
+    inFlight = fetchFresh("")
+      .catch((err) => {
+        console.warn("Failed to fetch item options cache:", err);
+        return {};
+      })
+      .finally(() => {
+        inFlight = null;
+      });
+
+    return inFlight;
   }
 
   function getOptionsForItemSync(itemId) {
@@ -153,5 +166,5 @@
     ttlMs: TTL_MS,
   };
 
-  // Item options are fetched lazily per item to avoid large all-item payloads.
+  // Pages preload the DB-backed option map, then fall back to per-item fetches.
 })();
