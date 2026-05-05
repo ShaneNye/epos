@@ -5,6 +5,7 @@ const pool = require("../db");
 const { getSession } = require("../sessions");
 const { nsPost, nsGet, nsPostRaw, nsPatch } = require("../netsuiteClient");
 const fetch = require("node-fetch");
+const { getNetSuiteAppBaseUrl } = require("../utils/netsuiteEnvironment");
 
 /* =====================================================
    Helpers
@@ -192,7 +193,7 @@ async function resolveStoreData(appStoreId) {
 }
 
 function netSuiteAppBaseUrl() {
-  return `https://${process.env.NS_ACCOUNT_DASH}.app.netsuite.com`;
+  return getNetSuiteAppBaseUrl();
 }
 
 /* =====================================================

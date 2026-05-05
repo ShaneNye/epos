@@ -11,6 +11,10 @@ const {
   nsPatch,
   getAuthHeader,
 } = require("../netsuiteClient");
+const {
+  getNetSuiteAccountDash,
+  getNetSuiteAppBaseUrl,
+} = require("../utils/netsuiteEnvironment");
 
 // =====================================================
 // ✅ In-memory cache for GET /:id sales order payloads
@@ -41,7 +45,7 @@ function cacheDeleteSalesOrder(id) {
 }
 
 function suiteQlUrl() {
-  return `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`;
+  return `https://${getNetSuiteAccountDash()}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`;
 }
 
 function normalizeLocationLookupName(value) {
@@ -588,7 +592,7 @@ function buildCustomerFields() {
 }
 
 function netSuiteAppBaseUrl() {
-  return `https://${process.env.NS_ACCOUNT_DASH}.app.netsuite.com`;
+  return getNetSuiteAppBaseUrl();
 }
 
 function splitNetSuiteMultiValue(value) {
@@ -659,6 +663,156 @@ async function resolveUserIdFromRequest(req) {
     console.warn("⚠️ Could not resolve session:", err.message);
     return null;
   }
+}
+
+function normalizeDepositReportKeys(obj) {
+  const normalized = {};
+  for (const [key, value] of Object.entries(obj || {})) {
+    const cleanKey = String(key || "").replace(/\u00A0/g, " ").trim();
+    normalized[cleanKey] = value;
+  }
+  return normalized;
+}
+
+function depositSalesOrderCandidates(row) {
+  return [
+    row["SO Id"],
+    row["Sales Order Id"],
+    row["Sales Order Internal ID"],
+    row["Created From Id"],
+    row["Created From Internal ID"],
+    row["Applied To Id"],
+    row["Applied To Transaction Id"],
+    row.soId,
+    row.salesOrderId,
+    row.createdFromId,
+  ].map((value) => String(value || "").trim()).filter(Boolean);
+}
+
+function depositDocumentNumber(row) {
+  return (
+    row["Document Number"] ||
+    row["Deposit #"] ||
+    row["Number"] ||
+    row.tranId ||
+    row.tranid ||
+    row.id ||
+    "-"
+  );
+}
+
+function normalizeDepositAmount(value) {
+  return parseFloat(String(value || "0").replace(/[^\d.-]/g, "")) || 0;
+}
+
+function normalizeReportDeposit(row, salesOrderId) {
+  return {
+    link: depositDocumentNumber(row),
+    amount: normalizeDepositAmount(row["Amount"] || row.amount || row.total),
+    method: row["Payment Method"] || row.paymentMethod || row.paymentMethodText || "-",
+    soId: String(row["SO Id"] || row.salesOrderId || salesOrderId || ""),
+  };
+}
+
+function depositKey(deposit) {
+  const link = String(deposit?.link || "").replace(/<[^>]*>/g, "").trim();
+  return `${link || "deposit"}:${Number(deposit?.amount || 0).toFixed(2)}:${String(deposit?.method || "")}`;
+}
+
+function mergeDeposits(...depositGroups) {
+  const merged = [];
+  const seen = new Set();
+
+  depositGroups.flat().forEach((deposit) => {
+    if (!deposit) return;
+    const key = depositKey(deposit);
+    if (seen.has(key)) return;
+    seen.add(key);
+    merged.push(deposit);
+  });
+
+  return merged;
+}
+
+async function fetchReportDepositsForSalesOrder(req, salesOrderId, headers = {}) {
+  const depRes = await fetch(
+    `${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`,
+    { headers }
+  );
+  if (!depRes.ok) throw new Error(`Deposit route returned ${depRes.status}`);
+
+  const depJson = await depRes.json();
+  const allDeposits = depJson.results || depJson.data || [];
+  const wanted = String(salesOrderId || "").trim();
+
+  return allDeposits
+    .map(normalizeDepositReportKeys)
+    .filter((row) => depositSalesOrderCandidates(row).includes(wanted))
+    .map((row) => normalizeReportDeposit(row, salesOrderId));
+}
+
+async function fetchSuiteQlDepositsForSalesOrder(salesOrderId, userId) {
+  const id = Number(salesOrderId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+
+  const result = await nsPostRaw(
+    suiteQlUrl(),
+    {
+      q: `
+        SELECT
+          t.id,
+          t.tranid,
+          t.foreigntotal,
+          t.total,
+          t.paymentmethod,
+          BUILTIN.DF(t.paymentmethod) AS paymentmethodtext
+        FROM transaction t
+        WHERE t.type = 'CustDep'
+          AND t.createdfrom = ${id}
+        ORDER BY t.id DESC
+      `,
+    },
+    userId
+  );
+
+  return (Array.isArray(result?.items) ? result.items : []).map((row) => {
+    const depositId = String(row.id || "").trim();
+    const tranId = String(row.tranid || depositId || "Customer Deposit").trim();
+    const amount = normalizeDepositAmount(row.foreigntotal || row.total || 0);
+    const method = row.paymentmethodtext || row.paymentmethod || "-";
+    const href = depositId
+      ? `${netSuiteAppBaseUrl()}/app/accounting/transactions/custdep.nl?id=${encodeURIComponent(depositId)}`
+      : "";
+
+    return {
+      link: href ? `<a href="${href}" target="_blank">${tranId}</a>` : tranId,
+      amount,
+      method,
+      soId: String(salesOrderId),
+    };
+  });
+}
+
+async function loadSalesOrderDeposits(req, salesOrderId, { bearerToken = null, userId = null, prewarmHeaders = null } = {}) {
+  let reportDeposits = [];
+  let suiteQlDeposits = [];
+
+  try {
+    reportDeposits = await fetchReportDepositsForSalesOrder(req, salesOrderId, {
+      ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+      ...(prewarmHeaders || {}),
+    });
+  } catch (err) {
+    console.warn(`⚠️ Could not fetch customer deposit report for SO ${salesOrderId}:`, err.message);
+  }
+
+  try {
+    suiteQlDeposits = await fetchSuiteQlDepositsForSalesOrder(salesOrderId, userId);
+  } catch (err) {
+    console.warn(`⚠️ Could not fetch SuiteQL deposits for SO ${salesOrderId}:`, err.message);
+  }
+
+  return mergeDeposits(reportDeposits, suiteQlDeposits);
 }
 
 /* =====================================================
@@ -1439,37 +1593,9 @@ router.get("/:id/deposits", async (req, res) => {
     const { id } = req.params;
     const auth = req.headers.authorization || "";
     const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    const userId = await resolveUserIdFromRequest(req);
 
-    const depRes = await fetch(
-      `${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`,
-      {
-        headers: bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {},
-      }
-    );
-    if (!depRes.ok) throw new Error(`Deposit route returned ${depRes.status}`);
-
-    const depJson = await depRes.json();
-    const allDeposits = depJson.results || depJson.data || [];
-
-    const normalizeKeys = (obj) => {
-      const newObj = {};
-      for (const [k, v] of Object.entries(obj)) {
-        const cleanKey = k.replace(/\u00A0/g, " ");
-        newObj[cleanKey.trim()] = v;
-      }
-      return newObj;
-    };
-
-    const deposits = allDeposits
-      .map(normalizeKeys)
-      .filter((d) => String(d["SO Id"]) === String(id))
-      .map((d) => ({
-        link: d["Document Number"] || "-",
-        amount:
-          parseFloat(String(d["Amount"] || "0").replace(/[^\d.-]/g, "")) || 0,
-        method: d["Payment Method"] || "-",
-        soId: String(d["SO Id"] || ""),
-      }));
+    const deposits = await loadSalesOrderDeposits(req, id, { bearerToken, userId });
 
     return res.json({ ok: true, salesOrderId: id, deposits });
   } catch (err) {
@@ -1757,53 +1883,17 @@ router.get("/:id", async (req, res) => {
     ----------------------------------------------------- */
     let deposits = [];
     if (includeDeposits) {
-      try {
-        console.log(
-          `💰 Fetching deposit data for Sales Order ${id} via /api/netsuite/customer-deposits...`
-        );
-
-        const depRes = await fetch(
-          `${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`,
-          {
-            headers: bearerToken
-              ? { Authorization: `Bearer ${bearerToken}` }
-              : allowPrewarm
-                ? {
-                    "x-prewarm-key": String(prewarmKey),
-                    "x-prewarm-user-id": String(prewarmUserId),
-                  }
-                : {},
-          }
-        );
-        if (!depRes.ok) throw new Error(`Deposit route returned ${depRes.status}`);
-
-        const depJson = await depRes.json();
-        const allDeposits = depJson.results || depJson.data || [];
-
-        const normalizeKeys = (obj) => {
-          const newObj = {};
-          for (const [k, v] of Object.entries(obj)) {
-            const cleanKey = k.replace(/\u00A0/g, " ");
-            newObj[cleanKey.trim()] = v;
-          }
-          return newObj;
-        };
-
-        deposits = allDeposits
-          .map(normalizeKeys)
-          .filter((d) => String(d["SO Id"]) === String(id))
-          .map((d) => ({
-            link: d["Document Number"] || "-",
-            amount:
-              parseFloat(String(d["Amount"] || "0").replace(/[^\d.-]/g, "")) || 0,
-            method: d["Payment Method"] || "-",
-            soId: String(d["SO Id"] || ""),
-          }));
-
-        console.log(`✅ Found ${deposits.length} deposit(s) for Sales Order ${id}`);
-      } catch (err) {
-        console.warn("⚠️ Could not fetch deposits:", err.message);
-      }
+      deposits = await loadSalesOrderDeposits(req, id, {
+        bearerToken,
+        userId,
+        prewarmHeaders: allowPrewarm
+          ? {
+              "x-prewarm-key": String(prewarmKey),
+              "x-prewarm-user-id": String(prewarmUserId),
+            }
+          : null,
+      });
+      console.log(`✅ Found ${deposits.length} deposit(s) for Sales Order ${id}`);
     }
 
     /* -----------------------------------------------------
@@ -2211,7 +2301,7 @@ router.post("/:id/add-deposit", async (req, res) => {
       throw new Error("Deposit created but depositId not returned by RESTlet");
     }
 
-    const accountDash = process.env.NS_ACCOUNT_DASH;
+    const accountDash = getNetSuiteAccountDash();
     const depositLink = `https://${accountDash}.app.netsuite.com/app/accounting/transactions/custdep.nl?id=${depositId}`;
 
     return res.json({

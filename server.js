@@ -30,6 +30,7 @@ const {
   isPageShellPath,
   isPublicPath,
 } = require("./utils/accessControlRules");
+const { getNetSuiteHomeUrl } = require("./utils/netsuiteEnvironment");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -865,6 +866,10 @@ app.get("/api/config/intercompany-url", (req, res) => {
     ok: true,
     url
   });
+});
+
+app.get("/netsuite/home", (req, res) => {
+  res.redirect(getNetSuiteHomeUrl());
 });
 
 

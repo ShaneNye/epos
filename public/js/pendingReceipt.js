@@ -36,9 +36,14 @@
     el.textContent = "Pending";
     el.style.display = "inline-block";
     el.style.minWidth = "92px";
-    el.style.background = "#000";
-    el.style.color = "#000";
-    el.style.borderRadius = "2px";
+    el.style.background = "#eef2f7";
+    el.style.color = "#64748b";
+    el.style.border = "1px solid #cbd5e1";
+    el.style.borderRadius = "4px";
+    el.style.padding = "2px 8px";
+    el.style.fontWeight = "700";
+    el.style.letterSpacing = "0.2px";
+    el.style.textAlign = "center";
   }
 
   async function populateStore(payload) {
