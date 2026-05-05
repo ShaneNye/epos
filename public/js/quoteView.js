@@ -860,7 +860,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   try {
-    await Promise.all([
+    const quotePromise = fetch(`/api/netsuite/quote/${encodeURIComponent(tranId)}`, { headers });
+
+    const setupPromise = Promise.all([
       typeof window.loadItems === "function" ? window.loadItems() : Promise.resolve(),
       window.itemOptionsCache?.getAll?.().catch((err) => {
         console.warn("⚠️ Failed to preload item options:", err.message);
@@ -868,17 +870,18 @@ document.addEventListener("DOMContentLoaded", async () => {
       }),
     ]);
 
-    if (
-      typeof window.createGlobalSuggestions === "function" &&
-      !document.getElementById("global-suggestions")
-    ) {
-      window.createGlobalSuggestions();
-    }
+    const filterPromise = Promise.all([
+      typeof window.populateSizeFilter === "function"
+        ? window.populateSizeFilter()
+        : Promise.resolve(),
+      typeof window.populateBaseOptionFilter === "function"
+        ? window.populateBaseOptionFilter()
+        : Promise.resolve(),
+    ]).catch((err) => {
+      console.warn("⚠️ Failed to preload quote filters:", err.message || err);
+    });
 
-    if (typeof window.populateSizeFilter === "function") await window.populateSizeFilter();
-    if (typeof window.populateBaseOptionFilter === "function") await window.populateBaseOptionFilter();
-
-    const qRes = await fetch(`/api/netsuite/quote/${encodeURIComponent(tranId)}`, { headers });
+    const [qRes] = await Promise.all([quotePromise, setupPromise]);
     const qJson = await qRes.json();
 
     if (!qRes.ok || !qJson || qJson.ok === false) {
@@ -889,6 +892,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (!quote) throw new Error("No quote/estimate object in response");
 
     console.log("✅ Quote loaded:", quote.tranId || tranId);
+
+    if (
+      typeof window.createGlobalSuggestions === "function" &&
+      !document.getElementById("global-suggestions")
+    ) {
+      window.createGlobalSuggestions();
+    }
+
+    void filterPromise;
 
     renderOrderNumberLink("ordernumber", quote.tranId || tranId, quote, "estimate");
     renderOrderNumberLink("orderNumber", quote.tranId || tranId, quote, "estimate");

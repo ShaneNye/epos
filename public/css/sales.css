@@ -431,6 +431,20 @@ body.sidebar-expanded .order-upsell-panel {
   white-space: nowrap;
 }
 
+.order-stock-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.4rem;
+  grid-column: 1 / -1;
+  align-self: stretch;
+}
+
+.order-stock-actions .btn-primary,
+.order-stock-actions .btn-secondary {
+  padding: 0.35rem 0.65rem;
+  white-space: nowrap;
+}
+
 .order-upsell-tag {
   display: inline-block;
   margin-bottom: 0.3rem;
@@ -449,11 +463,42 @@ body.sidebar-expanded .order-upsell-panel {
   line-height: 1.35;
 }
 
+.order-stock-table {
+  width: 100%;
+  margin-top: 0.45rem;
+  border-collapse: collapse;
+  font-size: 0.74rem;
+}
+
+.order-stock-table th,
+.order-stock-table td {
+  padding: 0.18rem 0;
+  border: 0;
+  vertical-align: top;
+}
+
+.order-stock-table th {
+  width: 58px;
+  color: #65717f;
+  font-weight: 700;
+  text-align: left;
+}
+
+.order-stock-table td {
+  color: #26313d;
+  word-break: break-word;
+}
+
 .order-fulfilment-card {
+  grid-template-columns: 64px minmax(0, 1fr);
   background: #f8fbfc;
   margin-inline: -0.35rem;
   padding-inline: 0.35rem;
   border-radius: 7px;
+}
+
+.order-fulfilment-card .order-stock-copy {
+  min-width: 0;
 }
 
 @media (max-width: 1100px) {

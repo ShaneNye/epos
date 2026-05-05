@@ -12,6 +12,8 @@
     stockLoading: new Set(),
     inventoryStatuses: null,
     invoiceNumbers: null,
+    initialized: false,
+    dismissedStockAlternatives: new Set(),
   };
 
   function money(value) {
@@ -58,7 +60,7 @@
   }
 
   function itemSizes(item) {
-    const webItem = state.webItemsById.get(itemId(item)) || {};
+    const webItem = webItemForItem(item);
     const explicitSizes = splitValues(
       webItem["Standard-Sizes"] ||
       webItem["Standard Sizes"] ||
@@ -76,20 +78,127 @@
   }
 
   function itemCategories(item) {
-    const webItem = state.webItemsById.get(itemId(item)) || {};
+    const webItem = webItemForItem(item);
     return splitValues(webItem.Category || item?.Category || item?.category || item?.Categories || item?.["Web Category"] || "");
   }
 
+  function webItemForItem(item) {
+    const id = itemId(item);
+    if (id && state.webItemsById.has(id)) return state.webItemsById.get(id);
+
+    const name = clean(itemName(item));
+    if (!name) return {};
+
+    for (const row of state.webItemsById.values()) {
+      const rowName = clean(fieldValue(row, ["Name", "Item Name", "itemName", "name"]));
+      if (rowName && rowName === name) return row;
+    }
+
+    return {};
+  }
+
+  function fieldValue(record, names) {
+    if (!record) return "";
+    for (const name of names) {
+      if (record[name] !== undefined && record[name] !== null && record[name] !== "") return record[name];
+    }
+
+    const wanted = names.map((name) => clean(name).replace(/[^a-z0-9]/g, ""));
+    const key = Object.keys(record).find((entry) => wanted.includes(clean(entry).replace(/[^a-z0-9]/g, "")));
+    return key ? record[key] : "";
+  }
+
+  function extractImageUrl(value) {
+    if (!value) return "";
+
+    if (Array.isArray(value)) {
+      return value.map(extractImageUrl).find(Boolean) || "";
+    }
+
+    if (typeof value === "object") {
+      return extractImageUrl(
+        value.url ||
+        value.URL ||
+        value.src ||
+        value.Source ||
+        value.image ||
+        value.Image ||
+        value.imageUrl ||
+        value.thumbnail ||
+        value.Thumbnail ||
+        value.name ||
+        value.text ||
+        value.value ||
+        value.refName ||
+        ""
+      );
+    }
+
+    const text = String(value || "").trim();
+    const imgMatch = text.match(/<img[^>]+src=["']([^"']+)["']/i);
+    if (imgMatch?.[1]) return imgMatch[1].replace(/&amp;/g, "&");
+
+    const hrefMatch = text.match(/<a[^>]+href=["']([^"']+)["']/i);
+    if (hrefMatch?.[1]) return hrefMatch[1].replace(/&amp;/g, "&");
+
+    const urlMatch = text.match(/https?:\/\/[^\s"'<>]+/i);
+    if (urlMatch?.[0]) return urlMatch[0].replace(/&amp;/g, "&");
+
+    return "";
+  }
+
+  function imageLikeValues(record) {
+    if (!record || typeof record !== "object") return [];
+    return Object.entries(record)
+      .filter(([key, value]) => {
+        const normalized = clean(key);
+        return value && (normalized.includes("image") || normalized.includes("thumbnail") || normalized.includes("catalogue"));
+      })
+      .map(([, value]) => value);
+  }
+
+  function proxiedImageUrl(url) {
+    const imageUrl = String(url || "").trim();
+    if (!imageUrl) return "";
+
+    try {
+      const parsed = new URL(imageUrl, window.location.origin);
+      const isNetSuiteMedia =
+        /\.netsuite\.com$/i.test(parsed.hostname) &&
+        /\/core\/media\/media\.nl$/i.test(parsed.pathname);
+      if (isNetSuiteMedia) {
+        return `/api/suitepim/image-proxy?url=${encodeURIComponent(parsed.toString())}`;
+      }
+    } catch {
+      return imageUrl;
+    }
+
+    return imageUrl;
+  }
+
   function itemImage(item) {
-    return String(
-      item?.["Item Image"] ||
-      item?.ItemImage ||
-      item?.itemImage ||
-      item?.image ||
-      item?.["Image URL"] ||
-      item?.imageUrl ||
-      ""
-    ).trim();
+    const webItem = webItemForItem(item);
+    const image = [
+      fieldValue(item, ["Item Image", "ItemImage", "itemImage", "image", "Image", "Image URL", "imageUrl"]),
+      fieldValue(webItem, [
+        "Item Image",
+        "ItemImage",
+        "itemImage",
+        "Catalogue Image One",
+        "Catalogue Image Two",
+        "Catalogue Image Three",
+        "Catalogue Image Four",
+        "Catalogue Image Five",
+        "image",
+        "Image",
+        "Image URL",
+        "imageUrl",
+      ]),
+      ...imageLikeValues(item),
+      ...imageLikeValues(webItem),
+    ].map(extractImageUrl).find(Boolean) || "";
+
+    return proxiedImageUrl(image);
   }
 
   function retailPrice(item) {
@@ -502,14 +611,25 @@
         }
 
         const stock = [...(state.stockByItemId.get(line.id) || [])]
-          .filter((entry) => safeInt(entry.qty) > 0)
+          .filter((entry) => safeInt(entry.qty) > 0 && clean(entry.status) !== "showroom")
           .sort((a, b) => scoreStock(b, line.quantity) - scoreStock(a, line.quantity))[0];
 
         if (!stock) return null;
+        const suggestionKey = stockSuggestionKey(line, stock);
+        if (state.dismissedStockAlternatives.has(suggestionKey)) return null;
+
         const item = findItemById(line.id) || findItemByName(line.name);
-        return { line, item, stock };
+        return { line, item, stock, suggestionKey };
       })
       .filter(Boolean);
+  }
+
+  function stockSuggestionKey(line, stock) {
+    return [
+      line?.row?.dataset?.line || "",
+      line?.id || "",
+      stockKey(stock),
+    ].map((value) => String(value || "").trim()).join("::");
   }
 
   function stockKey(stock) {
@@ -633,7 +753,7 @@
           <span>Fulfilment</span>
           <strong>Stock alternatives</strong>
         </div>
-        ${fulfilmentSuggestions.map(({ line, item, stock }) => {
+        ${fulfilmentSuggestions.map(({ line, item, stock, suggestionKey }) => {
           const image = item ? itemImage(item) : "";
           const name = item ? itemName(item) : line.name;
           return `
@@ -645,13 +765,31 @@
                     : `<span>${escapeHtml(name.slice(0, 2).toUpperCase())}</span>`
                 }
               </div>
-              <div>
+              <div class="order-stock-copy">
                 <span class="order-upsell-tag">${safeInt(stock.qty)} available</span>
                 <strong>${escapeHtml(name)}</strong>
-                <p>This item is available in ${escapeHtml(stock.location)}. Would you like to use this item instead of ordering one?</p>
-                <small>${escapeHtml(stock.status || "Stock")} ${escapeHtml(stock.inventoryNumber || "")}</small>
+                <p>This item is Currently Available - Would you like to use this item instead of ordering one</p>
+                <table class="order-stock-table">
+                  <tbody>
+                    <tr>
+                      <th>Location</th>
+                      <td>${escapeHtml(stock.location || "-")}</td>
+                    </tr>
+                    <tr>
+                      <th>Status</th>
+                      <td>${escapeHtml(stock.status || "Stock")}</td>
+                    </tr>
+                    <tr>
+                      <th>Lot</th>
+                      <td>${escapeHtml(stock.inventoryNumber || "-")}</td>
+                    </tr>
+                  </tbody>
+                </table>
               </div>
-              <button type="button" class="btn-primary small-btn" data-action="use-stock" data-line="${escapeHtml(line.row.dataset.line || "")}" data-item-id="${escapeHtml(line.id)}" data-stock-key="${escapeHtml(stockKey(stock))}">Yes</button>
+              <div class="order-stock-actions">
+                <button type="button" class="btn-primary small-btn" data-action="use-stock" data-line="${escapeHtml(line.row.dataset.line || "")}" data-item-id="${escapeHtml(line.id)}" data-stock-key="${escapeHtml(stockKey(stock))}">Yes</button>
+                <button type="button" class="btn-secondary small-btn" data-action="dismiss-stock" data-suggestion-key="${escapeHtml(suggestionKey)}">Dismiss</button>
+              </div>
             </article>
           `;
         }).join("")}
@@ -897,10 +1035,21 @@
           stockButton.dataset.stockKey
         );
       }
+
+      const dismissButton = event.target.closest('button[data-action="dismiss-stock"]');
+      if (dismissButton) {
+        state.dismissedStockAlternatives.add(String(dismissButton.dataset.suggestionKey || ""));
+        renderUpsellPanel();
+      }
     });
   }
 
   async function init() {
+    if (state.initialized) {
+      scheduleSync();
+      return;
+    }
+    state.initialized = true;
     bindEvents();
     await Promise.all([loadPromotions(), loadWebManagementData(), loadSizeOptions()]);
     await waitForCatalogue();
@@ -908,7 +1057,10 @@
     scheduleSync();
   }
 
+  window.initOrderPromotions = init;
+
   document.addEventListener("DOMContentLoaded", () => {
+    if (window.orderPromotionsEnabled === false) return;
     setTimeout(init, 0);
   });
 })();

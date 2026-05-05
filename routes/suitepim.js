@@ -1474,6 +1474,49 @@ function startWebManagementCacheRefreshTimer() {
   }, WEB_MANAGEMENT_REFRESH_INTERVAL_MS);
 }
 
+router.get("/image-proxy", async (req, res) => {
+  try {
+    const rawUrl = String(req.query.url || "").trim();
+    if (!rawUrl) return res.status(400).send("Missing image URL");
+
+    let imageUrl;
+    try {
+      imageUrl = new URL(rawUrl);
+    } catch {
+      return res.status(400).send("Invalid image URL");
+    }
+
+    const isNetSuiteHost = /(^|\.)netsuite\.com$/i.test(imageUrl.hostname);
+    const isMediaFile = /\/core\/media\/media\.nl$/i.test(imageUrl.pathname);
+    if (imageUrl.protocol !== "https:" || !isNetSuiteHost || !isMediaFile) {
+      return res.status(400).send("Unsupported image URL");
+    }
+
+    const upstream = await fetch(imageUrl.toString(), {
+      headers: {
+        "User-Agent": "EPOS SuitePIM image proxy",
+        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
+      },
+    });
+
+    if (!upstream.ok) {
+      return res.status(upstream.status).send("Image unavailable");
+    }
+
+    const contentType = upstream.headers.get("content-type") || "image/jpeg";
+    if (!/^image\//i.test(contentType)) {
+      return res.status(415).send("Unsupported media type");
+    }
+
+    res.setHeader("Content-Type", contentType);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    upstream.body.pipe(res);
+  } catch (err) {
+    console.error("SuitePIM image proxy failed:", err.message);
+    res.status(500).send("Image proxy failed");
+  }
+});
+
 router.use(requireSuitePimSession);
 
 router.get("/config", (req, res) => {

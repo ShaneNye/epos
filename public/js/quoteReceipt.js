@@ -4,6 +4,8 @@
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("🧾 Quote Receipt init");
 
+  if (await window.EposPendingReceipt?.tryRender?.("quote")) return;
+
   /* ============================
      1️⃣ Extract Quote ID
      ============================ */

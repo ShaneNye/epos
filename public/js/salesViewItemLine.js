@@ -192,7 +192,90 @@ function getItemInternalId(item) {
 }
 
 function getItemClass(item) {
-  return String(item?.["Class"] || "").trim().toLowerCase();
+  const raw =
+    item?.["Class"] ??
+    item?.class ??
+    item?.itemClass ??
+    item?.["Item Class"] ??
+    item?.type ??
+    item?.Type ??
+    item?.itemType ??
+    item?.["Item Type"] ??
+    "";
+
+  if (raw && typeof raw === "object") {
+    return String(raw.refName || raw.name || raw.text || raw.value || raw.id || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  return String(raw).trim().toLowerCase();
+}
+
+function getLineItemClass(line, itemData) {
+  return (
+    getItemClass(itemData) ||
+    getItemClass(line?.item) ||
+    getItemClass(line) ||
+    String(line?.itemClass || "").trim().toLowerCase()
+  );
+}
+
+function isServiceItemClass(itemClass) {
+  return String(itemClass || "").toLowerCase().includes("service");
+}
+
+function setServiceFulfilmentVisibility(row, isService) {
+  const fulfilCell = row?.querySelector(".fulfilment-cell");
+  const fulfilSel = row?.querySelector(".item-fulfilment");
+  const invCell =
+    row?.querySelector(".inventory-cell") ||
+    row?.querySelector(".inventory-cell-wrapper .inventory-cell");
+
+  if (fulfilCell) fulfilCell.classList.toggle("service-empty-cell", !!isService);
+  if (fulfilSel) {
+    if (isService) fulfilSel.value = "";
+    fulfilSel.style.display = isService ? "none" : "inline-block";
+  }
+  if (invCell) invCell.style.display = isService ? "none" : "";
+}
+
+function salesViewRecordValue(record, keys) {
+  if (!record || typeof record !== "object") return "";
+  for (const key of keys) {
+    const value = record[key];
+    if (value && typeof value === "object") {
+      const nested = value.id ?? value.value ?? value.refName ?? value.name ?? value.text;
+      if (nested !== undefined && nested !== null && nested !== "") return String(nested).trim();
+    } else if (value !== undefined && value !== null && value !== "") {
+      return String(value).trim();
+    }
+  }
+  return "";
+}
+
+function existingFulfilmentMethodId(line) {
+  return salesViewRecordValue(line, [
+    "custcol_sb_fulfilmentlocation",
+    "fulfilmentMethod",
+    "fulfillmentMethod",
+    "fulfilmentlocation",
+    "fulfillmentlocation",
+    "CUSTCOL_SB_FULFILMENTLOCATION",
+  ]);
+}
+
+function existingInventoryDetail(line) {
+  return salesViewRecordValue(line, [
+    "inventoryDetail",
+    "inventoryMeta",
+    "custcol_sb_epos_inventory_meta",
+    "CUSTCOL_SB_EPOS_INVENTORY_META",
+    "custcol_sb_lotnumber",
+    "CUSTCOL_SB_LOTNUMBER",
+    "lotnumber",
+    "lotNumber",
+  ]);
 }
 
 function buildOptionSchemaForItem(itemId) {
@@ -231,7 +314,7 @@ function setInventoryButtonState(row) {
   }
 }
 
-function applyItemToSalesViewRow(row, item) {
+function applyItemToSalesViewRow(row, item, config = {}) {
   if (!row || !item) return;
 
   const input = row.querySelector(".item-search");
@@ -239,6 +322,8 @@ function applyItemToSalesViewRow(row, item) {
   const hiddenBase = row.querySelector(".item-baseprice");
   const discountField = row.querySelector(".item-discount");
   const qtyField = row.querySelector(".item-qty");
+  const saleField = row.querySelector(".item-saleprice");
+  const quantity = Math.max(1, parseInt(config.quantity || qtyField?.value || 1, 10) || 1);
 
   const itemId = getItemInternalId(item);
   const itemClass = getItemClass(item);
@@ -246,11 +331,16 @@ function applyItemToSalesViewRow(row, item) {
   if (input) input.value = item["Name"] || "";
   if (hiddenId) hiddenId.value = itemId;
   if (hiddenBase) hiddenBase.value = item["Base Price"] || "";
+  if (qtyField) qtyField.value = String(quantity);
 
   const base = parseFloat(item["Base Price"] || 0);
-  const retailPerUnitGross = base > 0 ? base * 1.2 : 0;
+  const retailPerUnitGross = base > 10000 ? (base / 100) * 1.2 : base * 1.2;
 
-  if (discountField) discountField.value = "0";
+  if (discountField) {
+    discountField.value = Number.isFinite(Number(config.discountPercent))
+      ? String(Number(config.discountPercent))
+      : "0";
+  }
 
   row.dataset.itemClass = itemClass;
 
@@ -259,6 +349,11 @@ function applyItemToSalesViewRow(row, item) {
   }
   if (row.setUnitRetail) {
     row.setUnitRetail(retailPerUnitGross);
+  }
+
+  if (saleField && Number.isFinite(Number(config.salePrice))) {
+    saleField.value = Number(config.salePrice).toFixed(2);
+    saleField.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
   const opts = buildOptionSchemaForItem(itemId);
@@ -284,30 +379,16 @@ function applyItemToSalesViewRow(row, item) {
     }
   }
 
-  const fulfilCell = row.querySelector(".fulfilment-cell");
-  const fulfilSel = row.querySelector(".item-fulfilment");
-  const invCell =
-    row.querySelector(".inventory-cell") ||
-    row.querySelector(".inventory-cell-wrapper .inventory-cell");
-
   ensure60NightTrialCell(row);
   update60NightTrialColumnVisibility();
 
-  if (itemClass === "service") {
-    if (fulfilCell) fulfilCell.classList.add("hidden-cell");
-    if (fulfilSel) {
-      fulfilSel.value = "";
-      fulfilSel.style.display = "none";
-    }
-    if (invCell) invCell.classList.add("hidden-cell");
+  if (isServiceItemClass(itemClass)) {
+    setServiceFulfilmentVisibility(row, true);
   } else {
-    if (fulfilCell) fulfilCell.classList.remove("hidden-cell");
-    if (fulfilSel) fulfilSel.style.display = "inline-block";
-    if (invCell) invCell.classList.remove("hidden-cell");
+    setServiceFulfilmentVisibility(row, false);
     window.SalesLineUI?.validateInventoryForRow(row);
   }
 
-  const saleField = row.querySelector(".item-saleprice");
   const vatCell = row.querySelector(".vat");
   if (saleField && vatCell) {
     const saleVal = parseFloat(saleField.value || 0) || 0;
@@ -327,11 +408,12 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
   if (!row) return;
 
   const lineIdx = Number(row.dataset.line || 0);
+  const isService = isServiceItemClass(row.dataset.itemClass);
 
   const sel = row.querySelector(".item-fulfilment");
-  if (sel) {
+  if (sel && !isService) {
     window.SalesLineUI?.fillFulfilmentSelect(sel, fulfilmentMethods);
-    const currentId = existingLine?.custcol_sb_fulfilmentlocation?.id;
+    const currentId = existingFulfilmentMethodId(existingLine);
     if (currentId) sel.value = String(currentId);
 
     sel.addEventListener("change", () => {
@@ -342,6 +424,7 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
       }
     });
   }
+  setServiceFulfilmentVisibility(row, isService);
 
   window.SalesLineUI?.setupPriceSync(row);
 
@@ -394,7 +477,7 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
   if (itemId) {
     const itemData = (window.items || []).find((it) => getItemInternalId(it) === itemId);
     if (itemData) {
-      row.dataset.itemClass = getItemClass(itemData);
+      row.dataset.itemClass = getLineItemClass(existingLine, itemData);
       const schema = buildOptionSchemaForItem(itemId);
       if (Object.keys(schema).length) {
         window.optionsCache = window.optionsCache || {};
@@ -405,7 +488,14 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
 
   ensure60NightTrialCell(row);
   update60NightTrialColumnVisibility();
-  window.SalesLineUI?.validateInventoryForRow(row);
+  const finalIsService = isServiceItemClass(row.dataset.itemClass);
+  setServiceFulfilmentVisibility(row, finalIsService);
+  if (!finalIsService && sel && existingFulfilmentMethodId(existingLine)) {
+    sel.value = String(existingFulfilmentMethodId(existingLine));
+  }
+  if (!finalIsService) {
+    window.SalesLineUI?.validateInventoryForRow(row);
+  }
   setInventoryButtonState(row);
 }
 
@@ -499,6 +589,23 @@ function addSalesViewRow({ fulfilmentMethods = [] } = {}) {
   tbody.appendChild(tr);
   wireSalesViewRow(tr, { fulfilmentMethods });
 
+  if (typeof updateOrderSummaryFromTable === "function") {
+    updateOrderSummaryFromTable();
+  }
+}
+
+function setInventoryDetailForSalesViewRow(row, detailString) {
+  if (!row) return;
+
+  const normalized = String(detailString || "").trim();
+  const detailField = row.querySelector(".item-inv-detail");
+  if (detailField) detailField.value = normalized;
+
+  row.dataset.invdetail = normalized;
+  const summary = row.querySelector(".inv-summary");
+  if (summary) summary.textContent = normalized;
+
+  setInventoryButtonState(row);
   if (typeof updateOrderSummaryFromTable === "function") {
     updateOrderSummaryFromTable();
   }
@@ -688,7 +795,8 @@ window.renderSalesViewLines = function renderSalesViewLines({
     }
 
     const itemData = (window.items || []).find((it) => getItemInternalId(it) === itemId);
-    const itemClass = getItemClass(itemData);
+    const itemClass = getLineItemClass(line, itemData);
+    const isServiceLine = isServiceItemClass(itemClass);
     tr.dataset.itemClass = itemClass;
 
     const hasEditableOptions = Object.keys(optionSchema).length > 0;
@@ -705,17 +813,17 @@ window.renderSalesViewLines = function renderSalesViewLines({
       ? `<input type="number" class="item-qty" value="${qty}" min="1" step="1" />`
       : `<span class="qty">${qty}</span>`;
 
-    const fulfilCell = isPending
-      ? `<select class="item-fulfilment fulfilmentSelect" data-line="${idx}"></select>`
-      : line.custcol_sb_fulfilmentlocation?.refName || "";
+    const fulfilCell = isServiceLine
+      ? ""
+      : isPending
+        ? `<select class="item-fulfilment fulfilmentSelect" data-line="${idx}"></select>`
+        : line.custcol_sb_fulfilmentlocation?.refName || "";
 
-    const inventoryDetail =
-      line.inventoryDetail ||
-      line.custcol_sb_epos_inventory_meta ||
-      line.custcol_sb_lotnumber ||
-      "";
+    const inventoryDetail = existingInventoryDetail(line);
 
-    const invCell = isPending
+    const invCell = isServiceLine
+      ? ""
+      : isPending
       ? `
         <div class="inventory-cell" style="display:none">
           <button type="button" class="open-inventory btn-secondary small-btn" data-line="${idx}">${
@@ -802,7 +910,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
         <span class="sixty-night-placeholder">—</span>
       </td>
 
-      <td class="fulfilment-cell">${fulfilCell}</td>
+      <td class="fulfilment-cell${isServiceLine ? " service-empty-cell" : ""}">${fulfilCell}</td>
       <td class="inventory-cell-wrapper">${invCell}</td>
 
       ${
@@ -865,3 +973,8 @@ window.renderSalesViewLines = function renderSalesViewLines({
 window.ensure60NightTrialCell = ensure60NightTrialCell;
 window.update60NightTrialColumnVisibility = update60NightTrialColumnVisibility;
 window.applyItemToSalesViewRow = applyItemToSalesViewRow;
+window.salesNewItemEditor = window.salesNewItemEditor || {
+  addNewRow: () => addSalesViewRow({ fulfilmentMethods: window._fulfilmentMap || [] }),
+  applyItemToRow: (...args) => applyItemToSalesViewRow(...args),
+  setInventoryDetailForRow: (...args) => setInventoryDetailForSalesViewRow(...args),
+};

@@ -270,7 +270,7 @@
     if (detailField.value) {
       const totalSelected = detailField.value
         .split(";")
-        .map((p) => parseInt(p.trim().split(" ")[0], 10) || 0)
+        .map((p) => parseInt(p.trim().split("|")[0] || p.trim().split(" ")[0], 10) || 0)
         .reduce((a, b) => a + b, 0);
 
       button.textContent = totalSelected === qty ? "✅" : "📦";

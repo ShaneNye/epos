@@ -12,6 +12,8 @@ const fetch = require("node-fetch");
 const LOOKUP_CACHE_TTL_MS = 5 * 60 * 1000;
 const lookupCache = new Map();
 const ITEM_FEED_TTL_MS = 10 * 60 * 1000;
+const QUOTE_CACHE_TTL_MS = 10 * 60 * 1000;
+const quoteCache = new Map();
 const itemFeedCache = {
   data: null,
   expiresAt: 0,
@@ -33,6 +35,34 @@ function setCachedLookup(key, value) {
     expiresAt: Date.now() + LOOKUP_CACHE_TTL_MS,
   });
   return value;
+}
+
+function quoteCacheKey(id) {
+  return `quote:${String(id || "").trim()}:v1`;
+}
+
+function quoteCacheGet(id) {
+  const key = quoteCacheKey(id);
+  const cached = quoteCache.get(key);
+  if (!cached) return null;
+  if (cached.inFlight) return cached;
+  if (cached.expiresAt <= Date.now()) {
+    quoteCache.delete(key);
+    return null;
+  }
+  return cached;
+}
+
+function quoteCacheSet(id, data) {
+  quoteCache.set(quoteCacheKey(id), {
+    data,
+    expiresAt: Date.now() + QUOTE_CACHE_TTL_MS,
+    inFlight: null,
+  });
+}
+
+function quoteCacheDelete(id) {
+  quoteCache.delete(quoteCacheKey(id));
 }
 
 async function getItemMapCached() {
@@ -322,9 +352,41 @@ router.get("/entity/:id", async (req, res) => {
    === GET QUOTE DETAILS ===============================
 ===================================================== */
 router.get("/:id", async (req, res) => {
+  let cacheKey;
+  let rejectInflight = null;
+
   try {
     const { id } = req.params;
     console.log(`📦 Fetching Quote ${id} from NetSuite...`);
+
+    const refresh = String(req.query.refresh || "") === "1";
+    cacheKey = quoteCacheKey(id);
+
+    if (!refresh) {
+      const cached = quoteCacheGet(id);
+      if (cached?.data) {
+        return res.json({ ...cached.data, _cache: "HIT" });
+      }
+      if (cached?.inFlight) {
+        try {
+          const data = await cached.inFlight;
+          return res.json({ ...data, _cache: "HIT-INFLIGHT" });
+        } catch {
+          // Try a fresh load below.
+        }
+      }
+    }
+
+    let resolveInflight;
+    const inFlight = new Promise((resolve, reject) => {
+      resolveInflight = resolve;
+      rejectInflight = reject;
+    });
+    quoteCache.set(cacheKey, {
+      inFlight,
+      expiresAt: Date.now() + QUOTE_CACHE_TTL_MS,
+      data: null,
+    });
 
     const userId = await resolveUserIdFromAuth(req);
     console.log("🔐 Authenticated user for quote view:", userId);
@@ -332,25 +394,23 @@ router.get("/:id", async (req, res) => {
     const quote = await nsGet(`/estimate/${id}`, userId, "sb");
     if (!quote) throw new Error("No quote data returned from NetSuite");
 
-    let expandedEntity = null;
-    if (quote.entity?.id) {
-      try {
-        expandedEntity = await nsGet(`/customer/${quote.entity.id}`, userId, "sb");
-        console.log("🔎 Expanded entity loaded:", {
-          id: expandedEntity.id,
-          title: expandedEntity.custentity_title,
-        });
-      } catch (err) {
-        console.warn(
-          `⚠️ Could not expand entity ${quote.entity.id}:`,
-          err.message
-        );
-      }
-    }
-
-    if (expandedEntity) {
-      quote.entity = { ...quote.entity, ...expandedEntity };
-    }
+    const expandedEntityPromise = quote.entity?.id
+      ? nsGet(`/customer/${quote.entity.id}`, userId, "sb")
+          .then((expandedEntity) => {
+            console.log("🔎 Expanded entity loaded:", {
+              id: expandedEntity.id,
+              title: expandedEntity.custentity_title,
+            });
+            return expandedEntity;
+          })
+          .catch((err) => {
+            console.warn(
+              `⚠️ Could not expand entity ${quote.entity.id}:`,
+              err.message
+            );
+            return null;
+          })
+      : Promise.resolve(null);
 
     /* -----------------------------------------------------
        Expand Item Lines via SuiteQL
@@ -377,7 +437,8 @@ router.get("/:id", async (req, res) => {
       ORDER BY t.linesequencenumber
     `;
 
-    const [suiteql, itemMap] = await Promise.all([
+    const [expandedEntity, suiteql, itemMap] = await Promise.all([
+      expandedEntityPromise,
       nsPostRaw(
         `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
         { q: query },
@@ -389,6 +450,10 @@ router.get("/:id", async (req, res) => {
         return {};
       }),
     ]);
+
+    if (expandedEntity) {
+      quote.entity = { ...quote.entity, ...expandedEntity };
+    }
 
     if (suiteql && Array.isArray(suiteql.items)) {
       const items = suiteql.items.map((r) => {
@@ -455,9 +520,16 @@ router.get("/:id", async (req, res) => {
 
     console.log("✅ Quote fetched successfully:", quote.tranId || quote.id);
     quote._netSuiteAppBaseUrl = netSuiteAppBaseUrl();
-    return res.json({ ok: true, quote });
+    const payload = { ok: true, quote };
+    quoteCacheSet(id, payload);
+    resolveInflight(payload);
+    return res.json({ ...payload, _cache: "MISS" });
   } catch (err) {
     console.error("❌ GET /quote/:id error:", err.message);
+    try {
+      if (typeof rejectInflight === "function") rejectInflight(err);
+      if (cacheKey) quoteCache.delete(cacheKey);
+    } catch {}
     res.status(500).json({ ok: false, error: err.message });
   }
 });
@@ -546,6 +618,7 @@ router.post("/:id/save", async (req, res) => {
     }
 
     console.log(`✅ Quote ${id} saved via RESTlet`);
+    quoteCacheDelete(id);
 
     return res.json({
       ok: true,
@@ -704,6 +777,7 @@ router.patch("/:id", async (req, res) => {
       userId,
       "sb"
     );
+    quoteCacheDelete(id);
 
     return res.json({
       ok: true,
@@ -767,6 +841,7 @@ router.post("/:id/convert", async (req, res) => {
 
     console.log("🧾 Final Sales Order payload:", JSON.stringify(orderBody, null, 2));
     const so = await nsPost(`/estimate/${id}/!transform/salesOrder`, orderBody, userId, "sb");
+    quoteCacheDelete(id);
 
     let salesOrderId = so.id || null;
     if (!salesOrderId && so._location) {

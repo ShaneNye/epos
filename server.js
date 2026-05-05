@@ -322,7 +322,7 @@ async function prewarmSalesOrders(
         const id = queue.shift();
         running++;
 
-        const url = `${host}/api/netsuite/salesorder/${encodeURIComponent(id)}?env=${encodeURIComponent(envType)}&lite=1`;
+        const url = `${host}/api/netsuite/salesorder/${encodeURIComponent(id)}?env=${encodeURIComponent(envType)}&lite=1&deposits=0`;
 
         console.log("🔥 PREWARM FETCH", { id, url });
 
@@ -624,9 +624,11 @@ app.get("/api/netsuite/warehouse", (req, res) =>
 );
 
 // === Payment Methods ===
-app.get("/api/netsuite/paymentmethods", (req, res) =>
+function handlePaymentMethods(req, res) {
   fetchNetSuiteData("SALES_ORD_PYMT_MTHD_URL", "SALES_ORDER_TKN_PYMT_MTHD", req, res, "payment methods")
-);
+}
+app.get("/api/netsuite/paymentmethods", handlePaymentMethods);
+app.get("/api/netsuite/payment-methods", handlePaymentMethods);
 
 // === Payment Info ===
 app.get("/api/netsuite/paymentinfo", (req, res) =>
@@ -858,9 +860,10 @@ app.get("/api/netsuite/supplier-lead-time", async (req, res) => {
 });
 
 app.get("/api/config/intercompany-url", (req, res) => {
+  const url = String(process.env.INTERCOMPANY_URL || "").trim().replace(/^["']|["']$/g, "");
   res.json({
     ok: true,
-    url: process.env.INTERCOMPANY_URL || ""
+    url
   });
 });
 

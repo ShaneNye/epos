@@ -139,6 +139,7 @@
         <p class="footer-note">This payment will be applied to the active Sales Order.</p>
     </div>
 
+    <script src="/js/storage.js"></script>
     <script>
           function prefillDepositAmountFromQuery() {
     const params = new URLSearchParams(window.location.search);
@@ -152,9 +153,44 @@
     }
   }
 
+        function depositAuthHeaders() {
+            const saved =
+                (typeof storageGet === "function" ? storageGet() : null) ||
+                (window.opener && typeof window.opener.storageGet === "function"
+                    ? window.opener.storageGet()
+                    : null);
+            return saved?.token ? { Authorization: `Bearer ${saved.token}` } : {};
+        }
+
+        function readPaymentMethodField(method, names) {
+            if (!method || typeof method !== "object") return "";
+            for (const name of names) {
+                if (method[name] !== undefined && method[name] !== null && method[name] !== "") {
+                    return String(method[name]).trim();
+                }
+            }
+
+            const wanted = names.map(name => String(name).toLowerCase().replace(/[^a-z0-9]/g, ""));
+            const key = Object.keys(method).find(entry =>
+                wanted.includes(String(entry).toLowerCase().replace(/[^a-z0-9]/g, ""))
+            );
+            return key ? String(method[key] || "").trim() : "";
+        }
+
+        function normalizePaymentMethods(data) {
+            if (Array.isArray(data?.results)) return data.results;
+            if (Array.isArray(data?.data)) return data.data;
+            if (Array.isArray(data?.items)) return data.items;
+            if (Array.isArray(data?.paymentMethods)) return data.paymentMethods;
+            if (Array.isArray(data)) return data;
+            return [];
+        }
+
         async function loadPaymentMethods() {
             try {
-                const res = await fetch("/api/netsuite/paymentmethods");
+                const res = await fetch("/api/netsuite/payment-methods", {
+                    headers: depositAuthHeaders(),
+                });
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const data = await res.json();
                 console.log("🔎 Payment methods response:", data);
@@ -162,13 +198,11 @@
                 const select = document.getElementById("depositMethod");
                 select.innerHTML = '<option value="">Select Method</option>';
 
-                let methods = [];
-                if (Array.isArray(data.results)) methods = data.results;
-                else if (Array.isArray(data)) methods = data;
+                const methods = normalizePaymentMethods(data);
 
                 methods.forEach(pm => {
-                    const id = pm["Internal ID"] || pm.id;
-                    const name = pm["Name"] || pm.name;
+                    const id = readPaymentMethodField(pm, ["Internal ID", "InternalID", "internalid", "id", "value"]);
+                    const name = readPaymentMethodField(pm, ["Name", "Title", "name", "label", "text"]);
                     if (!id || !name) return;
 
                     const opt = document.createElement("option");
@@ -176,6 +210,10 @@
                     opt.textContent = name;
                     select.appendChild(opt);
                 });
+
+                if (select.options.length === 1) {
+                    select.innerHTML = '<option value="">No methods found</option>';
+                }
             } catch (err) {
                 console.error("❌ Failed to load payment methods:", err);
                 document.getElementById("depositMethod").innerHTML =

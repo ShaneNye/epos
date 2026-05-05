@@ -500,6 +500,79 @@ document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
     }, 3000);
   }
 
+  function selectedText(selector) {
+    const el = typeof selector === "string" ? document.querySelector(selector) : selector;
+    return el?.options?.[el.selectedIndex]?.textContent?.trim() || "";
+  }
+
+  function moneyValue(value) {
+    return parseFloat(String(value || "0").replace(/[\u00a3,]/g, "")) || 0;
+  }
+
+  function buildPendingReceiptPayload(orderPayload) {
+    const receiptItems = [...document.querySelectorAll("#orderItemsBody .order-line")]
+      .map((tr) => {
+        const itemId = tr.querySelector(".item-internal-id")?.value?.trim();
+        if (!itemId) return null;
+
+        const quantity = parseFloat(tr.querySelector(".item-qty")?.value || 0) || 0;
+        const saleGrossLine = moneyValue(tr.querySelector(".item-saleprice")?.value);
+        const retailGrossLine =
+          moneyValue(tr.querySelector(".item-amount")?.value) ||
+          ((parseFloat(tr.querySelector(".item-baseprice")?.value || 0) || 0) * 1.2 * quantity);
+
+        return {
+          name: tr.querySelector(".item-search")?.value?.trim() || "Item",
+          options: tr.querySelector(".options-summary")?.innerText?.trim() || "",
+          quantity,
+          retailGrossLine,
+          saleGrossLine,
+        };
+      })
+      .filter(Boolean);
+
+    return {
+      type: "sale",
+      customer: orderPayload.customer,
+      order: {
+        ...orderPayload.order,
+        salesExecName: selectedText(document.getElementById("salesExec")),
+        storeName: selectedText(document.getElementById("store")),
+        paymentInfoName: selectedText(document.getElementById("paymentInfo")),
+      },
+      items: receiptItems,
+      deposits,
+    };
+  }
+
+  function showPendingReceiptButton(type, payload) {
+    const pendingId = `pending-${Date.now()}`;
+    sessionStorage.setItem(`eposPendingReceipt:${pendingId}`, JSON.stringify(payload));
+
+    let button = document.getElementById("pendingReceiptPrintBtn");
+    if (!button) {
+      button = document.createElement("button");
+      button.id = "pendingReceiptPrintBtn";
+      button.type = "button";
+      button.className = "btn-primary";
+      button.style.position = "fixed";
+      button.style.right = "1rem";
+      button.style.bottom = "1rem";
+      button.style.zIndex = "3000";
+      button.style.boxShadow = "0 10px 22px rgba(0,0,0,0.18)";
+      document.body.appendChild(button);
+    }
+
+    button.hidden = false;
+    button.textContent = "Print Receipt";
+    button.onclick = () => {
+      const url = type === "quote" ? `/quote/receipt/${pendingId}` : `/sales/reciept/${pendingId}`;
+      const win = window.open(url, "_blank");
+      if (!win) alert("Please allow popups for this site to print the receipt.");
+      else win.focus();
+    };
+  }
+
   /* =========================================================
      ✅ Mandatory validations before save
   ========================================================= */
@@ -716,6 +789,7 @@ function validateOrderBeforeSave() {
         const body = { customer, order, items, deposits };
         console.log("🏷 noAddressRequired:", noAddressRequired);
         console.log("💰 Including deposits in payload:", deposits);
+        showPendingReceiptButton("sale", buildPendingReceiptPayload(body));
         await submitOrder(body);
       } finally {
         isOrderSubmitting = false;

@@ -3,6 +3,8 @@
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("🧾 Sales Order Receipt init");
 
+  if (await window.EposPendingReceipt?.tryRender?.("sale")) return;
+
   /* ============================
      1️⃣ Extract Sales Order ID
      ============================ */

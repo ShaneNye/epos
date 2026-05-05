@@ -145,12 +145,9 @@ async function getLinkedTransferOrders(salesOrderId, userId) {
 
 async function approveLinkedTransferOrders(salesOrderId, userId) {
   const transfers = await getLinkedTransferOrders(salesOrderId, userId);
-  const approved = [];
-  const failed = [];
-
-  for (const transfer of transfers) {
+  const results = await Promise.all(transfers.map(async (transfer) => {
     const transferId = transfer?.id;
-    if (!transferId) continue;
+    if (!transferId) return null;
 
     try {
       await nsPatch(
@@ -158,23 +155,32 @@ async function approveLinkedTransferOrders(salesOrderId, userId) {
         { orderStatus: TRANSFER_ORDER_APPROVED_STATUS },
         userId
       );
-      approved.push({
-        id: String(transferId),
-        tranid: transfer.tranid || null,
-      });
       console.log(`✅ Linked Transfer Order ${transfer.tranid || transferId} approved`);
-    } catch (err) {
-      failed.push({
+      return {
+        ok: true,
         id: String(transferId),
         tranid: transfer.tranid || null,
-        error: err.message,
-      });
+      };
+    } catch (err) {
       console.error(
         `❌ Failed to approve linked Transfer Order ${transfer.tranid || transferId}:`,
         err.message
       );
+      return {
+        ok: false,
+        id: String(transferId),
+        tranid: transfer.tranid || null,
+        error: err.message,
+      };
     }
-  }
+  }));
+
+  const approved = results
+    .filter((result) => result?.ok)
+    .map(({ id, tranid }) => ({ id, tranid }));
+  const failed = results
+    .filter((result) => result && !result.ok)
+    .map(({ id, tranid, error }) => ({ id, tranid, error }));
 
   return {
     ok: failed.length === 0,
@@ -258,6 +264,85 @@ function publicNetSuiteError(payload, fallback = "NetSuite RESTlet call failed")
     code: payload?.error?.code || payload?.code || "NETSUITE_RESTLET_FAILED",
     retryable: true,
   };
+}
+
+async function loadSalesOrderComsFields(salesOrderId, userId) {
+  const fields = [
+    "id",
+    "custbody_stc_total_after_discount",
+    "custrecord_sb_coms_profit",
+    "custbody_sb_bedspecialist",
+  ].join(",");
+
+  try {
+    return await nsGet(
+      `/salesOrder/${salesOrderId}?fields=${encodeURIComponent(fields)}`,
+      userId,
+      "sb"
+    );
+  } catch (err) {
+    console.warn(
+      "⚠️ Minimal COMS sales-order field load failed; falling back to full record:",
+      err.message
+    );
+    return nsGet(`/salesOrder/${salesOrderId}`, userId, "sb");
+  }
+}
+
+async function createComsSalesValueRecord(salesOrderId, userId) {
+  const restletUrl = getComsSalesValueRestletUrl();
+
+  if (!restletUrl) {
+    return {
+      ok: false,
+      skipped: true,
+      error: "COMS sales value RESTlet URL is not configured for production.",
+    };
+  }
+
+  console.log("📊 Creating customrecord_sb_coms_sales_value for SO:", salesOrderId);
+
+  const [soData, comsAuthHeader] = await Promise.all([
+    loadSalesOrderComsFields(salesOrderId, userId),
+    getAuthHeader(restletUrl, "POST", userId),
+  ]);
+
+  const soInternalId = soData?.id || soData?.internalId || salesOrderId;
+  const grossValue = soData?.custbody_stc_total_after_discount || 0;
+  const profitValue = soData?.custrecord_sb_coms_profit || 0;
+  const salesRep = soData?.custbody_sb_bedspecialist?.id || null;
+
+  const recordBody = {
+    custrecord_sb_coms_date: new Date().toISOString().split("T")[0],
+    custrecord_sb_coms_sales_order: { id: String(soInternalId) },
+    custrecord_sb_coms_gross: parseFloat(grossValue) || 0,
+    custrecord_sb_coms_profit: parseFloat(profitValue) || 0,
+    ...(salesRep && { custrecord_sb_coms_sales_rep: { id: String(salesRep) } }),
+  };
+
+  console.log("🧾 Custom record payload:", recordBody);
+
+  const resCreate = await fetch(restletUrl, {
+    method: "POST",
+    headers: {
+      ...comsAuthHeader,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(recordBody),
+  });
+
+  const text = await resCreate.text();
+  const json = parseMaybeJson(text);
+  if (!resCreate.ok || !json.ok) {
+    return {
+      ok: false,
+      skipped: false,
+      ...publicNetSuiteError(json, "COMS sales value record creation failed"),
+    };
+  }
+
+  console.log(`✅ Custom record created successfully → ID ${json.id}`);
+  return { ok: true, skipped: false, id: json.id || null };
 }
 
 function cacheGet(key) {
@@ -355,11 +440,25 @@ async function getItemMapCached() {
       if (!id) continue;
 
       const name = i.name || i.itemName || i["Name"] || i["Item Name"] || "";
+      const itemClass =
+        i.class ||
+        i.Class ||
+        i.itemClass ||
+        i["Item Class"] ||
+        i.type ||
+        i.Type ||
+        i.itemType ||
+        i["Item Type"] ||
+        "";
       const baseprice = parseFloat(
         i.baseprice || i["Base Price"] || i["base price"] || i.price || 0
       );
 
-      itemMap[id] = { name, baseprice: Number.isFinite(baseprice) ? baseprice : 0 };
+      itemMap[id] = {
+        name,
+        baseprice: Number.isFinite(baseprice) ? baseprice : 0,
+        class: itemClass,
+      };
     }
 
     itemFeedCache.data = itemMap;
@@ -1333,6 +1432,56 @@ router.get("/:id/related-records", async (req, res) => {
 });
 
 /* =====================================================
+   === GET SALES ORDER DEPOSITS ========================
+   ===================================================== */
+router.get("/:id/deposits", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const auth = req.headers.authorization || "";
+    const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+
+    const depRes = await fetch(
+      `${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`,
+      {
+        headers: bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {},
+      }
+    );
+    if (!depRes.ok) throw new Error(`Deposit route returned ${depRes.status}`);
+
+    const depJson = await depRes.json();
+    const allDeposits = depJson.results || depJson.data || [];
+
+    const normalizeKeys = (obj) => {
+      const newObj = {};
+      for (const [k, v] of Object.entries(obj)) {
+        const cleanKey = k.replace(/\u00A0/g, " ");
+        newObj[cleanKey.trim()] = v;
+      }
+      return newObj;
+    };
+
+    const deposits = allDeposits
+      .map(normalizeKeys)
+      .filter((d) => String(d["SO Id"]) === String(id))
+      .map((d) => ({
+        link: d["Document Number"] || "-",
+        amount:
+          parseFloat(String(d["Amount"] || "0").replace(/[^\d.-]/g, "")) || 0,
+        method: d["Payment Method"] || "-",
+        soId: String(d["SO Id"] || ""),
+      }));
+
+    return res.json({ ok: true, salesOrderId: id, deposits });
+  } catch (err) {
+    console.error("❌ GET /salesorder/:id/deposits error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to fetch deposits",
+    });
+  }
+});
+
+/* =====================================================
    === GET SALES ORDER (for read-only view) =============
    ===================================================== */
 router.get("/:id", async (req, res) => {
@@ -1436,11 +1585,13 @@ router.get("/:id", async (req, res) => {
     const so = await nsGet(soPath, userId, "sb");
     so._netSuiteAppBaseUrl = netSuiteAppBaseUrl();
 
-    try {
-      const relatedRecords = await getSalesOrderRelatedRecords(id, userId);
-      Object.assign(so, relatedRecords);
-    } catch (err) {
-      console.warn("⚠️ Could not enrich sales order related records:", err.message);
+    if (!lite) {
+      try {
+        const relatedRecords = await getSalesOrderRelatedRecords(id, userId);
+        Object.assign(so, relatedRecords);
+      } catch (err) {
+        console.warn("⚠️ Could not enrich sales order related records:", err.message);
+      }
     }
 
     // 🔎 Fetch *minimal* entity/customer record
@@ -1573,7 +1724,8 @@ router.get("/:id", async (req, res) => {
 
           return {
             lineId,
-            item: { id: itemId, refName: itemName },
+            item: { id: itemId, refName: itemName, class: info.class || "" },
+            itemClass: info.class || "",
             quantity: qty,
             amount,
             vat,
@@ -1808,93 +1960,29 @@ router.post("/:id/commit", async (req, res) => {
 
     console.log(`✅ Sales Order ${id} approved via RESTlet`);
     cacheDeleteSalesOrder(id);
-    let linkedTransferOrders = {
-      ok: true,
-      found: 0,
-      approved: [],
-      failed: [],
-    };
-
-    try {
-      linkedTransferOrders = await approveLinkedTransferOrders(id, userId);
-    } catch (err) {
-      linkedTransferOrders = {
+    const linkedTransferOrdersPromise = approveLinkedTransferOrders(id, userId).catch((err) => {
+      console.error("Failed to approve linked Transfer Orders:", err.message);
+      return {
         ok: false,
         found: 0,
         approved: [],
         failed: [{ id: null, tranid: null, error: err.message }],
       };
-      console.error("Failed to approve linked Transfer Orders:", err.message);
-    }
+    });
 
-    let comsSalesValue = {
-      ok: false,
-      skipped: false,
-      error: "COMS sales value record was not created.",
-    };
-
-    // ==========================================================
-    // 🧾 Create custom record: customrecord_sb_coms_sales_value
-    // ==========================================================
-    try {
-      console.log("📊 Creating customrecord_sb_coms_sales_value for SO:", id);
-
-      // If you want to speed this up too, you can do fields= here (once you confirm your field IDs)
-      const soData = await nsGet(`/salesOrder/${id}`, userId, "sb");
-
-      const soInternalId = soData?.id || soData?.internalId || id;
-      const grossValue = soData?.custbody_stc_total_after_discount || 0;
-      const profitValue = soData?.custrecord_sb_coms_profit || 0;
-      const salesRep = soData?.custbody_sb_bedspecialist?.id || null;
-
-      const recordBody = {
-        custrecord_sb_coms_date: new Date().toISOString().split("T")[0],
-        custrecord_sb_coms_sales_order: { id: String(soInternalId) },
-        custrecord_sb_coms_gross: parseFloat(grossValue) || 0,
-        custrecord_sb_coms_profit: parseFloat(profitValue) || 0,
-        ...(salesRep && { custrecord_sb_coms_sales_rep: { id: String(salesRep) } }),
+    const comsSalesValuePromise = createComsSalesValueRecord(id, userId).catch((err) => {
+      console.error("Failed to create customrecord_sb_coms_sales_value:", err.message);
+      return {
+        ok: false,
+        skipped: false,
+        error: err.message || "COMS sales value record was not created.",
       };
+    });
 
-      console.log("🧾 Custom record payload:", recordBody);
-
-      const restletUrl = getComsSalesValueRestletUrl();
-
-      if (!restletUrl) {
-        comsSalesValue = {
-          ok: false,
-          skipped: true,
-          error: "COMS sales value RESTlet URL is not configured for production.",
-        };
-        console.warn("Skipping COMS sales value custom record:", comsSalesValue.error);
-      } else {
-        const comsAuthHeader = await getAuthHeader(restletUrl, "POST", userId);
-        const resCreate = await fetch(restletUrl, {
-          method: "POST",
-          headers: {
-            ...comsAuthHeader,
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(recordBody),
-        });
-
-        const t = await resCreate.text();
-        const json = parseMaybeJson(t);
-        if (!resCreate.ok || !json.ok) {
-          const safeError = publicNetSuiteError(json, "COMS sales value record creation failed");
-          comsSalesValue = { ok: false, skipped: false, ...safeError };
-        }
-
-        if (resCreate.ok && json.ok) {
-          comsSalesValue = { ok: true, skipped: false, id: json.id || null };
-        console.log(`✅ Custom record created successfully → ID ${json.id}`);
-      } else {
-        console.error("❌ RESTlet returned error:", json);
-      }
-      }
-    } catch (err) {
-      console.error("❌ Failed to create customrecord_sb_coms_sales_value:", err.message);
-    }
-
+    const [linkedTransferOrders, comsSalesValue] = await Promise.all([
+      linkedTransferOrdersPromise,
+      comsSalesValuePromise,
+    ]);
     return res.json({
       ok: true,
       message: data.message || "Sales Order approved",

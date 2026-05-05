@@ -25,6 +25,7 @@
     <script src="/js/salesOrderView.js" defer></script>
     <script src="/js/salesItemLineCommon.js" defer></script>
     <script src="/js/salesViewItemLine.js" defer></script>
+    <script src="/js/orderPromotions.js" defer></script>
     <!-- Virtual Sales Assistant -->
     <script src="/assistant/assistant.js"></script>
     <script type="module" src="/assistant/assistantHooks.js"></script>
@@ -195,6 +196,12 @@
                     <p>Outstanding Balance: <span id="outstandingBalance">£0.00</span></p>
 
                     <!-- 🌀 Spinner + Toast now INSIDE the aside -->
+                    <button
+                        id="manageIntercompanyBtn"
+                        type="button"
+                        class="btn-secondary summary-action-btn hidden"
+                    >Manage Intercompany</button>
+
                     <div id="commitInlineStatus" class="inline-status hidden">
                         <span class="mini-spinner" aria-hidden="true"></span>
                         <span id="commitInlineText">Committing…</span>
@@ -316,6 +323,7 @@
                         </tbody>
                     </table>
                 </div>
+
             </section>
             <!-- === ACTION BUTTONS === -->
             <div class="actions">

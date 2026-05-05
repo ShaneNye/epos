@@ -113,6 +113,10 @@ function recordList(value) {
     .map((text) => ({ refName: text }));
 }
 
+function hasRelatedRecord(value) {
+  return recordList(value).some((record) => recordId(record) || recordLabel(record));
+}
+
 function recordLabel(record) {
   return String(record?.refName || record?.name || record?.text || record?.value || record?.id || "").trim();
 }
@@ -211,9 +215,12 @@ function renderDispatchTrack(value, scheduleHtml = "") {
 
 function renderRelatedRecords(so, orderManagementRow = null) {
   const related = so?.relatedRecords || {};
+  const pairedSalesOrder =
+    related.custbody_sb_pairedsalesorder || so?.custbody_sb_pairedsalesorder;
+
   renderRecordLinks(
     "relatedIntercompanySalesOrder",
-    related.custbody_sb_pairedsalesorder || so?.custbody_sb_pairedsalesorder,
+    pairedSalesOrder,
     so,
     "salesorder",
     "-"
@@ -229,6 +236,58 @@ function renderRelatedRecords(so, orderManagementRow = null) {
     related.custbody_exported_to_dispatchtrack ?? so?.custbody_exported_to_dispatchtrack,
     orderManagementRow?.Schedule || ""
   );
+  updateManageIntercompanyButton(!hasRelatedRecord(pairedSalesOrder));
+}
+
+async function openIntercompanyConsole() {
+  const w = 1300;
+  const h = 850;
+  const left = (window.screen.width / 2) - (w / 2);
+  const top = (window.screen.height / 2) - (h / 2);
+  const popup = window.open(
+    "about:blank",
+    "IntercompanyConsole",
+    `width=${w},height=${h},top=${top},left=${left},resizable=yes,scrollbars=yes`
+  );
+
+  if (!popup || popup.closed || typeof popup.closed === "undefined") {
+    alert("Please allow popups for this site to open the Intercompany Console.");
+    return;
+  }
+
+  popup.document.write("<p style=\"font-family: sans-serif; padding: 1rem;\">Opening Intercompany Console...</p>");
+
+  try {
+    const res = await fetch("/api/config/intercompany-url");
+    const data = await res.json();
+    const url = String(data?.url || "").trim();
+
+    if (!res.ok || !url) {
+      popup.close();
+      alert("Intercompany URL is not configured.");
+      return;
+    }
+
+    popup.location.href = url;
+    popup.focus();
+  } catch (err) {
+    popup.close();
+    console.error("Failed to load intercompany URL:", err);
+    alert("Failed to load Intercompany URL.");
+  }
+}
+
+function updateManageIntercompanyButton(show) {
+  const button = document.getElementById("manageIntercompanyBtn");
+  if (!button) return;
+  button.classList.toggle("hidden", !show);
+}
+
+function bindManageIntercompanyButton() {
+  const button = document.getElementById("manageIntercompanyBtn");
+  if (!button || button.dataset.bound === "1") return;
+  button.dataset.bound = "1";
+  button.addEventListener("click", openIntercompanyConsole);
 }
 
 async function loadRelatedRecords(headers, so, tranId) {
@@ -274,6 +333,26 @@ async function loadOrderManagementRow(headers, so, tranId) {
   }
 }
 
+async function loadSalesOrderDeposits(headers, tranId) {
+  try {
+    const res = await fetch(
+      `/api/netsuite/salesorder/${encodeURIComponent(tranId)}/deposits`,
+      { headers }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Deposit request failed");
+
+    window._currentDeposits = Array.isArray(data.deposits) ? data.deposits : [];
+    renderDeposits(window._currentDeposits);
+    return window._currentDeposits;
+  } catch (err) {
+    console.warn("⚠️ Could not load deposits:", err.message || err);
+    window._currentDeposits = window._currentDeposits || [];
+    return window._currentDeposits;
+  }
+}
+
 document.addEventListener("click", (event) => {
   const link = event.target.closest(".related-popup-link");
   if (!link) return;
@@ -293,7 +372,9 @@ document.addEventListener("click", (event) => {
 ===================================================== */
 document.addEventListener("DOMContentLoaded", async () => {
   console.log("💡 SalesOrderView init");
+  window.orderPromotionsEnabled = false;
   setupSalesViewTabs();
+  bindManageIntercompanyButton();
 
   function normaliseStoreName(name) {
     return String(name || "")
@@ -481,7 +562,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         console.warn("⚠️ Failed to preload item options:", err.message || err);
         return {};
       }),
-      fetch(`/api/netsuite/salesorder/${tranId}?lite=1`, { headers }),
+      fetch(`/api/netsuite/salesorder/${tranId}?lite=1&deposits=0`, { headers }),
       locationsPromise,
       usersPromise,
       fetch("/api/netsuite/fulfilmentmethods").catch(() => null),
@@ -526,6 +607,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       renderDeposits(window._currentDeposits);
     } else {
       window._currentDeposits = [];
+      loadSalesOrderDeposits(headers, tranId);
     }
 
     // ==================================================
@@ -797,8 +879,23 @@ document.addEventListener("DOMContentLoaded", async () => {
     const statusId = String(so.orderStatus?.id || so.orderstatus?.id || so.orderstatus || so.status || "")
       .trim()
       .toUpperCase();
-    const isPendingApproval = statusId === "A";
-    const isPendingFulfillment = statusId === "B";
+    const statusNameForEdit = String(
+      so.orderStatus?.refName ||
+        so.orderstatus?.refName ||
+        so.statusRef ||
+        (typeof so.status === "object" ? so.status.refName : so.status) ||
+        ""
+    )
+      .trim()
+      .toUpperCase();
+    const compactStatusId = `${statusId} ${statusNameForEdit}`.replace(/[^A-Z]/g, "");
+    const isPendingApproval = statusId === "A" || compactStatusId.includes("PENDINGAPPROVAL");
+    const isPendingFulfillment = statusId === "B" || compactStatusId.includes("PENDINGFULFILLMENT");
+
+    if (isPendingApproval) {
+      window.orderPromotionsEnabled = true;
+      window.initOrderPromotions?.();
+    }
 
     if (isPendingApproval) {
       console.log("🔓 Pending approval – unlock editable sales order fields");
@@ -861,6 +958,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         } else if (
           el.id === "newMemoBtn" ||
           el.id === "printBtn" ||
+          el.id === "manageIntercompanyBtn" ||
           el.classList.contains("sales-view-tab")
         ) {
           el.disabled = false;
@@ -1373,10 +1471,11 @@ function validateSalesViewItemsBeforeSave() {
     if (itemId) return false;
 
     const itemText = (row.querySelector(".item-search")?.value || "").trim();
-    const amount = (row.querySelector(".item-amount")?.value || "").trim();
-    const sale = (row.querySelector(".item-saleprice")?.value || "").trim();
+    const amount = parseFloat(row.querySelector(".item-amount")?.value || "0") || 0;
+    const sale = parseFloat(row.querySelector(".item-saleprice")?.value || "0") || 0;
+    const discount = parseFloat(row.querySelector(".item-discount")?.value || "0") || 0;
     const options = (row.querySelector(".options-summary")?.innerText || "").trim();
-    return !!(itemText || amount || sale || options);
+    return !!(itemText || amount !== 0 || sale !== 0 || discount !== 0 || options);
   });
 
   dirtyEmptyRows.forEach((row) => {
@@ -1551,8 +1650,10 @@ function updateActionButton(orderStatusObj, tranId, so) {
           row.querySelector(".fulfilmentSelect");
 
         let fulfilmentMethod = fulfilSel?.value?.trim() || "";
+        const itemClass = String(row.dataset.itemClass || "").trim();
+        const isServiceLine = itemClass.toLowerCase().includes("service");
 
-        if (!fulfilmentMethod) {
+        if (!fulfilmentMethod && !isServiceLine) {
           const currentRef =
             row.querySelector(".fulfilment-cell")?.textContent?.trim() || "";
           if (currentRef && Array.isArray(window._fulfilmentMap)) {
@@ -1562,6 +1663,8 @@ function updateActionButton(orderStatusObj, tranId, so) {
             fulfilmentMethod = match?.id || "";
           }
         }
+
+        if (isServiceLine) fulfilmentMethod = "";
 
         const inventoryDetail = row.querySelector(".item-inv-detail")?.value || "";
         const discountPct =
@@ -1585,6 +1688,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
           lineId: row.dataset.lineid || "",
           itemId,
           item: itemId ? { id: itemId } : undefined,
+          class: itemClass,
           quantity,
           fulfilmentMethod: fulfilmentMethod || null,
           inventoryDetail: inventoryDetail || null,
