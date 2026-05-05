@@ -187,6 +187,23 @@ function isCheckedNetSuiteField(value) {
   return text === "t" || text === "true" || text === "yes" || text === "1";
 }
 
+function isPendingFulfillmentSalesOrder(so) {
+  const statusId = String(so?.orderStatus?.id || so?.orderstatus?.id || so?.orderstatus || so?.status || "")
+    .trim()
+    .toUpperCase();
+  const statusName = String(
+    so?.orderStatus?.refName ||
+      so?.orderstatus?.refName ||
+      so?.statusRef ||
+      (typeof so?.status === "object" ? so.status.refName : so?.status) ||
+      ""
+  )
+    .trim()
+    .toUpperCase();
+  const compact = `${statusId} ${statusName}`.replace(/[^A-Z]/g, "");
+  return statusId === "B" || compact.includes("PENDINGFULFILLMENT");
+}
+
 function extractHref(html) {
   const text = String(html || "");
   const hrefMatch = text.match(/href=["']([^"']+)["']/i);
@@ -236,7 +253,9 @@ function renderRelatedRecords(so, orderManagementRow = null) {
     related.custbody_exported_to_dispatchtrack ?? so?.custbody_exported_to_dispatchtrack,
     orderManagementRow?.Schedule || ""
   );
-  updateManageIntercompanyButton(!hasRelatedRecord(pairedSalesOrder));
+  updateManageIntercompanyButton(
+    isPendingFulfillmentSalesOrder(so) && !hasRelatedRecord(pairedSalesOrder)
+  );
 }
 
 async function openIntercompanyConsole() {

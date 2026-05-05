@@ -325,13 +325,17 @@ if (window.location.pathname.includes("/quote/view/")) {
       button = document.createElement("button");
       button.id = "pendingReceiptPrintBtn";
       button.type = "button";
-      button.className = "btn-primary";
-      button.style.position = "fixed";
-      button.style.right = "1rem";
-      button.style.bottom = "1rem";
-      button.style.zIndex = "3000";
-      button.style.boxShadow = "0 10px 22px rgba(0,0,0,0.18)";
-      document.body.appendChild(button);
+    }
+
+    button.className = "btn-secondary";
+    button.removeAttribute("style");
+
+    const actions = document.querySelector(".actions");
+    const saveButton = [...(actions?.querySelectorAll("button") || [])].find(
+      (entry) => entry.textContent.trim() === "Save Quote"
+    );
+    if (actions && button.parentElement !== actions) {
+      actions.insertBefore(button, saveButton || null);
     }
 
     button.hidden = false;

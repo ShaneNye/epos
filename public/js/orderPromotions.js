@@ -2,6 +2,8 @@
   const state = {
     promotions: { upsells: [], basketDiscounts: [] },
     webItemsById: new Map(),
+    kioskItemsById: new Map(),
+    kioskItemsByName: new Map(),
     sizeOptions: [],
     ready: false,
     syncing: false,
@@ -97,6 +99,16 @@
     return {};
   }
 
+  function kioskItemForItem(item) {
+    const id = itemId(item);
+    if (id && state.kioskItemsById.has(id)) return state.kioskItemsById.get(id);
+
+    const name = clean(itemName(item));
+    if (name && state.kioskItemsByName.has(name)) return state.kioskItemsByName.get(name);
+
+    return {};
+  }
+
   function fieldValue(record, names) {
     if (!record) return "";
     for (const name of names) {
@@ -176,9 +188,35 @@
     return imageUrl;
   }
 
-  function itemImage(item) {
+  function imageUrlVariants(value) {
+    const image = extractImageUrl(value);
+    if (!image) return [];
+
+    const proxied = proxiedImageUrl(image);
+    return [image, proxied].filter((entry, index, list) => entry && list.indexOf(entry) === index);
+  }
+
+  function uniqueImages(values) {
+    const seen = new Set();
+    const images = [];
+
+    values.forEach((value) => {
+      imageUrlVariants(value).forEach((url) => {
+        if (seen.has(url)) return;
+        seen.add(url);
+        images.push(url);
+      });
+    });
+
+    return images;
+  }
+
+  function itemImages(item) {
     const webItem = webItemForItem(item);
-    const image = [
+    const kioskItem = kioskItemForItem(item);
+    return uniqueImages([
+      fieldValue(kioskItem, ["Item Image", "ItemImage", "itemImage", "image", "Image", "Image URL", "imageUrl"]),
+      ...imageLikeValues(kioskItem),
       fieldValue(item, ["Item Image", "ItemImage", "itemImage", "image", "Image", "Image URL", "imageUrl"]),
       fieldValue(webItem, [
         "Item Image",
@@ -196,9 +234,49 @@
       ]),
       ...imageLikeValues(item),
       ...imageLikeValues(webItem),
-    ].map(extractImageUrl).find(Boolean) || "";
+    ]);
+  }
 
-    return proxiedImageUrl(image);
+  function itemImage(item) {
+    return itemImages(item)[0] || "";
+  }
+
+  function imageMarkup(images, alt, fallbackText) {
+    const urls = Array.isArray(images) ? images.filter(Boolean) : [];
+    if (!urls.length) return `<span>${escapeHtml(fallbackText)}</span>`;
+
+    return `<img src="${escapeHtml(urls[0])}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async" data-fallback-srcs="${escapeHtml(JSON.stringify(urls))}" data-fallback-text="${escapeHtml(fallbackText)}">`;
+  }
+
+  window.orderPromotionsImageFallback = function (img) {
+    if (!img) return;
+
+    let urls = [];
+    try {
+      urls = JSON.parse(img.dataset.fallbackSrcs || "[]");
+    } catch {
+      urls = [];
+    }
+
+    const nextIndex = Number(img.dataset.fallbackIndex || 0) + 1;
+    if (urls[nextIndex]) {
+      img.dataset.fallbackIndex = String(nextIndex);
+      img.src = urls[nextIndex];
+      return;
+    }
+
+    const parent = img.closest(".order-upsell-thumb");
+    if (parent) {
+      parent.innerHTML = `<span>${escapeHtml(img.dataset.fallbackText || "EP")}</span>`;
+    }
+  };
+
+  function bindImageFallbacks(root) {
+    root?.querySelectorAll("img[data-fallback-srcs]").forEach((img) => {
+      if (img.__orderPromotionFallbackBound) return;
+      img.__orderPromotionFallbackBound = true;
+      img.addEventListener("error", () => window.orderPromotionsImageFallback(img));
+    });
   }
 
   function retailPrice(item) {
@@ -727,19 +805,16 @@
       ${hasMissing ? `<p class="order-upsell-warning">Missing basket item: ${escapeHtml(state.missingBasketItems.join(", "))}</p>` : ""}
       <div class="order-upsell-list">
       ${suggestions.map(({ promotion, item, retail, sale }) => {
-        const image = itemImage(item);
+        const name = itemName(item);
+        const fallbackText = name.slice(0, 2).toUpperCase();
         return `
         <article class="order-upsell-card">
           <div class="order-upsell-thumb">
-            ${
-              image
-                ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(itemName(item))}" loading="lazy" decoding="async">`
-                : `<span>${escapeHtml(itemName(item).slice(0, 2).toUpperCase())}</span>`
-            }
+            ${imageMarkup(itemImages(item), name, fallbackText)}
           </div>
           <div>
             <span class="order-upsell-tag">${Number(promotion.discountPercent || 0).toFixed(1).replace(/\.0$/, "")}% off</span>
-            <strong>${escapeHtml(itemName(item))}</strong>
+            <strong>${escapeHtml(name)}</strong>
             ${promotion.message ? `<p>${escapeHtml(promotion.message)}</p>` : ""}
             <small>${money(sale)} retail ${money(retail)}</small>
           </div>
@@ -754,16 +829,12 @@
           <strong>Stock alternatives</strong>
         </div>
         ${fulfilmentSuggestions.map(({ line, item, stock, suggestionKey }) => {
-          const image = item ? itemImage(item) : "";
           const name = item ? itemName(item) : line.name;
+          const fallbackText = name.slice(0, 2).toUpperCase();
           return `
             <article class="order-upsell-card order-fulfilment-card">
               <div class="order-upsell-thumb">
-                ${
-                  image
-                    ? `<img src="${escapeHtml(image)}" alt="${escapeHtml(name)}" loading="lazy" decoding="async">`
-                    : `<span>${escapeHtml(name.slice(0, 2).toUpperCase())}</span>`
-                }
+                ${imageMarkup(item ? itemImages(item) : [], name, fallbackText)}
               </div>
               <div class="order-stock-copy">
                 <span class="order-upsell-tag">${safeInt(stock.qty)} available</span>
@@ -795,6 +866,7 @@
         }).join("")}
       </div>
     `;
+    bindImageFallbacks(panel);
   }
 
   function setFulfilmentToWarehouse(row) {
@@ -928,6 +1000,26 @@
     }
   }
 
+  async function loadKioskImageData() {
+    try {
+      const data = await fetchJson("/api/netsuite/kiosk-items");
+      const rows = Array.isArray(data.results) ? data.results : (Array.isArray(data.data) ? data.data : []);
+      state.kioskItemsById.clear();
+      state.kioskItemsByName.clear();
+
+      rows.forEach((row) => {
+        const id = itemId(row);
+        const name = clean(itemName(row));
+        if (id) state.kioskItemsById.set(id, row);
+        if (name && !state.kioskItemsByName.has(name)) state.kioskItemsByName.set(name, row);
+      });
+    } catch (err) {
+      console.warn("Failed to load kiosk item image data for promotions:", err.message);
+      state.kioskItemsById.clear();
+      state.kioskItemsByName.clear();
+    }
+  }
+
   function itemNameMatchesSize(cleanName, sizeValue) {
     const selectedSize = clean(sizeValue);
     if (!cleanName || !selectedSize) return false;
@@ -1051,7 +1143,7 @@
     }
     state.initialized = true;
     bindEvents();
-    await Promise.all([loadPromotions(), loadWebManagementData(), loadSizeOptions()]);
+    await Promise.all([loadPromotions(), loadWebManagementData(), loadKioskImageData(), loadSizeOptions()]);
     await waitForCatalogue();
     state.ready = true;
     scheduleSync();
