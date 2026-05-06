@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico" />
+  <title>SuitePim Reasons To Buy</title>
+
+  <link rel="stylesheet" href="/assistant/assistant.css" />
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/suitepim.css" />
+
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/js/suitepimPreload.js" defer></script>
+  <script src="/assistant/assistant.js"></script>
+  <script type="module" src="/assistant/assistantHooks.js"></script>
+  <script src="/js/suitepimReasonsToBuy.js" defer></script>
+</head>
+
+<body>
+  <div id="menu"></div>
+
+  <main class="content suitepim-page">
+    <header class="suitepim-header">
+      <div>
+        <p class="suitepim-kicker">SuitePim</p>
+        <h1>Reasons To Buy</h1>
+      </div>
+    </header>
+
+    <nav class="suitepim-subnav" aria-label="SuitePim sections">
+      <a class="suitepim-subnav-link" href="/suitepim">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19V5"></path><path d="M8 19v-6"></path><path d="M13 19v-9"></path><path d="M18 19V8"></path></svg>
+        Dashboard
+      </a>
+      <a class="suitepim-subnav-link" href="/suitepim/product-data">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 5h16"></path><path d="M4 12h16"></path><path d="M4 19h16"></path></svg>
+        Product Data
+      </a>
+      <a class="suitepim-subnav-link" href="/suitepim/web-management">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h10"></path><path d="M4 18h13"></path><path d="M18 11h2a2 2 0 0 1 2 2v3"></path><path d="M16 14l2-3 2 3"></path></svg>
+        Web Management
+      </a>
+      <a class="suitepim-subnav-link" href="/suitepim/product-validation">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 12l2 2 4-5"></path><path d="M4 4h16v16H4z"></path></svg>
+        Product Validation
+      </a>
+      <a class="suitepim-subnav-link active" href="/suitepim/reasons-to-buy">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.9 6.6 19.8l1-6.1-4.4-4.3 6.1-.9L12 3z"></path></svg>
+        Reasons To Buy
+      </a>
+    </nav>
+
+    <section class="suitepim-toolbar suitepim-reasons-toolbar" aria-label="Reasons To Buy controls">
+      <div class="suitepim-search">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M16.5 16.5 21 21"></path></svg>
+        <input id="suitepimSearch" type="search" placeholder="Search name, description, item..." />
+      </div>
+      <select id="suitepimStateFilter" aria-label="Record state filter">
+        <option value="all">All records</option>
+        <option value="changed">Changed records</option>
+        <option value="new">New records</option>
+      </select>
+      <button id="suitepimAddBtn" class="suitepim-primary-btn" type="button">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 5v14"></path><path d="M5 12h14"></path></svg>
+        New record
+      </button>
+      <button id="suitepimRefreshBtn" class="suitepim-icon-btn" type="button" title="Refresh" aria-label="Refresh">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 6v5h-5"></path><path d="M4 18v-5h5"></path><path d="M18.3 9A7 7 0 0 0 6.8 6.7L4 9"></path><path d="M5.7 15a7 7 0 0 0 11.5 2.3L20 15"></path></svg>
+      </button>
+      <button id="suitepimSaveBtn" class="suitepim-primary-btn" type="button">
+        <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><path d="M17 21v-8H7v8"></path><path d="M7 3v5h8"></path></svg>
+        Save changes
+      </button>
+    </section>
+
+    <section class="suitepim-summary" aria-label="Reasons To Buy summary">
+      <div><span id="suitepimTotalCount">0</span><small>records</small></div>
+      <div><span id="suitepimVisibleCount">0</span><small>visible</small></div>
+      <div><span id="suitepimChangedCount">0</span><small>changed</small></div>
+      <div><span id="suitepimNewCount">0</span><small>new</small></div>
+    </section>
+
+    <section id="suitepimStatus" class="suitepim-status" aria-live="polite"></section>
+    <section id="suitepimPushReport" class="suitepim-push-report" hidden aria-label="Reasons To Buy save report"></section>
+    <section id="suitepimMount" class="suitepim-shell" aria-label="Reasons To Buy workspace">
+      <div class="suitepim-loading"><div class="suitepim-spinner" aria-hidden="true"></div><p>Loading Reasons To Buy...</p></div>
+    </section>
+  </main>
+
+  <div id="suitepimModal" class="suitepim-modal hidden" role="dialog" aria-modal="true">
+    <div class="suitepim-modal-panel">
+      <div class="suitepim-modal-header">
+        <h2 id="suitepimModalTitle">Select value</h2>
+        <button id="suitepimModalClose" class="suitepim-icon-btn" type="button" title="Close" aria-label="Close">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg>
+        </button>
+      </div>
+      <input id="suitepimModalSearch" type="search" placeholder="Search options..." />
+      <div id="suitepimModalOptions" class="suitepim-modal-options"></div>
+      <div class="suitepim-modal-actions">
+        <button id="suitepimModalCancel" type="button">Cancel</button>
+        <button id="suitepimModalSave" class="suitepim-primary-btn" type="button">Apply</button>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

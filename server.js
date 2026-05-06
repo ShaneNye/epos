@@ -989,6 +989,9 @@ app.get("/suitepim", (req, res) => sendNoCacheFile(res, path.join(__dirname, "pu
 app.get("/suitepim/product-data", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-product-data.html")))
 app.get("/suitepim/web-management", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-web-management.html")))
 app.get("/suitepim/product-validation", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-product-validation.html")))
+app.get(["/suitepim/reasons-to-buy", "/suitepim/reasons-to-buy.html"], (req, res) =>
+  sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-reasons-to-buy.html"))
+)
 app.get("/sales/reciept/:id", (req, res) => sendNoCacheFile(res, path.join(__dirname,"public", "salesOrdReceipt.html")));
 
 app.get("/quote/view/:id", (req, res) =>

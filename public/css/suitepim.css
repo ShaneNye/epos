@@ -555,6 +555,283 @@ body.sidebar-expanded .suitepim-page-wide {
   grid-template-columns: minmax(260px, 1fr) 180px 42px auto;
 }
 
+.suitepim-reasons-toolbar {
+  grid-template-columns: minmax(260px, 1fr) 170px auto 42px auto;
+}
+
+.suitepim-reasons-table {
+  min-width: 1180px;
+}
+
+.suitepim-reasons-layout {
+  display: grid;
+  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  min-height: 560px;
+}
+
+.suitepim-reasons-list {
+  border-right: 1px solid #e2e8f0;
+  background: #f8fafc;
+  min-width: 0;
+}
+
+.suitepim-reasons-list-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  padding: 14px;
+}
+
+.suitepim-reasons-list-head h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.suitepim-reasons-list-head span {
+  border-radius: 999px;
+  background: #e0f2fe;
+  color: #075985;
+  font-size: 0.78rem;
+  font-weight: 900;
+  padding: 4px 9px;
+}
+
+.suitepim-reasons-list-body {
+  display: grid;
+  gap: 6px;
+  max-height: 620px;
+  overflow: auto;
+  padding: 10px;
+}
+
+.suitepim-reasons-record {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+  font: inherit;
+  padding: 10px;
+  text-align: left;
+}
+
+.suitepim-reasons-record > span:nth-child(2) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.suitepim-reasons-record-icon,
+.suitepim-reasons-icon-preview-media {
+  display: grid;
+  place-items: center;
+  flex: 0 0 auto;
+  width: 42px;
+  height: 42px;
+  border: 1px solid #dbe4ef;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.suitepim-reasons-icon-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.suitepim-reasons-icon-fallback {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  color: #94a3b8;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.suitepim-reasons-record:hover,
+.suitepim-reasons-record.active {
+  border-color: #bae6fd;
+  background: #fff;
+}
+
+.suitepim-reasons-record strong,
+.suitepim-reasons-record small {
+  display: block;
+}
+
+.suitepim-reasons-record strong {
+  color: #0f172a;
+  font-size: 0.92rem;
+}
+
+.suitepim-reasons-record small {
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.suitepim-reasons-record i {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: #fef3c7;
+  color: #92400e;
+  font-size: 0.7rem;
+  font-style: normal;
+  font-weight: 900;
+  padding: 4px 7px;
+}
+
+.suitepim-reasons-form-panel {
+  min-width: 0;
+  background: #fff;
+  padding: 18px;
+}
+
+.suitepim-reasons-form-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.suitepim-reasons-form-head h2 {
+  margin: 0 0 5px;
+  color: #0f172a;
+  font-size: 1.25rem;
+}
+
+.suitepim-reasons-form-head p {
+  margin: 0;
+  color: #64748b;
+  font-size: 0.88rem;
+}
+
+.suitepim-reasons-form-head > span {
+  border-radius: 999px;
+  background: #dcfce7;
+  color: #166534;
+  font-size: 0.76rem;
+  font-weight: 900;
+  padding: 6px 10px;
+}
+
+.suitepim-reasons-form-head > span.is-dirty {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.suitepim-reasons-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.suitepim-reasons-form label {
+  display: grid;
+  gap: 7px;
+  color: #475569;
+  font-size: 0.8rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.suitepim-reasons-form label[data-field-type="Text Area"],
+.suitepim-reasons-form label[data-field-type="rich-text"],
+.suitepim-reasons-form label[data-field-type="multiple-select"] {
+  grid-column: 1 / -1;
+}
+
+.suitepim-reasons-form input[type="text"],
+.suitepim-reasons-form input[type="number"],
+.suitepim-reasons-form textarea,
+.suitepim-reasons-form select {
+  width: 100%;
+  min-height: 42px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font: inherit;
+  font-weight: 500;
+  padding: 9px 11px;
+  box-sizing: border-box;
+  text-transform: none;
+}
+
+.suitepim-reasons-form textarea {
+  min-height: 130px;
+  resize: vertical;
+}
+
+.suitepim-reasons-check {
+  display: flex !important;
+  grid-template-columns: none !important;
+  align-items: center;
+  gap: 10px !important;
+  min-height: 42px;
+  text-transform: none !important;
+}
+
+.suitepim-reasons-check input {
+  width: 18px;
+  height: 18px;
+}
+
+.suitepim-reasons-picker-row {
+  display: grid;
+  gap: 6px;
+}
+
+.suitepim-reasons-icon-preview {
+  display: grid;
+  grid-template-columns: 72px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  padding: 10px;
+}
+
+.suitepim-reasons-icon-preview .suitepim-reasons-icon-preview-media {
+  width: 72px;
+  height: 72px;
+  background: #fff;
+}
+
+.suitepim-reasons-icon-preview-copy {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  text-transform: none;
+}
+
+.suitepim-reasons-icon-preview-copy strong {
+  color: #0f172a;
+  font-size: 0.95rem;
+}
+
+.suitepim-reasons-picker-row small {
+  color: #64748b;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.4;
+  text-transform: none;
+}
+
 .suitepim-search {
   position: relative;
 }
@@ -1655,11 +1932,22 @@ body.sidebar-expanded .suitepim-page-wide {
   }
 
   .suitepim-validation-toolbar,
+  .suitepim-reasons-toolbar,
+  .suitepim-reasons-layout,
   .suitepim-dashboard-controls,
   .suitepim-performance-grid,
   .suitepim-hub-grid,
   .suitepim-hub-hero {
     grid-template-columns: 1fr;
+  }
+
+  .suitepim-reasons-list {
+    border-right: 0;
+    border-bottom: 1px solid #e2e8f0;
+  }
+
+  .suitepim-reasons-list-body {
+    max-height: 320px;
   }
 
   .suitepim-performance-kpis {
@@ -1674,6 +1962,7 @@ body.sidebar-expanded .suitepim-page-wide {
 
   .suitepim-header,
   .suitepim-toolbar,
+  .suitepim-reasons-form,
   .suitepim-filter-row,
   .suitepim-bulk-row {
     grid-template-columns: 1fr;

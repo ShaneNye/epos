@@ -17,6 +17,18 @@ const WEB_MANAGEMENT_STALE_MS = Number(process.env.SUITEPIM_WEB_MANAGEMENT_STALE
 const WEB_MANAGEMENT_REFRESH_INTERVAL_MS = Number(
   process.env.SUITEPIM_WEB_MANAGEMENT_REFRESH_INTERVAL_MS || WEB_MANAGEMENT_CACHE_TTL_MS
 );
+const REASONS_TO_BUY_RECORD_TYPE = "customrecord_sb_reasons_to_buy";
+const REASONS_TO_BUY_ICON_RECORD_TYPE =
+  process.env.SUITEPIM_REASONS_TO_BUY_ICONS_RECORD_TYPE || "customrecord_sb_reasons_to_buy_icons";
+const reasonsToBuyFields = [
+  { name: "Internal ID", internalid: "id", fieldType: "Free-Form Text", disableField: true },
+  { name: "Name", internalid: "name", fieldType: "Free-Form Text", required: true },
+  { name: "Description", internalid: "custrecord_sb_rtb_description", fieldType: "Text Area" },
+  { name: "Icon", internalid: "custrecord_sb_rtb_icon", fieldType: "image", optionFeed: "Web Images" },
+  { name: "Icon Selector", internalid: "custrecord_sb_rtb_icon_selector", fieldType: "List/Record", optionFeed: "Reasons To Buy Icons" },
+  { name: "Is Warranty Period", internalid: "custrecord_sb_is_warranty", fieldType: "Checkbox" },
+  { name: "Items", internalid: "custrecord_sb_rtb_items", fieldType: "multiple-select", optionFeed: "Items" },
+];
 
 function normalizeEnvironment(value) {
   return String(value || process.env.ENVIRONMENT || "sandbox").toLowerCase() === "production"
@@ -114,6 +126,14 @@ function parseJson(text) {
   } catch {
     return { raw: text };
   }
+}
+
+function clearReasonsToBuyCaches() {
+  ["production", "sandbox"].forEach((env) => {
+    optionsCache.delete(`${env}:Reasons To Buy`);
+    optionsCache.delete(`${env}:Reasons To Buy Icons`);
+    optionsCache.delete(`${env}:Items`);
+  });
 }
 
 function sleep(ms) {
@@ -686,6 +706,237 @@ async function fetchOptionFeed(fieldName, env) {
     optionsCache.delete(cacheKey);
     throw err;
   }
+}
+
+function optionFromSuiteQLRow(row, nameKeys = ["name", "Name", "displayname", "Display Name"]) {
+  const id = String(row.id || row.ID || row.internalid || row.InternalID || row["Internal ID"] || "").trim();
+  const name = String(firstDefinedValue(row, nameKeys) || "").trim();
+  return id && name ? { id, name, raw: row } : null;
+}
+
+async function fetchReasonsToBuyIconOptions(cfg, userId) {
+  const query = `
+    SELECT
+      id,
+      name
+    FROM ${REASONS_TO_BUY_ICON_RECORD_TYPE}
+    WHERE isinactive = 'F'
+    ORDER BY name
+  `;
+  const rows = await fetchSuiteQLRows(cfg, userId, query);
+  return rows.map((row) => optionFromSuiteQLRow(row)).filter(Boolean);
+}
+
+async function fetchItemOptions(cfg, userId) {
+  const query = `
+    SELECT
+      id,
+      itemid AS name,
+      displayname
+    FROM item
+    WHERE isinactive = 'F'
+    ORDER BY itemid
+  `;
+  const rows = await fetchSuiteQLRows(cfg, userId, query);
+  return rows
+    .map((row) => {
+      const option = optionFromSuiteQLRow(row, ["name", "itemid", "displayname"]);
+      if (!option) return null;
+      const displayName = String(row.displayname || row.DisplayName || "").trim();
+      if (displayName && !option.name.includes(displayName)) {
+        option.name = `${option.name} - ${displayName}`;
+      }
+      return option;
+    })
+    .filter(Boolean);
+}
+
+async function fetchReasonsToBuyOptions(fieldName, env, cfg, userId) {
+  if (fieldName === "Reasons To Buy Icons") return fetchReasonsToBuyIconOptions(cfg, userId);
+  if (fieldName === "Items") return fetchItemOptions(cfg, userId);
+  return fetchOptionFeed(fieldName, env);
+}
+
+function normalizeReferenceValue(row, field) {
+  const id = row[field.internalid] || row[`${field.internalid}.id`] || row[`${field.name}_InternalId`] || "";
+  const name = row[`${field.internalid}_text`] || row[`${field.internalid}.name`] || row[field.name] || "";
+  return {
+    id: String(id || "").trim(),
+    name: String(name || "").trim(),
+  };
+}
+
+function reasonsToBuyFeedIconUrl(row, cfg) {
+  return normalizeNetSuiteFileUrl(
+    row?.["Icon URL"] ||
+    row?.IconURL ||
+    row?.iconUrl ||
+    row?.icon_url ||
+    row?.url ||
+    row?.URL ||
+    "",
+    cfg
+  );
+}
+
+async function fetchReasonsToBuyFeedIconMap(env, cfg) {
+  const url = withSuiteletToken(optionUrlFor("Reasons To Buy", env), optionTokenFor("Reasons To Buy", env));
+  if (!url) return new Map();
+
+  const response = await fetch(url);
+  const payload = parseJson(await response.text());
+  if (!response.ok) {
+    console.warn(`SuitePim Reasons To Buy feed icon lookup failed: ${response.status}`);
+    return new Map();
+  }
+
+  const rows = Array.isArray(payload) ? payload : payload.results || payload.items || [];
+  const byName = new Map();
+  rows.forEach((row) => {
+    const name = String(row?.Name || row?.name || "").trim().toLowerCase();
+    const iconUrl = reasonsToBuyFeedIconUrl(row, cfg);
+    if (name && iconUrl) byName.set(name, iconUrl);
+  });
+  return byName;
+}
+
+function attachReasonsToBuyFeedIcons(rows, iconMap) {
+  if (!iconMap?.size) return rows;
+  return rows.map((row) => ({
+    ...row,
+    IconUrl: row.IconUrl || iconMap.get(String(row.Name || "").trim().toLowerCase()) || "",
+  }));
+}
+
+function normalizeNetSuiteFileUrl(value, cfg) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  if (/^https:\/\//i.test(raw)) return raw;
+  if (!raw.startsWith("/")) return "";
+
+  const accountHost = String(cfg?.accountDash || process.env.NS_ACCOUNT_DASH || "").trim();
+  if (!accountHost) return "";
+  return `https://${accountHost}.app.netsuite.com${raw}`;
+}
+
+function normalizeMultiReferenceIds(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item?.id || item || "").trim()).filter(Boolean);
+  }
+  return String(value || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
+function normalizeReasonsToBuyRow(row, cfg) {
+  const icon = normalizeReferenceValue(row, reasonsToBuyFields.find((field) => field.name === "Icon"));
+  const iconSelector = normalizeReferenceValue(row, reasonsToBuyFields.find((field) => field.name === "Icon Selector"));
+  const iconName = String(row.icon_name || row.IconName || icon.name || icon.id || "").trim();
+  const itemIds = normalizeMultiReferenceIds(row.custrecord_sb_rtb_items || row.Items_InternalId || row.items_internalid);
+  const itemNames = String(row.custrecord_sb_rtb_items_text || row.Items || row.items || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return {
+    "Internal ID": String(row.id || row.ID || row.internalid || row["Internal ID"] || "").trim(),
+    Name: String(row.name || row.Name || "").trim(),
+    Description: row.custrecord_sb_rtb_description || row.Description || "",
+    Icon: iconName,
+    Icon_InternalId: icon.id,
+    IconUrl: normalizeNetSuiteFileUrl(row.icon_url || row.IconUrl || row.custrecord_sb_rtb_icon_url, cfg),
+    "Icon Selector": iconSelector.name,
+    "Icon Selector_InternalId": iconSelector.id,
+    "Is Warranty Period": row.custrecord_sb_is_warranty === true || String(row.custrecord_sb_is_warranty || "").toUpperCase() === "T",
+    Items: itemNames,
+    Items_InternalId: itemIds,
+  };
+}
+
+async function fetchReasonsToBuyRows(cfg, userId) {
+  const query = `
+    SELECT
+      id,
+      name,
+      custrecord_sb_rtb_description,
+      custrecord_sb_rtb_icon,
+      BUILTIN.DF(custrecord_sb_rtb_icon) AS custrecord_sb_rtb_icon_text,
+      custrecord_sb_rtb_icon_selector,
+      BUILTIN.DF(custrecord_sb_rtb_icon_selector) AS custrecord_sb_rtb_icon_selector_text,
+      custrecord_sb_is_warranty,
+      custrecord_sb_rtb_items,
+      BUILTIN.DF(custrecord_sb_rtb_items) AS custrecord_sb_rtb_items_text
+    FROM ${REASONS_TO_BUY_RECORD_TYPE}
+    ORDER BY name
+  `;
+  const [rows, iconMap] = await Promise.all([
+    fetchSuiteQLRows(cfg, userId, query),
+    fetchReasonsToBuyFeedIconMap(cfg.env, cfg).catch((err) => {
+      console.warn("SuitePim Reasons To Buy feed icon lookup errored:", err.message);
+      return new Map();
+    }),
+  ]);
+  return attachReasonsToBuyFeedIcons(rows.map((row) => normalizeReasonsToBuyRow(row, cfg)), iconMap);
+}
+
+function reasonsValueForPayload(field, value, internalIds) {
+  if (field.fieldType === "Checkbox") return value === true || String(value || "").toLowerCase() === "true";
+  if (field.fieldType === "List/Record" || field.fieldType === "image") {
+    const id = String(internalIds || value || "").trim();
+    return id ? { id } : null;
+  }
+  if (field.fieldType === "multiple-select") {
+    const ids = Array.isArray(internalIds) ? internalIds : normalizeMultiReferenceIds(internalIds || value);
+    return { items: ids.map((id) => ({ id: String(id) })) };
+  }
+  return String(value ?? "");
+}
+
+async function saveReasonsToBuyRecord(cfg, userId, row) {
+  const internalId = String(row["Internal ID"] || "").trim();
+  const isCreate = !internalId;
+  const payload = {};
+
+  for (const field of reasonsToBuyFields) {
+    if (field.disableField || !field.internalid) continue;
+    if (field.name !== "Name" && row[field.name] === undefined && row[`${field.name}_InternalId`] === undefined) continue;
+    const value = row[field.name];
+    const internalIds = row[`${field.name}_InternalId`];
+    const payloadValue = reasonsValueForPayload(field, value, internalIds);
+    if (payloadValue === null && !isCreate) continue;
+    payload[field.internalid] = payloadValue;
+  }
+
+  if (!String(payload.name || "").trim()) throw new Error("Name is required");
+
+  const url = isCreate
+    ? `${cfg.restUrl}/${REASONS_TO_BUY_RECORD_TYPE}`
+    : `${cfg.restUrl}/${REASONS_TO_BUY_RECORD_TYPE}/${encodeURIComponent(internalId)}`;
+  const method = isCreate ? "POST" : "PATCH";
+  const { res, body } = await fetchNetSuiteWithRetry(url, {
+    method,
+    headers: {
+      ...(await netSuiteHeaders(url, method, userId, cfg)),
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const err = new Error(`NetSuite ${isCreate ? "create" : "update"} failed (${res.status}): ${JSON.stringify(body)}`);
+    err.diagnostics = { url, method, status: res.status, statusText: res.statusText, payload, response: body };
+    throw err;
+  }
+
+  clearReasonsToBuyCaches();
+  return {
+    status: "Success",
+    internalId: internalId || String(body?.id || body?.internalId || ""),
+    name: row.Name,
+    action: isCreate ? "Created" : "Updated",
+    response: body || { status: res.status },
+  };
 }
 
 function buildOptionLookup(options = []) {
@@ -1534,6 +1785,90 @@ router.get("/config", (req, res) => {
     productFeedConfigured: !!cfg.productDataUrl,
     priceRestletConfigured: !!cfg.priceRestletUrl,
   });
+});
+
+router.get("/reasons-to-buy/config", (req, res) => {
+  const env = normalizeEnvironment(req.query.environment);
+  res.json({
+    ok: true,
+    environment: publicEnvironmentName(env),
+    recordType: REASONS_TO_BUY_RECORD_TYPE,
+    fields: reasonsToBuyFields.map((field) => ({
+      ...field,
+      hasOptions: !!field.optionFeed,
+    })),
+  });
+});
+
+router.get("/reasons-to-buy", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const rows = await fetchReasonsToBuyRows(cfg, userId);
+    res.json({
+      ok: true,
+      rows,
+      count: rows.length,
+      environment: publicEnvironmentName(env),
+      recordType: REASONS_TO_BUY_RECORD_TYPE,
+    });
+  } catch (err) {
+    console.error("SuitePim reasons-to-buy load failed:", err);
+    res.status(500).json({ ok: false, error: err.message, diagnostics: err.diagnostics || null });
+  }
+});
+
+router.get("/reasons-to-buy/options/:fieldName", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const field = reasonsToBuyFields.find((item) => item.name.toLowerCase() === String(req.params.fieldName || "").toLowerCase());
+    if (!field?.optionFeed) return res.json({ ok: true, options: [] });
+    const options = await fetchReasonsToBuyOptions(field.optionFeed, env, cfg, userId);
+    res.json({ ok: true, options });
+  } catch (err) {
+    console.error("SuitePim reasons-to-buy option load failed:", err);
+    res.status(500).json({ ok: false, error: err.message, diagnostics: err.diagnostics || null });
+  }
+});
+
+router.post("/reasons-to-buy/save", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.body?.environment || req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (!rows.length) return res.status(400).json({ ok: false, error: "No records to save" });
+
+    const results = [];
+    for (const row of rows) {
+      try {
+        results.push(await saveReasonsToBuyRecord(cfg, userId, row));
+      } catch (err) {
+        results.push({
+          status: "Error",
+          internalId: row["Internal ID"] || "",
+          name: row.Name || "",
+          action: row["Internal ID"] ? "Update" : "Create",
+          error: err.message,
+          diagnostics: err.diagnostics || null,
+        });
+      }
+    }
+
+    res.json({
+      ok: true,
+      results,
+      environment: publicEnvironmentName(env),
+      success: results.filter((result) => result.status === "Success").length,
+      failed: results.filter((result) => result.status === "Error").length,
+    });
+  } catch (err) {
+    console.error("SuitePim reasons-to-buy save failed:", err);
+    res.status(500).json({ ok: false, error: err.message, diagnostics: err.diagnostics || null });
+  }
 });
 
 router.get("/products", async (req, res) => {

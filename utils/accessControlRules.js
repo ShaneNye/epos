@@ -22,6 +22,7 @@ const alwaysAllowedPrefixes = [
   "/quote/view",
   "/quote/reciept",
   "/api/dispatchtrack/open-jobs",
+  "/api/suitepim/image-proxy",
 ];
 
 function isPageShellPath(path = "") {
