@@ -65,6 +65,101 @@ const oauth = OAuth({
 const USER_TOKEN_CACHE_TTL_MS =
   Number(process.env.NS_USER_TOKEN_CACHE_TTL_MS || 5 * 60 * 1000) || 5 * 60 * 1000;
 const userTokenCache = new Map();
+const NETSUITE_MAX_CONCURRENT_REQUESTS =
+  Math.max(1, Number(process.env.NETSUITE_MAX_CONCURRENT_REQUESTS || 2) || 2);
+const NETSUITE_MAX_RETRIES =
+  Math.max(0, Number(process.env.NETSUITE_MAX_RETRIES || 3) || 3);
+const NETSUITE_RETRY_BASE_MS =
+  Math.max(100, Number(process.env.NETSUITE_RETRY_BASE_MS || 700) || 700);
+let activeNetSuiteRequests = 0;
+const netSuiteRequestQueue = [];
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function acquireNetSuiteSlot() {
+  if (activeNetSuiteRequests < NETSUITE_MAX_CONCURRENT_REQUESTS) {
+    activeNetSuiteRequests += 1;
+    return;
+  }
+
+  await new Promise((resolve) => netSuiteRequestQueue.push(resolve));
+  activeNetSuiteRequests += 1;
+}
+
+function releaseNetSuiteSlot() {
+  activeNetSuiteRequests = Math.max(0, activeNetSuiteRequests - 1);
+  const next = netSuiteRequestQueue.shift();
+  if (next) next();
+}
+
+function retryDelayMs(res, attempt) {
+  const retryAfter = res?.headers?.get?.("retry-after");
+  if (retryAfter) {
+    const seconds = Number(retryAfter);
+    if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+
+    const dateMs = Date.parse(retryAfter);
+    if (Number.isFinite(dateMs)) return Math.max(0, dateMs - Date.now());
+  }
+
+  const jitter = Math.floor(Math.random() * 250);
+  return NETSUITE_RETRY_BASE_MS * Math.pow(2, attempt) + jitter;
+}
+
+function isRetryableNetSuiteStatus(status) {
+  return status === 429 || status === 503 || status === 504;
+}
+
+async function fetchNetSuiteWithRetry({
+  url,
+  method,
+  userId = null,
+  headers = {},
+  body,
+  logLabel = "NetSuite request",
+}) {
+  let lastResult = null;
+
+  for (let attempt = 0; attempt <= NETSUITE_MAX_RETRIES; attempt += 1) {
+    let delayAfterRelease = 0;
+    await acquireNetSuiteSlot();
+
+    try {
+      const authHeaders = await getAuthHeader(url, method, userId);
+      const res = await fetch(url, {
+        method,
+        headers: {
+          ...authHeaders,
+          ...headers,
+        },
+        ...(body === undefined ? {} : { body }),
+      });
+      const text = await res.text();
+      lastResult = { res, text };
+
+      if (
+        !res.ok &&
+        isRetryableNetSuiteStatus(res.status) &&
+        attempt < NETSUITE_MAX_RETRIES
+      ) {
+        delayAfterRelease = retryDelayMs(res, attempt);
+        console.warn(
+          `⚠️ ${logLabel} returned ${res.status}; retrying in ${delayAfterRelease}ms (${attempt + 1}/${NETSUITE_MAX_RETRIES})`
+        );
+      } else {
+        return lastResult;
+      }
+    } finally {
+      releaseNetSuiteSlot();
+    }
+
+    if (delayAfterRelease > 0) await sleep(delayAfterRelease);
+  }
+
+  return lastResult;
+}
 
 function userTokenCacheKey(userId) {
   return `${currentEnvLabel()}:${String(userId)}`;
@@ -184,13 +279,13 @@ async function getAuthHeader(url, method, userId = null) {
 
 async function nsGet(endpoint, userId = null) {
   const url = `${config.restUrl}${endpoint}`;
-  const headers = {
-    ...(await getAuthHeader(url, "GET", userId)),
-    "Content-Type": "application/json",
-  };
-
-  const res = await fetch(url, { headers });
-  const text = await res.text();
+  const { res, text } = await fetchNetSuiteWithRetry({
+    url,
+    method: "GET",
+    userId,
+    headers: { "Content-Type": "application/json" },
+    logLabel: `NetSuite GET ${endpoint}`,
+  });
 
   if (!res.ok) {
     console.error(`❌ NetSuite GET ${endpoint} → ${res.status}`);
@@ -209,20 +304,17 @@ async function nsGet(endpoint, userId = null) {
 
 async function nsPost(endpoint, body, userId = null) {
   const url = `${config.restUrl}${endpoint}`;
-  const headers = {
-    ...(await getAuthHeader(url, "POST", userId)),
-    "Content-Type": "application/json",
-  };
 
   console.log(`➡️ [POST] NetSuite ${endpoint} (user: ${userId || "env default"})`);
 
-  const res = await fetch(url, {
+  const { res, text } = await fetchNetSuiteWithRetry({
+    url,
     method: "POST",
-    headers,
+    userId,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    logLabel: `NetSuite POST ${endpoint}`,
   });
-
-  const text = await res.text();
 
   if (!res.ok) {
     console.error(`❌ NetSuite POST ${endpoint} → ${res.status}`);
@@ -256,20 +348,17 @@ async function nsPost(endpoint, body, userId = null) {
 
 async function nsPatch(endpoint, body, userId = null) {
   const url = `${config.restUrl}${endpoint}`;
-  const headers = {
-    ...(await getAuthHeader(url, "PATCH", userId)),
-    "Content-Type": "application/json",
-  };
 
   console.log(`🔄 [PATCH] NetSuite ${endpoint}`);
 
-  const res = await fetch(url, {
+  const { res, text } = await fetchNetSuiteWithRetry({
+    url,
     method: "PATCH",
-    headers,
+    userId,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
+    logLabel: `NetSuite PATCH ${endpoint}`,
   });
-
-  const text = await res.text();
 
   if (!res.ok) {
     console.error(`❌ NetSuite PATCH ${endpoint} → ${res.status}`);
@@ -288,21 +377,19 @@ async function nsPatch(endpoint, body, userId = null) {
    ====================================================== */
 
 async function nsPostRaw(fullUrl, body, userId = null) {
-  const headers = {
-    ...(await getAuthHeader(fullUrl, "POST", userId)),
-    "Content-Type": "application/json",
-    Prefer: "transient",
-  };
-
   console.log(`🧾 [SuiteQL] ${fullUrl}`);
 
-  const res = await fetch(fullUrl, {
+  const { res, text } = await fetchNetSuiteWithRetry({
+    url: fullUrl,
     method: "POST",
-    headers,
+    userId,
+    headers: {
+      "Content-Type": "application/json",
+      Prefer: "transient",
+    },
     body: JSON.stringify(body),
+    logLabel: "NetSuite SuiteQL",
   });
-
-  const text = await res.text();
 
   if (!res.ok) {
     console.error(`❌ NetSuite SuiteQL → ${res.status}`);
@@ -320,20 +407,16 @@ async function nsPostRaw(fullUrl, body, userId = null) {
    ====================================================== */
 
 async function nsRestlet(fullUrl, body = null, userId = null, method = "POST") {
-  const headers = {
-    ...(await getAuthHeader(fullUrl, method, userId)),
-    "Content-Type": "application/json",
-  };
-
   console.log(`🛠 [RESTlet] ${method} ${fullUrl}`);
 
-  const res = await fetch(fullUrl, {
+  const { text } = await fetchNetSuiteWithRetry({
+    url: fullUrl,
     method,
-    headers,
+    userId,
+    headers: { "Content-Type": "application/json" },
     body: method === "POST" ? JSON.stringify(body || {}) : undefined,
+    logLabel: `NetSuite RESTlet ${method}`,
   });
-
-  const text = await res.text();
   console.log("📥 Raw RESTlet response:", text);
 
   try {

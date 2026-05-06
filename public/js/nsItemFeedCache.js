@@ -57,8 +57,13 @@
     );
   }
 
-  async function fetchFreshItems() {
-    const res = await fetch("/api/netsuite/items", {
+  async function fetchFreshItems({ forceRefresh = false } = {}) {
+    const url = forceRefresh
+      ? `/api/netsuite/items?refresh=1&_=${Date.now()}`
+      : "/api/netsuite/items";
+
+    const res = await fetch(url, {
+      cache: forceRefresh ? "no-store" : "default",
       credentials: "same-origin",
     });
 
@@ -89,7 +94,7 @@
       }
     }
 
-    if (inFlightPromise) {
+    if (inFlightPromise && !forceRefresh) {
       const items = await inFlightPromise;
       window.items = items;
       return items;
@@ -98,7 +103,7 @@
     inFlightPromise = (async () => {
       try {
         console.log("📡 Fetching fresh NetSuite item feed...");
-        const items = await fetchFreshItems();
+        const items = await fetchFreshItems({ forceRefresh });
         console.log("✅ Fresh item feed cached:", items.length);
         return items;
       } finally {

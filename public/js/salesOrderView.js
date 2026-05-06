@@ -570,6 +570,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("❌ Missing tranId from URL");
     return;
   }
+  const viewParams = new URLSearchParams(window.location.search || "");
+  const forceSalesOrderRefresh = viewParams.get("refresh") === "1";
+  const salesOrderQuery = new URLSearchParams({
+    lite: "1",
+    deposits: "0",
+  });
+  if (forceSalesOrderRefresh) {
+    salesOrderQuery.set("refresh", "1");
+    salesOrderQuery.set("_", String(Date.now()));
+  }
 
   try {
     // ==================================================
@@ -581,7 +591,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         console.warn("⚠️ Failed to preload item options:", err.message || err);
         return {};
       }),
-      fetch(`/api/netsuite/salesorder/${tranId}?lite=1&deposits=0`, { headers }),
+      fetch(`/api/netsuite/salesorder/${tranId}?${salesOrderQuery.toString()}`, { headers }),
       locationsPromise,
       usersPromise,
       fetch("/api/netsuite/fulfilmentmethods").catch(() => null),
@@ -1977,11 +1987,13 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
       if (!res.ok || !data.ok) throw new Error(data.error || "Failed to commit order");
 
       showToast?.(`✅ Order ${tranId} approved!`, "success");
-      showCommitInlineLocal("Committed ✅");
+      showCommitInlineLocal("Committed ✅ Refreshing…");
 
       setTimeout(() => {
-        wrapper.innerHTML = "";
-        hideCommitInlineLocal();
+        const refreshUrl = new URL(window.location.href);
+        refreshUrl.searchParams.set("refresh", "1");
+        refreshUrl.searchParams.set("_", String(Date.now()));
+        window.location.replace(refreshUrl.toString());
       }, 1000);
     } catch (err) {
       console.error("❌ Commit error:", err.message || err);

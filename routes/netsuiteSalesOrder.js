@@ -767,8 +767,8 @@ async function fetchSuiteQlDepositsForSalesOrder(salesOrderId, userId) {
           t.paymentmethod,
           BUILTIN.DF(t.paymentmethod) AS paymentmethodtext
         FROM transaction t
-        WHERE t.type = 'CustDep'
-          AND t.createdfrom = ${id}
+        WHERE t.recordtype = 'customerdeposit'
+          AND t.salesorder = ${id}
         ORDER BY t.id DESC
       `,
     },
@@ -804,6 +804,10 @@ async function loadSalesOrderDeposits(req, salesOrderId, { bearerToken = null, u
     });
   } catch (err) {
     console.warn(`⚠️ Could not fetch customer deposit report for SO ${salesOrderId}:`, err.message);
+  }
+
+  if (reportDeposits.length) {
+    return mergeDeposits(reportDeposits);
   }
 
   try {
@@ -1636,22 +1640,21 @@ router.get("/:id", async (req, res) => {
 
     key = cacheKey(id, { lite, includeDeposits });
 
-    if (!refresh) {
-      const cached = cacheGet(key);
+    const cached = cacheGet(key);
 
-      // 1) warm cache hit
-      if (cached?.data) {
-        return res.json({ ...cached.data, _cache: "HIT" });
-      }
+    // 1) warm cache hit. refresh=1 skips this stale-data path.
+    if (!refresh && cached?.data) {
+      return res.json({ ...cached.data, _cache: "HIT" });
+    }
 
-      // 2) another request already fetching this SO
-      if (cached?.inFlight) {
-        try {
-          const data = await cached.inFlight;
-          return res.json({ ...data, _cache: "HIT-INFLIGHT" });
-        } catch {
-          // fall through and try fresh
-        }
+    // 2) another request already fetching this SO. Even refresh=1 can join
+    // the current fresh fetch to avoid a NetSuite concurrency stampede.
+    if (cached?.inFlight) {
+      try {
+        const data = await cached.inFlight;
+        return res.json({ ...data, _cache: refresh ? "REFRESH-INFLIGHT" : "HIT-INFLIGHT" });
+      } catch {
+        // fall through and try fresh
       }
     }
 

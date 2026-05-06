@@ -52,17 +52,33 @@ function getOptionSchemaForItem(itemId, itemData) {
 }
 
 function getItemClassText(item) {
-  return String(item?.["Class"] || "").trim().toLowerCase();
+  const raw =
+    item?.["Class"] ??
+    item?.class ??
+    item?.className ??
+    item?.itemClass ??
+    item?.["Item Class"] ??
+    "";
+
+  if (raw && typeof raw === "object") {
+    return String(raw.refName || raw.name || raw.text || raw.value || raw.id || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  return String(raw || "").trim().toLowerCase();
 }
 
 // === Load items from shared cache ===
 async function loadItems() {
   try {
     if (window.nsItemFeedCache?.getItems) {
-      items = await window.nsItemFeedCache.getItems();
+      items = await window.nsItemFeedCache.getItems({ forceRefresh: true });
     } else {
       console.warn("⚠️ nsItemFeedCache missing - falling back to direct fetch");
-      const res = await fetch("/api/netsuite/items");
+      const res = await fetch("/api/netsuite/items?refresh=1", {
+        cache: "no-store",
+      });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
       items = data.results || [];
