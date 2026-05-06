@@ -580,6 +580,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     salesOrderQuery.set("refresh", "1");
     salesOrderQuery.set("_", String(Date.now()));
   }
+  window._currentDeposits = [];
+  const depositsPromise = loadSalesOrderDeposits(headers, tranId);
 
   try {
     // ==================================================
@@ -633,11 +635,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ==================================================
     if (Array.isArray(soJson.deposits) && soJson.deposits.length) {
       window._currentDeposits = soJson.deposits;
-      renderDeposits(window._currentDeposits);
     } else {
-      window._currentDeposits = [];
-      loadSalesOrderDeposits(headers, tranId);
+      window._currentDeposits = await depositsPromise;
     }
+    renderDeposits(window._currentDeposits);
 
     // ==================================================
     // 3️⃣ Populate header + customer + order meta

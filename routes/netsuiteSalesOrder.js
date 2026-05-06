@@ -20,7 +20,7 @@ const {
 // ✅ In-memory cache for GET /:id sales order payloads
 // =====================================================
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const SO_CACHE_VERSION = "related-records-v2";
+const SO_CACHE_VERSION = "related-records-v4";
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
 const LOCATION_FEED_TTL_MS = 10 * 60 * 1000;
 const locationFeedCache = { expiresAt: 0, rows: null, inFlight: null };
@@ -751,51 +751,8 @@ async function fetchReportDepositsForSalesOrder(req, salesOrderId, headers = {})
     .map((row) => normalizeReportDeposit(row, salesOrderId));
 }
 
-async function fetchSuiteQlDepositsForSalesOrder(salesOrderId, userId) {
-  const id = Number(salesOrderId);
-  if (!Number.isFinite(id) || id <= 0) return [];
-
-  const result = await nsPostRaw(
-    suiteQlUrl(),
-    {
-      q: `
-        SELECT
-          t.id,
-          t.tranid,
-          t.foreigntotal,
-          t.total,
-          t.paymentmethod,
-          BUILTIN.DF(t.paymentmethod) AS paymentmethodtext
-        FROM transaction t
-        WHERE t.recordtype = 'customerdeposit'
-          AND t.salesorder = ${id}
-        ORDER BY t.id DESC
-      `,
-    },
-    userId
-  );
-
-  return (Array.isArray(result?.items) ? result.items : []).map((row) => {
-    const depositId = String(row.id || "").trim();
-    const tranId = String(row.tranid || depositId || "Customer Deposit").trim();
-    const amount = normalizeDepositAmount(row.foreigntotal || row.total || 0);
-    const method = row.paymentmethodtext || row.paymentmethod || "-";
-    const href = depositId
-      ? `${netSuiteAppBaseUrl()}/app/accounting/transactions/custdep.nl?id=${encodeURIComponent(depositId)}`
-      : "";
-
-    return {
-      link: href ? `<a href="${href}" target="_blank">${tranId}</a>` : tranId,
-      amount,
-      method,
-      soId: String(salesOrderId),
-    };
-  });
-}
-
-async function loadSalesOrderDeposits(req, salesOrderId, { bearerToken = null, userId = null, prewarmHeaders = null } = {}) {
+async function loadSalesOrderDeposits(req, salesOrderId, { bearerToken = null, prewarmHeaders = null } = {}) {
   let reportDeposits = [];
-  let suiteQlDeposits = [];
 
   try {
     reportDeposits = await fetchReportDepositsForSalesOrder(req, salesOrderId, {
@@ -803,20 +760,10 @@ async function loadSalesOrderDeposits(req, salesOrderId, { bearerToken = null, u
       ...(prewarmHeaders || {}),
     });
   } catch (err) {
-    console.warn(`⚠️ Could not fetch customer deposit report for SO ${salesOrderId}:`, err.message);
+    console.warn(`Could not fetch customer deposit report for SO ${salesOrderId}:`, err.message);
   }
 
-  if (reportDeposits.length) {
-    return mergeDeposits(reportDeposits);
-  }
-
-  try {
-    suiteQlDeposits = await fetchSuiteQlDepositsForSalesOrder(salesOrderId, userId);
-  } catch (err) {
-    console.warn(`⚠️ Could not fetch SuiteQL deposits for SO ${salesOrderId}:`, err.message);
-  }
-
-  return mergeDeposits(reportDeposits, suiteQlDeposits);
+  return mergeDeposits(reportDeposits);
 }
 
 /* =====================================================
