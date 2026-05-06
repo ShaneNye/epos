@@ -581,7 +581,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     salesOrderQuery.set("_", String(Date.now()));
   }
   window._currentDeposits = [];
-  const depositsPromise = loadSalesOrderDeposits(headers, tranId);
+  const depositsPromise = /^\d+$/.test(String(tranId || ""))
+    ? loadSalesOrderDeposits(headers, tranId)
+    : Promise.resolve([]);
 
   try {
     // ==================================================
@@ -634,10 +636,18 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ==================================================
     // 2️⃣ Render Deposits
     // ==================================================
+    const salesOrderInternalId = so?.id || so?.internalId || so?.internalid || tranId;
     if (Array.isArray(soJson.deposits) && soJson.deposits.length) {
       window._currentDeposits = soJson.deposits;
     } else {
       window._currentDeposits = await depositsPromise;
+      if (
+        window._currentDeposits.length === 0 &&
+        String(salesOrderInternalId || "") &&
+        String(salesOrderInternalId) !== String(tranId)
+      ) {
+        window._currentDeposits = await loadSalesOrderDeposits(headers, salesOrderInternalId);
+      }
     }
     renderDeposits(window._currentDeposits);
 

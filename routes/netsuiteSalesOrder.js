@@ -734,7 +734,7 @@ function mergeDeposits(...depositGroups) {
   return merged;
 }
 
-async function fetchReportDepositsForSalesOrder(req, salesOrderId, headers = {}) {
+async function fetchReportDepositsForSalesOrder(req, salesOrderId, headers = {}, alternateSalesOrderIds = []) {
   const depRes = await fetch(
     `${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`,
     { headers }
@@ -743,22 +743,35 @@ async function fetchReportDepositsForSalesOrder(req, salesOrderId, headers = {})
 
   const depJson = await depRes.json();
   const allDeposits = depJson.results || depJson.data || [];
-  const wanted = String(salesOrderId || "").trim();
+  const wantedIds = new Set(
+    [salesOrderId, ...alternateSalesOrderIds]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  );
 
   return allDeposits
     .map(normalizeDepositReportKeys)
-    .filter((row) => depositSalesOrderCandidates(row).includes(wanted))
+    .filter((row) => depositSalesOrderCandidates(row).some((candidate) => wantedIds.has(candidate)))
     .map((row) => normalizeReportDeposit(row, salesOrderId));
 }
 
-async function loadSalesOrderDeposits(req, salesOrderId, { bearerToken = null, prewarmHeaders = null } = {}) {
+async function loadSalesOrderDeposits(req, salesOrderId, {
+  bearerToken = null,
+  prewarmHeaders = null,
+  alternateSalesOrderIds = [],
+} = {}) {
   let reportDeposits = [];
 
   try {
-    reportDeposits = await fetchReportDepositsForSalesOrder(req, salesOrderId, {
-      ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
-      ...(prewarmHeaders || {}),
-    });
+    reportDeposits = await fetchReportDepositsForSalesOrder(
+      req,
+      salesOrderId,
+      {
+        ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
+        ...(prewarmHeaders || {}),
+      },
+      alternateSalesOrderIds
+    );
   } catch (err) {
     console.warn(`Could not fetch customer deposit report for SO ${salesOrderId}:`, err.message);
   }
@@ -1833,8 +1846,9 @@ router.get("/:id", async (req, res) => {
     ----------------------------------------------------- */
     let deposits = [];
     if (includeDeposits) {
-      deposits = await loadSalesOrderDeposits(req, id, {
+      deposits = await loadSalesOrderDeposits(req, so.id || id, {
         bearerToken,
+        alternateSalesOrderIds: [id, so.tranId, so.tranid],
         userId,
         prewarmHeaders: allowPrewarm
           ? {
