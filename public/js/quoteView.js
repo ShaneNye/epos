@@ -825,6 +825,62 @@ function updateActionButtonForQuote() {
   });
 }
 
+function quoteReceiptSelectedText(selector) {
+  const el = typeof selector === "string" ? document.querySelector(selector) : selector;
+  return el?.options?.[el.selectedIndex]?.textContent?.trim() || "";
+}
+
+function quoteReceiptPayloadFromDom(quoteIdOrTran) {
+  const quote = window._currentQuote || {};
+  const items = [...document.querySelectorAll("#orderItemsBody tr.order-line")]
+    .map((row) => {
+      const itemId = row.querySelector(".item-internal-id")?.value?.trim() || row.dataset.itemId || "";
+      const name = row.querySelector(".item-search")?.value?.trim() || row.children?.[0]?.innerText?.trim() || "";
+      if (!itemId && !name) return null;
+
+      const quantity = parseMoneyInput(row.querySelector(".item-qty")?.value) || 1;
+      const saleGrossLine = parseMoneyInput(row.querySelector(".item-saleprice")?.value);
+      const retailGrossLine = parseMoneyInput(row.querySelector(".item-amount")?.value) || saleGrossLine;
+
+      return {
+        name: name || "Item",
+        options: row.querySelector(".options-summary")?.innerText?.trim() || row.children?.[1]?.innerText?.trim() || "",
+        quantity,
+        retailGrossLine,
+        saleGrossLine,
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    type: "quote",
+    customer: {
+      firstName: document.querySelector('input[name="firstName"]')?.value || "",
+      lastName: document.querySelector('input[name="lastName"]')?.value || "",
+      address1: document.querySelector('input[name="address1"]')?.value || "",
+      address2: document.querySelector('input[name="address2"]')?.value || "",
+      address3: document.querySelector('input[name="address3"]')?.value || "",
+      postcode: document.querySelector('input[name="postcode"]')?.value || "",
+      email: document.querySelector('input[name="email"]')?.value || "",
+      contactNumber: document.querySelector('input[name="contactNumber"]')?.value || "",
+    },
+    order: {
+      tranId: quote.tranId || quoteIdOrTran,
+      quoteDate: quote.tranDate || quote.trandate || "",
+      salesExecName: quoteReceiptSelectedText(document.getElementById("salesExec")) ||
+        quote.custbody_sb_bedspecialist?.refName ||
+        "",
+      store: document.getElementById("store")?.value || "",
+      storeName: quoteReceiptSelectedText(document.getElementById("store")),
+      paymentInfoName: quoteReceiptSelectedText(document.getElementById("paymentInfo")) ||
+        quote.custbody_sb_paymentinfo?.refName ||
+        "",
+    },
+    items,
+    deposits: [],
+  };
+}
+
 /* =========================================================
    Main Quote View Loader
 ========================================================= */
@@ -889,6 +945,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     const quote = qJson.quote || qJson.estimate || qJson.estimateObj || qJson;
+    window._currentQuote = quote;
     if (!quote) throw new Error("No quote/estimate object in response");
 
     console.log("✅ Quote loaded:", quote.tranId || tranId);
@@ -1028,7 +1085,9 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.getElementById("printBtn")?.addEventListener("click", () => {
       const id = getIdFromPath();
       if (!id) return alert("No quote ID found in URL");
-      window.open(`/quote/reciept/${id}`, "_blank");
+      const payload = quoteReceiptPayloadFromDom(id);
+      const url = window.EposPendingReceipt?.create?.("quote", payload) || `/quote/reciept/${id}`;
+      window.open(url, "_blank");
     });
   } catch (err) {
     console.error("❌ Quote load failure:", err.message || err);

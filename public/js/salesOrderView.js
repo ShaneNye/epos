@@ -605,6 +605,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     const so = soJson.salesOrder || soJson;
+    window._currentSalesOrder = so;
     if (!so) throw new Error("No salesOrder object in response");
     console.log("✅ Sales Order loaded:", so.tranId || tranId);
     renderRelatedRecords(so);
@@ -1444,6 +1445,86 @@ document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
   }
 });
 
+function receiptMoneyValue(value) {
+  return parseFloat(String(value || "0").replace(/[^0-9.-]/g, "")) || 0;
+}
+
+function receiptSelectedText(selector) {
+  const el = typeof selector === "string" ? document.querySelector(selector) : selector;
+  return el?.options?.[el.selectedIndex]?.textContent?.trim() || "";
+}
+
+function receiptCellText(row, selector, fallbackCellIndex) {
+  const direct = row.querySelector(selector);
+  if (direct) {
+    if ("value" in direct) return direct.value?.trim() || "";
+    return direct.innerText?.trim() || direct.textContent?.trim() || "";
+  }
+  const cell = row.children?.[fallbackCellIndex];
+  return cell?.innerText?.trim() || cell?.textContent?.trim() || "";
+}
+
+function buildSalesReceiptPayloadFromDom(tranId) {
+  const so = window._currentSalesOrder || {};
+  const items = [...document.querySelectorAll("#orderItemsBody tr.order-line")]
+    .map((row) => {
+      const itemId = row.querySelector(".item-internal-id")?.value?.trim() || row.dataset.itemId || "";
+      const name = receiptCellText(row, ".item-search", 0);
+      if (!itemId && !name) return null;
+
+      const quantity = receiptMoneyValue(receiptCellText(row, ".item-qty", 2)) || 1;
+      const saleGrossLine = receiptMoneyValue(
+        row.querySelector(".item-saleprice")?.value ||
+          row.querySelector(".saleprice")?.innerText ||
+          row.children?.[6]?.innerText
+      );
+      const retailGrossLine =
+        receiptMoneyValue(
+          row.querySelector(".item-amount")?.value ||
+            row.querySelector(".amount")?.innerText ||
+            row.children?.[3]?.innerText
+        ) || saleGrossLine;
+
+      return {
+        name: name || "Item",
+        options: receiptCellText(row, ".options-summary", 1),
+        quantity,
+        retailGrossLine,
+        saleGrossLine,
+      };
+    })
+    .filter(Boolean);
+
+  return {
+    type: "sale",
+    customer: {
+      firstName: document.querySelector('input[name="firstName"]')?.value || "",
+      lastName: document.querySelector('input[name="lastName"]')?.value || "",
+      address1: document.querySelector('input[name="address1"]')?.value || "",
+      address2: document.querySelector('input[name="address2"]')?.value || "",
+      address3: document.querySelector('input[name="address3"]')?.value || "",
+      county: document.querySelector('input[name="county"]')?.value || "",
+      postcode: document.querySelector('input[name="postcode"]')?.value || "",
+      email: document.querySelector('input[name="email"]')?.value || "",
+      contactNumber: document.querySelector('input[name="contactNumber"]')?.value || "",
+    },
+    order: {
+      tranId: so.tranId || tranId,
+      salesDate: so.tranDate || so.trandate || "",
+      salesExecName: receiptSelectedText(document.getElementById("salesExec")) ||
+        so.custbody_sb_bedspecialist?.refName ||
+        "",
+      store: document.getElementById("store")?.value || "",
+      storeName: receiptSelectedText(document.getElementById("store")),
+      paymentInfoName: receiptSelectedText(document.getElementById("paymentInfo")) ||
+        so.custbody_sb_paymentinfo?.refName ||
+        "",
+    },
+    items,
+    deposits: Array.isArray(window._currentDeposits) ? window._currentDeposits : [],
+  };
+}
+
 /* =====================================================
    Print receipt
 ===================================================== */
@@ -1462,7 +1543,8 @@ document.addEventListener("click", (e) => {
     return;
   }
 
-  const url = `/sales/reciept/${tranId}`;
+  const payload = buildSalesReceiptPayloadFromDom(tranId);
+  const url = window.EposPendingReceipt?.create?.("sale", payload) || `/sales/reciept/${tranId}`;
   const receiptWin = window.open(url, "_blank");
 
   if (!receiptWin) {

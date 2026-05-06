@@ -23,10 +23,6 @@
       "suitepimMount",
       "suitepimStatus",
       "suitepimPushReport",
-      "suitepimTotalCount",
-      "suitepimVisibleCount",
-      "suitepimChangedCount",
-      "suitepimNewCount",
       "suitepimModal",
       "suitepimModalTitle",
       "suitepimModalSearch",
@@ -240,10 +236,12 @@
   }
 
   function updateSummary() {
-    el.suitepimTotalCount.textContent = state.rows.length.toLocaleString();
-    el.suitepimVisibleCount.textContent = state.filteredRows.length.toLocaleString();
-    el.suitepimChangedCount.textContent = state.dirty.size.toLocaleString();
-    el.suitepimNewCount.textContent = state.rows.filter((row) => row._isNew).length.toLocaleString();
+    return {
+      total: state.rows.length,
+      visible: state.filteredRows.length,
+      changed: state.dirty.size,
+      newRecords: state.rows.filter((row) => row._isNew).length,
+    };
   }
 
   function rowMatchesSearch(row, search) {

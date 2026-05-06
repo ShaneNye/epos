@@ -13,6 +13,16 @@
       .replace(/'/g, "&#39;");
   }
 
+  function plainTextFromHtml(value) {
+    const text = String(value ?? "").trim();
+    if (!text) return "";
+
+    const template = document.createElement("template");
+    template.innerHTML = text;
+    const parsed = template.content.textContent?.trim() || "";
+    return parsed || text;
+  }
+
   function setText(id, value) {
     const el = document.getElementById(id);
     if (!el) return;
@@ -28,6 +38,25 @@
   function todayDdMmYyyy() {
     const d = new Date();
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
+  }
+
+  function formatDateDdMmYyyy(raw) {
+    const value = String(raw || "").trim();
+    if (!value) return todayDdMmYyyy();
+    if (/^\d{2}\/\d{2}\/\d{4}$/.test(value)) return value;
+
+    const iso = value.slice(0, 10);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(iso)) {
+      const [year, month, day] = iso.split("-");
+      return `${day}/${month}/${year}`;
+    }
+
+    const date = new Date(value);
+    if (!Number.isNaN(date.getTime())) {
+      return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
+    }
+
+    return value;
   }
 
   function maskNumberField(id) {
@@ -134,9 +163,10 @@
     }
 
     deposits.forEach((dep) => {
+      const depositNo = plainTextFromHtml(dep.link || dep.depositNo || dep.number || "Pending");
       const tr = document.createElement("tr");
       tr.innerHTML = `
-        <td>Pending</td>
+        <td>${escapeHtml(depositNo)}</td>
         <td>${escapeHtml(dep.name || dep.method || "-")}</td>
         <td>${formatMoney(dep.amount || 0)}</td>
       `;
@@ -218,11 +248,15 @@
     setText("salesRep", order.salesExecName || "-");
 
     if (type === "quote") {
-      maskNumberField("quoteNo");
-      setText("quoteDate", todayDdMmYyyy());
+      const quoteNo = order.quoteNo || order.tranId || order.orderNumber || "";
+      if (quoteNo) setText("quoteNo", quoteNo);
+      else maskNumberField("quoteNo");
+      setText("quoteDate", formatDateDdMmYyyy(order.quoteDate || order.tranDate || order.date));
     } else {
-      maskNumberField("salesOrd");
-      setText("salesDate", todayDdMmYyyy());
+      const salesNo = order.salesOrd || order.salesOrderNo || order.tranId || order.orderNumber || "";
+      if (salesNo) setText("salesOrd", salesNo);
+      else maskNumberField("salesOrd");
+      setText("salesDate", formatDateDdMmYyyy(order.salesDate || order.tranDate || order.date));
     }
 
     renderProducts(items, type);
@@ -232,5 +266,11 @@
     return true;
   }
 
-  window.EposPendingReceipt = { tryRender };
+  function create(type, payload) {
+    const pendingId = `pending-${Date.now()}`;
+    sessionStorage.setItem(`eposPendingReceipt:${pendingId}`, JSON.stringify(payload || {}));
+    return type === "quote" ? `/quote/receipt/${pendingId}` : `/sales/reciept/${pendingId}`;
+  }
+
+  window.EposPendingReceipt = { tryRender, create };
 })();
