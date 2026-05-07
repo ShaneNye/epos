@@ -690,15 +690,33 @@ function normalizeDepositReportKeys(obj) {
 function depositSalesOrderCandidates(row) {
   return [
     row["SO Id"],
+    row["SO ID"],
+    row["SO Internal ID"],
+    row["Sales Order"],
+    row["Sales Order #"],
+    row["Sales Order Number"],
     row["Sales Order Id"],
+    row["Sales Order ID"],
     row["Sales Order Internal ID"],
+    row["Sales Order Internal Id"],
+    row["Created From"],
     row["Created From Id"],
+    row["Created From ID"],
     row["Created From Internal ID"],
+    row["Created From Internal Id"],
+    row["Applied To"],
     row["Applied To Id"],
+    row["Applied To ID"],
     row["Applied To Transaction Id"],
+    row["Applied To Transaction ID"],
     row.soId,
+    row.soid,
     row.salesOrderId,
+    row.salesorderid,
+    row.salesOrder,
     row.createdFromId,
+    row.createdfromid,
+    row.createdFrom,
   ].map((value) => String(value || "").trim()).filter(Boolean);
 }
 
@@ -724,6 +742,39 @@ function normalizeReportDeposit(row, salesOrderId) {
     amount: normalizeDepositAmount(row["Amount"] || row.amount || row.total),
     method: row["Payment Method"] || row.paymentMethod || row.paymentMethodText || "-",
     soId: String(row["SO Id"] || row.salesOrderId || salesOrderId || ""),
+  };
+}
+
+function sqlNumberList(values) {
+  const ids = [...new Set(
+    values
+      .map((value) => Number(String(value || "").trim()))
+      .filter((value) => Number.isFinite(value) && value > 0)
+  )];
+  return ids.length ? ids.join(",") : "";
+}
+
+function normalizeSuiteQlDeposit(row, salesOrderId) {
+  const depositId = String(row.id || row.internalid || "").trim();
+  const amount = Math.abs(normalizeDepositAmount(
+    row.amount || row.foreigntotal || row.total || row.fxamount
+  ));
+  const method =
+    row.paymentmethod_text ||
+    row.payment_method ||
+    row.paymentmethod ||
+    row["Payment Method"] ||
+    "-";
+  const label = row.tranid || row.documentnumber || (depositId ? `CD${depositId}` : "-");
+  const link = depositId
+    ? `<a href="${netSuiteAppBaseUrl()}/app/accounting/transactions/custdep.nl?id=${encodeURIComponent(depositId)}" target="_blank">${label}</a>`
+    : label;
+
+  return {
+    link,
+    amount,
+    method,
+    soId: String(row.createdfrom || salesOrderId || ""),
   };
 }
 
@@ -768,12 +819,63 @@ async function fetchReportDepositsForSalesOrder(req, salesOrderId, headers = {},
     .map((row) => normalizeReportDeposit(row, salesOrderId));
 }
 
+async function fetchSuiteQlDepositsForSalesOrder(salesOrderId, userId, alternateSalesOrderIds = []) {
+  const idList = sqlNumberList([salesOrderId, ...alternateSalesOrderIds]);
+  if (!idList) return [];
+
+  const queries = [
+    `
+      SELECT
+        t.id,
+        t.tranid,
+        t.trandate,
+        t.createdfrom,
+        t.total,
+        t.foreigntotal,
+        t.paymentmethod,
+        BUILTIN.DF(t.paymentmethod) AS paymentmethod_text
+      FROM transaction t
+      WHERE t.recordtype = 'customerdeposit'
+        AND t.createdfrom IN (${idList})
+      ORDER BY t.trandate DESC, t.id DESC
+    `,
+    `
+      SELECT
+        t.id,
+        t.tranid,
+        t.trandate,
+        t.createdfrom,
+        t.total
+      FROM transaction t
+      WHERE t.recordtype = 'customerdeposit'
+        AND t.createdfrom IN (${idList})
+      ORDER BY t.trandate DESC, t.id DESC
+    `,
+  ];
+
+  let lastError = null;
+  for (const query of queries) {
+    try {
+      const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId, "sb");
+      const rows = Array.isArray(result?.items) ? result.items : [];
+      return rows.map((row) => normalizeSuiteQlDeposit(row, salesOrderId));
+    } catch (err) {
+      lastError = err;
+      console.warn("Customer deposit SuiteQL attempt failed:", err.message);
+    }
+  }
+
+  throw lastError || new Error("Customer deposit SuiteQL failed");
+}
+
 async function loadSalesOrderDeposits(req, salesOrderId, {
   bearerToken = null,
+  userId = null,
   prewarmHeaders = null,
   alternateSalesOrderIds = [],
 } = {}) {
   let reportDeposits = [];
+  let suiteQlDeposits = [];
 
   try {
     reportDeposits = await fetchReportDepositsForSalesOrder(
@@ -789,7 +891,17 @@ async function loadSalesOrderDeposits(req, salesOrderId, {
     console.warn(`Could not fetch customer deposit report for SO ${salesOrderId}:`, err.message);
   }
 
-  return mergeDeposits(reportDeposits);
+  try {
+    suiteQlDeposits = await fetchSuiteQlDepositsForSalesOrder(
+      salesOrderId,
+      userId,
+      alternateSalesOrderIds
+    );
+  } catch (err) {
+    console.warn(`Could not fetch customer deposits via SuiteQL for SO ${salesOrderId}:`, err.message);
+  }
+
+  return mergeDeposits(reportDeposits, suiteQlDeposits);
 }
 
 /* =====================================================
@@ -1629,6 +1741,7 @@ router.post("/:id/custom-fields", async (req, res) => {
    ===================================================== */
 router.get("/:id/deposits", async (req, res) => {
   try {
+    sendNoStore(res);
     const { id } = req.params;
     const auth = req.headers.authorization || "";
     const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : null;

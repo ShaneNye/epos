@@ -495,8 +495,8 @@ async function loadOrderManagementRow(headers, so, tranId) {
 async function loadSalesOrderDeposits(headers, tranId) {
   try {
     const res = await fetch(
-      `/api/netsuite/salesorder/${encodeURIComponent(tranId)}/deposits`,
-      { headers }
+      `/api/netsuite/salesorder/${encodeURIComponent(tranId)}/deposits?refresh=1&_=${Date.now()}`,
+      { headers, cache: "no-store" }
     );
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
