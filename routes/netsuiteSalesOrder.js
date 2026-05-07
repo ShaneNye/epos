@@ -664,6 +664,26 @@ async function getSalesOrderRelatedRecords(salesOrderId, userId) {
   };
 }
 
+async function getSalesOrderSalesExec(salesOrderId, userId) {
+  const numericId = Number(salesOrderId);
+  if (!Number.isFinite(numericId) || numericId <= 0) return null;
+
+  const query = `
+    SELECT
+      custbody_sb_bedspecialist AS sales_exec_id,
+      BUILTIN.DF(custbody_sb_bedspecialist) AS sales_exec_name
+    FROM transaction
+    WHERE id = ${numericId}
+  `;
+
+  const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId, "sb");
+  const row = Array.isArray(result?.items) ? result.items[0] : null;
+  const id = String(row?.sales_exec_id || "").trim();
+  const refName = String(row?.sales_exec_name || "").trim();
+  if (!id && !refName) return null;
+  return { id, refName };
+}
+
 async function resolveUserIdFromRequest(req) {
   const auth = req.headers.authorization || "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
@@ -718,6 +738,32 @@ function depositSalesOrderCandidates(row) {
     row.createdfromid,
     row.createdFrom,
   ].map((value) => String(value || "").trim()).filter(Boolean);
+}
+
+function stripHtml(value) {
+  return String(value || "").replace(/<[^>]*>/g, "").trim();
+}
+
+function depositCandidateMatchesWanted(candidate, wantedIds) {
+  const raw = String(candidate || "").trim();
+  if (!raw) return false;
+
+  const plain = stripHtml(raw);
+  if (wantedIds.has(raw) || wantedIds.has(plain)) return true;
+
+  const hrefId = raw.match(/[?&]id=(\d+)/i)?.[1];
+  if (hrefId && wantedIds.has(hrefId)) return true;
+
+  for (const wanted of wantedIds) {
+    if (!wanted) continue;
+    if (/^\d+$/.test(wanted)) {
+      if (new RegExp(`\\b${wanted}\\b`).test(plain)) return true;
+    } else if (plain.toLowerCase().includes(String(wanted).toLowerCase())) {
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function depositDocumentNumber(row) {
@@ -799,11 +845,21 @@ function mergeDeposits(...depositGroups) {
 }
 
 async function fetchReportDepositsForSalesOrder(req, salesOrderId, headers = {}, alternateSalesOrderIds = []) {
-  const depRes = await fetch(
-    `${req.protocol}://${req.get("host")}/api/netsuite/customer-deposits`,
-    { headers }
-  );
-  if (!depRes.ok) throw new Error(`Deposit route returned ${depRes.status}`);
+  const baseUrl = String(process.env.CUSTOMER_DEPOSITS_URL || "").replace(/^"|"$/g, "");
+  const token = process.env.CUSTOMER_DEPOSITS;
+  if (!baseUrl || !token) {
+    throw new Error("Missing CUSTOMER_DEPOSITS_URL or CUSTOMER_DEPOSITS in environment");
+  }
+
+  const joiner = String(baseUrl).includes("?") ? "&" : "?";
+  const depUrl = `${baseUrl}${joiner}token=${encodeURIComponent(token)}&refresh=1&_=${Date.now()}`;
+  const depRes = await fetch(depUrl, {
+    headers: {
+      "Cache-Control": "no-cache",
+      Pragma: "no-cache",
+    },
+  });
+  if (!depRes.ok) throw new Error(`Customer deposits endpoint returned ${depRes.status}`);
 
   const depJson = await depRes.json();
   const allDeposits = depJson.results || depJson.data || [];
@@ -815,7 +871,11 @@ async function fetchReportDepositsForSalesOrder(req, salesOrderId, headers = {},
 
   return allDeposits
     .map(normalizeDepositReportKeys)
-    .filter((row) => depositSalesOrderCandidates(row).some((candidate) => wantedIds.has(candidate)))
+    .filter((row) =>
+      depositSalesOrderCandidates(row).some((candidate) =>
+        depositCandidateMatchesWanted(candidate, wantedIds)
+      )
+    )
     .map((row) => normalizeReportDeposit(row, salesOrderId));
 }
 
@@ -1746,8 +1806,24 @@ router.get("/:id/deposits", async (req, res) => {
     const auth = req.headers.authorization || "";
     const bearerToken = auth.startsWith("Bearer ") ? auth.slice(7) : null;
     const userId = await resolveUserIdFromRequest(req);
+    const alternateSalesOrderIds = [];
 
-    const deposits = await loadSalesOrderDeposits(req, id, { bearerToken, userId });
+    try {
+      const so = await nsGet(
+        `/salesOrder/${encodeURIComponent(id)}?fields=${encodeURIComponent("id,tranId")}`,
+        userId,
+        "sb"
+      );
+      alternateSalesOrderIds.push(so?.id, so?.tranId, so?.tranid);
+    } catch (err) {
+      console.warn(`Could not load SO ${id} identifiers for deposit matching:`, err.message);
+    }
+
+    const deposits = await loadSalesOrderDeposits(req, id, {
+      bearerToken,
+      userId,
+      alternateSalesOrderIds,
+    });
 
     return res.json({ ok: true, salesOrderId: id, deposits });
   } catch (err) {
@@ -1831,6 +1907,20 @@ router.get("/:id", async (req, res) => {
 
     const so = await nsGet(soPath, userId, "sb");
     so._netSuiteAppBaseUrl = netSuiteAppBaseUrl();
+
+    try {
+      const salesExec = await getSalesOrderSalesExec(so.id || id, userId);
+      if (salesExec) {
+        so.custbody_sb_bedspecialist = {
+          ...(typeof so.custbody_sb_bedspecialist === "object"
+            ? so.custbody_sb_bedspecialist
+            : {}),
+          ...salesExec,
+        };
+      }
+    } catch (err) {
+      console.warn("Could not enrich sales order Sales Executive:", err.message);
+    }
 
     if (!lite) {
       try {

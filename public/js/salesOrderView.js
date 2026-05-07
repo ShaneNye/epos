@@ -96,6 +96,50 @@ function setupSalesViewTabs() {
   });
 }
 
+function extractNetSuiteListValue(value) {
+  if (!value) return { id: "", refName: "" };
+  if (typeof value === "object") {
+    const first = Array.isArray(value.items) ? value.items[0] : value;
+    return {
+      id: String(first?.id || first?.value || first?.internalId || first?.internalid || "").trim(),
+      refName: String(first?.refName || first?.name || first?.text || first?.label || "").trim(),
+    };
+  }
+  return { id: String(value).trim(), refName: "" };
+}
+
+function setSalesExecFromNetSuite(so, users = []) {
+  const select = document.getElementById("salesExec");
+  if (!select) return;
+
+  const nsExec = extractNetSuiteListValue(so?.custbody_sb_bedspecialist);
+  if (!nsExec.id && !nsExec.refName) return;
+
+  const execMatch = users.find((u) => {
+    const userNsId = String(u.netsuiteId || u.netsuiteid || "").trim();
+    const userName = `${u.firstName || ""} ${u.lastName || ""}`.trim().toLowerCase();
+    return (
+      (nsExec.id && userNsId === nsExec.id) ||
+      (nsExec.refName && userName && userName === nsExec.refName.toLowerCase())
+    );
+  });
+
+  if (execMatch) {
+    select.value = String(execMatch.id);
+    return;
+  }
+
+  const fallbackValue = nsExec.id ? `netsuite:${nsExec.id}` : `netsuite-name:${nsExec.refName}`;
+  if (![...select.options].some((option) => option.value === fallbackValue)) {
+    const opt = document.createElement("option");
+    opt.value = fallbackValue;
+    opt.textContent = nsExec.refName || `NetSuite Employee ${nsExec.id}`;
+    opt.dataset.netsuiteId = nsExec.id || "";
+    select.appendChild(opt);
+  }
+  select.value = fallbackValue;
+}
+
 function recordList(value) {
   if (!value) return [];
   if (Array.isArray(value)) return value;
@@ -1059,14 +1103,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     try {
-      const nsExecId = so.custbody_sb_bedspecialist?.id || null;
-      if (nsExecId && users.length) {
-        const execMatch = users.find(
-          (u) =>
-            String(u.netsuiteId || u.netsuiteid || "") === String(nsExecId)
-        );
-        if (execMatch) document.querySelector("#salesExec").value = execMatch.id;
-      }
+      setSalesExecFromNetSuite(so, users);
 
       const subsidiaryId =
         so.subsidiary?.id || so.location?.id || so.custbody_sb_primarystore?.id || null;
@@ -2062,6 +2099,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
     const selectedSalesExecNsId =
       selectedSalesExecUser?.netsuiteId ||
       selectedSalesExecUser?.netsuiteid ||
+      document.getElementById("salesExec")?.selectedOptions?.[0]?.dataset?.netsuiteId ||
       null;
 
     const headerUpdates = {
