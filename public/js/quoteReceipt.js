@@ -249,13 +249,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         ? window.EposFinancials.normaliseLine(line)
         : {
             retailGross: Number(line.amount || 0),
-            saleGross: Number(line.saleprice || 0),
+            saleGross: Number(line.saleprice),
           };
       const price = normalised.retailGross;
       const total = normalised.saleGross;
 
       let discountPct = 0;
-      if (price > 0 && total > 0 && total < price) {
+      if (price > 0 && total >= 0 && total < price) {
         discountPct = ((price - total) / price) * 100;
       }
 

@@ -51,6 +51,10 @@ function parseMoneyInput(val) {
   return parseFloat(String(val || "0").replace(/[£,]/g, "")) || 0;
 }
 
+function hasExplicitValue(value) {
+  return value !== undefined && value !== null && value !== "";
+}
+
 function getItemInternalId(item) {
   return String(
     item?.["Internal ID"] ??
@@ -335,7 +339,10 @@ function collectEditableQuoteLines() {
       const itemName = row.querySelector(".item-search")?.value?.trim() || "";
       const quantity = parseFloat(row.querySelector(".item-qty")?.value || "0") || 0;
       const amount = parseMoneyInput(row.querySelector(".item-amount")?.value);
-      const saleprice = parseMoneyInput(row.querySelector(".item-saleprice")?.value);
+      const saleInput = row.querySelector(".item-saleprice")?.value;
+      const saleprice = hasExplicitValue(saleInput)
+        ? parseMoneyInput(saleInput)
+        : amount;
       const discount = parseFloat(row.querySelector(".item-discount")?.value || "0") || 0;
       const optionsText =
         row.querySelector(".options-summary")?.innerHTML?.trim().replace(/<br\s*\/?>/gi, "\n") || "";
@@ -634,15 +641,18 @@ function buildQuoteSavePayload() {
   const updates = items.map((i) => {
     const qty = qtySafe(i.quantity);
 
-    const grossToSave =
-      i.saleprice !== undefined &&
-      i.saleprice !== null &&
-      i.saleprice !== ""
-        ? Number(i.saleprice)
-        : Number(i.amount || 0);
+    const retailGrossLine = Number(i.amount || 0);
+    const grossToSave = hasExplicitValue(i.saleprice)
+      ? Number(i.saleprice)
+      : retailGrossLine;
 
     const netLineTotal = +(grossToSave / 1.2).toFixed(2);
     const netUnitRate = qty > 0 ? +(netLineTotal / qty).toFixed(2) : 0;
+    const discountPct = Number.isFinite(Number(i.discount))
+      ? Number(i.discount)
+      : retailGrossLine > 0
+        ? Math.max(0, ((retailGrossLine - grossToSave) / retailGrossLine) * 100)
+        : 0;
 
     let optionsText = i.options || "";
 
@@ -666,6 +676,13 @@ function buildQuoteSavePayload() {
       quantity: qty,
       rate: netUnitRate,
       amount: netLineTotal,
+      saleprice: grossToSave,
+      grossSaleprice: grossToSave,
+      saleGrossLine: grossToSave,
+      amountGrossLine: retailGrossLine,
+      grossAmount: retailGrossLine,
+      discountPct,
+      discount: discountPct,
       options: optionsText || "",
       trialOption: i.trialOption || "N/A",
     };
@@ -833,22 +850,95 @@ function quoteReceiptSelectedText(selector) {
 
 function quoteReceiptPayloadFromDom(quoteIdOrTran) {
   const quote = window._currentQuote || {};
+
+  const readRowValue = (row, selector, fallbackCellIndex = null) => {
+    const el = row.querySelector(selector);
+
+    const raw =
+      el?.value ??
+      el?.textContent ??
+      (fallbackCellIndex !== null ? row.children?.[fallbackCellIndex]?.textContent : "") ??
+      "";
+
+    return String(raw).trim();
+  };
+
+  const readRowMoney = (row, selector, fallbackCellIndex = null) => {
+    return parseMoneyInput(readRowValue(row, selector, fallbackCellIndex));
+  };
+
   const items = [...document.querySelectorAll("#orderItemsBody tr.order-line")]
     .map((row) => {
-      const itemId = row.querySelector(".item-internal-id")?.value?.trim() || row.dataset.itemId || "";
-      const name = row.querySelector(".item-search")?.value?.trim() || row.children?.[0]?.innerText?.trim() || "";
+      const itemId =
+        row.querySelector(".item-internal-id")?.value?.trim() ||
+        row.dataset.itemId ||
+        "";
+
+      const name =
+        readRowValue(row, ".item-search", 0) ||
+        row.dataset.itemName ||
+        "";
+
       if (!itemId && !name) return null;
 
-      const quantity = parseMoneyInput(row.querySelector(".item-qty")?.value) || 1;
-      const saleGrossLine = parseMoneyInput(row.querySelector(".item-saleprice")?.value);
-      const retailGrossLine = parseMoneyInput(row.querySelector(".item-amount")?.value) || saleGrossLine;
+      const quantity = readRowMoney(row, ".item-qty, .qty", 2) || 1;
+
+      const retailGrossLine = readRowMoney(row, ".item-amount, .amount", 3);
+      const discountPct = readRowMoney(row, ".item-discount, .discount", 4);
+
+      let saleGrossLine = readRowMoney(row, ".item-saleprice, .saleprice", 5);
+
+      // ✅ If 100% discounted, force actual charged value to zero
+      if (discountPct >= 99.9) {
+        saleGrossLine = 0;
+      }
+
+      // ✅ Only fallback if sale price is genuinely blank
+      const saleRaw = readRowValue(row, ".item-saleprice, .saleprice", 5);
+      if (saleRaw === "" && discountPct < 99.9) {
+        saleGrossLine = retailGrossLine;
+      }
+
+      // ✅ Send money fields as strings so "0.00" does not get lost by || fallback logic elsewhere
+      const retailGrossLineText = Number(retailGrossLine || 0).toFixed(2);
+      const saleGrossLineText = Number(saleGrossLine || 0).toFixed(2);
+
+      console.log("🧾 Quote receipt line payload:", {
+        name,
+        quantity,
+        retailGrossLine: retailGrossLineText,
+        discountPct,
+        saleGrossLine: saleGrossLineText,
+      });
 
       return {
         name: name || "Item",
-        options: row.querySelector(".options-summary")?.innerText?.trim() || row.children?.[1]?.innerText?.trim() || "",
+        itemName: name || "Item",
+
+        options:
+          row.querySelector(".options-summary")?.innerText?.trim() ||
+          row.children?.[1]?.innerText?.trim() ||
+          "",
+
         quantity,
-        retailGrossLine,
-        saleGrossLine,
+
+        // RRP / Price column
+        retailGrossLine: retailGrossLineText,
+        retailGross: retailGrossLineText,
+        amountGrossLine: retailGrossLineText,
+        grossAmount: retailGrossLineText,
+        amount: retailGrossLineText,
+
+        // Actual charged / Total column
+        saleGrossLine: saleGrossLineText,
+        saleGross: saleGrossLineText,
+        saleprice: saleGrossLineText,
+        grossSaleprice: saleGrossLineText,
+        total: saleGrossLineText,
+        lineTotal: saleGrossLineText,
+
+        discountPct,
+        discount: discountPct,
       };
     })
     .filter(Boolean);
@@ -868,12 +958,14 @@ function quoteReceiptPayloadFromDom(quoteIdOrTran) {
     order: {
       tranId: quote.tranId || quoteIdOrTran,
       quoteDate: quote.tranDate || quote.trandate || "",
-      salesExecName: quoteReceiptSelectedText(document.getElementById("salesExec")) ||
+      salesExecName:
+        quoteReceiptSelectedText(document.getElementById("salesExec")) ||
         quote.custbody_sb_bedspecialist?.refName ||
         "",
       store: document.getElementById("store")?.value || "",
       storeName: quoteReceiptSelectedText(document.getElementById("store")),
-      paymentInfoName: quoteReceiptSelectedText(document.getElementById("paymentInfo")) ||
+      paymentInfoName:
+        quoteReceiptSelectedText(document.getElementById("paymentInfo")) ||
         quote.custbody_sb_paymentinfo?.refName ||
         "",
     },
@@ -907,7 +999,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     Authorization: `Bearer ${saved.token}`,
   };
 
-  populateSalesExecAndStore(headers);
+  const dropdownsPromise = populateSalesExecAndStore(headers);
 
   const tranId = getIdFromPath();
   if (!tranId) {
@@ -954,6 +1046,71 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     console.log("✅ Quote loaded:", quote.tranId || tranId);
 
+    // ✅ Wait until Sales Exec + Store dropdowns are populated
+    await dropdownsPromise;
+
+    // ✅ Override Sales Exec from quote.custbody_sb_bedspecialist
+    try {
+      const salesExecSelect = document.getElementById("salesExec");
+      const nsSalesExecId =
+        quote.custbody_sb_bedspecialist?.id ||
+        quote.custbody_sb_bedspecialist?.value ||
+        "";
+
+      if (salesExecSelect && nsSalesExecId) {
+        const usersRes = await fetch("/api/users", { headers });
+        const usersJson = await usersRes.json();
+        const users = usersJson.users || usersJson.data || [];
+
+        const match = users.find(
+          (u) =>
+            String(u.netsuiteId || u.netsuiteid || u.netsuite_id || "") ===
+            String(nsSalesExecId)
+        );
+
+        if (match) {
+          salesExecSelect.value = String(match.id);
+          console.log("✅ Quote Sales Exec set from custbody_sb_bedspecialist:", match);
+        } else {
+          console.warn("⚠️ No EPOS user matched quote Sales Exec:", nsSalesExecId);
+        }
+      }
+    } catch (err) {
+      console.warn("⚠️ Failed to set quote Sales Exec:", err.message || err);
+    }
+
+    // ✅ Override Store from quote subsidiary / primary store / location
+    try {
+      const storeSelect = document.getElementById("store");
+
+      const quoteStoreNsId =
+        quote.custbody_sb_primarystore?.id ||
+        quote.subsidiary?.id ||
+        quote.location?.id ||
+        "";
+
+      if (storeSelect && quoteStoreNsId) {
+        const locRes = await fetch("/api/meta/locations", { headers });
+        const locJson = await locRes.json();
+        const locations = locJson.locations || locJson.data || [];
+
+        const match = locations.find(
+          (loc) =>
+            String(loc.netsuite_internal_id || "") === String(quoteStoreNsId) ||
+            String(loc.invoice_location_id || "") === String(quoteStoreNsId)
+        );
+
+        if (match) {
+          storeSelect.value = String(match.id);
+          console.log("✅ Quote Store set from quote subsidiary/store:", match);
+        } else {
+          console.warn("⚠️ No EPOS location matched quote store NS ID:", quoteStoreNsId);
+        }
+      }
+    } catch (err) {
+      console.warn("⚠️ Failed to set quote Store:", err.message || err);
+    }
+
     if (
       typeof window.createGlobalSuggestions === "function" &&
       !document.getElementById("global-suggestions")
@@ -994,6 +1151,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const firstName = nameParts[1] || quote.firstName || "";
       const lastName = nameParts[2] || quote.lastName || "";
+
+      document.querySelector('input[name="firstName"]')?.setAttribute("value", firstName);
+      document.querySelector('input[name="lastName"]')?.setAttribute("value", lastName);
 
       const firstNameEl = document.querySelector('input[name="firstName"]');
       const lastNameEl = document.querySelector('input[name="lastName"]');

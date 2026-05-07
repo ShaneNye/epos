@@ -31,37 +31,56 @@
     return line?.item?.refName || line?.itemName || line?.name || "";
   }
 
-  function normaliseLine(line) {
-    const name = lineName(line);
-    const negativeLine = isNegativeValueLine(name);
+function normaliseLine(line) {
+  const name = lineName(line);
+  const negativeLine = isNegativeValueLine(name);
 
-    let retailGross = money(line?.amount);
-    let saleGross = hasValue(line?.saleprice) ? money(line.saleprice) : retailGross;
-    let vat = hasValue(line?.vat) ? money(line.vat) : saleGross / 6;
+  const retailValue =
+    hasValue(line?.retailGrossLine) ? line.retailGrossLine :
+    hasValue(line?.retailGross) ? line.retailGross :
+    hasValue(line?.amountGrossLine) ? line.amountGrossLine :
+    hasValue(line?.grossAmount) ? line.grossAmount :
+    hasValue(line?.amount) ? line.amount :
+    0;
 
-    if (retailGross === 0 && saleGross !== 0) {
-      retailGross = saleGross;
-    }
+  const saleValue =
+    hasValue(line?.saleGrossLine) ? line.saleGrossLine :
+    hasValue(line?.saleGross) ? line.saleGross :
+    hasValue(line?.grossSaleprice) ? line.grossSaleprice :
+    hasValue(line?.saleprice) ? line.saleprice :
+    hasValue(line?.total) ? line.total :
+    hasValue(line?.lineTotal) ? line.lineTotal :
+    retailValue;
 
-    if (negativeLine) {
-      retailGross = -Math.abs(retailGross);
-      saleGross = -Math.abs(saleGross);
-      vat = -Math.abs(vat || saleGross / 6);
-    } else {
-      retailGross = Math.abs(retailGross);
-      saleGross = Math.abs(saleGross);
-      vat = Math.abs(vat || saleGross / 6);
-    }
+  let retailGross = money(retailValue);
+  let saleGross = money(saleValue);
+  let vat = hasValue(line?.vat) ? money(line.vat) : saleGross / 6;
 
-    return {
-      name,
-      quantity: Math.abs(money(line?.quantity)) || 0,
-      retailGross: +retailGross.toFixed(2),
-      saleGross: +saleGross.toFixed(2),
-      vat: +vat.toFixed(2),
-      negativeLine,
-    };
+  // ✅ Only use sale as retail fallback if retail was genuinely missing,
+  // not just because retail value is zero.
+  if (!hasValue(retailValue) && saleGross !== 0) {
+    retailGross = saleGross;
   }
+
+  if (negativeLine) {
+    retailGross = -Math.abs(retailGross);
+    saleGross = -Math.abs(saleGross);
+    vat = -Math.abs(vat || saleGross / 6);
+  } else {
+    retailGross = Math.abs(retailGross);
+    saleGross = Math.abs(saleGross);
+    vat = Math.abs(vat || saleGross / 6);
+  }
+
+  return {
+    name,
+    quantity: Math.abs(money(line?.quantity)) || 0,
+    retailGross: +retailGross.toFixed(2),
+    saleGross: +saleGross.toFixed(2),
+    vat: +vat.toFixed(2),
+    negativeLine,
+  };
+}
 
   function summariseLines(lines = [], deposits = []) {
     const summary = {

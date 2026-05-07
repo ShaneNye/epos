@@ -21,6 +21,15 @@ const itemFeedCache = {
   inFlight: null,
 };
 
+function hasExplicitValue(value) {
+  return value !== undefined && value !== null && value !== "";
+}
+
+function numberOrZero(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
+
 function sendNoStore(res) {
   res.set({
     "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
@@ -294,11 +303,19 @@ router.post("/create", async (req, res) => {
         items: (items || []).map((i) => {
           const itemClass = String(i.class || "").trim().toLowerCase();
           const isServiceItem = itemClass.includes("service");
+          const grossToSave = hasExplicitValue(i.saleprice)
+            ? numberOrZero(i.saleprice)
+            : numberOrZero(i.amount);
+          const qty = Number(i.quantity) || 1;
+          const netLineTotal = +(grossToSave / 1.2).toFixed(2);
+          const netUnitRate = qty > 0 ? +(netLineTotal / qty).toFixed(2) : 0;
 
           return {
             item: { id: String(i.item) },
-            quantity: Number(i.quantity) || 1,
-            amount: Number(i.saleprice || i.amount || 0) / 1.2,
+            quantity: qty,
+            price: { id: "-1" },
+            rate: netUnitRate,
+            amount: netLineTotal,
             custcol_sb_itemoptionsdisplay: i.options || "",
             ...(!isServiceItem && i.fulfilmentMethod && {
               custcol_sb_fulfilmentlocation: { id: String(i.fulfilmentMethod) },
@@ -570,6 +587,39 @@ router.post("/:id/save", async (req, res) => {
     const { getAuthHeader } = require("../netsuiteClient");
     const authHeader = await getAuthHeader(restletUrl, "POST", userId, "sb");
 
+    const normalizedUpdates = updates.map((line) => {
+      const quantity = numberOrZero(line.quantity) || 1;
+      const retailGrossLine = numberOrZero(
+        line.grossAmount ?? line.amountGrossLine ?? line.retailGrossLine ?? 0
+      );
+      const saleGrossLine = hasExplicitValue(line.grossSaleprice)
+        ? numberOrZero(line.grossSaleprice)
+        : hasExplicitValue(line.saleGrossLine)
+          ? numberOrZero(line.saleGrossLine)
+          : hasExplicitValue(line.saleprice)
+            ? numberOrZero(line.saleprice)
+            : +(numberOrZero(line.amount) * 1.2).toFixed(2);
+      const discountPct = hasExplicitValue(line.discountPct)
+        ? numberOrZero(line.discountPct)
+        : hasExplicitValue(line.discount)
+          ? numberOrZero(line.discount)
+          : retailGrossLine > 0
+            ? Math.max(0, ((retailGrossLine - saleGrossLine) / retailGrossLine) * 100)
+            : 0;
+
+      return {
+        ...line,
+        quantity,
+        saleprice: saleGrossLine,
+        grossSaleprice: saleGrossLine,
+        saleGrossLine,
+        amountGrossLine: retailGrossLine,
+        grossAmount: retailGrossLine,
+        discountPct,
+        discount: discountPct,
+      };
+    });
+
     const response = await fetch(restletUrl, {
       method: "POST",
       headers: {
@@ -579,7 +629,7 @@ router.post("/:id/save", async (req, res) => {
       },
       body: JSON.stringify({
         id: String(id),
-        updates,
+        updates: normalizedUpdates,
         headerUpdates: mappedHeaderUpdates,
         commit: false,
       }),
@@ -708,12 +758,9 @@ router.patch("/:id", async (req, res) => {
         items: (items || []).map((i, index) => {
           const qty = Number(i.quantity) || 1;
 
-          const grossToSave =
-            i.saleprice !== undefined &&
-              i.saleprice !== null &&
-              i.saleprice !== ""
-              ? Number(i.saleprice)
-              : Number(i.amount || 0);
+          const grossToSave = hasExplicitValue(i.saleprice)
+            ? numberOrZero(i.saleprice)
+            : numberOrZero(i.amount);
 
           const netLineTotal = +(grossToSave / 1.2).toFixed(2);
           const netUnitRate =
