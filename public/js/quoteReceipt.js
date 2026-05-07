@@ -100,8 +100,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ✅ You need this endpoint (or adjust URL to your actual quote-get route):
     // GET /api/netsuite/quote/:id   -> { ok:true, quote:{...} } or { ok:true, estimate:{...} }
     const quotePromise = fetch(
-      `/api/netsuite/quote/${encodeURIComponent(quoteId)}`,
-      { headers }
+      `/api/netsuite/quote/${encodeURIComponent(quoteId)}?refresh=1&_=${Date.now()}`,
+      { headers, cache: "no-store" }
     );
     const locationsPromise = fetch("/api/meta/locations", { headers }).catch(() =>
       fetch("/api/meta/locations")

@@ -220,7 +220,7 @@ function showSuggestions(input, matches, lineIndex) {
 
   if (!matches.length) return hideSuggestions();
 
-  matches.forEach(it => {
+  matches.slice(0, 50).forEach(it => {
     const li = document.createElement("li");
     li.textContent = it["Name"];
     li.addEventListener("click", () => {
@@ -237,7 +237,17 @@ function showSuggestions(input, matches, lineIndex) {
 
   const spaceBelow = window.innerHeight - rect.bottom;
   const spaceAbove = rect.top;
-  if (spaceBelow < 200 && spaceAbove > spaceBelow) {
+  const opensUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+  const availableSpace = opensUp ? spaceAbove : spaceBelow;
+  const maxHeight = Math.max(160, Math.min(320, availableSpace - 12));
+
+  globalSuggestions.style.maxHeight = maxHeight + "px";
+  globalSuggestions.style.overflowY = "auto";
+  globalSuggestions.style.overscrollBehavior = "contain";
+  globalSuggestions.classList.toggle("open-up", opensUp);
+  globalSuggestions.classList.toggle("open-down", !opensUp);
+
+  if (opensUp) {
     globalSuggestions.style.top = "";
     globalSuggestions.style.bottom = (window.innerHeight - rect.top) + "px";
   } else {
@@ -253,6 +263,41 @@ function hideSuggestions() {
   globalSuggestions.innerHTML = "";
   activeInput = null;
   activeLineIndex = null;
+}
+
+function normaliseMoneyText(value) {
+  const text = String(value || "").replace(/[^\d.]/g, "");
+  const firstDot = text.indexOf(".");
+  if (firstDot === -1) return text;
+  return text.slice(0, firstDot + 1) + text.slice(firstDot + 1).replace(/\./g, "");
+}
+
+function formatMoneyText(value) {
+  const cleaned = normaliseMoneyText(value);
+  const amount = Number(cleaned || 0);
+  return Number.isFinite(amount) ? amount.toFixed(2) : "0.00";
+}
+
+function bindMoneyInput(input) {
+  if (!input || input.dataset.moneyInputBound === "1") return;
+  input.dataset.moneyInputBound = "1";
+  input.type = "text";
+  input.inputMode = "decimal";
+  input.autocomplete = "off";
+  input.pattern = "\\d*(\\.\\d*)?";
+
+  input.addEventListener("input", () => {
+    const cleaned = normaliseMoneyText(input.value);
+    if (input.value !== cleaned) input.value = cleaned;
+  });
+
+  input.addEventListener("blur", () => {
+    const formatted = formatMoneyText(input.value);
+    if (input.value !== formatted) {
+      input.value = formatted;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
 }
 
 /* ==========================================================
@@ -658,6 +703,7 @@ function setupPriceSync(line) {
   const qtyField = line.querySelector(".item-qty");
 
   if (!amountField || !discountField || !salePriceField || !qtyField) return;
+  bindMoneyInput(salePriceField);
   let unitRetail = 0;
 
   function recalc() {
@@ -686,7 +732,6 @@ function setupPriceSync(line) {
     const qty = parseInt(qtyField.value || 1, 10);
     const retailTotal = unitRetail * qty;
     const saleTotal = parseFloat(salePriceField.value || 0) || 0;
-    salePriceField.value = saleTotal.toFixed(2);
     if (retailTotal > 0 && !isNaN(saleTotal)) {
       const discountPercent = clampPercent(((retailTotal - saleTotal) / retailTotal) * 100);
       discountField.value = discountPercent.toFixed(1).replace(/\.0$/, "");
@@ -912,7 +957,7 @@ function addNewRow() {
 <td><input type="number" class="item-qty" value="1" min="1" step="1" /></td>
 <td><input type="number" class="item-amount" placeholder="£" step="0.01" readonly /></td>
 <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" /></td>
-<td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
+<td><input type="text" class="item-saleprice" placeholder="£" inputmode="decimal" autocomplete="off" /></td>
 
 <td class="vat-free-cell" style="display:none;">
   <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />

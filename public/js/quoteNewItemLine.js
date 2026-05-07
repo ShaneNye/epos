@@ -6,6 +6,7 @@ let globalSuggestions;
 let activeInput = null;
 let activeRow = null;
 let lineCounter = 1;
+let interactingWithSuggestions = false;
 
 // ✅ Global cache so popup windows can see them
 window.optionsCache = {}; // itemId -> options payload
@@ -149,6 +150,14 @@ function createGlobalSuggestions() {
   globalSuggestions.className = "hidden";
   globalSuggestions.style.position = "fixed";
   globalSuggestions.style.zIndex = "99999";
+  globalSuggestions.addEventListener("mousedown", () => {
+    interactingWithSuggestions = true;
+  });
+  document.addEventListener("mouseup", () => {
+    setTimeout(() => {
+      interactingWithSuggestions = false;
+    }, 250);
+  });
   document.body.appendChild(globalSuggestions);
   return globalSuggestions;
 }
@@ -205,8 +214,17 @@ function showSuggestions(input, row, matches) {
 
   const spaceBelow = window.innerHeight - rect.bottom;
   const spaceAbove = rect.top;
+  const opensUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+  const availableSpace = opensUp ? spaceAbove : spaceBelow;
+  const maxHeight = Math.max(160, Math.min(320, availableSpace - 12));
 
-  if (spaceBelow < 200 && spaceAbove > spaceBelow) {
+  globalSuggestions.style.maxHeight = `${maxHeight}px`;
+  globalSuggestions.style.overflowY = "auto";
+  globalSuggestions.style.overscrollBehavior = "contain";
+  globalSuggestions.classList.toggle("open-up", opensUp);
+  globalSuggestions.classList.toggle("open-down", !opensUp);
+
+  if (opensUp) {
     globalSuggestions.style.top = "";
     globalSuggestions.style.bottom = `${window.innerHeight - rect.top}px`;
   } else {
@@ -223,6 +241,41 @@ function hideSuggestions() {
   globalSuggestions.innerHTML = "";
   activeInput = null;
   activeRow = null;
+}
+
+function normaliseMoneyText(value) {
+  const text = String(value || "").replace(/[^\d.]/g, "");
+  const firstDot = text.indexOf(".");
+  if (firstDot === -1) return text;
+  return text.slice(0, firstDot + 1) + text.slice(firstDot + 1).replace(/\./g, "");
+}
+
+function formatMoneyText(value) {
+  const cleaned = normaliseMoneyText(value);
+  const amount = Number(cleaned || 0);
+  return Number.isFinite(amount) ? amount.toFixed(2) : "0.00";
+}
+
+function bindMoneyInput(input) {
+  if (!input || input.dataset.moneyInputBound === "1") return;
+  input.dataset.moneyInputBound = "1";
+  input.type = "text";
+  input.inputMode = "decimal";
+  input.autocomplete = "off";
+  input.pattern = "\\d*(\\.\\d*)?";
+
+  input.addEventListener("input", () => {
+    const cleaned = normaliseMoneyText(input.value);
+    if (input.value !== cleaned) input.value = cleaned;
+  });
+
+  input.addEventListener("blur", () => {
+    const formatted = formatMoneyText(input.value);
+    if (input.value !== formatted) {
+      input.value = formatted;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+  });
 }
 
 /* =========================================================
@@ -568,6 +621,7 @@ function setupPriceSync(line) {
   const qtyField = line.querySelector(".item-qty");
 
   if (!amountField || !discountField || !salePriceField || !qtyField) return;
+  bindMoneyInput(salePriceField);
 
   let unitRetail = 0;
 
@@ -672,7 +726,7 @@ function getFilteredMatches(query) {
 
       return true;
     })
-    .slice(0, 10);
+    .slice(0, 50);
 }
 
 function setupAutocompleteForRow(row) {
@@ -703,7 +757,11 @@ function setupAutocompleteForRow(row) {
   });
 
   input.addEventListener("blur", () => {
-    setTimeout(() => hideSuggestions(), 150);
+    setTimeout(() => {
+      if (!interactingWithSuggestions && !globalSuggestions?.matches(":hover")) {
+        hideSuggestions();
+      }
+    }, 150);
   });
 }
 
@@ -876,7 +934,7 @@ function addNewRow() {
     </td>
 
     <td>
-      <input type="number" class="item-saleprice" placeholder="£" step="0.01" />
+      <input type="text" class="item-saleprice" placeholder="£" inputmode="decimal" autocomplete="off" />
     </td>
 
     <td class="vat-free-cell" style="display:none;">
@@ -924,6 +982,7 @@ window.createGlobalSuggestions = createGlobalSuggestions;
 window.setupAutocomplete = setupAutocomplete;
 window.setupAutocompleteForRow = setupAutocompleteForRow;
 window.setupPriceSync = setupPriceSync;
+window.bindQuoteMoneyInput = bindMoneyInput;
 window.ensure60NightTrialCell = ensure60NightTrialCell;
 window.update60NightTrialColumnVisibility = update60NightTrialColumnVisibility;
 window.ensureNextEmptyRowAndFocus = ensureNextEmptyRowAndFocus;
@@ -996,7 +1055,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   });
 
   window.addEventListener("resize", hideSuggestions);
-  window.addEventListener("scroll", hideSuggestions, true);
+  window.addEventListener(
+    "scroll",
+    (e) => {
+      if (globalSuggestions?.contains(e.target)) return;
+      hideSuggestions();
+    },
+    true
+  );
 
   recalcTotals();
 });

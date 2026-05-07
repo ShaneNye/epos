@@ -1191,6 +1191,38 @@ body.sidebar-expanded .order-upsell-panel {
   gap: 4px;
 }
 
+.related-custom-field-type {
+  display: block;
+  margin-top: 3px;
+  color: #64748b;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.related-custom-field-error {
+  color: #b42318;
+}
+
+.custom-fields-table {
+  margin-top: 0;
+}
+
+.custom-fields-empty {
+  color: #64748b;
+  padding: 14px 10px;
+}
+
+.custom-fields-status {
+  margin-left: 10px;
+  color: #64748b;
+  font-weight: 600;
+}
+
+.custom-field-control {
+  width: min(420px, 100%);
+  max-width: 100%;
+}
+
 .row-error {
   outline: 2px solid rgba(210, 38, 38, 0.35);
   outline-offset: -2px;

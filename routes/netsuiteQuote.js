@@ -21,6 +21,15 @@ const itemFeedCache = {
   inFlight: null,
 };
 
+function sendNoStore(res) {
+  res.set({
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+    "Surrogate-Control": "no-store",
+  });
+}
+
 function getCachedLookup(key) {
   const cached = lookupCache.get(key);
   if (!cached || cached.expiresAt <= Date.now()) {
@@ -357,37 +366,13 @@ router.get("/:id", async (req, res) => {
   let rejectInflight = null;
 
   try {
+    sendNoStore(res);
     const { id } = req.params;
     console.log(`📦 Fetching Quote ${id} from NetSuite...`);
 
-    const refresh = String(req.query.refresh || "") === "1";
     cacheKey = quoteCacheKey(id);
 
-    if (!refresh) {
-      const cached = quoteCacheGet(id);
-      if (cached?.data) {
-        return res.json({ ...cached.data, _cache: "HIT" });
-      }
-      if (cached?.inFlight) {
-        try {
-          const data = await cached.inFlight;
-          return res.json({ ...data, _cache: "HIT-INFLIGHT" });
-        } catch {
-          // Try a fresh load below.
-        }
-      }
-    }
-
-    let resolveInflight;
-    const inFlight = new Promise((resolve, reject) => {
-      resolveInflight = resolve;
-      rejectInflight = reject;
-    });
-    quoteCache.set(cacheKey, {
-      inFlight,
-      expiresAt: Date.now() + QUOTE_CACHE_TTL_MS,
-      data: null,
-    });
+    quoteCache.delete(cacheKey);
 
     const userId = await resolveUserIdFromAuth(req);
     console.log("🔐 Authenticated user for quote view:", userId);
@@ -522,9 +507,8 @@ router.get("/:id", async (req, res) => {
     console.log("✅ Quote fetched successfully:", quote.tranId || quote.id);
     quote._netSuiteAppBaseUrl = netSuiteAppBaseUrl();
     const payload = { ok: true, quote };
-    quoteCacheSet(id, payload);
-    resolveInflight(payload);
-    return res.json({ ...payload, _cache: "MISS" });
+    quoteCache.delete(cacheKey);
+    return res.json({ ...payload, _cache: "BYPASS" });
   } catch (err) {
     console.error("❌ GET /quote/:id error:", err.message);
     try {

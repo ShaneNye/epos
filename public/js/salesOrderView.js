@@ -74,6 +74,7 @@ function setupSalesViewTabs() {
   const panels = {
     items: document.getElementById("salesTabItems"),
     related: document.getElementById("salesTabRelated"),
+    customFields: document.getElementById("salesTabCustomFields"),
   };
 
   tabs.forEach((tab) => {
@@ -230,6 +231,143 @@ function renderDispatchTrack(value, scheduleHtml = "") {
   container.textContent = "Schedule unavailable";
 }
 
+function labelCustomFieldType(value) {
+  const labels = {
+    free_form_text: "Free-form Text",
+    list_record: "List/Record",
+    number: "Number",
+    currency: "Currency",
+  };
+  return labels[value] || value || "";
+}
+
+function formatCustomFieldValue(field) {
+  if (field?.error) return `Unavailable: ${field.error}`;
+  const value = field?.displayValue ?? field?.value ?? "";
+  if (value === null || value === undefined || value === "") return "-";
+
+  if (field.fieldType === "currency") {
+    const amount = Number(String(value).replace(/[^\d.-]/g, ""));
+    return Number.isFinite(amount) ? `\u00a3${amount.toFixed(2)}` : String(value);
+  }
+
+  if (field.fieldType === "number") {
+    const number = Number(value);
+    return Number.isFinite(number) ? String(number) : String(value);
+  }
+
+  return String(value);
+}
+
+function customFieldCurrentValue(field) {
+  return field?.value ?? "";
+}
+
+function collectCustomFieldPayload() {
+  return [...document.querySelectorAll(".custom-field-control")].map((control) => ({
+    id: control.dataset.customFieldId,
+    value: control.value,
+  }));
+}
+
+function customFieldsSignature(fields = collectCustomFieldPayload()) {
+  return JSON.stringify(
+    (Array.isArray(fields) ? fields : [])
+      .map((field) => ({
+        id: String(field.id || ""),
+        value: String(field.value ?? ""),
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id))
+  );
+}
+
+function customFieldsHaveChanges() {
+  return customFieldsSignature() !== (window._lastCustomFieldsSignature || "[]");
+}
+
+function unlockCustomFieldControls() {
+  document.querySelectorAll(".custom-field-control").forEach((control) => {
+    control.disabled = false;
+    control.classList.remove("locked-input");
+  });
+}
+
+function customFieldInputHtml(field) {
+  const value = customFieldCurrentValue(field);
+  const id = escapeHtml(field.id);
+  const label = escapeHtml(field.appLabel || field.fieldInternalId || "Custom Field");
+  const baseAttrs = `data-custom-field-id="${id}" aria-label="${label}"`;
+
+  if (field.fieldType === "list_record") {
+    const options = Array.isArray(field.options) ? field.options : [];
+    const currentValue = String(value ?? "");
+    const hasCurrent = options.some((option) => String(option.id) === currentValue);
+    const currentLabel = field.displayValue || currentValue;
+    const optionHtml = [
+      `<option value="">Select</option>`,
+      ...(!hasCurrent && currentValue
+        ? [`<option value="${escapeHtml(currentValue)}" selected>${escapeHtml(currentLabel)}</option>`]
+        : []),
+      ...options.map((option) => {
+        const optionValue = String(option.id || "");
+        const selected = optionValue === currentValue ? " selected" : "";
+        return `<option value="${escapeHtml(optionValue)}"${selected}>${escapeHtml(option.name || optionValue)}</option>`;
+      }),
+    ].join("");
+
+    return `
+      <select class="custom-field-control" ${baseAttrs} data-always-editable="true">
+        ${optionHtml}
+      </select>
+      ${field.optionsError ? `<small class="related-custom-field-error">${escapeHtml(field.optionsError)}</small>` : ""}
+    `;
+  }
+
+  if (field.fieldType === "number" || field.fieldType === "currency") {
+    return `<input class="custom-field-control" ${baseAttrs} data-always-editable="true" type="number" step="0.01" value="${escapeHtml(value ?? "")}" />`;
+  }
+
+  return `<input class="custom-field-control" ${baseAttrs} data-always-editable="true" type="text" value="${escapeHtml(value ?? "")}" />`;
+}
+
+function renderCustomFields(customFields = []) {
+  const tbody = document.getElementById("customFieldsBody");
+  if (!tbody) return;
+
+  const fields = Array.isArray(customFields) ? customFields : [];
+  window._currentCustomFields = fields;
+  if (!fields.length) {
+    tbody.innerHTML = `
+      <tr>
+        <td class="custom-fields-empty">No custom fields are visible for this sales order.</td>
+      </tr>
+    `;
+    return;
+  }
+
+  tbody.innerHTML = fields
+    .map((field) => {
+      const typeLabel = labelCustomFieldType(field.fieldType);
+      const label = field.appLabel || field.fieldInternalId || "Custom Field";
+      const valueClass = field.error ? " related-custom-field-error" : "";
+      return `
+        <tr>
+          <th>
+            ${escapeHtml(label)}
+            ${typeLabel ? `<small class="related-custom-field-type">${escapeHtml(typeLabel)}</small>` : ""}
+          </th>
+          <td class="${valueClass.trim()}">
+            ${field.error ? escapeHtml(formatCustomFieldValue(field)) : customFieldInputHtml(field)}
+          </td>
+        </tr>
+      `;
+    })
+    .join("");
+
+  window._lastCustomFieldsSignature = customFieldsSignature();
+  unlockCustomFieldControls();
+}
+
 function renderRelatedRecords(so, orderManagementRow = null) {
   const related = so?.relatedRecords || {};
   const pairedSalesOrder =
@@ -256,6 +394,7 @@ function renderRelatedRecords(so, orderManagementRow = null) {
   updateManageIntercompanyButton(
     isPendingFulfillmentSalesOrder(so) && !hasRelatedRecord(pairedSalesOrder)
   );
+  renderCustomFields(so?.customFields || []);
 }
 
 async function openIntercompanyConsole() {
@@ -321,6 +460,7 @@ async function loadRelatedRecords(headers, so, tranId) {
 
     so._netSuiteAppBaseUrl = data.netSuiteAppBaseUrl || so._netSuiteAppBaseUrl;
     so.relatedRecords = data.relatedRecords || {};
+    so.customFields = data.customFields || [];
     renderRelatedRecords(so);
     return so.relatedRecords;
   } catch (err) {
@@ -385,6 +525,75 @@ document.addEventListener("click", (event) => {
   if (win) win.focus();
   else window.location.href = link.href;
 });
+
+document.addEventListener("input", (event) => {
+  if (!event.target.closest(".custom-field-control")) return;
+  const status = document.getElementById("customFieldsStatus");
+  if (status) status.textContent = "Unsaved changes";
+});
+
+document.addEventListener("change", (event) => {
+  if (!event.target.closest(".custom-field-control")) return;
+  const status = document.getElementById("customFieldsStatus");
+  if (status) status.textContent = "Unsaved changes";
+});
+
+async function saveCustomFieldsForCurrentOrder({ button = null, showNoChanges = false } = {}) {
+  const savedAuth = storageGet?.();
+  const token = savedAuth?.token;
+  if (!token) return (window.location.href = "/index.html");
+
+  const parts = window.location.pathname.split("/").filter(Boolean);
+  const tranId = parts[parts.length - 1];
+  const status = document.getElementById("customFieldsStatus");
+  const fields = collectCustomFieldPayload();
+  const signature = customFieldsSignature(fields);
+
+  if (signature === (window._lastCustomFieldsSignature || "[]")) {
+    if (showNoChanges) {
+      if (status) status.textContent = "No custom field changes";
+      showToast?.("No custom field changes to save.", "success");
+    }
+    return { ok: true, changed: false };
+  }
+
+  if (button) {
+    button.disabled = true;
+    button.classList.add("locked-input");
+  }
+  if (status) status.textContent = "Saving...";
+
+  try {
+    const res = await fetch(`/api/netsuite/salesorder/${encodeURIComponent(tranId)}/custom-fields`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ fields }),
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Failed to save custom fields");
+
+    if (window._currentSalesOrder) {
+      window._currentSalesOrder.customFields = data.customFields || [];
+    }
+    renderCustomFields(data.customFields || []);
+    window._lastCustomFieldsSignature = customFieldsSignature();
+    showToast?.("Custom fields saved.", "success");
+    return { ok: true, changed: true };
+  } catch (err) {
+    console.error("Custom field save failed:", err);
+    if (status) status.textContent = err.message || "Save failed";
+    showToast?.(err.message || "Custom field save failed", "error");
+    return { ok: false, changed: true, error: err };
+  } finally {
+    if (button) {
+      button.disabled = false;
+      button.classList.remove("locked-input");
+    }
+  }
+}
 
 /* =====================================================
    Main Sales Order View Loader
@@ -570,16 +779,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     console.error("❌ Missing tranId from URL");
     return;
   }
-  const viewParams = new URLSearchParams(window.location.search || "");
-  const forceSalesOrderRefresh = viewParams.get("refresh") === "1";
   const salesOrderQuery = new URLSearchParams({
     lite: "1",
     deposits: "0",
+    refresh: "1",
+    _: String(Date.now()),
   });
-  if (forceSalesOrderRefresh) {
-    salesOrderQuery.set("refresh", "1");
-    salesOrderQuery.set("_", String(Date.now()));
-  }
   window._currentDeposits = [];
   const depositsPromise = /^\d+$/.test(String(tranId || ""))
     ? loadSalesOrderDeposits(headers, tranId)
@@ -595,7 +800,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         console.warn("⚠️ Failed to preload item options:", err.message || err);
         return {};
       }),
-      fetch(`/api/netsuite/salesorder/${tranId}?${salesOrderQuery.toString()}`, { headers }),
+      fetch(`/api/netsuite/salesorder/${tranId}?${salesOrderQuery.toString()}`, {
+        headers,
+        cache: "no-store",
+      }),
       locationsPromise,
       usersPromise,
       fetch("/api/netsuite/fulfilmentmethods").catch(() => null),
@@ -902,6 +1110,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.error("❌ Warehouse cache failed:", err.message);
     }
 
+    unlockCustomFieldControls();
+
     // ==================================================
     // 4️⃣ Render Item Lines
     // ==================================================
@@ -943,8 +1153,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       document.querySelectorAll("input, select, textarea, button").forEach((el) => {
         const isStoreField = el.id === "store" || el.name === "store";
+        const isCustomField = el.classList.contains("custom-field-control");
 
         const allowEdit =
+          isCustomField ||
           el.name === "title" ||
           el.name === "firstName" ||
           el.name === "lastName" ||
@@ -993,7 +1205,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("📝 Pending fulfillment – allow only memo field editing");
 
       document.querySelectorAll("input, select, textarea, button").forEach((el) => {
-        if (el.name === "memo") {
+        if (el.classList.contains("custom-field-control")) {
+          el.disabled = false;
+          el.classList.remove("locked-input");
+        } else if (el.name === "memo") {
           el.disabled = false;
           el.classList.remove("locked-input");
         } else if (
@@ -1019,6 +1234,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("🔒 Not pending approval or fulfillment – lock everything (read-only)");
 
       document.querySelectorAll("input, select, textarea, button").forEach((el) => {
+        if (el.classList.contains("custom-field-control")) {
+          el.disabled = false;
+          el.classList.remove("locked-input");
+          return;
+        }
+
         if (
           el.id === "newMemoBtn" ||
           el.id === "printBtn" ||
@@ -1928,6 +2149,15 @@ function updateActionButton(orderStatusObj, tranId, so) {
       const payload = buildPayloadFromUI();
       const signature = stableSalesSaveSignature(payload);
       if (signature === window._lastSalesOrderSaveSignature) {
+        if (customFieldsHaveChanges()) {
+          showCommitInlineLocal("Saving custom fields...");
+          const customResult = await saveCustomFieldsForCurrentOrder({ button: freshSaveBtn });
+          showCommitInlineLocal("Saved ✅");
+          setTimeout(() => hideCommitInlineLocal(), 800);
+          freshSaveBtn.disabled = false;
+          freshSaveBtn.classList.remove("locked-input");
+          return;
+        }
         showToast?.("No order changes to save.", "success");
         showCommitInlineLocal("No changes ✅");
         setTimeout(() => hideCommitInlineLocal(), 800);
@@ -1948,6 +2178,11 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
         const data = await res.json();
         if (!res.ok || !data.ok) throw new Error(data.error || "Failed to save order");
+
+        if (customFieldsHaveChanges()) {
+          const customResult = await saveCustomFieldsForCurrentOrder({ button: freshSaveBtn });
+          if (!customResult.ok) throw customResult.error || new Error("Failed to save custom fields");
+        }
 
         showToast?.("✅ Saved (not committed)", "success");
         window._lastSalesOrderSaveSignature = signature;

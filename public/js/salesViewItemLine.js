@@ -557,7 +557,7 @@ function addSalesViewRow({ fulfilmentMethods = [] } = {}) {
     <td class="vat">£0.00</td>
 
     <td class="saleprice">
-      <input type="number" class="item-saleprice" value="0.00" step="0.01" />
+      <input type="text" class="item-saleprice" value="0.00" inputmode="decimal" autocomplete="off" />
     </td>
 
     <td class="sixty-night-cell" style="display:none;">
@@ -806,7 +806,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
       : `${discountPct.toFixed(1)}%`;
 
     const saleCell = isPending
-      ? `<input type="number" class="item-saleprice" value="${saleGrossLineTotal.toFixed(2)}" step="0.01" />`
+      ? `<input type="text" class="item-saleprice" value="${saleGrossLineTotal.toFixed(2)}" inputmode="decimal" autocomplete="off" />`
       : `£${saleGrossLineTotal.toFixed(2)}`;
 
     const qtyCell = isPending

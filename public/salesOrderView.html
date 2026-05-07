@@ -246,6 +246,9 @@
                     <button type="button" class="sales-view-tab" data-sales-tab="related" role="tab" aria-selected="false">
                         Related Records
                     </button>
+                    <button type="button" class="sales-view-tab" data-sales-tab="customFields" role="tab" aria-selected="false">
+                        Custom Fields
+                    </button>
                 </div>
 
                 <div id="salesTabItems" class="sales-tab-panel active" role="tabpanel">
@@ -284,7 +287,7 @@
                                 <td><input type="number" class="item-qty" value="1" min="1" step="1" /></td>
                                 <td><input type="number" class="item-amount" placeholder="£" step="0.01" readonly /></td>
                                 <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" /></td>
-                                <td><input type="number" class="item-saleprice" placeholder="£" step="0.01" /></td>
+                                <td><input type="text" class="item-saleprice" placeholder="£" inputmode="decimal" autocomplete="off" /></td>
                                 <td class="sixty-night-cell" style="display:none;">
                                     <select class="sixty-night-select" style="display:none;">
                                         <option selected disabled hidden>Select</option>
@@ -323,6 +326,17 @@
                             </tr>
                         </tbody>
                     </table>
+                </div>
+
+                <div id="salesTabCustomFields" class="sales-tab-panel" role="tabpanel" hidden>
+                    <table class="related-records-table custom-fields-table">
+                        <tbody id="customFieldsBody">
+                            <tr>
+                                <td class="custom-fields-empty">Loading custom fields...</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    <div id="customFieldsStatus" class="custom-fields-status" aria-live="polite"></div>
                 </div>
 
             </section>

@@ -29,6 +29,7 @@
     <script defer src="/js/adminLocations.js"></script>
     <script defer src="/js/adminManagementRules.js"></script>
     <script defer src="/js/adminPromotionSettings.js"></script>
+    <script defer src="/js/adminCustomFields.js"></script>
 
     <script src="/assistant/assistant.js"></script>
     <link rel="stylesheet" href="/assistant/assistant.css" />
@@ -49,6 +50,7 @@
             
             <div class="tab" data-target="dashboard-widgets">Dashboard Widgets</div>
             <div class="tab" data-target="sales-features">Sales Features</div>
+            <div class="tab" data-target="custom-fields">Custom Fields</div>
             <div class="tab" data-target="ai-manager">AI Manager</div>
         </div>
 
@@ -451,6 +453,93 @@
                     <span id="adminPromotionSettingsStatus" class="admin-feature-status" aria-live="polite"></span>
                 </div>
             </section>
+        </div>
+
+        <!-- === Custom Fields === -->
+        <div id="custom-fields" class="tab-content hidden">
+            <h2>Custom Fields</h2>
+            <p>Show selected NetSuite transaction fields in the Sales Order related records panel.</p>
+
+            <div class="user-toolbar">
+                <button id="addCustomFieldBtn" type="button" class="btn-primary">+ Add Custom Field</button>
+                <span id="customFieldStatus" class="admin-feature-status" aria-live="polite"></span>
+            </div>
+
+            <div class="table-scroll-wrapper">
+                <table id="customFieldsTable">
+                    <thead>
+                        <tr>
+                            <th>Record Type</th>
+                            <th>App Label</th>
+                            <th>Field Internal ID</th>
+                            <th>Field Type</th>
+                            <th>List Internal ID</th>
+                            <th>Access</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+
+            <div id="customFieldModal" class="modal hidden">
+                <div class="modal-content">
+                    <h3 id="customFieldModalTitle">Add Custom Field</h3>
+                    <div class="modal-body">
+                        <form id="customFieldForm">
+                            <input type="hidden" name="id" />
+
+                            <label>
+                                Record Type
+                                <select name="recordType" required>
+                                    <option value="sales_order">Sales Order</option>
+                                    <option value="quote">Quote</option>
+                                </select>
+                            </label>
+
+                            <label>
+                                App Label
+                                <input type="text" name="appLabel" placeholder="Order Hold Status" required />
+                            </label>
+
+                            <label>
+                                NetSuite Field Internal ID
+                                <input type="text" name="fieldInternalId" placeholder="custbody_example_field" required />
+                            </label>
+
+                            <label>
+                                Field Type
+                                <select name="fieldType" id="customFieldType" required>
+                                    <option value="free_form_text">Free-form Text</option>
+                                    <option value="list_record">List/Record</option>
+                                    <option value="number">Number</option>
+                                    <option value="currency">Currency</option>
+                                </select>
+                            </label>
+
+                            <label id="customFieldListRecordWrap" class="hidden">
+                                List Internal ID
+                                <input type="text" name="listRecordInternalId" placeholder="customlist_example" />
+                            </label>
+
+                            <label>
+                                Visible To Roles
+                                <select name="accessRoleIds" id="customFieldRoleSelect" multiple size="6"></select>
+                            </label>
+
+                            <label>
+                                Visible To Users
+                                <select name="accessUserIds" id="customFieldUserSelect" multiple size="6"></select>
+                            </label>
+                        </form>
+                    </div>
+
+                    <div class="modal-actions">
+                        <button type="submit" form="customFieldForm" class="btn-primary">Save</button>
+                        <button type="button" id="cancelCustomFieldModal" class="btn-secondary">Cancel</button>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- === AI Manager === -->

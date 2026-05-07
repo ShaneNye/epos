@@ -483,10 +483,11 @@ function wireEditableQuoteRow(tr, line, idx) {
 
     <td>
       <input
-        type="number"
+        type="text"
         class="item-saleprice"
         value="${Number(sale || 0).toFixed(2)}"
-        step="0.01"
+        inputmode="decimal"
+        autocomplete="off"
       />
     </td>
 
@@ -916,7 +917,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   try {
-    const quotePromise = fetch(`/api/netsuite/quote/${encodeURIComponent(tranId)}`, { headers });
+    const quotePromise = fetch(
+      `/api/netsuite/quote/${encodeURIComponent(tranId)}?refresh=1&_=${Date.now()}`,
+      { headers, cache: "no-store" }
+    );
 
     const setupPromise = Promise.all([
       typeof window.loadItems === "function" ? window.loadItems() : Promise.resolve(),

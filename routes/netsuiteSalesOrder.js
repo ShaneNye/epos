@@ -15,6 +15,10 @@ const {
   getNetSuiteAccountDash,
   getNetSuiteAppBaseUrl,
 } = require("../utils/netsuiteEnvironment");
+const {
+  loadTransactionCustomFieldValues,
+  buildCustomFieldPatchPayload,
+} = require("./customFields");
 
 // =====================================================
 // ✅ In-memory cache for GET /:id sales order payloads
@@ -28,6 +32,15 @@ const inventoryNumberCache = new Map();
 const SALES_ORDER_PENDING_APPROVAL_STATUS = { id: "A" };
 const TRANSFER_ORDER_APPROVED_STATUS = { id: "B" };
 const SALES_ORDER_PENDING_APPROVAL_LEGACY_STATUS = "A";
+
+function sendNoStore(res) {
+  res.set({
+    "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+    Pragma: "no-cache",
+    Expires: "0",
+    "Surrogate-Control": "no-store",
+  });
+}
 
 function cachePrefix(id) {
   return `so:${String(id).trim()}`;
@@ -1532,19 +1545,81 @@ router.get("/:id/related-records", async (req, res) => {
   try {
     const { id } = req.params;
     const userId = await resolveUserIdFromRequest(req);
-    const relatedRecords = await getSalesOrderRelatedRecords(id, userId);
+    const [relatedRecords, customFields] = await Promise.all([
+      getSalesOrderRelatedRecords(id, userId),
+      loadTransactionCustomFieldValues({
+        recordType: "sales_order",
+        transactionId: id,
+        userId,
+        nsPostRaw,
+        suiteQlUrl,
+      }),
+    ]);
 
     return res.json({
       ok: true,
       salesOrderId: id,
       netSuiteAppBaseUrl: netSuiteAppBaseUrl(),
       relatedRecords,
+      customFields,
     });
   } catch (err) {
     console.error("❌ GET /salesorder/:id/related-records error:", err.message);
     return res.status(500).json({
       ok: false,
       error: err.message || "Failed to fetch related records",
+    });
+  }
+});
+
+/* =====================================================
+   === SAVE SALES ORDER CUSTOM FIELDS ===================
+   ===================================================== */
+router.post("/:id/custom-fields", async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = await resolveUserIdFromRequest(req);
+    const { fields = [] } = req.body || {};
+
+    const { patch, updated, error } = await buildCustomFieldPatchPayload({
+      recordType: "sales_order",
+      userId,
+      updates: fields,
+    });
+
+    if (error) {
+      return res.status(400).json({ ok: false, error });
+    }
+
+    if (!Object.keys(patch).length) {
+      return res.status(400).json({
+        ok: false,
+        error: "No permitted custom fields were supplied.",
+      });
+    }
+
+    await nsPatch(`/salesOrder/${encodeURIComponent(id)}`, patch, userId, "sb");
+    cacheDeleteSalesOrder(id);
+
+    const customFields = await loadTransactionCustomFieldValues({
+      recordType: "sales_order",
+      transactionId: id,
+      userId,
+      nsPostRaw,
+      suiteQlUrl,
+    });
+
+    return res.json({
+      ok: true,
+      salesOrderId: id,
+      updatedFields: updated,
+      customFields,
+    });
+  } catch (err) {
+    console.error("❌ POST /salesorder/:id/custom-fields error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to save custom fields",
     });
   }
 });
@@ -1579,11 +1654,9 @@ router.get("/:id", async (req, res) => {
   let rejectInflight = null;
 
   try {
+    sendNoStore(res);
     const { id } = req.params;
     console.log(`📦 Fetching Sales Order ${id} from NetSuite...`);
-
-    // ✅ Cache support
-    const refresh = String(req.query.refresh || "") === "1";
 
     // Optional: lite mode (still returns lines via suiteql; just reduces base record payload)
     const lite =
@@ -1600,35 +1673,7 @@ router.get("/:id", async (req, res) => {
 
     key = cacheKey(id, { lite, includeDeposits });
 
-    const cached = cacheGet(key);
-
-    // 1) warm cache hit. refresh=1 skips this stale-data path.
-    if (!refresh && cached?.data) {
-      return res.json({ ...cached.data, _cache: "HIT" });
-    }
-
-    // 2) another request already fetching this SO. Even refresh=1 can join
-    // the current fresh fetch to avoid a NetSuite concurrency stampede.
-    if (cached?.inFlight) {
-      try {
-        const data = await cached.inFlight;
-        return res.json({ ...data, _cache: refresh ? "REFRESH-INFLIGHT" : "HIT-INFLIGHT" });
-      } catch {
-        // fall through and try fresh
-      }
-    }
-
-    // create in-flight promise so concurrent requests dedupe
-    let resolveInflight;
-    const inFlight = new Promise((resolve, reject) => {
-      resolveInflight = resolve;
-      rejectInflight = reject;
-    });
-    soCache.set(key, {
-      inFlight,
-      expiresAt: Date.now() + SO_CACHE_TTL_MS,
-      data: null,
-    });
+    soCache.delete(key);
 
     // 🔐 Resolve user session for per-user NetSuite token
     const auth = req.headers.authorization || "";
@@ -1873,11 +1918,7 @@ router.get("/:id", async (req, res) => {
       _mode: lite ? "LITE" : "FULL",
     };
 
-    cacheSet(key, payload);
-    cachePrune();
-    resolveInflight(payload);
-
-    return res.json({ ...payload, _cache: "MISS" });
+    return res.json({ ...payload, _cache: "BYPASS" });
   } catch (err) {
     console.error("❌ GET /salesorder/:id error:", err.message);
 

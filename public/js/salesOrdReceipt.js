@@ -129,8 +129,8 @@ document.addEventListener("DOMContentLoaded", async () => {
      ============================ */
   try {
     const salesOrderPromise = fetch(
-      `/api/netsuite/salesorder/${encodeURIComponent(salesOrderId)}`,
-      { headers }
+      `/api/netsuite/salesorder/${encodeURIComponent(salesOrderId)}?refresh=1&_=${Date.now()}`,
+      { headers, cache: "no-store" }
     );
     const locationsPromise = fetch("/api/meta/locations", { headers })
       .catch(() => fetch("/api/meta/locations"));

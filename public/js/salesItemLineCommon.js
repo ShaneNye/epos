@@ -37,7 +37,7 @@
       return;
     }
 
-    matches.slice(0, 10).forEach((it) => {
+    matches.slice(0, 50).forEach((it) => {
       const li = document.createElement("li");
       li.textContent = it["Name"] || "";
       li.addEventListener("click", () => {
@@ -96,8 +96,17 @@
 
     const spaceBelow = window.innerHeight - rect.bottom;
     const spaceAbove = rect.top;
+    const opensUp = spaceBelow < 220 && spaceAbove > spaceBelow;
+    const availableSpace = opensUp ? spaceAbove : spaceBelow;
+    const maxHeight = Math.max(160, Math.min(320, availableSpace - 12));
 
-    if (spaceBelow < 200 && spaceAbove > spaceBelow) {
+    list.style.maxHeight = maxHeight + "px";
+    list.style.overflowY = "auto";
+    list.style.overscrollBehavior = "contain";
+    list.classList.toggle("open-up", opensUp);
+    list.classList.toggle("open-down", !opensUp);
+
+    if (opensUp) {
       list.style.top = "";
       list.style.bottom = window.innerHeight - rect.top + "px";
     } else {
@@ -112,6 +121,41 @@
     if (!globalSuggestions) return;
     globalSuggestions.classList.add("hidden");
     globalSuggestions.innerHTML = "";
+  }
+
+  function normaliseMoneyText(value) {
+    const text = String(value || "").replace(/[^\d.]/g, "");
+    const firstDot = text.indexOf(".");
+    if (firstDot === -1) return text;
+    return text.slice(0, firstDot + 1) + text.slice(firstDot + 1).replace(/\./g, "");
+  }
+
+  function formatMoneyText(value) {
+    const cleaned = normaliseMoneyText(value);
+    const amount = Number(cleaned || 0);
+    return Number.isFinite(amount) ? amount.toFixed(2) : "0.00";
+  }
+
+  function bindMoneyInput(input) {
+    if (!input || input.dataset.moneyInputBound === "1") return;
+    input.dataset.moneyInputBound = "1";
+    input.type = "text";
+    input.inputMode = "decimal";
+    input.autocomplete = "off";
+    input.pattern = "\\d*(\\.\\d*)?";
+
+    input.addEventListener("input", () => {
+      const cleaned = normaliseMoneyText(input.value);
+      if (input.value !== cleaned) input.value = cleaned;
+    });
+
+    input.addEventListener("blur", () => {
+      const formatted = formatMoneyText(input.value);
+      if (input.value !== formatted) {
+        input.value = formatted;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    });
   }
 
   function buildLegacyOptionSchemaFromItem(item) {
@@ -185,6 +229,7 @@
     const baseNetField = row.querySelector(".item-baseprice");
 
     if (!amountField || !discountField || !salePriceField || !qtyField) return;
+    bindMoneyInput(salePriceField);
 
     function recalcFromDiscount() {
       const qty = Math.max(1, parseInt(qtyField.value || 1, 10));
@@ -326,5 +371,6 @@ function openInventoryWindow(row, lineIndexOverride) {
     openOptionsWindow,
     showSuggestions,
     hideSuggestions,
+    bindMoneyInput,
   };
 })();
