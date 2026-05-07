@@ -1775,7 +1775,12 @@ router.post("/:id/custom-fields", async (req, res) => {
       });
     }
 
-    await nsPatch(`/salesOrder/${encodeURIComponent(id)}`, patch, userId, "sb");
+    console.log("Saving Sales Order custom fields:", {
+      salesOrderId: id,
+      fields: Object.keys(patch),
+    });
+
+    await nsPatch(`/salesOrder/${encodeURIComponent(id)}`, patch, userId);
     cacheDeleteSalesOrder(id);
 
     const customFields = await loadTransactionCustomFieldValues({
@@ -1789,14 +1794,22 @@ router.post("/:id/custom-fields", async (req, res) => {
     return res.json({
       ok: true,
       salesOrderId: id,
+      patchedFields: Object.keys(patch),
       updatedFields: updated,
       customFields,
     });
   } catch (err) {
     console.error("❌ POST /salesorder/:id/custom-fields error:", err.message);
+    if (err.responseBody) {
+      console.error("NetSuite custom field PATCH response:", err.responseBody);
+    }
     return res.status(500).json({
       ok: false,
-      error: err.message || "Failed to save custom fields",
+      error:
+        err.responseBody?.["o:errorDetails"]?.[0]?.detail ||
+        err.responseBody?.message ||
+        err.message ||
+        "Failed to save custom fields",
     });
   }
 });

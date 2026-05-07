@@ -589,6 +589,11 @@ async function saveCustomFieldsForCurrentOrder({ button = null, showNoChanges = 
 
   const parts = window.location.pathname.split("/").filter(Boolean);
   const tranId = parts[parts.length - 1];
+  const salesOrderId =
+    window._currentSalesOrder?.id ||
+    window._currentSalesOrder?.internalId ||
+    window._currentSalesOrder?.internalid ||
+    tranId;
   const status = document.getElementById("customFieldsStatus");
   const fields = collectCustomFieldPayload();
   const signature = customFieldsSignature(fields);
@@ -608,7 +613,7 @@ async function saveCustomFieldsForCurrentOrder({ button = null, showNoChanges = 
   if (status) status.textContent = "Saving...";
 
   try {
-    const res = await fetch(`/api/netsuite/salesorder/${encodeURIComponent(tranId)}/custom-fields`, {
+    const res = await fetch(`/api/netsuite/salesorder/${encodeURIComponent(salesOrderId)}/custom-fields`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -862,9 +867,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     window._currentSalesOrder = so;
     if (!so) throw new Error("No salesOrder object in response");
     console.log("✅ Sales Order loaded:", so.tranId || tranId);
+    const salesOrderInternalIdForCustomFields =
+      so?.id || so?.internalId || so?.internalid || tranId;
     renderRelatedRecords(so);
-    loadRelatedRecords(headers, so, tranId).then(() => {
-      loadOrderManagementRow(headers, so, tranId).then((orderManagementRow) => {
+    loadRelatedRecords(headers, so, salesOrderInternalIdForCustomFields).then(() => {
+      loadOrderManagementRow(headers, so, salesOrderInternalIdForCustomFields).then((orderManagementRow) => {
         if (orderManagementRow) renderRelatedRecords(so, orderManagementRow);
       });
     });
