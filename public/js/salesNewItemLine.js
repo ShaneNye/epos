@@ -69,6 +69,27 @@ function getItemClassText(item) {
   return String(raw || "").trim().toLowerCase();
 }
 
+function getItemCategoryText(item) {
+  const raw =
+    item?.["Category"] ??
+    item?.category ??
+    item?.itemCategory ??
+    item?.["Item Category"] ??
+    "";
+
+  if (raw && typeof raw === "object") {
+    return String(raw.refName || raw.name || raw.text || raw.value || raw.id || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  return String(raw || "").trim().toLowerCase();
+}
+
+function rowHasAdjustableCategory(row) {
+  return String(row?.dataset?.itemCategory || "").toLowerCase().includes("adjustable");
+}
+
 // === Load items from shared cache ===
 async function loadItems() {
   try {
@@ -467,14 +488,14 @@ function updateVatFreeColumnVisibility() {
 
   rows.forEach(row => ensureVatFreeCell(row));
 
-  const anyAdjustable = [...rows].some(row => (row.dataset.itemClass || "").toLowerCase().includes("adjustable"));
+  const anyAdjustable = [...rows].some(row => rowHasAdjustableCategory(row));
   header.style.display = anyAdjustable ? "table-cell" : "none";
 
   rows.forEach(row => {
     const cell = row.querySelector("td.vat-free-cell");
     if (!cell) return;
 
-    const isAdjustable = (row.dataset.itemClass || "").toLowerCase().includes("adjustable");
+    const isAdjustable = rowHasAdjustableCategory(row);
     const checkbox = cell.querySelector(".vat-free-checkbox");
     const placeholder = cell.querySelector(".vat-free-placeholder");
 
@@ -549,6 +570,7 @@ async function selectItem(item) {
   // ✅ Track item class on the row for global 60NT logic
   const itemClass = getItemClassText(item);
   line.dataset.itemClass = itemClass;
+  line.dataset.itemCategory = getItemCategoryText(item);
 
   // Ensure 60NT cell is correct and update entire table column state
   ensure60NightTrialCell(line);
@@ -647,6 +669,7 @@ function applyItemToRow(line, item, config = {}) {
   const invCell = line.querySelector(".inventory-cell");
   const itemClass = getItemClassText(item);
   line.dataset.itemClass = itemClass;
+  line.dataset.itemCategory = getItemCategoryText(item);
 
   ensure60NightTrialCell(line);
   updateVatFreeColumnVisibility();

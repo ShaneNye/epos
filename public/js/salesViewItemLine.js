@@ -139,6 +139,61 @@ function update60NightTrialColumnVisibility() {
   });
 }
 
+function ensureVatFreeCell(row) {
+  if (!row) return null;
+
+  let td = row.querySelector("td.vat-free-cell");
+
+  if (!td) {
+    td = document.createElement("td");
+    td.className = "vat-free-cell";
+    td.innerHTML = `
+      <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />
+      <span class="vat-free-placeholder"></span>
+    `;
+  }
+
+  const saleTd =
+    row.querySelector(".item-saleprice")?.closest("td") ||
+    row.querySelector("td.saleprice");
+  if (saleTd) {
+    if (td.parentNode === row) td.remove();
+    insertAfter(td, saleTd);
+  } else if (!td.parentNode) {
+    row.appendChild(td);
+  }
+
+  return td;
+}
+
+function updateVatFreeColumnVisibility() {
+  const header = document.getElementById("vatFreeHeader");
+  const rows = document.querySelectorAll("#orderItemsBody .order-line");
+  if (!header) return;
+
+  rows.forEach((row) => ensureVatFreeCell(row));
+
+  const anyAdjustable = [...rows].some((row) => rowHasAdjustableCategory(row));
+  header.style.display = anyAdjustable ? "table-cell" : "none";
+
+  rows.forEach((row) => {
+    const cell = row.querySelector("td.vat-free-cell");
+    if (!cell) return;
+
+    const isAdjustable = rowHasAdjustableCategory(row);
+    const checkbox = cell.querySelector(".vat-free-checkbox");
+    const placeholder = cell.querySelector(".vat-free-placeholder");
+
+    cell.style.display = anyAdjustable ? "table-cell" : "none";
+    if (checkbox) checkbox.style.display = isAdjustable ? "inline-block" : "none";
+    if (placeholder) {
+      placeholder.textContent = "";
+      placeholder.style.display = "none";
+    }
+    if (!isAdjustable && checkbox) checkbox.checked = false;
+  });
+}
+
 /* =========================================================
    Helpers
 ========================================================= */
@@ -212,6 +267,23 @@ function getItemClass(item) {
   return String(raw).trim().toLowerCase();
 }
 
+function getItemCategory(item) {
+  const raw =
+    item?.["Category"] ??
+    item?.category ??
+    item?.itemCategory ??
+    item?.["Item Category"] ??
+    "";
+
+  if (raw && typeof raw === "object") {
+    return String(raw.refName || raw.name || raw.text || raw.value || raw.id || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  return String(raw).trim().toLowerCase();
+}
+
 function getLineItemClass(line, itemData) {
   return (
     getItemClass(itemData) ||
@@ -219,6 +291,19 @@ function getLineItemClass(line, itemData) {
     getItemClass(line) ||
     String(line?.itemClass || "").trim().toLowerCase()
   );
+}
+
+function getLineItemCategory(line, itemData) {
+  return (
+    getItemCategory(itemData) ||
+    getItemCategory(line?.item) ||
+    getItemCategory(line) ||
+    String(line?.itemCategory || "").trim().toLowerCase()
+  );
+}
+
+function rowHasAdjustableCategory(row) {
+  return String(row?.dataset?.itemCategory || "").toLowerCase().includes("adjustable");
 }
 
 function isServiceItemClass(itemClass) {
@@ -327,6 +412,7 @@ function applyItemToSalesViewRow(row, item, config = {}) {
 
   const itemId = getItemInternalId(item);
   const itemClass = getItemClass(item);
+  const itemCategory = getItemCategory(item);
 
   if (input) input.value = item["Name"] || "";
   if (hiddenId) hiddenId.value = itemId;
@@ -343,6 +429,7 @@ function applyItemToSalesViewRow(row, item, config = {}) {
   }
 
   row.dataset.itemClass = itemClass;
+  row.dataset.itemCategory = itemCategory;
 
   if (!row.setUnitRetail && window.SalesLineUI?.setupPriceSync) {
     window.SalesLineUI.setupPriceSync(row);
@@ -380,6 +467,7 @@ function applyItemToSalesViewRow(row, item, config = {}) {
   }
 
   ensure60NightTrialCell(row);
+  updateVatFreeColumnVisibility();
   update60NightTrialColumnVisibility();
 
   if (isServiceItemClass(itemClass)) {
@@ -441,6 +529,7 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
   const deleteBtn = row.querySelector(".delete-row");
   deleteBtn?.addEventListener("click", () => {
     row.remove();
+    updateVatFreeColumnVisibility();
     update60NightTrialColumnVisibility();
     if (typeof updateOrderSummaryFromTable === "function") {
       updateOrderSummaryFromTable();
@@ -478,6 +567,7 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
     const itemData = (window.items || []).find((it) => getItemInternalId(it) === itemId);
     if (itemData) {
       row.dataset.itemClass = getLineItemClass(existingLine, itemData);
+      row.dataset.itemCategory = getLineItemCategory(existingLine, itemData);
       const schema = buildOptionSchemaForItem(itemId);
       if (Object.keys(schema).length) {
         window.optionsCache = window.optionsCache || {};
@@ -487,6 +577,7 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
   }
 
   ensure60NightTrialCell(row);
+  updateVatFreeColumnVisibility();
   update60NightTrialColumnVisibility();
   const finalIsService = isServiceItemClass(row.dataset.itemClass);
   setServiceFulfilmentVisibility(row, finalIsService);
@@ -513,6 +604,7 @@ function addSalesViewRow({ fulfilmentMethods = [] } = {}) {
   tr.dataset.lineid = "";
   tr.dataset.isnew = "T";
   tr.dataset.itemClass = "";
+  tr.dataset.itemCategory = "";
 
   tr.innerHTML = `
     <td>
@@ -558,6 +650,11 @@ function addSalesViewRow({ fulfilmentMethods = [] } = {}) {
 
     <td class="saleprice">
       <input type="text" class="item-saleprice" value="0.00" inputmode="decimal" autocomplete="off" />
+    </td>
+
+    <td class="vat-free-cell" style="display:none;">
+      <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />
+      <span class="vat-free-placeholder"></span>
     </td>
 
     <td class="sixty-night-cell" style="display:none;">
@@ -796,8 +893,10 @@ window.renderSalesViewLines = function renderSalesViewLines({
 
     const itemData = (window.items || []).find((it) => getItemInternalId(it) === itemId);
     const itemClass = getLineItemClass(line, itemData);
+    const itemCategory = getLineItemCategory(line, itemData);
     const isServiceLine = isServiceItemClass(itemClass);
     tr.dataset.itemClass = itemClass;
+    tr.dataset.itemCategory = itemCategory;
 
     const hasEditableOptions = Object.keys(optionSchema).length > 0;
 
@@ -818,6 +917,17 @@ window.renderSalesViewLines = function renderSalesViewLines({
       : isPending
         ? `<select class="item-fulfilment fulfilmentSelect" data-line="${idx}"></select>`
         : line.custcol_sb_fulfilmentlocation?.refName || "";
+
+    const existingTaxCode = salesViewRecordValue(line, [
+      "taxCode",
+      "taxcode",
+      "tax_code",
+      "Tax Code",
+    ]).toLowerCase();
+    const existingVatFree =
+      existingTaxCode === "10" ||
+      existingTaxCode.includes("vat free") ||
+      existingTaxCode.includes("zero");
 
     const inventoryDetail = existingInventoryDetail(line);
 
@@ -901,6 +1011,17 @@ window.renderSalesViewLines = function renderSalesViewLines({
       <td class="vat">£${taxValue.toFixed(2)}</td>
       <td class="saleprice">${saleCell}</td>
 
+      <td class="vat-free-cell" style="display:none;">
+        ${
+          isPending
+            ? `<input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" ${
+                existingVatFree ? "checked" : ""
+              } />
+               <span class="vat-free-placeholder"></span>`
+            : `<span class="vat-free-placeholder"></span>`
+        }
+      </td>
+
       <td class="sixty-night-cell" style="display:none;">
         <select class="sixty-night-select" style="display:none;">
           <option value="N/A">N/A</option>
@@ -963,6 +1084,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
       updateOrderSummaryFromTable();
     }
   } else {
+    updateVatFreeColumnVisibility();
     update60NightTrialColumnVisibility();
   }
 };
@@ -972,6 +1094,8 @@ window.renderSalesViewLines = function renderSalesViewLines({
 ========================================================= */
 window.ensure60NightTrialCell = ensure60NightTrialCell;
 window.update60NightTrialColumnVisibility = update60NightTrialColumnVisibility;
+window.ensureVatFreeCell = ensureVatFreeCell;
+window.updateVatFreeColumnVisibility = updateVatFreeColumnVisibility;
 window.applyItemToSalesViewRow = applyItemToSalesViewRow;
 window.salesNewItemEditor = window.salesNewItemEditor || {
   addNewRow: () => addSalesViewRow({ fulfilmentMethods: window._fulfilmentMap || [] }),

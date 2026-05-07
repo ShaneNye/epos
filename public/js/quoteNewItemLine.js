@@ -47,6 +47,27 @@ function getItemClassText(item) {
   return String(item?.["Class"] || "").trim().toLowerCase();
 }
 
+function getItemCategoryText(item) {
+  const raw =
+    item?.["Category"] ??
+    item?.category ??
+    item?.itemCategory ??
+    item?.["Item Category"] ??
+    "";
+
+  if (raw && typeof raw === "object") {
+    return String(raw.refName || raw.name || raw.text || raw.value || raw.id || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  return String(raw || "").trim().toLowerCase();
+}
+
+function rowHasAdjustableCategory(row) {
+  return String(row?.dataset?.itemCategory || "").toLowerCase().includes("adjustable");
+}
+
 /* =========================================================
    Load items from shared cache / proxy
 ========================================================= */
@@ -439,14 +460,14 @@ function updateVatFreeColumnVisibility() {
 
   rows.forEach((row) => ensureVatFreeCell(row));
 
-  const anyAdjustable = [...rows].some((row) => (row.dataset.itemClass || "").toLowerCase().includes("adjustable"));
+  const anyAdjustable = [...rows].some((row) => rowHasAdjustableCategory(row));
   header.style.display = anyAdjustable ? "table-cell" : "none";
 
   rows.forEach((row) => {
     const cell = row.querySelector("td.vat-free-cell");
     if (!cell) return;
 
-    const isAdjustable = (row.dataset.itemClass || "").toLowerCase().includes("adjustable");
+    const isAdjustable = rowHasAdjustableCategory(row);
     const checkbox = cell.querySelector(".vat-free-checkbox");
     const placeholder = cell.querySelector(".vat-free-placeholder");
 
@@ -830,6 +851,7 @@ const retailPerUnitGross = Number.isFinite(rawBase) ? rawBase * 1.2 : 0;
   const itemId = (hiddenId?.value || "").trim();
   const itemClass = getItemClassText(item);
   line.dataset.itemClass = itemClass;
+  line.dataset.itemCategory = getItemCategoryText(item);
 
   ensure60NightTrialCell(line);
   updateVatFreeColumnVisibility();
@@ -985,6 +1007,8 @@ window.setupPriceSync = setupPriceSync;
 window.bindQuoteMoneyInput = bindMoneyInput;
 window.ensure60NightTrialCell = ensure60NightTrialCell;
 window.update60NightTrialColumnVisibility = update60NightTrialColumnVisibility;
+window.ensureVatFreeCell = ensureVatFreeCell;
+window.updateVatFreeColumnVisibility = updateVatFreeColumnVisibility;
 window.ensureNextEmptyRowAndFocus = ensureNextEmptyRowAndFocus;
 window.addNewRow = addNewRow;
 window.openOptionsWindow = openOptionsWindow;

@@ -108,12 +108,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const lastName = document.querySelector('input[name="lastName"]')?.value.trim() || "";
     const email = document.querySelector('input[name="email"]')?.value.trim() || "";
     const postcode = document.querySelector('input[name="postcode"]')?.value.trim() || "";
-    const titleVal = document.querySelector('select[name="title"]')?.value || "";
 
     if (!firstName) errors.push("First Name is required");
     if (!lastName) errors.push("Last Name is required");
     if (!email) errors.push("Email is required");
-    if (!titleVal) errors.push("Title is required");
 
     // ✅ Only require postcode when no-address mode is OFF
     if (!noAddressRequired && !postcode) {

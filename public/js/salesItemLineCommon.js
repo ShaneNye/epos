@@ -45,6 +45,12 @@
         const row = document.querySelector(`.order-line[data-line="${lineIndex}"]`);
         if (!row) return;
 
+        if (typeof window.applyItemToSalesViewRow === "function") {
+          window.applyItemToSalesViewRow(row, it);
+          hideSuggestions();
+          return;
+        }
+
         const hiddenId = row.querySelector(".item-internal-id");
         const hiddenBase = row.querySelector(".item-baseprice");
         const discountField = row.querySelector(".item-discount");

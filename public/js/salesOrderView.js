@@ -2059,6 +2059,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
             .querySelector(".options-summary")
             ?.innerHTML?.trim()
             .replace(/<br\s*\/?>/gi, "\n") || "";
+        const vatFree = !!row.querySelector(".vat-free-checkbox")?.checked;
 
         const netAmount = Number.isFinite(amountGrossLine)
           ? Number((amountGrossLine / 1.2).toFixed(2))
@@ -2083,6 +2084,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
           amount: amountGrossLine,
           saleprice: saleGrossLine,
           optionsSummary: optionsText || null,
+          taxCode: vatFree ? "10" : "",
           isNew: !row.dataset.lineid,
         };
       })

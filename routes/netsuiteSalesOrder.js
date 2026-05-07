@@ -608,6 +608,11 @@ function netSuiteAppBaseUrl() {
   return getNetSuiteAppBaseUrl();
 }
 
+function assignCustomerTitleIfPresent(body, title) {
+  const titleId = String(title || "").trim();
+  if (titleId) body.custentity_title = titleId;
+}
+
 function splitNetSuiteMultiValue(value) {
   return String(value || "")
     .split(/\s*,\s*/)
@@ -993,7 +998,6 @@ router.post("/create", async (req, res) => {
       const custBody = {
         entityStatus: { id: "13" },
         companyName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
-        custentity_title: customer.title,
         firstName: customer.firstName,
         lastName: customer.lastName,
         email: customer.email,
@@ -1002,6 +1006,7 @@ router.post("/create", async (req, res) => {
         subsidiary: { id: "1" },
         isPerson: true,
       };
+      assignCustomerTitleIfPresent(custBody, customer?.title);
 
       if (!noAddressRequired) {
         custBody.addressbook = {

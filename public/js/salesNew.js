@@ -729,7 +729,7 @@ function validateOrderBeforeSave() {
       const customer = {
         id: noAddressRequired ? null : window.currentCustomerId || null,
         noAddressRequired,
-        title: document.querySelector('select[name="title"]').value,
+        title: document.querySelector('select[name="title"]')?.value || null,
         firstName: document.querySelector('input[name="firstName"]').value,
         lastName: document.querySelector('input[name="lastName"]').value,
         postcode: document.querySelector('input[name="postcode"]').value,

@@ -332,6 +332,23 @@ function buildOptionSchemaForItem(itemId) {
   return opts;
 }
 
+function getItemCategoryText(item) {
+  const raw =
+    item?.["Category"] ??
+    item?.category ??
+    item?.itemCategory ??
+    item?.["Item Category"] ??
+    "";
+
+  if (raw && typeof raw === "object") {
+    return String(raw.refName || raw.name || raw.text || raw.value || raw.id || "")
+      .trim()
+      .toLowerCase();
+  }
+
+  return String(raw || "").trim().toLowerCase();
+}
+
 function collectEditableQuoteLines() {
   return [...document.querySelectorAll("#orderItemsBody tr.order-line")]
     .map((row) => {
@@ -348,6 +365,7 @@ function collectEditableQuoteLines() {
         row.querySelector(".options-summary")?.innerHTML?.trim().replace(/<br\s*\/?>/gi, "\n") || "";
       const optionsJson = row.querySelector(".item-options-json")?.value || "{}";
       const trialOption = row.querySelector(".sixty-night-select")?.value || "N/A";
+      const vatFree = !!row.querySelector(".vat-free-checkbox")?.checked;
 
       return {
         lineId: row.dataset.lineid || "",
@@ -360,6 +378,7 @@ function collectEditableQuoteLines() {
         options: optionsText,
         optionsJson,
         trialOption,
+        taxCode: vatFree ? "10" : "",
         isNewLine: !row.dataset.lineid,
       };
     })
@@ -398,6 +417,7 @@ function wireEditableQuoteRow(tr, line, idx) {
   }
 
   const className = String(itemData?.["Class"] || "").toLowerCase();
+  const categoryName = getItemCategoryText(itemData);
 
   const hasExistingOptions =
     !!optsHtml ||
@@ -412,6 +432,7 @@ function wireEditableQuoteRow(tr, line, idx) {
   tr.dataset.itemId = itemId;
   tr.dataset.hasItem = itemId ? "1" : "0";
   tr.dataset.itemClass = className;
+  tr.dataset.itemCategory = categoryName;
 
   tr.innerHTML = `
     <td>
@@ -498,6 +519,11 @@ function wireEditableQuoteRow(tr, line, idx) {
       />
     </td>
 
+    <td class="vat-free-cell" style="display:none;">
+      <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />
+      <span class="vat-free-placeholder"></span>
+    </td>
+
     <td class="sixty-night-cell" style="display:none;"></td>
 
     <td>
@@ -520,6 +546,14 @@ function wireEditableQuoteRow(tr, line, idx) {
 
   if (typeof window.ensure60NightTrialCell === "function") {
     window.ensure60NightTrialCell(tr);
+  }
+
+  if (typeof window.ensureVatFreeCell === "function") {
+    window.ensureVatFreeCell(tr);
+  }
+
+  if (typeof window.updateVatFreeColumnVisibility === "function") {
+    window.updateVatFreeColumnVisibility();
   }
 
   if (typeof window.update60NightTrialColumnVisibility === "function") {
@@ -685,6 +719,7 @@ function buildQuoteSavePayload() {
       discount: discountPct,
       options: optionsText || "",
       trialOption: i.trialOption || "N/A",
+      taxCode: i.taxCode || "",
     };
   });
 
