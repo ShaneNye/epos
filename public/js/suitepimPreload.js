@@ -1,10 +1,64 @@
 (function () {
+  const NAV_COLLAPSED_KEY = "suitepimNavCollapsed";
   const PAGE_URLS = [
     "/suitepim",
-    "/suitepim/product-data",
     "/suitepim/web-management",
     "/suitepim/product-validation",
+    "/suitepim/reasons-to-buy",
   ];
+
+  function setupSuitePimSideNav() {
+    const nav = document.querySelector(".suitepim-subnav");
+    if (!nav || nav.dataset.sideNavBound === "1") return;
+
+    nav.dataset.sideNavBound = "1";
+    const collapsed = localStorage.getItem(NAV_COLLAPSED_KEY) === "1";
+    document.body.classList.toggle("suitepim-nav-open", !collapsed);
+    document.body.classList.toggle("suitepim-nav-collapsed", collapsed);
+
+    nav.querySelectorAll(".suitepim-subnav-link").forEach((link) => {
+      const label = String(link.textContent || "").trim();
+      if (label) link.title = label;
+    });
+
+    const closeButton = document.createElement("button");
+    closeButton.type = "button";
+    closeButton.className = "suitepim-side-nav-close";
+    closeButton.setAttribute("aria-label", "Collapse SuitePim navigation");
+    closeButton.innerHTML = `
+      <svg aria-hidden="true" viewBox="0 0 24 24">
+        <path d="M15 6l-6 6 6 6"></path>
+      </svg>
+    `;
+
+    const heading = document.createElement("div");
+    heading.className = "suitepim-side-nav-head";
+    heading.innerHTML = `
+      <div>
+        <span>SuitePim</span>
+        <strong>Sections</strong>
+      </div>
+    `;
+    heading.prepend(closeButton);
+
+    const tab = document.createElement("button");
+    tab.type = "button";
+    tab.className = "suitepim-side-nav-tab";
+    tab.setAttribute("aria-label", "Open SuitePim navigation");
+    tab.innerHTML = `<span>SuitePim</span>`;
+    document.body.appendChild(tab);
+
+    function setCollapsed(nextCollapsed) {
+      document.body.classList.toggle("suitepim-nav-open", !nextCollapsed);
+      document.body.classList.toggle("suitepim-nav-collapsed", nextCollapsed);
+      localStorage.setItem(NAV_COLLAPSED_KEY, nextCollapsed ? "1" : "0");
+    }
+
+    closeButton.addEventListener("click", () => setCollapsed(true));
+    tab.addEventListener("click", () => setCollapsed(false));
+
+    nav.prepend(heading);
+  }
 
   function prefetchDocument(url) {
     const existing = document.querySelector(`link[rel="prefetch"][href="${url}"]`);
@@ -18,6 +72,8 @@
   }
 
   function schedulePrefetch() {
+    setupSuitePimSideNav();
+
     const currentPath = window.location.pathname.replace(/\/$/, "") || "/";
     const run = () => {
       PAGE_URLS

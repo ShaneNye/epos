@@ -187,30 +187,56 @@ async function fetchNetSuiteWithRetry(url, options, attempts = 3) {
 function recalcRow(row, changedField = null) {
   const updated = { ...row };
   const vat = 0.2;
+  const vatMultiplier = 1 + vat;
   let purchase = parseFloat(updated["Purchase Price"]) || 0;
   let base = parseFloat(updated["Base Price"]) || 0;
   let retail = parseFloat(updated["Retail Price"]) || 0;
+  let sale = parseFloat(updated["Sale Price"]) || 0;
+  let discount = parseFloat(updated["Discount Percent"]) || 0;
   let margin = parseFloat(updated["Margin"]) || 0;
 
+  if (!changedField && sale > 0) {
+    sale *= vatMultiplier;
+  }
+
   if (changedField === "Base Price" && base > 0) {
-    retail = base * (1 + vat);
+    retail = base * vatMultiplier;
     if (purchase > 0) margin = retail / purchase;
   } else if (changedField === "Retail Price" && retail > 0) {
-    base = retail / (1 + vat);
+    base = retail / vatMultiplier;
     if (purchase > 0) margin = retail / purchase;
   } else if (changedField === "Margin" && purchase > 0 && margin > 0) {
     retail = purchase * margin;
-    base = retail / (1 + vat);
+    base = retail / vatMultiplier;
   } else if (changedField === "Purchase Price" && purchase > 0 && retail > 0) {
     margin = retail / purchase;
+  } else if (changedField === "Sale Price" && retail > 0) {
+    discount = ((retail - sale) / retail) * 100;
+  } else if (changedField === "Discount Percent" && retail > 0) {
+    discount = Math.max(0, Math.min(100, discount));
+    sale = retail * (1 - discount / 100);
   } else if (base > 0) {
-    retail = base * (1 + vat);
+    retail = base * vatMultiplier;
     if (purchase > 0) margin = retail / purchase;
+  }
+
+  if (changedField !== "Sale Price" && changedField !== "Discount Percent" && retail > 0) {
+    if (discount > 0) {
+      sale = retail * (1 - Math.max(0, Math.min(100, discount)) / 100);
+    } else if (sale > 0) {
+      discount = ((retail - sale) / retail) * 100;
+    }
+  }
+
+  if (retail > 0 && sale > 0 && changedField !== "Discount Percent") {
+    discount = ((retail - sale) / retail) * 100;
   }
 
   updated["Purchase Price"] = purchase.toFixed(2);
   updated["Base Price"] = base.toFixed(2);
   updated["Retail Price"] = Math.round(retail);
+  updated["Sale Price"] = sale ? sale.toFixed(2) : "";
+  updated["Discount Percent"] = Number.isFinite(discount) ? Math.max(0, discount).toFixed(1) : "0.0";
   updated["Margin"] = margin.toFixed(1);
   return updated;
 }
@@ -1263,14 +1289,15 @@ async function resolveRecordType(cfg, userId, internalId, preferredType = "") {
   throw err;
 }
 
-async function callPriceRestlet({ cfg, userId, internalId, recordType, price }) {
+async function callPriceRestlet({ cfg, userId, internalId, recordType, price, priceLevelId = 1, priceLevelName = "" }) {
   if (!cfg.priceRestletUrl) throw new Error("Missing NetSuite SuitePim price RESTlet URL");
 
   const body = {
     internalId: String(internalId),
     recordType: String(recordType),
     price: Number(price),
-    priceLevelId: 1,
+    priceLevelId,
+    priceLevelName,
     currencyId: 1,
     quantityColumns: [0, 1],
   };
@@ -1334,7 +1361,7 @@ async function processRow(row, job) {
     itemId: row["Item ID"] || row["Name"] || row["Internal ID"],
     internalId: row["Internal ID"],
     recordType: null,
-    changedFields: Object.keys(row || {}).filter((key) => !["Internal ID", "Item ID", "Name"].includes(key) && !key.endsWith("_InternalId")),
+    changedFields: Object.keys(row || {}).filter((key) => !["Internal ID", "Item ID", "Name"].includes(key) && !key.endsWith("_InternalId") && !key.startsWith("__")),
     status: "Pending",
     response: { main: null, prices: [], images: [], supplier: null, error: null, diagnostics: null },
   };
@@ -1351,6 +1378,17 @@ async function processRow(row, job) {
     result.recordType = recordType;
     const payload = {};
     let basePriceVal;
+    let salePriceVal;
+    const explicitPriceUpdates = Array.isArray(row.__priceUpdates)
+      ? row.__priceUpdates
+          .map((update) => ({
+            field: String(update?.field || ""),
+            priceLevelId: Number(update?.priceLevelId),
+            priceLevelName: String(update?.priceLevelName || ""),
+            price: Number(update?.price),
+          }))
+          .filter((update) => Number.isFinite(update.priceLevelId) && Number.isFinite(update.price))
+      : [];
 
     for (const field of fields) {
       if (!field.internalid && field.name !== "Base Price" && field.name !== "Preferred Supplier") continue;
@@ -1424,6 +1462,9 @@ async function processRow(row, job) {
       }
     }
 
+    const parsedSalePrice = parseFloat(row["Sale Price"]);
+    if (Number.isFinite(parsedSalePrice)) salePriceVal = parsedSalePrice;
+
     if (Object.keys(payload).length) {
       const url = `${job.cfg.restUrl}/${recordType}/${encodeURIComponent(internalId)}`;
       const { res: response, body: responseBody } = await fetchNetSuiteWithRetry(url, {
@@ -1450,20 +1491,44 @@ async function processRow(row, job) {
       }
     }
 
-    if (basePriceVal !== undefined) {
+    const priceUpdates = explicitPriceUpdates.length
+      ? explicitPriceUpdates
+      : [
+          basePriceVal !== undefined
+            ? { field: "Base Price", priceLevelId: 1, priceLevelName: "Base Price", price: basePriceVal }
+            : null,
+          salePriceVal !== undefined
+            ? { field: "Sale Price", priceLevelId: 4, priceLevelName: "Sale Price", price: salePriceVal }
+            : null,
+        ].filter(Boolean);
+
+    for (const priceUpdate of priceUpdates) {
       try {
         result.response.prices.push({
           success: true,
+          field: priceUpdate.field,
+          priceLevelId: priceUpdate.priceLevelId,
+          priceLevelName: priceUpdate.priceLevelName,
+          requestedPrice: priceUpdate.price,
           result: await callPriceRestlet({
             cfg: job.cfg,
             userId: job.userId,
             internalId,
             recordType,
-            price: basePriceVal,
+            price: priceUpdate.price,
+            priceLevelId: priceUpdate.priceLevelId,
+            priceLevelName: priceUpdate.priceLevelName,
           }),
         });
       } catch (err) {
-        result.response.prices.push({ success: false, error: err.message });
+        result.response.prices.push({
+          success: false,
+          field: priceUpdate.field,
+          priceLevelId: priceUpdate.priceLevelId,
+          priceLevelName: priceUpdate.priceLevelName,
+          requestedPrice: priceUpdate.price,
+          error: err.message,
+        });
       }
     }
 

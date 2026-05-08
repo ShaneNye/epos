@@ -40,14 +40,6 @@
         </svg>
         Dashboard
       </a>
-      <a class="suitepim-subnav-link" href="/suitepim/product-data">
-        <svg aria-hidden="true" viewBox="0 0 24 24">
-          <path d="M4 5h16"></path>
-          <path d="M4 12h16"></path>
-          <path d="M4 19h16"></path>
-        </svg>
-        Product Data
-      </a>
       <a class="suitepim-subnav-link active" href="/suitepim/web-management">
         <svg aria-hidden="true" viewBox="0 0 24 24">
           <path d="M4 6h16"></path>
@@ -83,9 +75,14 @@
       </div>
 
       <select id="suitepimStateFilter" aria-label="Product visibility filter">
-        <option value="all">All Products</option>
-        <option value="online">Online Products</option>
-        <option value="offline">Offline Products</option>
+        <option value="all">All products</option>
+        <option value="online">Online products</option>
+        <option value="offline">Offline products</option>
+        <option value="active">Active only</option>
+        <option value="inactive">Inactive only</option>
+        <option value="parent">Parent items</option>
+        <option value="changed">Changed rows</option>
+        <option value="selected">Selected rows</option>
       </select>
 
       <select id="suitepimPresetSelect" aria-label="Web management preset">

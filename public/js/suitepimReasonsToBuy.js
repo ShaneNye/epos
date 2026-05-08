@@ -87,6 +87,10 @@
     ).trim();
   }
 
+  function iconLabel(row, fallback = "Selected icon") {
+    return valueText(row?.Icon || row?.["Icon Selector"] || fallback);
+  }
+
   function boolValue(value) {
     if (value === true || value === 1) return true;
     return ["true", "t", "1", "yes", "y"].includes(String(value || "").trim().toLowerCase());
@@ -224,7 +228,33 @@
     else state.dirty.set(row._suitepimKey, row);
   }
 
-  function updateField(rowKeyValue, fieldName, value, internalIds, extras = null) {
+  function refreshFilteredRows() {
+    const search = el.suitepimSearch.value.trim().toLowerCase();
+    const filter = el.suitepimStateFilter.value;
+
+    state.filteredRows = state.rows.filter((row) => {
+      if (filter === "changed" && !state.dirty.has(row._suitepimKey)) return false;
+      if (filter === "new" && !row._isNew) return false;
+      return rowMatchesSearch(row, search);
+    });
+  }
+
+  function refreshActiveFormMeta() {
+    const row = activeRow();
+    const head = document.querySelector(".suitepim-reasons-form-head");
+    if (!row || !head) return;
+
+    const title = head.querySelector("h2");
+    const status = head.querySelector("span");
+    if (title) title.textContent = row.Name || "New Reasons To Buy record";
+    if (status) {
+      const isDirty = state.dirty.has(row._suitepimKey);
+      status.className = isDirty ? "is-dirty" : "";
+      status.textContent = isDirty ? "Changed" : "Saved";
+    }
+  }
+
+  function updateField(rowKeyValue, fieldName, value, internalIds, extras = null, options = {}) {
     const idx = state.rows.findIndex((row) => row._suitepimKey === rowKeyValue);
     if (idx === -1) return;
 
@@ -232,6 +262,15 @@
     if (internalIds !== undefined) updated[`${fieldName}_InternalId`] = internalIds;
     state.rows[idx] = updated;
     updateDirty(updated);
+
+    if (options.render === false) {
+      refreshFilteredRows();
+      updateSummary();
+      renderList();
+      refreshActiveFormMeta();
+      return;
+    }
+
     applyFilters({ keepSelection: true });
   }
 
@@ -259,14 +298,7 @@
   }
 
   function applyFilters({ keepSelection = false } = {}) {
-    const search = el.suitepimSearch.value.trim().toLowerCase();
-    const filter = el.suitepimStateFilter.value;
-
-    state.filteredRows = state.rows.filter((row) => {
-      if (filter === "changed" && !state.dirty.has(row._suitepimKey)) return false;
-      if (filter === "new" && !row._isNew) return false;
-      return rowMatchesSearch(row, search);
-    });
+    refreshFilteredRows();
 
     if (!keepSelection || (state.activeKey && !state.filteredRows.some((row) => row._suitepimKey === state.activeKey))) {
       state.activeKey = state.filteredRows[0]?._suitepimKey || state.rows[0]?._suitepimKey || "";
@@ -400,7 +432,7 @@
       const textarea = document.createElement("textarea");
       textarea.rows = 5;
       textarea.value = valueText(value);
-      textarea.addEventListener("input", () => updateField(row._suitepimKey, field.name, textarea.value));
+      textarea.addEventListener("input", () => updateField(row._suitepimKey, field.name, textarea.value, undefined, null, { render: false }));
       return textarea;
     }
 
@@ -408,13 +440,14 @@
       const wrap = document.createElement("div");
       wrap.className = "suitepim-reasons-picker-row";
       if (field.name === "Icon") {
+        const hasIcon = !!imageProxyUrl(row.IconUrl);
+        const selectedText = hasIcon ? iconLabel(row) : "No icon selected";
         const preview = document.createElement("div");
         preview.className = "suitepim-reasons-icon-preview";
         preview.innerHTML = `
-          <span class="suitepim-reasons-icon-preview-media">${iconThumb(row, row.Name || "Icon")}</span>
+          <span class="suitepim-reasons-icon-preview-media">${iconThumb(row, row.Name || selectedText)}</span>
           <span class="suitepim-reasons-icon-preview-copy">
-            <strong>${escapeHtml(valueText(value) || "No icon selected")}</strong>
-            <small>${escapeHtml(row.IconUrl || "Choose an image file")}</small>
+            <strong>${escapeHtml(selectedText)}</strong>
           </span>
         `;
         wrap.appendChild(preview);
@@ -425,6 +458,8 @@
       if (field.fieldType === "multiple-select") {
         const count = Array.isArray(value) ? value.length : String(value || "").split(",").filter(Boolean).length;
         button.textContent = count ? `${count} selected` : "Select";
+      } else if (field.name === "Icon") {
+        button.textContent = imageProxyUrl(row.IconUrl) ? "Change icon" : "Select icon";
       } else {
         button.textContent = valueText(value) || "Select";
       }
@@ -432,7 +467,7 @@
       button.addEventListener("click", () => openOptionModal({ row, field, multiple: field.fieldType === "multiple-select" }));
       wrap.appendChild(button);
 
-      if (valueText(value)) {
+      if (valueText(value) && field.name !== "Icon") {
         const small = document.createElement("small");
         small.textContent = valueText(value);
         wrap.appendChild(small);
@@ -444,7 +479,7 @@
     input.type = ["Currency", "Decimal", "Integer", "Float", "Number"].includes(field.fieldType) ? "number" : "text";
     input.value = valueText(value);
     input.required = !!field.required;
-    input.addEventListener("input", () => updateField(row._suitepimKey, field.name, input.value));
+    input.addEventListener("input", () => updateField(row._suitepimKey, field.name, input.value, undefined, null, { render: false }));
     return input;
   }
 

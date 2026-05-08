@@ -34,7 +34,25 @@
     aiGenerationModel: "",
     presets: [
       {
-        name: "Step 1 : Mattress Metrics",
+        name: "Step 1 : Pricing",
+        fields: [
+          "Name",
+          "Display Name",
+          "Supplier Name",
+          "Class",
+          "Purchase Price",
+          "Base Price",
+          "Retail Price",
+          "Sale Price",
+          "Discount Percent",
+          "Margin",
+          "Lead Time",
+          "Inactive",
+        ],
+        filters: [],
+      },
+      {
+        name: "Step 2 : Mattress Metrics",
         fields: ["Name", "Comfort", "Type", "Depth", "Fillings", "Height", "Width", "Length", "Spring Type"],
         filters: [
           { field: "Class", value: "Mattress" },
@@ -42,7 +60,7 @@
         ],
       },
       {
-        name: "Step 1 : Bed Frame Metrics",
+        name: "Step 2 : Bed Frame Metrics",
         fields: ["Name", "Type", "Built/Flat Packed", "Colour Filter", "Depth", "Head End Height", "Height", "Width", "Length", "Storage"],
         filters: [
           { field: "Class", value: "Bed Frames" },
@@ -50,17 +68,17 @@
         ],
       },
       {
-        name: "Step 2 : Imagery",
+        name: "Step 3 : Imagery",
         fields: ["Name", "Catalogue Image One", "Catalogue Image Two", "Catalogue Image Three", "Catalogue Image Four", "Catalogue Image Five", "Item Image"],
         filters: [{ field: "Inactive", value: false }],
       },
       {
-        name: "Step 3 : Meta Data",
+        name: "Step 4 : Meta Data",
         fields: ["Name", "Category", "Tags", "Lead Time"],
         filters: [{ field: "Inactive", value: false }],
       },
       {
-        name: "Step 4 : Web Description",
+        name: "Step 5 : Web Description",
         fields: ["Name", "New Feature Desc", "reasons to buy", "Page Preview"],
         filters: [],
       },
@@ -69,6 +87,8 @@
 
   const toolFields = [
     { name: "Retail Price", fieldType: "Currency", toolColumn: true },
+    { name: "Sale Price", fieldType: "Currency", toolColumn: true },
+    { name: "Discount Percent", fieldType: "Decimal", toolColumn: true },
     { name: "Margin", fieldType: "Decimal", toolColumn: true },
     { name: "Generate Description", fieldType: "Generate", toolColumn: true, disableField: true },
     { name: "Page Preview", fieldType: "Preview", toolColumn: true, disableField: true },
@@ -663,40 +683,66 @@
   }
 
   function isCalculatedPriceField(column) {
-    return ["Purchase Price", "Base Price", "Retail Price", "Margin"].includes(column);
+    return ["Purchase Price", "Base Price", "Retail Price", "Sale Price", "Discount Percent", "Margin"].includes(column);
   }
 
   function isBulkPricingField(column) {
-    return ["Purchase Price", "Base Price", "Retail Price", "Margin"].includes(column);
+    return ["Purchase Price", "Base Price", "Retail Price", "Sale Price", "Discount Percent", "Margin"].includes(column);
   }
 
   function recalcRow(row, changedField) {
     const updated = { ...row };
     const vat = 0.2;
+    const vatMultiplier = 1 + vat;
     let purchase = parseFloat(updated["Purchase Price"]) || 0;
     let base = parseFloat(updated["Base Price"]) || 0;
     let retail = parseFloat(updated["Retail Price"]) || 0;
+    let sale = parseFloat(updated["Sale Price"]) || 0;
+    let discount = parseFloat(updated["Discount Percent"]) || 0;
     let margin = parseFloat(updated["Margin"]) || 0;
 
+    if (!changedField && sale > 0) {
+      sale *= vatMultiplier;
+    }
+
     if (changedField === "Base Price" && base > 0) {
-      retail = base * (1 + vat);
+      retail = base * vatMultiplier;
       if (purchase > 0) margin = retail / purchase;
     } else if (changedField === "Retail Price" && retail > 0) {
-      base = retail / (1 + vat);
+      base = retail / vatMultiplier;
       if (purchase > 0) margin = retail / purchase;
     } else if (changedField === "Margin" && purchase > 0 && margin > 0) {
       retail = purchase * margin;
-      base = retail / (1 + vat);
+      base = retail / vatMultiplier;
     } else if (changedField === "Purchase Price" && purchase > 0 && retail > 0) {
       margin = retail / purchase;
+    } else if (changedField === "Sale Price" && retail > 0) {
+      discount = ((retail - sale) / retail) * 100;
+    } else if (changedField === "Discount Percent" && retail > 0) {
+      discount = Math.max(0, Math.min(100, discount));
+      sale = retail * (1 - discount / 100);
     } else if (base > 0) {
-      retail = base * (1 + vat);
+      retail = base * vatMultiplier;
       if (purchase > 0) margin = retail / purchase;
+    }
+
+    if (changedField !== "Sale Price" && changedField !== "Discount Percent" && retail > 0) {
+      if (discount > 0) {
+        sale = retail * (1 - Math.max(0, Math.min(100, discount)) / 100);
+      } else if (sale > 0) {
+        discount = ((retail - sale) / retail) * 100;
+      }
+    }
+
+    if (retail > 0 && sale > 0 && changedField !== "Discount Percent") {
+      discount = ((retail - sale) / retail) * 100;
     }
 
     updated["Purchase Price"] = purchase.toFixed(2);
     updated["Base Price"] = base.toFixed(2);
     updated["Retail Price"] = Math.round(retail);
+    updated["Sale Price"] = sale ? sale.toFixed(2) : "";
+    updated["Discount Percent"] = Number.isFinite(discount) ? Math.max(0, discount).toFixed(1) : "0.0";
     updated["Margin"] = margin.toFixed(1);
     return updated;
   }
@@ -860,9 +906,13 @@
     const payload = {
       "Internal ID": clean["Internal ID"],
       "Item ID": clean["Item ID"],
-      "Name": childItemName(clean.Name),
       "Record Type": clean["Record Type"],
     };
+    const priceUpdates = [];
+
+    if (JSON.stringify(clean.Name ?? null) !== JSON.stringify(base.Name ?? null)) {
+      payload.Name = childItemName(clean.Name);
+    }
 
     Object.keys(clean).forEach((key) => {
       if (key === "Internal ID" || key === "Item ID" || key === "Name") return;
@@ -875,12 +925,39 @@
 
       if (!valueChanged && !internalIdChanged) return;
 
+      if (key === "Discount Percent") return;
+
+      if (key === "Base Price") {
+        const netBasePrice = parseFloat(clean[key]);
+        if (Number.isFinite(netBasePrice)) {
+          priceUpdates.push({
+            field: "Base Price",
+            priceLevelId: 1,
+            priceLevelName: "Base Price",
+            price: netBasePrice,
+          });
+        }
+      }
+
       if (field.fieldType === "image") {
         if (clean[internalIdKey] !== undefined) payload[internalIdKey] = clean[internalIdKey];
         return;
       }
 
-      payload[key] = clean[key];
+      if (key === "Sale Price") {
+        const grossSalePrice = parseFloat(clean[key]);
+        if (Number.isFinite(grossSalePrice)) {
+          priceUpdates.push({
+            field: "Sale Price",
+            priceLevelId: 4,
+            priceLevelName: "Sale Price",
+            price: Number((grossSalePrice / 1.2).toFixed(2)),
+          });
+        }
+        payload[key] = Number.isFinite(grossSalePrice) ? (grossSalePrice / 1.2).toFixed(2) : "";
+      } else {
+        payload[key] = clean[key];
+      }
       if (clean[internalIdKey] !== undefined) payload[internalIdKey] = clean[internalIdKey];
     });
 
@@ -890,6 +967,8 @@
       if (JSON.stringify(clean[internalIdKey] ?? null) === JSON.stringify(base[internalIdKey] ?? null)) return;
       payload[internalIdKey] = clean[internalIdKey];
     });
+
+    if (priceUpdates.length) payload.__priceUpdates = priceUpdates;
 
     return payload;
   }
@@ -920,7 +999,7 @@
 
   function editableFields() {
     return state.fields.filter((field) =>
-      !field.hiddenField && (!field.disableField || ["Retail Price", "Margin", "Generate Description"].includes(field.name))
+      !field.hiddenField && (!field.disableField || ["Retail Price", "Sale Price", "Discount Percent", "Margin", "Generate Description"].includes(field.name))
     );
   }
 
@@ -1071,7 +1150,7 @@
       return;
     }
 
-    const baseColumns = preset.name === "Step 4 : Web Description"
+    const baseColumns = preset.name.endsWith(": Web Description")
       ? ["Name"]
       : ["Name", "Class", "Inactive"];
     state.visibleColumns = [...new Set([...baseColumns, ...preset.fields])].filter((name) => fieldByName(name));
@@ -1460,6 +1539,11 @@
       if (!showChildren && !boolValue(row["Is Parent"])) return false;
       if (stateFilter === "online" && !boolValue(row["Online?"])) return false;
       if (stateFilter === "offline" && boolValue(row["Online?"])) return false;
+      if (stateFilter === "active" && boolValue(row.Inactive)) return false;
+      if (stateFilter === "inactive" && !boolValue(row.Inactive)) return false;
+      if (stateFilter === "parent" && !boolValue(row["Is Parent"])) return false;
+      if (stateFilter === "changed" && !state.dirty.has(row._suitepimKey)) return false;
+      if (stateFilter === "selected" && !state.selected.has(row._suitepimKey)) return false;
 
       if (!state.activeFilters.every((filter) => matchesFieldFilter(row, filter))) return false;
 
@@ -1687,16 +1771,10 @@
     input.type = ["Currency", "Decimal", "Integer", "Float", "Number"].includes(field.fieldType) ? "number" : "text";
     input.step = field.fieldType === "Currency" ? "0.01" : "0.1";
     input.value = valueText(value);
-    input.addEventListener("input", () => updateCell(row, column, input.value));
     if (isCalculatedPriceField(column)) {
-      let lastCommittedValue = input.value;
-      const commit = () => {
-        if (input.value === lastCommittedValue) return;
-        lastCommittedValue = input.value;
-        updateCell(row, column, input.value, null, { recalc: true });
-      };
-      input.addEventListener("change", commit);
-      input.addEventListener("blur", commit);
+      input.addEventListener("input", () => updateCell(row, column, input.value, null, { recalc: true }));
+    } else {
+      input.addEventListener("input", () => updateCell(row, column, input.value));
     }
     return input;
   }
@@ -1706,7 +1784,7 @@
     if (!tr) return;
     tr.classList.toggle("is-dirty", state.dirty.has(rowKeyValue));
 
-    ["Purchase Price", "Base Price", "Retail Price", "Margin"].forEach((fieldName) => {
+    ["Purchase Price", "Base Price", "Retail Price", "Sale Price", "Discount Percent", "Margin"].forEach((fieldName) => {
       if (fieldName === changedColumn || !state.visibleColumns.includes(fieldName)) return;
       const cell = tr.querySelector(`[data-column="${CSS.escape(fieldName)}"]`);
       if (!cell) return;

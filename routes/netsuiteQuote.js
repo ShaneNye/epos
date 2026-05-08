@@ -219,6 +219,11 @@ function assignCustomerTitleIfPresent(body, title) {
   if (titleId) body.custentity_title = titleId;
 }
 
+function normalizeCustomerPhone(value) {
+  const phone = String(value || "").trim();
+  return phone || "00000";
+}
+
 /* =====================================================
    === CREATE NEW QUOTE (Estimate) =====================
 ===================================================== */
@@ -238,7 +243,7 @@ router.post("/create", async (req, res) => {
         firstName: customer.firstName,
         lastName: customer.lastName,
         email: customer.email,
-        phone: customer.contactNumber,
+        phone: normalizeCustomerPhone(customer.contactNumber),
         altPhone: customer.altContactNumber,
         subsidiary: { id: "1" },
         isPerson: true,
