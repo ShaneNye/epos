@@ -12,6 +12,7 @@ const jobQueue = [];
 const optionsCache = new Map();
 const webManagementCache = new Map();
 const MAX_CONCURRENT = Number(process.env.SUITEPIM_PUSH_CONCURRENCY || 1);
+const CAMPAIGN_BATCH_SIZE = Math.max(1, Number(process.env.SUITEPIM_CAMPAIGN_BATCH_SIZE || 25));
 const WEB_MANAGEMENT_CACHE_TTL_MS = Number(process.env.SUITEPIM_WEB_MANAGEMENT_CACHE_TTL_MS || 15 * 60 * 1000);
 const WEB_MANAGEMENT_STALE_MS = Number(process.env.SUITEPIM_WEB_MANAGEMENT_STALE_MS || 6 * 60 * 60 * 1000);
 const WEB_MANAGEMENT_REFRESH_INTERVAL_MS = Number(
@@ -29,6 +30,8 @@ const reasonsToBuyFields = [
   { name: "Is Warranty Period", internalid: "custrecord_sb_is_warranty", fieldType: "Checkbox" },
   { name: "Items", internalid: "custrecord_sb_rtb_items", fieldType: "multiple-select", optionFeed: "Items" },
 ];
+
+let suitePimCampaignsInitialized = false;
 
 function normalizeEnvironment(value) {
   return String(value || process.env.ENVIRONMENT || "sandbox").toLowerCase() === "production"
@@ -117,6 +120,25 @@ function envConfig(env) {
       process.env[`NETSUITE_${upper}_PRICE_RESTLET_URL`] ||
       process.env.NETSUITE_PRICE_RESTLET_URL ||
       "",
+    campaignPriceRestletUrl:
+      process.env[`NETSUITE_${upper}_CAMPAIGN_PRICE_RESTLET_URL`] ||
+      process.env.NETSUITE_CAMPAIGN_PRICE_RESTLET_URL ||
+      "",
+    wooStoreUrl:
+      process.env[`WOO_${upper}_STORE_URL`] ||
+      process.env[`WOOCOMMERCE_${upper}_STORE_URL`] ||
+      process.env.WOO_STORE_URL ||
+      process.env.WOO_BASE_URL ||
+      process.env.WOOCOMMERCE_STORE_URL ||
+      "",
+    wooConsumerKey:
+      process.env[`WOO_${upper}_CONSUMER_KEY`] ||
+      process.env.WOO_CONSUMER_KEY ||
+      "",
+    wooConsumerSecret:
+      process.env[`WOO_${upper}_CONSUMER_SECRET`] ||
+      process.env.WOO_CONSUMER_SECRET ||
+      "",
   };
 }
 
@@ -134,6 +156,73 @@ function clearReasonsToBuyCaches() {
     optionsCache.delete(`${env}:Reasons To Buy Icons`);
     optionsCache.delete(`${env}:Items`);
   });
+}
+
+async function ensureSuitePimCampaignTables() {
+  if (suitePimCampaignsInitialized) return;
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS suitepim_campaigns (
+      id SERIAL PRIMARY KEY,
+      environment TEXT NOT NULL CHECK (environment IN ('sandbox', 'production')),
+      title TEXT NOT NULL,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_suitepim_campaigns_environment_updated
+      ON suitepim_campaigns(environment, updated_at DESC);
+  `);
+
+  suitePimCampaignsInitialized = true;
+}
+
+function cleanCampaignText(value) {
+  return String(value ?? "").trim();
+}
+
+function normalizeCampaignData(payload = {}) {
+  const data = payload.data && typeof payload.data === "object" ? payload.data : payload;
+  const title = cleanCampaignText(payload.title || data.title);
+  if (!title) throw new Error("Campaign title is required.");
+
+  const sections = Array.isArray(data.sections)
+    ? data.sections.map((section) => ({
+        label: cleanCampaignText(section?.label),
+        color: cleanCampaignText(section?.color),
+        collapsed: section?.collapsed === true,
+        rows: Array.isArray(section?.rows)
+          ? section.rows.map((row) => ({
+              label: cleanCampaignText(row?.label),
+              discount: cleanCampaignText(row?.discount),
+              pos: cleanCampaignText(row?.pos),
+              discPos: cleanCampaignText(row?.discPos),
+              other: cleanCampaignText(row?.other),
+              filters: Array.isArray(row?.filters) ? row.filters : [],
+            }))
+          : [],
+      }))
+    : [];
+
+  return {
+    title,
+    sections,
+    savedAt: new Date().toISOString(),
+  };
+}
+
+function mapSuitePimCampaignRow(row) {
+  return {
+    id: row.id,
+    environment: row.environment,
+    title: row.title,
+    data: row.data || { title: row.title, sections: [] },
+    createdBy: row.created_by || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
 }
 
 function sleep(ms) {
@@ -1040,6 +1129,19 @@ function firstDefinedValue(row, keys = []) {
   return row[keys[0]];
 }
 
+function compactFieldKey(value) {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
+function firstLooseDefinedValue(row, keys = []) {
+  const exact = firstDefinedValue(row, keys);
+  if (exact !== undefined && exact !== null && String(exact).trim() !== "") return exact;
+
+  const aliases = new Set(keys.map(compactFieldKey));
+  const matchedKey = Object.keys(row || {}).find((key) => aliases.has(compactFieldKey(key)));
+  return matchedKey ? row[matchedKey] : "";
+}
+
 function childItemName(value) {
   const text = String(value ?? "").trim();
   if (!text) return "";
@@ -1049,6 +1151,21 @@ function childItemName(value) {
 
 function normalizeRowAliases(row) {
   const next = { ...row };
+
+  next["Internal ID"] = String(firstLooseDefinedValue(next, [
+    "Internal ID",
+    "InternalID",
+    "internalid",
+    "id",
+  ]) || "").trim();
+
+  next["Item ID"] = firstLooseDefinedValue(next, [
+    "Item ID",
+    "Item Name/Number",
+    "Item Name",
+    "itemid",
+    "itemId",
+  ]) || "";
 
   next.Name = childItemName(firstDefinedValue(next, [
     "Name",
@@ -1065,6 +1182,32 @@ function normalizeRowAliases(row) {
     "DisplayName",
     "displayname",
   ]) || "";
+
+  next["Record Type"] = firstLooseDefinedValue(next, [
+    "Record Type",
+    "recordtype",
+    "recordType",
+    "type",
+  ]) || next["Record Type"] || "";
+
+  next["Woo ID"] = String(firstLooseDefinedValue(next, [
+    "Woo ID",
+    "WooID",
+    "WooCommerce ID",
+    "WooCommerceID",
+    "Magento ID",
+    "MagentoID",
+    "custitem_magentoid",
+  ]) || "").trim();
+
+  next["Web SKU"] = String(firstLooseDefinedValue(next, [
+    "Web SKU",
+    "Woo SKU",
+    "WooCommerce SKU",
+    "SKU",
+    "sku",
+    "custitemwoo_commerce_sku",
+  ]) || "").trim();
 
   return next;
 }
@@ -1315,6 +1458,84 @@ async function callPriceRestlet({ cfg, userId, internalId, recordType, price, pr
     throw new Error(`Price RESTlet failed: ${JSON.stringify(data)}`);
   }
   return data;
+}
+
+async function callCampaignPriceBatchRestlet({ cfg, userId, updates, batchId }) {
+  if (!cfg.campaignPriceRestletUrl) throw new Error("Missing NetSuite SuitePim campaign price batch RESTlet URL");
+
+  const res = await fetch(cfg.campaignPriceRestletUrl, {
+    method: "POST",
+    headers: {
+      ...(await netSuiteHeaders(cfg.campaignPriceRestletUrl, "POST", userId, cfg)),
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify({ batchId, updates }),
+  });
+  const data = parseJson(await res.text());
+  if (!res.ok) {
+    throw new Error(`Campaign price batch RESTlet failed (${res.status}): ${JSON.stringify(data)}`);
+  }
+  return data;
+}
+
+function wooConfigured(cfg) {
+  return !!(cfg.wooStoreUrl && cfg.wooConsumerKey && cfg.wooConsumerSecret);
+}
+
+function wooApiUrl(cfg, path) {
+  const base = String(cfg.wooStoreUrl || "").trim().replace(/\/+$/, "");
+  return `${base}/wp-json/wc/v3${path}`;
+}
+
+function wooAuthHeader(cfg) {
+  return `Basic ${Buffer.from(`${cfg.wooConsumerKey}:${cfg.wooConsumerSecret}`).toString("base64")}`;
+}
+
+async function callWooProductBatch({ cfg, updates }) {
+  if (!updates.length) return { ok: true, results: [] };
+  if (!wooConfigured(cfg)) {
+    throw new Error("Missing WooCommerce config. Set WOO_STORE_URL, WOO_CONSUMER_KEY, and WOO_CONSUMER_SECRET.");
+  }
+
+  const url = wooApiUrl(cfg, "/products/batch");
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: wooAuthHeader(cfg),
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: JSON.stringify({ update: updates }),
+  });
+  const payload = parseJson(await response.text());
+  if (!response.ok) {
+    throw new Error(`WooCommerce batch update failed (${response.status}): ${JSON.stringify(payload)}`);
+  }
+  return payload;
+}
+
+async function callWooApi({ cfg, path, method = "GET", body }) {
+  if (!wooConfigured(cfg)) {
+    throw new Error("Missing WooCommerce config. Set WOO_STORE_URL, WOO_CONSUMER_KEY, and WOO_CONSUMER_SECRET.");
+  }
+
+  const response = await fetch(wooApiUrl(cfg, path), {
+    method,
+    headers: {
+      Authorization: wooAuthHeader(cfg),
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+  const payload = parseJson(await response.text());
+  if (!response.ok) {
+    const err = new Error(`WooCommerce API failed (${response.status}): ${JSON.stringify(payload)}`);
+    err.status = response.status;
+    err.payload = payload;
+    throw err;
+  }
+  return payload;
 }
 
 async function updatePreferredSupplier({ cfg, userId, internalId, recordType, vendorId }) {
@@ -1619,6 +1840,386 @@ async function processValidationRow(row, job) {
   }
 }
 
+function campaignPriceUpdateFromRow(row) {
+  const priceUpdate = Array.isArray(row.__priceUpdates)
+    ? row.__priceUpdates.find((update) => Number.isFinite(Number(update?.price)))
+    : null;
+  const price = Number(priceUpdate?.price);
+  if (!Number.isFinite(price)) throw new Error("Missing campaign sale price update");
+
+  return {
+    clientKey: String(row["Internal ID"] || row["Item ID"] || row.Name || ""),
+    internalId: String(row["Internal ID"] || "").trim(),
+    itemId: row["Item ID"] || row.Name || "",
+    recordType: campaignRecordTypeFromRow(row),
+    price,
+    priceLevelId: Number(priceUpdate.priceLevelId || 4),
+    priceLevelName: String(priceUpdate.priceLevelName || "Sale Price"),
+    currencyId: 1,
+    quantityColumns: [0, 1],
+  };
+}
+
+function campaignRecordTypeFromRow(row) {
+  const raw = String(row?.["Record Type"] || row?.recordType || "").trim();
+  const compact = raw.toLowerCase().replace(/[^a-z0-9]/g, "");
+  const allowed = {
+    inventoryitem: "inventoryItem",
+    lotnumberedinventoryitem: "lotNumberedInventoryItem",
+    lotnumberedinventory: "lotNumberedInventoryItem",
+    lotnumberedinvtpart: "lotNumberedInventoryItem",
+    invtpart: "lotNumberedInventoryItem",
+    servicesaleitem: "serviceSaleItem",
+    serviceitem: "serviceSaleItem",
+    assemblyitem: "assemblyItem",
+    noninventorysaleitem: "nonInventorySaleItem",
+    noninventoryitem: "nonInventorySaleItem",
+    kititem: "kitItem",
+  };
+  return allowed[compact] || "inventoryItem";
+}
+
+function campaignBatchErrorResult(row, error) {
+  return {
+    itemId: row["Item ID"] || row.Name || row["Internal ID"],
+    internalId: row["Internal ID"],
+    wooId: row["Woo ID"] || "",
+    recordType: row["Record Type"] || null,
+    changedFields: ["Sale Price"],
+    status: "Error",
+    response: { main: null, prices: [], woo: null, images: [], supplier: null, error, diagnostics: null },
+  };
+}
+
+function campaignBatchResult(row, batchResult, wooResult) {
+  const netsuiteSuccess = batchResult && batchResult.success !== false;
+  const wooSuccess = !wooResult || wooResult.status === "skipped" || wooResult.success !== false;
+  const success = netsuiteSuccess && wooSuccess;
+  return {
+    itemId: row["Item ID"] || row.Name || row["Internal ID"],
+    internalId: row["Internal ID"],
+    wooId: row["Woo ID"] || "",
+    recordType: row["Record Type"] || null,
+    changedFields: row["Woo ID"] ? ["Sale Price", "WooCommerce Sale Price"] : ["Sale Price"],
+    status: success ? "Success" : "Error",
+    response: {
+      main: null,
+      prices: [
+        {
+          success: netsuiteSuccess,
+          field: "Sale Price",
+          priceLevelId: 4,
+          priceLevelName: "Sale Price",
+          requestedPrice: Number(row.__priceUpdates?.[0]?.price),
+          result: batchResult?.result || null,
+          error: batchResult?.error || null,
+        },
+      ],
+      woo: wooResult || { status: "skipped", reason: "No Woo ID" },
+      images: [],
+      supplier: null,
+      error: success ? null : batchResult?.error || wooResult?.error || "Campaign batch update failed",
+      diagnostics: { netsuite: batchResult || null, woo: wooResult || null },
+    },
+  };
+}
+
+function wooIdsFromRow(row) {
+  return String(row["Woo ID"] || "")
+    .split(/[,\s;]+/)
+    .map((value) => Number(String(value).trim()))
+    .filter((value) => Number.isInteger(value) && value > 0);
+}
+
+function wooSalePriceFromRow(row) {
+  const netPriceUpdate = Array.isArray(row.__priceUpdates)
+    ? row.__priceUpdates.find((update) => Number.isFinite(Number(update?.price)))
+    : null;
+  const net = Number(netPriceUpdate?.price);
+  if (Number.isFinite(net)) return net.toFixed(2);
+
+  const gross = Number(row["Sale Price"]);
+  if (!Number.isFinite(gross)) return "";
+  return (gross / 1.2).toFixed(2);
+}
+
+function wooSkuCandidates(row) {
+  const values = [
+    row["Internal ID"],
+    row["Item ID"],
+    row["Web SKU"],
+    row.Name,
+  ];
+  return Array.from(new Set(values.map((value) => String(value || "").trim()).filter(Boolean)));
+}
+
+async function getWooProductById(cfg, productId) {
+  try {
+    return await callWooApi({ cfg, path: `/products/${encodeURIComponent(productId)}` });
+  } catch (err) {
+    if (Number(err.status) === 404) return null;
+    throw err;
+  }
+}
+
+async function findWooProductBySku(cfg, skuCandidates) {
+  for (const sku of skuCandidates) {
+    const products = await callWooApi({
+      cfg,
+      path: `/products?sku=${encodeURIComponent(sku)}&per_page=100`,
+    });
+    if (Array.isArray(products) && products.length) return products[0];
+  }
+  return null;
+}
+
+async function findWooVariationBySku(cfg, parentId, skuCandidates) {
+  for (const sku of skuCandidates) {
+    const variations = await callWooApi({
+      cfg,
+      path: `/products/${encodeURIComponent(parentId)}/variations?sku=${encodeURIComponent(sku)}&per_page=100`,
+    });
+    if (Array.isArray(variations) && variations.length) return variations[0];
+  }
+  return null;
+}
+
+function mergeWooResult(current, next) {
+  if (!current || current.status === "skipped") return next;
+  if (current.success === false) return current;
+  return next.success === false ? next : current;
+}
+
+async function processWooBatchForRows(cfg, rows) {
+  const resultByInternalId = new Map();
+  rows.forEach((row) => {
+    const internalId = String(row["Internal ID"] || "");
+    if (!row["Woo ID"]) {
+      resultByInternalId.set(internalId, { status: "skipped", reason: "No Woo ID" });
+    }
+  });
+
+  const rowsWithWoo = rows.filter((row) => wooIdsFromRow(row).length);
+  if (!rowsWithWoo.length) return resultByInternalId;
+
+  if (!wooConfigured(cfg)) {
+    rowsWithWoo.forEach((row) => {
+      resultByInternalId.set(String(row["Internal ID"] || ""), {
+        success: false,
+        error: "Woo ID present but WooCommerce config is incomplete. Set WOO_STORE_URL, WOO_CONSUMER_KEY, and WOO_CONSUMER_SECRET.",
+      });
+    });
+    return resultByInternalId;
+  }
+
+  const productUpdates = [];
+  const variationUpdatesByParent = new Map();
+  const productUpdateRows = new Map();
+  const variationUpdateRows = new Map();
+  const productCache = new Map();
+
+  try {
+    for (const row of rowsWithWoo) {
+      const internalId = String(row["Internal ID"] || "");
+      const salePrice = wooSalePriceFromRow(row);
+      const skuCandidates = wooSkuCandidates(row);
+
+      if (!salePrice) {
+        resultByInternalId.set(internalId, { success: false, error: "Missing sale price for WooCommerce update." });
+        continue;
+      }
+
+      for (const wooId of wooIdsFromRow(row)) {
+        if (!productCache.has(wooId)) productCache.set(wooId, await getWooProductById(cfg, wooId));
+        const product = productCache.get(wooId);
+
+        if (!product) {
+          const skuMatch = await findWooProductBySku(cfg, skuCandidates);
+          if (!skuMatch) {
+            resultByInternalId.set(internalId, mergeWooResult(resultByInternalId.get(internalId), {
+              status: "skipped",
+              wooId,
+              reason: `WooCommerce product does not exist and no SKU match was found for ${skuCandidates.join(", ")}.`,
+            }));
+            continue;
+          }
+
+          if (skuMatch.type === "variation" && skuMatch.parent_id) {
+            const parentId = Number(skuMatch.parent_id);
+            if (!variationUpdatesByParent.has(parentId)) variationUpdatesByParent.set(parentId, []);
+            variationUpdatesByParent.get(parentId).push({ id: Number(skuMatch.id), sale_price: salePrice });
+            variationUpdateRows.set(`${parentId}:${skuMatch.id}`, { row, variation: skuMatch, parentId });
+            continue;
+          }
+
+          productUpdates.push({ id: Number(skuMatch.id), sale_price: salePrice });
+          productUpdateRows.set(String(skuMatch.id), { row, product: skuMatch });
+          continue;
+        }
+
+        if (product.type === "variation" && product.parent_id) {
+          const parentId = Number(product.parent_id);
+          if (!variationUpdatesByParent.has(parentId)) variationUpdatesByParent.set(parentId, []);
+          variationUpdatesByParent.get(parentId).push({ id: Number(product.id), sale_price: salePrice });
+          variationUpdateRows.set(`${parentId}:${product.id}`, { row, variation: product, parentId });
+          continue;
+        }
+
+        if (product.type === "variable") {
+          const variation = await findWooVariationBySku(cfg, wooId, skuCandidates);
+          if (!variation?.id) {
+            resultByInternalId.set(internalId, mergeWooResult(resultByInternalId.get(internalId), {
+              status: "skipped",
+              wooId,
+              reason: `No WooCommerce variation found for SKU ${skuCandidates.join(", ")}.`,
+            }));
+            continue;
+          }
+
+          if (!variationUpdatesByParent.has(wooId)) variationUpdatesByParent.set(wooId, []);
+          variationUpdatesByParent.get(wooId).push({ id: Number(variation.id), sale_price: salePrice });
+          variationUpdateRows.set(`${wooId}:${variation.id}`, { row, variation, parentId: wooId });
+          continue;
+        }
+
+        productUpdates.push({ id: wooId, sale_price: salePrice });
+        productUpdateRows.set(String(wooId), { row, product });
+      }
+    }
+
+    if (productUpdates.length) {
+      const payload = await callWooProductBatch({ cfg, updates: productUpdates });
+      const returned = Array.isArray(payload?.update) ? payload.update : [];
+      returned.forEach((item) => {
+        const key = String(item?.id || "");
+        const context = productUpdateRows.get(key);
+        if (!context) return;
+        resultByInternalId.set(String(context.row["Internal ID"] || ""), {
+          success: true,
+          status: "updated",
+          target: "product",
+          wooId: Number(item.id),
+          salePrice: item.sale_price,
+          result: item,
+        });
+      });
+    }
+
+    for (const [parentId, updates] of variationUpdatesByParent.entries()) {
+      const payload = await callWooApi({
+        cfg,
+        path: `/products/${encodeURIComponent(parentId)}/variations/batch`,
+        method: "POST",
+        body: { update: updates },
+      });
+      const returned = Array.isArray(payload?.update) ? payload.update : [];
+      returned.forEach((item) => {
+        const context = variationUpdateRows.get(`${parentId}:${item?.id}`);
+        if (!context) return;
+        resultByInternalId.set(String(context.row["Internal ID"] || ""), {
+          success: true,
+          status: "updated",
+          target: "variation",
+          wooId: Number(item.id),
+          parentId,
+          sku: item.sku,
+          salePrice: item.sale_price,
+          result: item,
+        });
+      });
+    }
+
+    productUpdateRows.forEach((context, productId) => {
+      const internalId = String(context.row["Internal ID"] || "");
+      if (resultByInternalId.get(internalId)?.status === "updated") return;
+      resultByInternalId.set(internalId, {
+        status: "skipped",
+        wooId: Number(productId),
+        reason: "WooCommerce product was not returned by the batch update.",
+      });
+    });
+
+    variationUpdateRows.forEach((context) => {
+      const internalId = String(context.row["Internal ID"] || "");
+      if (resultByInternalId.get(internalId)?.status === "updated") return;
+      resultByInternalId.set(internalId, {
+        status: "skipped",
+        wooId: Number(context.variation.id),
+        parentId: context.parentId,
+        reason: "WooCommerce variation was not returned by the batch update.",
+      });
+    });
+  } catch (err) {
+    rowsWithWoo.forEach((row) => {
+      resultByInternalId.set(String(row["Internal ID"] || ""), {
+        success: false,
+        wooId: row["Woo ID"],
+        error: err.message,
+      });
+    });
+  }
+
+  return resultByInternalId;
+}
+
+async function processCampaignBatchJob(job) {
+  if (!job.cfg.campaignPriceRestletUrl) {
+    throw new Error("Missing NetSuite SuitePim campaign price batch RESTlet URL");
+  }
+
+  job.batchTotal = Math.ceil(job.rows.length / CAMPAIGN_BATCH_SIZE);
+  job.batchProcessed = 0;
+  job.batchInProgress = 0;
+
+  for (let offset = 0; offset < job.rows.length; offset += CAMPAIGN_BATCH_SIZE) {
+    const rows = job.rows.slice(offset, offset + CAMPAIGN_BATCH_SIZE);
+    const valid = [];
+    const batchNumber = Math.floor(offset / CAMPAIGN_BATCH_SIZE) + 1;
+    job.batchInProgress = batchNumber;
+
+    rows.forEach((row, rowIndex) => {
+      try {
+        valid.push({ row, rowIndex, update: campaignPriceUpdateFromRow(row) });
+      } catch (err) {
+        job.results.push(campaignBatchErrorResult(row, err.message));
+        job.processed += 1;
+      }
+    });
+
+    if (!valid.length) continue;
+
+    try {
+      const batchId = `${job.id}:${batchNumber}`;
+      const payload = await callCampaignPriceBatchRestlet({
+        cfg: job.cfg,
+        userId: job.userId,
+        updates: valid.map((entry) => entry.update),
+        batchId,
+      });
+      const results = Array.isArray(payload?.results) ? payload.results : [];
+      const wooResults = await processWooBatchForRows(job.cfg, valid.map((entry) => entry.row));
+
+      valid.forEach((entry, index) => {
+        const result = results.find((item) => Number(item.index) === index)
+          || results.find((item) => String(item.clientKey || "") === String(entry.update.clientKey || ""))
+          || { success: false, error: "No batch result returned for row" };
+        job.results.push(campaignBatchResult(entry.row, result, wooResults.get(String(entry.row["Internal ID"] || ""))));
+        job.processed += 1;
+      });
+    } catch (err) {
+      const wooResults = await processWooBatchForRows(job.cfg, valid.map((entry) => entry.row));
+      valid.forEach((entry) => {
+        const netSuiteError = { success: false, error: err.message };
+        job.results.push(campaignBatchResult(entry.row, netSuiteError, wooResults.get(String(entry.row["Internal ID"] || ""))));
+        job.processed += 1;
+      });
+    } finally {
+      job.batchProcessed = batchNumber;
+      job.batchInProgress = 0;
+    }
+  }
+}
+
 async function runNextJob() {
   if (!jobQueue.length) return;
   const jobId = jobQueue[0];
@@ -1627,8 +2228,25 @@ async function runNextJob() {
 
   job.status = "running";
   job.startedAt = new Date().toISOString();
+  job.results = [];
   let index = 0;
-  const results = [];
+
+  if (job.type === "campaign-batch") {
+    try {
+      await processCampaignBatchJob(job);
+    } catch (err) {
+      job.rows.forEach((row) => {
+        if (job.results.some((result) => String(result.internalId) === String(row["Internal ID"]))) return;
+        job.results.push(campaignBatchErrorResult(row, err.message));
+        job.processed += 1;
+      });
+    }
+    job.status = "completed";
+    job.finishedAt = new Date().toISOString();
+    jobQueue.shift();
+    runNextJob().catch((err) => console.error("SuitePim job queue error:", err));
+    return;
+  }
 
   async function worker() {
     while (index < job.rows.length) {
@@ -1636,14 +2254,13 @@ async function runNextJob() {
       const rowResult = job.type === "validation"
         ? await processValidationRow(row, job)
         : await processRow(row, job);
-      results.push(rowResult);
+      job.results.push(rowResult);
       job.processed += 1;
     }
   }
 
   await Promise.all(Array.from({ length: Math.min(MAX_CONCURRENT, job.rows.length) }, worker));
 
-  job.results = results;
   job.status = "completed";
   job.finishedAt = new Date().toISOString();
   jobQueue.shift();
@@ -1654,7 +2271,7 @@ async function fetchWebManagementRows(cfg) {
   const url = withSuiteletToken(cfg.webManagementUrl, cfg.webManagementToken);
   const response = await fetch(url);
   const payload = parseJson(await response.text());
-  if (!response.ok) throw new Error(`Web management feed returned ${response.status}`);
+  if (!response.ok) throw new Error(`Item management feed returned ${response.status}`);
   return Array.isArray(payload) ? payload : payload.results || payload.items || [];
 }
 
@@ -1977,6 +2594,8 @@ router.get("/web-management/config", (req, res) => {
     fields: cleanFields,
     webManagementFeedConfigured: !!cfg.webManagementUrl,
     priceRestletConfigured: !!cfg.priceRestletUrl,
+    campaignPriceRestletConfigured: !!cfg.campaignPriceRestletUrl,
+    wooCommerceConfigured: wooConfigured(cfg),
     aiGenerationConfigured: !!openai.apiKey,
     aiGenerationModel: openai.model,
   });
@@ -2128,6 +2747,116 @@ router.get("/options/:fieldName", async (req, res) => {
   }
 });
 
+router.get("/campaigns", async (req, res) => {
+  try {
+    await ensureSuitePimCampaignTables();
+    const env = normalizeEnvironment(req.query.environment);
+    const result = await pool.query(
+      `
+        SELECT id, environment, title, data, created_by, created_at, updated_at
+          FROM suitepim_campaigns
+         WHERE environment = $1
+         ORDER BY updated_at DESC, title ASC
+      `,
+      [env]
+    );
+    res.json({
+      ok: true,
+      environment: publicEnvironmentName(env),
+      campaigns: result.rows.map(mapSuitePimCampaignRow),
+    });
+  } catch (err) {
+    console.error("SuitePim campaign list failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to load campaigns" });
+  }
+});
+
+router.get("/campaigns/:id", async (req, res) => {
+  try {
+    await ensureSuitePimCampaignTables();
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: "Invalid campaign id" });
+
+    const result = await pool.query(
+      `
+        SELECT id, environment, title, data, created_by, created_at, updated_at
+          FROM suitepim_campaigns
+         WHERE id = $1
+      `,
+      [id]
+    );
+    if (!result.rowCount) return res.status(404).json({ ok: false, error: "Campaign not found" });
+    res.json({ ok: true, campaign: mapSuitePimCampaignRow(result.rows[0]) });
+  } catch (err) {
+    console.error("SuitePim campaign load failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to load campaign" });
+  }
+});
+
+router.post("/campaigns", async (req, res) => {
+  try {
+    await ensureSuitePimCampaignTables();
+    const env = normalizeEnvironment(req.body?.environment || req.query.environment);
+    const data = normalizeCampaignData(req.body || {});
+    const createdBy = cleanCampaignText(req.eposSession?.email || req.eposSession?.username || req.eposSession?.user_id);
+    const result = await pool.query(
+      `
+        INSERT INTO suitepim_campaigns (environment, title, data, created_by)
+        VALUES ($1, $2, $3::jsonb, $4)
+        RETURNING id, environment, title, data, created_by, created_at, updated_at
+      `,
+      [env, data.title, JSON.stringify(data), createdBy || null]
+    );
+    res.json({ ok: true, campaign: mapSuitePimCampaignRow(result.rows[0]) });
+  } catch (err) {
+    console.error("SuitePim campaign save failed:", err);
+    res.status(400).json({ ok: false, error: err.message || "Failed to save campaign" });
+  }
+});
+
+router.put("/campaigns/:id", async (req, res) => {
+  try {
+    await ensureSuitePimCampaignTables();
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: "Invalid campaign id" });
+
+    const env = normalizeEnvironment(req.body?.environment || req.query.environment);
+    const data = normalizeCampaignData(req.body || {});
+    const result = await pool.query(
+      `
+        UPDATE suitepim_campaigns
+           SET environment = $1,
+               title = $2,
+               data = $3::jsonb,
+               updated_at = NOW()
+         WHERE id = $4
+         RETURNING id, environment, title, data, created_by, created_at, updated_at
+      `,
+      [env, data.title, JSON.stringify(data), id]
+    );
+    if (!result.rowCount) return res.status(404).json({ ok: false, error: "Campaign not found" });
+    res.json({ ok: true, campaign: mapSuitePimCampaignRow(result.rows[0]) });
+  } catch (err) {
+    console.error("SuitePim campaign update failed:", err);
+    res.status(400).json({ ok: false, error: err.message || "Failed to update campaign" });
+  }
+});
+
+router.delete("/campaigns/:id", async (req, res) => {
+  try {
+    await ensureSuitePimCampaignTables();
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: "Invalid campaign id" });
+
+    const result = await pool.query("DELETE FROM suitepim_campaigns WHERE id = $1 RETURNING id", [id]);
+    if (!result.rowCount) return res.status(404).json({ ok: false, error: "Campaign not found" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("SuitePim campaign delete failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to delete campaign" });
+  }
+});
+
 router.get("/ai-prompts/product-descriptions", async (req, res) => {
   try {
     const [netsuite, ean] = await Promise.all([
@@ -2216,6 +2945,49 @@ router.post("/push-updates", async (req, res) => {
   }
 });
 
+router.post("/campaigns/push-batch", async (req, res) => {
+  try {
+    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+    if (!rows.length) return res.status(400).json({ ok: false, error: "No rows to push" });
+
+    const env = normalizeEnvironment(req.body.environment || req.query.environment);
+    const cfg = envConfig(env);
+    if (!cfg.campaignPriceRestletUrl) {
+      return res.status(500).json({
+        ok: false,
+        error: `Missing ${env === "production" ? "NETSUITE_PROD_CAMPAIGN_PRICE_RESTLET_URL" : "NETSUITE_SANDBOX_CAMPAIGN_PRICE_RESTLET_URL"} or NETSUITE_CAMPAIGN_PRICE_RESTLET_URL`,
+      });
+    }
+
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const jobId = crypto.randomBytes(6).toString("hex");
+
+    jobs[jobId] = {
+      id: jobId,
+      type: "campaign-batch",
+      status: "pending",
+      total: rows.length,
+      processed: 0,
+      results: [],
+      rows,
+      cfg,
+      userId,
+      environment: publicEnvironmentName(env),
+      createdAt: new Date().toISOString(),
+      batchSize: CAMPAIGN_BATCH_SIZE,
+      batchTotal: Math.ceil(rows.length / CAMPAIGN_BATCH_SIZE),
+      batchProcessed: 0,
+      batchInProgress: 0,
+    };
+    jobQueue.push(jobId);
+    if (jobQueue.length === 1) runNextJob().catch((err) => console.error("SuitePim queue failed:", err));
+
+    res.json({ ok: true, jobId, queuePos: jobQueue.indexOf(jobId) + 1, queueTotal: jobQueue.length, batchSize: CAMPAIGN_BATCH_SIZE });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
 router.post("/push-validation", async (req, res) => {
   try {
     const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
@@ -2254,11 +3026,16 @@ router.get("/push-status/:jobId", (req, res) => {
   res.json({
     ok: true,
     id: job.id,
+    type: job.type || "standard",
     status: job.status,
     total: job.total,
     processed: job.processed,
     results: job.results,
     environment: job.environment,
+    batchSize: job.batchSize || null,
+    batchTotal: job.batchTotal || null,
+    batchProcessed: job.batchProcessed || 0,
+    batchInProgress: job.batchInProgress || 0,
     queuePos: jobQueue.indexOf(job.id) + 1 || 0,
     queueTotal: jobQueue.length,
     createdAt: job.createdAt,

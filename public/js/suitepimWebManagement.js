@@ -860,7 +860,7 @@
   }
 
   async function loadProducts(forceRefresh = false) {
-    setLoading(forceRefresh ? "Refreshing Web Management from NetSuite..." : "Loading Web Management...");
+    setLoading(forceRefresh ? "Refreshing Item Management from NetSuite..." : "Loading Item Management...");
     showStatus("");
     state.rows = [];
     state.filteredRows = [];
@@ -1046,7 +1046,7 @@
         ${selected ? presetLabelHtml(selected.name, state.presets.indexOf(selected)) : `<span class="suitepim-preset-placeholder">Default</span>`}
         <span class="suitepim-preset-chevron" aria-hidden="true"></span>
       </button>
-      <div class="suitepim-preset-menu" role="listbox" aria-label="Web management presets">
+      <div class="suitepim-preset-menu" role="listbox" aria-label="Item management presets">
         <button class="suitepim-preset-option suitepim-preset-clear" type="button" role="option" data-preset-name="" aria-selected="${selected ? "false" : "true"}">
           <span class="suitepim-preset-placeholder">Default</span>
         </button>
@@ -1572,7 +1572,7 @@
     if (!state.rows.length) {
       el.suitepimMount.innerHTML = `
         <div class="suitepim-empty">
-          <h2>No Web Management records loaded</h2>
+          <h2>No Item Management records loaded</h2>
           <p>Use refresh once the SuitePim feed is available.</p>
         </div>
       `;
@@ -2271,7 +2271,7 @@
       showStatus(err.message, "error");
       el.suitepimMount.innerHTML = `
         <div class="suitepim-empty">
-          <h2>Web Management could not load</h2>
+          <h2>Item Management could not load</h2>
           <p>${escapeHtml(err.message)}</p>
         </div>
       `;

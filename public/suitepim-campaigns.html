@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico" />
+  <title>SuitePim Campaigns</title>
+
+  <link rel="stylesheet" href="/assistant/assistant.css" />
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/suitepim.css" />
+
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/js/suitepimPreload.js" defer></script>
+  <script src="/assistant/assistant.js"></script>
+  <script type="module" src="/assistant/assistantHooks.js"></script>
+  <script src="/js/suitepimCampaigns.js" defer></script>
+</head>
+
+<body>
+  <div id="menu"></div>
+
+  <main class="content suitepim-page suitepim-page-wide">
+    <header class="suitepim-header">
+      <div>
+        <p class="suitepim-kicker">SuitePim</p>
+        <h1>Campaigns</h1>
+      </div>
+    </header>
+
+    <nav class="suitepim-subnav" aria-label="SuitePim sections">
+      <a class="suitepim-subnav-link" href="/suitepim">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M4 19V5"></path>
+          <path d="M8 19v-6"></path>
+          <path d="M13 19v-9"></path>
+          <path d="M18 19V8"></path>
+        </svg>
+        Dashboard
+      </a>
+      <a class="suitepim-subnav-link" href="/suitepim/web-management">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M4 6h16"></path>
+          <path d="M4 12h10"></path>
+          <path d="M4 18h13"></path>
+          <path d="M18 11h2a2 2 0 0 1 2 2v3"></path>
+          <path d="M16 14l2-3 2 3"></path>
+        </svg>
+        Item Management
+      </a>
+      <a class="suitepim-subnav-link active" href="/suitepim/campaigns">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M4 7h16"></path>
+          <path d="M7 4v6"></path>
+          <path d="M17 4v6"></path>
+          <path d="M6 15h5"></path>
+          <path d="M13 15h5"></path>
+          <path d="M8 19h8"></path>
+        </svg>
+        Campaigns
+      </a>
+      <a class="suitepim-subnav-link" href="/suitepim/product-validation">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M9 12l2 2 4-5"></path>
+          <path d="M4 4h16v16H4z"></path>
+        </svg>
+        Product Validation
+      </a>
+      <a class="suitepim-subnav-link" href="/suitepim/reasons-to-buy">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.9 6.6 19.8l1-6.1-4.4-4.3 6.1-.9L12 3z"></path>
+        </svg>
+        Reasons To Buy
+      </a>
+    </nav>
+
+    <section class="suitepim-toolbar suitepim-campaign-toolbar" aria-label="Campaign controls">
+      <div class="suitepim-search">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="M16.5 16.5 21 21"></path>
+        </svg>
+        <input id="suitepimCampaignSearch" type="search" placeholder="Search campaigns..." />
+      </div>
+      <button id="suitepimCampaignNew" class="suitepim-primary-btn" type="button">New Campaign</button>
+      <button id="suitepimCampaignRefresh" class="suitepim-icon-btn" type="button" title="Refresh" aria-label="Refresh">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M20 6v5h-5"></path>
+          <path d="M4 18v-5h5"></path>
+          <path d="M18.3 9A7 7 0 0 0 6.8 6.7L4 9"></path>
+          <path d="M5.7 15a7 7 0 0 0 11.5 2.3L20 15"></path>
+        </svg>
+      </button>
+    </section>
+
+    <section id="suitepimCampaignStatus" class="suitepim-status" aria-live="polite"></section>
+    <section id="suitepimCampaignPushReport" class="suitepim-push-report" hidden aria-label="Campaign push report"></section>
+
+    <section class="suitepim-campaign-layout" aria-label="Campaign workspace">
+      <aside class="suitepim-campaign-sidebar" aria-label="Saved campaigns">
+        <div class="suitepim-reasons-list-head">
+          <div>
+            <h2>Saved Campaigns</h2>
+            <span id="suitepimCampaignCount">0 campaigns</span>
+          </div>
+        </div>
+        <div id="suitepimCampaignList" class="suitepim-campaign-list"></div>
+      </aside>
+
+      <section class="suitepim-campaign-editor" aria-label="Campaign editor">
+        <div class="suitepim-campaign-title-row">
+          <input id="suitepimCampaignTitle" type="text" placeholder="Campaign name" />
+          <button id="suitepimCampaignSave" class="suitepim-primary-btn" type="button">Save</button>
+          <button id="suitepimCampaignPush" class="suitepim-primary-btn" type="button">Push</button>
+          <button id="suitepimCampaignDelete" class="suitepim-icon-btn" type="button" title="Delete" aria-label="Delete">
+            <svg aria-hidden="true" viewBox="0 0 24 24">
+              <path d="M3 6h18"></path>
+              <path d="M8 6V4h8v2"></path>
+              <path d="M6 6l1 14h10l1-14"></path>
+            </svg>
+          </button>
+        </div>
+
+        <div class="suitepim-campaign-actions">
+          <button id="suitepimCampaignAddSection" class="suitepim-primary-btn" type="button">Add Section</button>
+          <span id="suitepimCampaignProductCount">Loading products...</span>
+        </div>
+
+        <div id="suitepimCampaignSections" class="suitepim-campaign-sections"></div>
+      </section>
+    </section>
+  </main>
+
+  <div id="suitepimCampaignFilterModal" class="suitepim-modal hidden" role="dialog" aria-modal="true">
+    <div class="suitepim-modal-panel suitepim-campaign-filter-panel">
+      <div class="suitepim-modal-header">
+        <h2>Row Filters</h2>
+        <button id="suitepimCampaignFilterClose" class="suitepim-icon-btn" type="button" title="Close" aria-label="Close">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M6 6l12 12"></path>
+            <path d="M18 6L6 18"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="suitepimCampaignFilterRows" class="suitepim-campaign-filter-rows"></div>
+      <div id="suitepimCampaignFilterPreview" class="suitepim-muted-note"></div>
+      <div class="suitepim-modal-actions">
+        <button id="suitepimCampaignFilterAdd" type="button">Add Filter</button>
+        <button id="suitepimCampaignFilterCancel" type="button">Cancel</button>
+        <button id="suitepimCampaignFilterSave" class="suitepim-primary-btn" type="button">Apply</button>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>
