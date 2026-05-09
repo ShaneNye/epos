@@ -86,13 +86,35 @@
       const data = await res.json();
       if (!res.ok || !data?.ok || !Array.isArray(data.locations)) return;
 
-      const match = data.locations.find((loc) =>
-        [loc.id, loc.netsuite_internal_id, loc.invoice_location_id]
-          .map((value) => String(value || ""))
-          .includes(String(store.store || ""))
-      ) || data.locations.find((loc) => String(loc.name || "") === String(store.storeName || ""));
+      const storeId = String(store.store || "").trim();
+      const storeName = String(store.storeName || "").trim().toLowerCase();
+      const valueMatches = (a, b) => String(a || "").trim() === String(b || "").trim();
+      const nameMatches = (loc) =>
+        storeName && String(loc.name || "").trim().toLowerCase() === storeName;
 
-      if (!match) return;
+      const match =
+        data.locations.find(nameMatches) ||
+        data.locations.find((loc) => storeId && valueMatches(loc.id, storeId)) ||
+        data.locations.find((loc) => storeId && valueMatches(loc.netsuite_internal_id, storeId)) ||
+        data.locations.find((loc) => storeId && valueMatches(loc.invoice_location_id, storeId));
+
+      if (!match) {
+        console.warn("Pending receipt store lookup found no match:", {
+          storeId,
+          storeName: store.storeName || "",
+        });
+        return;
+      }
+
+      console.log("Pending receipt store matched:", {
+        requestedStoreId: storeId,
+        requestedStoreName: store.storeName || "",
+        matchedId: match.id,
+        matchedName: match.name,
+        matchedNetSuiteId: match.netsuite_internal_id,
+        matchedInvoiceLocationId: match.invoice_location_id,
+      });
+
       setText("storeName", match.name);
       setText("storeTel", match.location_phone_number);
       setText("storeEmail", match.location_email || match.email);

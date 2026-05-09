@@ -58,6 +58,36 @@ document.addEventListener("DOMContentLoaded", async () => {
     v !== undefined &&
     String(v).trim() !== "";
 
+  const sameId = (a, b) =>
+    hasRealValue(a) &&
+    hasRealValue(b) &&
+    String(a).trim() === String(b).trim();
+
+  const findReceiptStore = (locations, so) => {
+    const primaryStoreId = so.custbody_sb_primarystore?.id;
+    const invoiceLocationId = so.location?.id;
+    const subsidiaryId = so.subsidiary?.id;
+    const storeName = String(
+      so.custbody_sb_primarystore?.refName ||
+      so.custbody_sb_primarystore?.name ||
+      so.location?.refName ||
+      so.location?.name ||
+      ""
+    ).trim().toLowerCase();
+
+    return (
+      locations.find((loc) => sameId(loc.netsuite_internal_id, primaryStoreId)) ||
+      locations.find((loc) => sameId(loc.invoice_location_id, invoiceLocationId)) ||
+      locations.find((loc) => sameId(loc.netsuite_internal_id, subsidiaryId)) ||
+      locations.find((loc) => sameId(loc.id, primaryStoreId)) ||
+      locations.find((loc) => sameId(loc.id, invoiceLocationId)) ||
+      locations.find(
+        (loc) => storeName && String(loc.name || "").trim().toLowerCase() === storeName
+      ) ||
+      null
+    );
+  };
+
   const formatMoney = (value) => {
     if (window.EposFinancials?.formatMoney) {
       return window.EposFinancials.formatMoney(value);
@@ -158,13 +188,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     /* ============================
        4️⃣ Resolve STORE from SO
        ============================ */
-    const storeNsId =
-      so.custbody_sb_primarystore?.id ||
-      so.subsidiary?.id ||
-      so.location?.id ||
-      null;
+    const storeDebug = {
+      primaryStoreId: so.custbody_sb_primarystore?.id || null,
+      invoiceLocationId: so.location?.id || null,
+      subsidiaryId: so.subsidiary?.id || null,
+    };
 
-    console.log("🏬 Store NS ID resolved from SO:", storeNsId);
+    console.log("🏬 Store fields resolved from SO:", storeDebug);
 
     try {
       const locRes = await locationsPromise;
@@ -173,17 +203,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (locRes.ok && locJson.ok && Array.isArray(locJson.locations)) {
         const locations = locJson.locations;
 
-        const match =
-          locations.find(
-            (l) => String(l.netsuite_internal_id || "") === String(storeNsId || "")
-          ) ||
-          locations.find(
-            (l) => String(l.invoice_location_id || "") === String(storeNsId || "")
-          ) ||
-          null;
+        const match = findReceiptStore(locations, so);
 
         if (!match) {
-          console.warn("⚠️ No matching location found for storeNsId:", storeNsId);
+          console.warn("⚠️ No matching location found for store fields:", storeDebug);
         } else {
           console.log("✅ Matched store record:", match);
 
