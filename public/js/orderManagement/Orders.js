@@ -74,6 +74,7 @@ const storeRes = await fetch(`/api/meta/store/${storeId}`, { headers });        
     console.log(`📦 Loaded ${orders.length} orders from NetSuite`);
 
     const storeFilter = document.getElementById("storeFilter");
+    const orderSearch = document.getElementById("orderSearch");
     const stores = [...new Set(orders.map(o => o.Store).filter(Boolean))].sort();
 
     stores.forEach(store => {
@@ -98,10 +99,14 @@ const storeRes = await fetch(`/api/meta/store/${storeId}`, { headers });        
       storeFilter.value = "all";
     }
 
-    renderTables(orders, storeFilter.value);
+    renderTables(orders, storeFilter.value, orderSearch?.value || "");
 
     storeFilter.addEventListener("change", () => {
-      renderTables(orders, storeFilter.value);
+      renderTables(orders, storeFilter.value, orderSearch?.value || "");
+    });
+
+    orderSearch?.addEventListener("input", () => {
+      renderTables(orders, storeFilter.value, orderSearch.value);
     });
 
   } catch (err) {
@@ -113,18 +118,32 @@ const storeRes = await fetch(`/api/meta/store/${storeId}`, { headers });        
   }
 
   /* === RENDER FUNCTION === */
-  function renderTables(orders, selectedStore) {
+  function renderTables(orders, selectedStore, searchTerm = "") {
     const readyBody = document.querySelector("#readyTable tbody");
     const pendingBody = document.querySelector("#pendingTable tbody");
+    const query = searchTerm.trim().toLowerCase();
 
-    const filtered = selectedStore === "all"
+    const storeFiltered = selectedStore === "all"
       ? orders
       : orders.filter(
           o => o.Store && o.Store.trim().toLowerCase() === selectedStore.trim().toLowerCase()
         );
 
+    const filtered = query
+      ? orders.filter(o => {
+          const documentNumber = String(o["Document Number"] || "").toLowerCase();
+          const customerName = String(o.Name || "").toLowerCase();
+          return documentNumber.includes(query) || customerName.includes(query);
+        })
+      : storeFiltered;
+
     const ready = filtered.filter(o => o["Ready For Delivery"] === "ready for fulfilment");
     const pending = filtered.filter(o => o["Ready For Delivery"] !== "ready for fulfilment");
+
+    const readyTab = document.querySelector('#orders .subtab[data-subtab="ready"]');
+    const pendingTab = document.querySelector('#orders .subtab[data-subtab="pending"]');
+    if (readyTab) readyTab.textContent = `Ready for Delivery (${ready.length})`;
+    if (pendingTab) pendingTab.textContent = `Pending Orders (${pending.length})`;
 
     // === READY TABLE (updated: Document Number as anchor) ===
     const renderReadyRow = (o) => {

@@ -1056,20 +1056,36 @@ document.addEventListener("DOMContentLoaded", async () => {
           }
         }
 
+        const countySuffixRegex =
+          /\b(East Sussex|West Sussex|Kent|Surrey|Essex|Hampshire|London|Greater London|Devon|Cornwall|Dorset|Somerset|Norfolk|Suffolk|Yorkshire|North Yorkshire|South Yorkshire|West Yorkshire|Lancashire|Cheshire)\b$/i;
+        const splitTownCounty = (line) => {
+          const value = String(line || "").trim();
+          const countyMatch = value.match(countySuffixRegex);
+          if (!countyMatch) return { town: value, county: "" };
+
+          const countyValue = countyMatch[1].trim();
+          return {
+            town: value.slice(0, value.length - countyValue.length).trim(),
+            county: countyValue,
+          };
+        };
+
         let address1 = cleanedAddress[0] || "";
         let address2 = cleanedAddress[1] || "";
         let address3 = cleanedAddress[2] || "";
         let county = "";
 
-        if (address3) {
-          const countyMatch = address3.match(
-            /\b(East Sussex|West Sussex|Kent|Surrey|Essex|Hampshire|London|Greater London|Devon|Cornwall|Dorset|Somerset|Norfolk|Suffolk|Yorkshire|North Yorkshire|South Yorkshire|West Yorkshire|Lancashire|Cheshire)\b$/i
-          );
-
-          if (countyMatch) {
-            county = countyMatch[1].trim();
-            address3 = address3.slice(0, address3.length - county.length).trim();
+        if (cleanedAddress.length === 2) {
+          const townCounty = splitTownCounty(cleanedAddress[1]);
+          if (townCounty.county) {
+            address2 = "";
+            address3 = townCounty.town;
+            county = townCounty.county;
           }
+        } else if (address3) {
+          const townCounty = splitTownCounty(address3);
+          address3 = townCounty.town;
+          county = townCounty.county;
         }
 
         document.querySelector('input[name="address1"]').value = address1;

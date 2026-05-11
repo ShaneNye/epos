@@ -35,6 +35,10 @@
     return `\u00a3${(Number(value || 0) || 0).toFixed(2)}`;
   }
 
+  function hasValue(value) {
+    return value !== null && value !== undefined && String(value).trim() !== "";
+  }
+
   function todayDdMmYyyy() {
     const d = new Date();
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
@@ -145,8 +149,15 @@
 
     items.forEach((line) => {
       const qty = Math.abs(Number(line.quantity || 1)) || 1;
-      const retailGrossLine = Number(line.retailGrossLine || line.saleGrossLine || 0) || 0;
-      const saleGrossLine = Number(line.saleGrossLine || retailGrossLine || 0) || 0;
+      const retailValue = hasValue(line.retailGrossLine)
+        ? line.retailGrossLine
+        : hasValue(line.saleGrossLine)
+          ? line.saleGrossLine
+          : 0;
+      const retailGrossLine = Number(retailValue) || 0;
+      const saleGrossLine = hasValue(line.saleGrossLine)
+        ? Number(line.saleGrossLine) || 0
+        : retailGrossLine;
       const retailGrossUnit = qty ? retailGrossLine / qty : 0;
       const discountPct = retailGrossLine > 0
         ? Math.max(0, ((retailGrossLine - saleGrossLine) / retailGrossLine) * 100)
@@ -201,8 +212,12 @@
       ? window.EposFinancials.summariseLines(
           items.map((line) => ({
             item: { refName: line.name || "" },
-            amount: line.retailGrossLine || 0,
-            saleprice: line.saleGrossLine || 0,
+            amount: hasValue(line.retailGrossLine) ? line.retailGrossLine : 0,
+            saleprice: hasValue(line.saleGrossLine)
+              ? line.saleGrossLine
+              : hasValue(line.retailGrossLine)
+                ? line.retailGrossLine
+                : 0,
             quantity: line.quantity || 1,
           })),
           deposits

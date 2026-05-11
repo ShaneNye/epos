@@ -62,6 +62,24 @@ test("negative promo/trade-in lines reduce totals consistently", () => {
   assert.equal(summary.discountTotal, 0);
 });
 
+test("explicit zero sale price is treated as a full discount", () => {
+  const financials = loadFinancials();
+  const summary = financials.summariseLines([
+    {
+      item: { refName: "Classic Strutted Headboard" },
+      amount: 140,
+      saleprice: 0,
+      quantity: 1,
+    },
+  ]);
+
+  assert.equal(summary.totalRetail, 140);
+  assert.equal(summary.grossTotal, 0);
+  assert.equal(summary.vatTotal, 0);
+  assert.equal(summary.discountTotal, 140);
+  assert.equal(summary.discountPct, 100);
+});
+
 test("formatMoney and line classification are stable", () => {
   const financials = loadFinancials();
 

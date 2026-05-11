@@ -308,13 +308,15 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const qty = Math.abs(Number(line.quantity || 1)) || 1;
 
-      let retailGrossLineTotal = Number(line.amount || 0);
-      let saleGrossLineTotal = Number(line.saleprice ?? 0);
+      let retailGrossLineTotal = hasRealValue(line.amount) ? Number(line.amount) : 0;
+      let saleGrossLineTotal = hasRealValue(line.saleprice)
+        ? Number(line.saleprice)
+        : retailGrossLineTotal;
 
       if (!Number.isFinite(retailGrossLineTotal)) retailGrossLineTotal = 0;
       if (!Number.isFinite(saleGrossLineTotal)) saleGrossLineTotal = 0;
 
-      if (retailGrossLineTotal === 0 && saleGrossLineTotal !== 0) {
+      if (!hasRealValue(line.amount) && saleGrossLineTotal !== 0) {
         retailGrossLineTotal = saleGrossLineTotal;
       }
 
@@ -420,7 +422,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const itemName = String(line.item?.refName || "");
       const negativeLine = isNegativeValueLine(itemName);
 
-      let retailGrossLineTotal = Number(line.amount || 0);
+      let retailGrossLineTotal = hasRealValue(line.amount) ? Number(line.amount) : 0;
       let saleGrossLineTotal = hasRealValue(line.saleprice)
         ? Number(line.saleprice || 0)
         : retailGrossLineTotal;
@@ -428,7 +430,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (!Number.isFinite(retailGrossLineTotal)) retailGrossLineTotal = 0;
       if (!Number.isFinite(saleGrossLineTotal)) saleGrossLineTotal = 0;
 
-      if (retailGrossLineTotal === 0 && saleGrossLineTotal !== 0) {
+      if (!hasRealValue(line.amount) && saleGrossLineTotal !== 0) {
         retailGrossLineTotal = saleGrossLineTotal;
       }
 

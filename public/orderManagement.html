@@ -53,10 +53,21 @@
 
                 <!-- === FILTER BAR === -->
                 <div class="toolbar">
-                    <label for="storeFilter">Store:</label>
-                    <select id="storeFilter">
-                        <option value="all">All Stores</option>
-                    </select>
+                    <div class="filter-field">
+                        <label for="storeFilter">Store:</label>
+                        <select id="storeFilter">
+                            <option value="all">All Stores</option>
+                        </select>
+                    </div>
+                    <div class="filter-field order-search-field">
+                        <label for="orderSearch">Search:</label>
+                        <input
+                            type="search"
+                            id="orderSearch"
+                            placeholder="Document # or customer"
+                            autocomplete="off"
+                        />
+                    </div>
                 </div>
 
                 <!-- === SUBTABS === -->

@@ -1160,9 +1160,24 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try {
       const addressText = quote.billingAddress_text || quote.billaddress || "";
-      const addressLines = addressText
+      let addressLines = addressText
         ? String(addressText).split("\n").map((l) => l.trim()).filter(Boolean)
         : [];
+
+      const normalizeAddressLine = (value) =>
+        String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
+      const entityName = [quote.entity?.firstName, quote.entity?.lastName]
+        .filter(Boolean)
+        .join(" ");
+      const displayName = String(quote.entity?.refName || quote.customer?.refName || "")
+        .replace(/^\d+\s+/, "")
+        .trim();
+      const nameToSkip = normalizeAddressLine(entityName || displayName);
+
+      if (addressLines.length && nameToSkip) {
+        const firstLine = normalizeAddressLine(addressLines[0]).replace(/^\d+\s+/, "");
+        if (firstLine === nameToSkip) addressLines.shift();
+      }
 
       const postcodeRegex = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
       let postcode = "";
@@ -1179,6 +1194,34 @@ document.addEventListener("DOMContentLoaded", async () => {
         } else {
           cleanedAddress.push(line);
         }
+      }
+
+      const countySuffixRegex =
+        /\b(East Sussex|West Sussex|Kent|Surrey|Essex|Hampshire|London|Greater London|Devon|Cornwall|Dorset|Somerset|Norfolk|Suffolk|Yorkshire|North Yorkshire|South Yorkshire|West Yorkshire|Lancashire|Cheshire)\b$/i;
+      const splitTownCounty = (line) => {
+        const value = String(line || "").trim();
+        const countyMatch = value.match(countySuffixRegex);
+        if (!countyMatch) return { town: value, county: "" };
+
+        const countyValue = countyMatch[1].trim();
+        return {
+          town: value.slice(0, value.length - countyValue.length).trim(),
+          county: countyValue,
+        };
+      };
+
+      let address1 = cleanedAddress[0] || "";
+      let address2 = cleanedAddress[1] || "";
+      let address3 = cleanedAddress[2] || "";
+
+      if (cleanedAddress.length === 2) {
+        const townCounty = splitTownCounty(cleanedAddress[1]);
+        if (townCounty.county) {
+          address2 = "";
+          address3 = townCounty.town;
+        }
+      } else if (address3) {
+        address3 = splitTownCounty(address3).town;
       }
 
       const fullName = quote.entity?.refName || quote.customer?.refName || "";
@@ -1199,9 +1242,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (firstNameEl) firstNameEl.value = firstName;
       if (lastNameEl) lastNameEl.value = lastName;
-      if (address1El) address1El.value = cleanedAddress[0] || "";
-      if (address2El) address2El.value = cleanedAddress[1] || "";
-      if (address3El) address3El.value = cleanedAddress[2] || "";
+      if (address1El) address1El.value = address1;
+      if (address2El) address2El.value = address2;
+      if (address3El) address3El.value = address3;
       if (postcodeEl) postcodeEl.value = postcode || "";
     } catch (err) {
       console.warn("⚠️ Address population failed:", err.message || err);

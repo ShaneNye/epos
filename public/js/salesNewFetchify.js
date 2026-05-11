@@ -7,6 +7,19 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (!findBtn) return;
 
+  const setInputValue = (name, value) => {
+    const field = document.querySelector(`input[name="${name}"]`);
+    if (field) field.value = value || "";
+  };
+
+  const hideAddressResults = () => {
+    if (!resultsSelect) return;
+    resultsSelect.blur();
+    resultsSelect.selectedIndex = 0;
+    resultsSelect.classList.add("hidden");
+    resultsSelect.hidden = true;
+  };
+
   findBtn.addEventListener("click", async () => {
     const postcode = postcodeInput.value.trim();
 
@@ -17,6 +30,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     resultsSelect.innerHTML = "<option>Searching...</option>";
     resultsSelect.classList.remove("hidden");
+    resultsSelect.hidden = false;
 
     try {
       const response = await fetch(`/api/fetchify/postcode/${encodeURIComponent(postcode)}`);
@@ -55,13 +69,12 @@ document.addEventListener("DOMContentLoaded", () => {
         const a = data.addresses[idx];
         console.log("✅ Selected address raw data:", a);
 
-        document.querySelector('input[name="address1"]').value = a.line_1 || "";
-        document.querySelector('input[name="address2"]').value = a.line_2 || "";
-        document.querySelector('input[name="address3"]').value =
-          a.line_3 || a.post_town || "";
-        document.querySelector('input[name="county"]').value = a.county || "";
-        document.querySelector('input[name="postcode"]').value = a.postcode || "";
-        resultsSelect.classList.add("hidden");
+        setInputValue("address1", a.line_1);
+        setInputValue("address2", a.line_2);
+        setInputValue("address3", a.line_3 || a.post_town);
+        setInputValue("county", a.county);
+        setInputValue("postcode", a.postcode);
+        hideAddressResults();
 
         ["address1", "address2", "address3", "county", "postcode"].forEach((name) => {
           const field = document.querySelector(`input[name="${name}"]`);
