@@ -67,6 +67,14 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function isSalesViewLockExemptControl(el) {
+  return Boolean(
+    el?.closest?.("#menu") ||
+      el?.id === "assistantToggle" ||
+      el?.closest?.("#salesAssistant")
+  );
+}
+
 function setupSalesViewTabs() {
   const tabs = [...document.querySelectorAll(".sales-view-tab")];
   if (!tabs.length) return;
@@ -793,6 +801,9 @@ document.addEventListener("DOMContentLoaded", async () => {
             opt.value = String(loc.id);
             opt.textContent = loc.name;
             opt.dataset.storeName = loc.name || "";
+            opt.dataset.netsuiteInternalId = loc.netsuite_internal_id || "";
+            opt.dataset.invoiceLocationId = loc.invoice_location_id || "";
+            opt.dataset.distributionLocationId = loc.distribution_location_id || "";
             opt.dataset.distributionStore = isDistributionStoreName(loc.name)
               ? "true"
               : "false";
@@ -1212,6 +1223,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("🔓 Pending approval – unlock editable sales order fields");
 
       document.querySelectorAll("input, select, textarea, button").forEach((el) => {
+        if (isSalesViewLockExemptControl(el)) return;
+
         const isStoreField = el.id === "store" || el.name === "store";
         const isCustomField = el.classList.contains("custom-field-control");
 
@@ -1265,6 +1278,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("📝 Pending fulfillment – allow only memo field editing");
 
       document.querySelectorAll("input, select, textarea, button").forEach((el) => {
+        if (isSalesViewLockExemptControl(el)) return;
+
         if (el.classList.contains("custom-field-control")) {
           el.disabled = false;
           el.classList.remove("locked-input");
@@ -1294,6 +1309,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       console.log("🔒 Not pending approval or fulfillment – lock everything (read-only)");
 
       document.querySelectorAll("input, select, textarea, button").forEach((el) => {
+        if (isSalesViewLockExemptControl(el)) return;
+
         if (el.classList.contains("custom-field-control")) {
           el.disabled = false;
           el.classList.remove("locked-input");
@@ -2158,6 +2175,8 @@ function updateActionButton(orderStatusObj, tranId, so) {
           : document.getElementById("distributionOrderType")?.value || null,
       leadSource: document.querySelector('select[name="leadSource"]')?.value || null,
       paymentInfo: document.getElementById("paymentInfo")?.value || null,
+      store: document.getElementById("store")?.value || null,
+      storeName: document.getElementById("store")?.selectedOptions?.[0]?.textContent?.trim() || null,
       warehouse: document.getElementById("warehouse")?.value || null,
     };
 

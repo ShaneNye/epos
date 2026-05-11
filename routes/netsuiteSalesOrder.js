@@ -76,6 +76,59 @@ function normalizeBroadLocationLookupName(value) {
     .toLowerCase();
 }
 
+function isDistributionStoreName(value) {
+  return /distribution\s*ltd/i.test(String(value || "").trim());
+}
+
+async function lookupStoreNameByAppId(storeId) {
+  const id = String(storeId || "").trim();
+  if (!id) return "";
+
+  try {
+    const result = await pool.query("SELECT name FROM locations WHERE id = $1", [id]);
+    return result.rows[0]?.name || "";
+  } catch (err) {
+    console.warn("⚠️ Failed to lookup store name:", err.message);
+    return "";
+  }
+}
+
+async function resolvePatchStoreName(salesOrderId, headerUpdates, userId) {
+  const suppliedName = String(headerUpdates?.storeName || "").trim();
+  if (suppliedName) return suppliedName;
+
+  const appStoreName = await lookupStoreNameByAppId(headerUpdates?.store);
+  if (appStoreName) return appStoreName;
+
+  try {
+    const fields = "custbody_sb_primarystore,subsidiary,location";
+    const so = await nsGet(
+      `/salesOrder/${encodeURIComponent(salesOrderId)}?fields=${encodeURIComponent(fields)}`,
+      userId,
+      "sb"
+    );
+    return (
+      so?.custbody_sb_primarystore?.refName ||
+      so?.custbody_sb_primarystore?.name ||
+      so?.subsidiary?.refName ||
+      so?.subsidiary?.name ||
+      so?.location?.refName ||
+      so?.location?.name ||
+      ""
+    );
+  } catch (err) {
+    console.warn("⚠️ Failed to resolve existing SO store name:", err.message);
+    return "";
+  }
+}
+
+function applyDistributionLineLocation(line, warehouseId, storeName) {
+  const id = String(warehouseId || "").trim();
+  if (!id || !isDistributionStoreName(storeName)) return line;
+  line.location = { id };
+  return line;
+}
+
 async function loadLocationFeedRows() {
   if (locationFeedCache.rows && locationFeedCache.expiresAt > Date.now()) {
     return locationFeedCache.rows;
@@ -1087,6 +1140,9 @@ router.post("/create", async (req, res) => {
     const invoiceLocationId = storeLookup?.invoice_location_id || null;
     const storeNsId = storeLookup?.netsuite_internal_id || null;
     const storeName = storeLookup?.name || "";
+    const distributionLineLocationId = isDistributionStoreName(storeName)
+      ? String(order.warehouse || "").trim()
+      : "";
 
     console.log("👤 Sales Executive NS ID:", salesExecNsId);
     console.log("🏬 Store lookup →", {
@@ -1122,6 +1178,7 @@ router.post("/create", async (req, res) => {
             amount: i.amount / 1.2,
             custcol_sb_itemoptionsdisplay: i.options || "",
           };
+          applyDistributionLineLocation(line, distributionLineLocationId, storeName);
 
           // ✅ 60 Night Trial → custcol_sb_30nighttrialoption (List/Record)
           // accepted = 1, declined = 2, n/a = 3
@@ -1182,7 +1239,7 @@ router.post("/create", async (req, res) => {
     /* ======================================================
        5️⃣ DISTRIBUTION ORDER TYPE (custbody_sb_is_web_order)
     ====================================================== */
-    const isDistributionStore = /distribution\s*ltd/i.test(String(storeName || "").trim());
+    const isDistributionStore = isDistributionStoreName(storeName);
     const distributionOrderTypeId = String(order?.distributionOrderType || "").trim();
     const allowedDistributionTypeIds = new Set(["1", "2", "3"]);
 
@@ -2219,6 +2276,8 @@ router.post("/:id/commit", async (req, res) => {
     }
     global._recentCommits[id] = now;
 
+    const patchStoreName = await resolvePatchStoreName(id, headerUpdates, userId);
+    const patchWarehouseId = String(headerUpdates?.warehouse || "").trim();
     const normalizedLines = (Array.isArray(lines) ? lines : []).map((line) => {
       const grossAmount = Number(
         line.grossAmount ?? line.amountGrossLine ?? line.amount ?? line.saleGrossLine ?? line.grossSaleprice ?? 0
@@ -2235,7 +2294,7 @@ router.post("/:id/commit", async (req, res) => {
         ? Number((netAmount / qty).toFixed(2))
         : 0;
 
-      return {
+      const normalizedLine = {
         ...line,
         lineId: line.lineId || line.lineid || "",
         item: line.item || (line.itemId ? { id: String(line.itemId) } : undefined),
@@ -2249,6 +2308,7 @@ router.post("/:id/commit", async (req, res) => {
         grossAmount,
         grossSaleprice,
       };
+      return applyDistributionLineLocation(normalizedLine, patchWarehouseId, patchStoreName);
     });
 
     const payload = {
@@ -2615,6 +2675,8 @@ router.post("/:id/save", async (req, res) => {
     }
     global._recentSaves[id] = now;
 
+    const patchStoreName = await resolvePatchStoreName(id, headerUpdates, userId);
+    const patchWarehouseId = String(headerUpdates?.warehouse || "").trim();
     const normalizedLines = (Array.isArray(lines) ? lines : []).map((line) => {
       const grossAmount = Number(
         line.grossAmount ?? line.amountGrossLine ?? line.amount ?? line.saleGrossLine ?? line.grossSaleprice ?? 0
@@ -2631,7 +2693,7 @@ router.post("/:id/save", async (req, res) => {
         ? Number((netAmount / qty).toFixed(2))
         : 0;
 
-      return {
+      const normalizedLine = {
         ...line,
         lineId: line.lineId || line.lineid || "",
         item: line.item || (line.itemId ? { id: String(line.itemId) } : undefined),
@@ -2645,6 +2707,7 @@ router.post("/:id/save", async (req, res) => {
         grossAmount,
         grossSaleprice,
       };
+      return applyDistributionLineLocation(normalizedLine, patchWarehouseId, patchStoreName);
     });
 
     // ✅ IMPORTANT: tell RESTlet NOT to approve

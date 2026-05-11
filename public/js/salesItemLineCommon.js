@@ -342,9 +342,13 @@ function openInventoryWindow(row, lineIndexOverride) {
   window.__salesInventoryTargetRowLine = String(row.dataset.line || lineIndex);
   window.__salesInventoryTargetItemId = String(itemId || "");
 
+  const storeFilter =
+    typeof window.getInventoryStoreFilterParams === "function"
+      ? window.getInventoryStoreFilterParams(row)
+      : "";
   const url =
     `/inventory.html?itemId=${encodeURIComponent(itemId)}&qty=${encodeURIComponent(qty)}` +
-    `&detail=${encodeURIComponent(existing)}&line=${encodeURIComponent(lineIndex)}`;
+    `&detail=${encodeURIComponent(existing)}&line=${encodeURIComponent(lineIndex)}${storeFilter}`;
 
   const win = window.open(
     url,

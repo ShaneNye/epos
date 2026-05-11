@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>Systems &amp; Process</title>
+  <link rel="stylesheet" href="/css/systems-process-viewer.css" />
+  <script src="/js/systemsProcessViewer.js" defer></script>
+</head>
+
+<body>
+  <header class="viewer-header">
+    <h1 id="processTitle">Systems &amp; Process</h1>
+  </header>
+
+  <nav class="viewer-tabs" aria-label="Process resources">
+    <button type="button" class="active" data-tab="scribe">Scribe</button>
+    <button type="button" data-tab="video">Video</button>
+  </nav>
+
+  <main class="viewer-body">
+    <section class="viewer-panel active" data-panel="scribe"></section>
+    <section class="viewer-panel" data-panel="video"></section>
+  </main>
+</body>
+
+</html>

@@ -517,6 +517,7 @@ app.use("/api/meta/store", require("./routes/storeName"));
 app.use("/api/meta/management-rules", require("./routes/managementRules"));
 app.use("/api/promotions", require("./routes/promotions"));
 app.use("/api/vsa", require("./routes/vsa"));
+app.use("/api/systems-processes", require("./routes/systemsProcesses"));
 const intercompanyRoutes = require("./routes/intercompany");
 app.use("/api/netsuite/intercompany", intercompanyRoutes);
 // === Engagement (Announcements, Analytics) ===
@@ -987,6 +988,7 @@ app.get("/eod", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public"
 app.get("/cashflow", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cashFlow.html")))
 app.get("/logistics", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "logistics.html")))
 app.get("/suitepim", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim.html")))
+app.get("/systems-processes", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "systems-processes.html")))
 app.get("/suitepim/product-data", (req, res) => res.redirect(302, "/suitepim/web-management"))
 app.get("/suitepim/web-management", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-web-management.html")))
 app.get("/suitepim/product-validation", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-product-validation.html")))

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>EPOS Systems &amp; Processes</title>
+
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/admin.css" />
+  <link rel="stylesheet" href="/css/systems-processes.css" />
+  <link rel="stylesheet" href="/assistant/assistant.css" />
+
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js" defer></script>
+  <script src="/assistant/assistant.js"></script>
+  <script type="module" src="/assistant/assistantHooks.js"></script>
+  <script src="/js/systemsProcesses.js" defer></script>
+</head>
+
+<body>
+  <div id="menu"></div>
+
+  <main class="content systems-processes-page">
+    <div class="systems-processes-header">
+      <div>
+        <h1>Systems &amp; Processes</h1>
+        <p>Create process records and link them to the app pages where the team needs them.</p>
+      </div>
+      <button type="button" class="btn-primary" id="newProcessBtn">+ New Process</button>
+    </div>
+
+    <section class="systems-processes-panel">
+      <form id="processForm" class="systems-processes-form">
+        <input type="hidden" id="processId" />
+
+        <label>
+          Title
+          <input type="text" id="processTitle" required placeholder="e.g. Checking available stock" />
+        </label>
+
+        <label>
+          Page
+          <select id="processPage" required></select>
+        </label>
+
+        <label>
+          Scribe link
+          <input type="url" id="processScribeLink" placeholder="Google Drive PDF link" />
+        </label>
+
+        <label>
+          Video link
+          <input type="url" id="processVideoLink" placeholder="YouTube or Vimeo URL" />
+        </label>
+
+        <div class="systems-processes-actions">
+          <button type="submit" class="btn-primary" id="saveProcessBtn">Save Process</button>
+          <button type="button" class="btn-secondary" id="cancelProcessBtn">Clear</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="systems-processes-panel">
+      <div class="systems-processes-table-head">
+        <h2>Documented Processes</h2>
+        <label>
+          Filter page
+          <select id="processFilterPage"></select>
+        </label>
+      </div>
+
+      <div class="table-scroll-wrapper">
+        <table id="processTable">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Page</th>
+              <th>Scribe</th>
+              <th>Video</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+</body>
+
+</html>

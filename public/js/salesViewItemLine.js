@@ -517,9 +517,11 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
   window.SalesLineUI?.setupPriceSync(row);
 
   const btn = row.querySelector(".open-inventory");
-  btn?.addEventListener("click", () =>
-    window.SalesLineUI?.openInventoryWindow(row, lineIdx)
-  );
+  btn?.addEventListener("click", (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    window.SalesLineUI?.openInventoryWindow(row, lineIdx);
+  });
 
   const optionsBtn = row.querySelector(".open-options");
   optionsBtn?.addEventListener("click", () =>

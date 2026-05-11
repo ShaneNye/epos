@@ -453,6 +453,12 @@
     const detail = params.detail || "";
     let lineQty = safeInt(params.qty || "0");
     const lineIndex = params.line || "0";
+    const storeOnly = params.storeOnly === "1";
+    const storeLocationName = String(params.storeLocationName || "").trim();
+    const storeLocationIds = String(params.storeLocationIds || "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean);
 
     const qtyCache = window.opener?.document.querySelector(
       `.item-qty-cache[data-line="${lineIndex}"]`
@@ -484,6 +490,20 @@
         ]);
 
         stock = buildMergedStock(balanceRows, liveFeed, statuses);
+        if (storeOnly) {
+          stock = stock.filter((s) => {
+            const rowLocationId = String(s.locationId || "").trim();
+            const rowLocation = clean(s.location);
+            const storeLocation = clean(storeLocationName);
+            return (
+              (rowLocationId && storeLocationIds.includes(rowLocationId)) ||
+              (storeLocation &&
+                (rowLocation === storeLocation ||
+                  rowLocation.includes(storeLocation) ||
+                  storeLocation.includes(rowLocation)))
+            );
+          });
+        }
 
         // cache the merged version back to opener so subsequent popups are consistent
         try {
@@ -500,13 +520,37 @@
         console.error("❌ Inventory popup init failed:", err);
         alert("Failed to load inventory. Please try again.");
       } finally {
-        addRowBtn.disabled = false;
-        saveBtn.disabled = false;
+        if (!(storeOnly && !stock.length)) {
+          addRowBtn.disabled = false;
+          saveBtn.disabled = false;
+        }
         hideLoading();
       }
     })();
 
     function initInventoryPopup(inventoryStatusList = []) {
+      function showNoStoreStockMessage() {
+        tbody.innerHTML = "";
+        const tr = document.createElement("tr");
+        const td = document.createElement("td");
+        td.colSpan = 6;
+        td.textContent = storeLocationName
+          ? `No available stock in store for ${storeLocationName}.`
+          : "No available stock in store.";
+        td.style.textAlign = "center";
+        td.style.padding = "18px";
+        td.style.fontWeight = "600";
+        tr.appendChild(td);
+        tbody.appendChild(tr);
+        if (addRowBtn) addRowBtn.disabled = true;
+        if (saveBtn) saveBtn.disabled = true;
+      }
+
+      if (storeOnly && !stock.length) {
+        showNoStoreStockMessage();
+        return;
+      }
+
 
       function getAllocatedTotal() {
         return [...tbody.querySelectorAll(".qtyInput")].reduce((sum, inp) => {

@@ -231,6 +231,9 @@ function applyNoAddressMode() {
             opt.value = String(loc.id);
             opt.textContent = loc.name;
             opt.dataset.storeName = loc.name || "";
+            opt.dataset.netsuiteInternalId = loc.netsuite_internal_id || "";
+            opt.dataset.invoiceLocationId = loc.invoice_location_id || "";
+            opt.dataset.distributionLocationId = loc.distribution_location_id || "";
             opt.dataset.distributionStore = isDistributionStoreName(loc.name)
               ? "true"
               : "false";

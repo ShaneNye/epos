@@ -1,0 +1,131 @@
+.systems-processes-page {
+  max-width: 1100px;
+  margin: 2rem auto;
+}
+
+.systems-processes-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.systems-processes-header h1 {
+  margin: 0 0 6px;
+  color: var(--brand);
+}
+
+.systems-processes-header p {
+  margin: 0;
+  color: var(--muted);
+}
+
+.systems-processes-panel {
+  background: var(--panel);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 18px;
+}
+
+.systems-processes-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.systems-processes-form label,
+.systems-processes-table-head label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.systems-processes-form input,
+.systems-processes-form select,
+.systems-processes-table-head select {
+  min-height: 38px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font: inherit;
+}
+
+.systems-processes-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.systems-processes-table-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.systems-processes-table-head h2 {
+  margin: 0;
+  color: var(--brand);
+}
+
+#processTable {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+#processTable th,
+#processTable td {
+  padding: 10px;
+  border-bottom: 1px solid var(--line);
+  text-align: left;
+  vertical-align: middle;
+}
+
+#processTable th {
+  background: var(--brand);
+  color: #fff;
+}
+
+#processTable .actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+#processTable a {
+  color: var(--brand);
+  font-weight: 600;
+}
+
+.systems-processes-empty {
+  text-align: center;
+  color: var(--muted);
+  padding: 24px;
+}
+
+@media (max-width: 800px) {
+  .systems-processes-page {
+    margin: 0 auto;
+  }
+
+  .systems-processes-header,
+  .systems-processes-table-head,
+  .systems-processes-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .systems-processes-form {
+    grid-template-columns: 1fr;
+  }
+
+  #processTable {
+    min-width: 760px;
+  }
+}

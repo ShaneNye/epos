@@ -120,13 +120,16 @@ main.content > h1::after {
 .burger {
   min-height: 56px;
   margin: 10px 0 6px;
+  padding: 0;
   border-radius: 0;
   font-size: 1.45rem;
+  line-height: 1;
   color: rgba(255, 255, 255, 0.94);
 }
 
 .burger:hover,
 .menu-item:hover,
+.menu-item.active,
 .user-action:hover {
   background: rgba(255, 255, 255, 0.12);
 }
@@ -146,24 +149,36 @@ main.content > h1::after {
   transition: background 0.18s ease, color 0.18s ease, transform 0.18s ease;
 }
 
+.sidebar:not(.expanded) .menu-item {
+  width: 100%;
+  justify-content: center;
+  gap: 0;
+  padding: 0;
+}
+
+.sidebar:not(.expanded) .menu-label {
+  display: none;
+}
+
 .menu-item svg {
   width: 22px;
   height: 22px;
   color: currentColor;
   stroke: currentColor;
+  flex: 0 0 22px;
+  display: block;
 }
 
-.menu-item:hover {
+.menu-item:hover,
+.menu-item.active {
   color: #fff;
   border-left: 0;
   transform: translateX(2px);
 }
 
-.menu-item.active {
-  color: #102333;
-  background: var(--accent);
-  border-left: 0;
-  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.16);
+.sidebar:not(.expanded) .menu-item:hover,
+.sidebar:not(.expanded) .menu-item.active {
+  transform: none;
 }
 
 .menu-item.active svg {
@@ -934,10 +949,6 @@ tr:hover td,
   .menu-item.active {
     border-left: 0 !important;
     transform: none !important;
-  }
-
-  .menu-item.active {
-    border-bottom-color: var(--accent) !important;
   }
 
   .menu-item svg {

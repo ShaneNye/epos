@@ -1,6 +1,39 @@
 // public/js/salesInventoryModal.js
 console.log("✅ salesInventoryModal.js loaded");
 
+function getInventoryStoreFilterParams(row) {
+  const fulfilSelect =
+    row?.querySelector(".item-fulfilment") || row?.querySelector(".fulfilmentSelect");
+  const fulfilmentText =
+    fulfilSelect?.options?.[fulfilSelect.selectedIndex]?.textContent?.trim().toLowerCase() || "";
+
+  if (fulfilmentText !== "in store") return "";
+
+  const storeSelect = document.getElementById("store");
+  const selectedStore = storeSelect?.selectedOptions?.[0];
+  const storeName =
+    selectedStore?.dataset?.storeName ||
+    selectedStore?.textContent?.trim() ||
+    "";
+
+  const storeIds = [
+    storeSelect?.value,
+    selectedStore?.dataset?.netsuiteInternalId,
+    selectedStore?.dataset?.invoiceLocationId,
+    selectedStore?.dataset?.distributionLocationId,
+  ]
+    .map((v) => String(v || "").trim())
+    .filter(Boolean);
+
+  const qs = new URLSearchParams();
+  qs.set("storeOnly", "1");
+  if (storeName) qs.set("storeLocationName", storeName);
+  if (storeIds.length) qs.set("storeLocationIds", [...new Set(storeIds)].join(","));
+  return `&${qs.toString()}`;
+}
+
+window.getInventoryStoreFilterParams = getInventoryStoreFilterParams;
+
 // 🧭 When user clicks the inventory cell or icon
 document.addEventListener("click", (e) => {
   if (
@@ -27,11 +60,12 @@ document.addEventListener("click", (e) => {
       return;
     }
 
+    const storeFilter = getInventoryStoreFilterParams(row);
     const url = `/inventory.html?itemId=${encodeURIComponent(
       itemId
     )}&qty=${encodeURIComponent(qty)}&detail=${encodeURIComponent(
       detail
-    )}&line=${lineIndex}`;
+    )}&line=${lineIndex}${storeFilter}`;
 
     console.log("📦 Opening Inventory Detail popup:", url);
 

@@ -35,6 +35,10 @@ function renderAssistantMenu(chatBody) {
 
 window.renderAssistantMenu = renderAssistantMenu;
 
+import("/assistant/systemsProcesses.js").catch((error) => {
+  console.warn("Systems & Processes assistant feature unavailable:", error);
+});
+
 // When the assistant opens, render all registered feature buttons.
 document.addEventListener("assistantReady", () => {
   const toggle = document.getElementById("assistantToggle");
