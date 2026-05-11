@@ -321,6 +321,17 @@
 
     const clean = (v) => String(v || "").trim().toLowerCase();
     const idStr = (v) => (v == null ? "" : String(v).trim());
+    const sanitizeDetailField = (v) => String(v || "").replace(/\|/g, " - ").trim();
+
+    function parseInventoryDetailPart(part) {
+      const tokens = String(part || "").trim().split("|");
+      return {
+        qty: tokens[0] || "",
+        locationName: tokens[1] || "",
+        statusName: tokens[3] || "",
+        inventoryNumberName: tokens.length > 7 ? tokens.slice(5, -1).join("|") : tokens[5] || "",
+      };
+    }
 
     const loadingOverlay = document.getElementById("loadingOverlay");
 
@@ -831,12 +842,12 @@
 
       if (detail) {
         detail.split(";").forEach((part) => {
-          const tokens = part.trim().split("|");
-          if (tokens.length >= 2) {
-            const q = safeInt(tokens[0]);
-            const loc = tokens[1] || "";
-            const status = tokens[3] || "";
-            const invNum = tokens[5] || "";
+          const parsed = parseInventoryDetailPart(part);
+          if (parsed.qty || parsed.locationName) {
+            const q = safeInt(parsed.qty);
+            const loc = parsed.locationName;
+            const status = parsed.statusName;
+            const invNum = parsed.inventoryNumberName;
             addRow(loc, status, invNum, q);
           }
         });
@@ -860,11 +871,11 @@
           const statusSel = tr.querySelector(".statusSel");
           const invSel = tr.querySelector(".invNumSel");
 
-          const locName = locSel?.value || "";
+          const locName = sanitizeDetailField(locSel?.value || "");
           const locId = locSel?.selectedOptions[0]?.dataset.internalid || "";
-          const statusName = statusSel?.value || "";
+          const statusName = sanitizeDetailField(statusSel?.value || "");
           const statusId = statusSel?.selectedOptions[0]?.dataset.internalid || "";
-          const invName = invSel?.value || "";
+          const invName = sanitizeDetailField(invSel?.value || "");
           const invId = invSel?.selectedOptions[0]?.dataset.internalid || "";
 
           if (q && locName) {

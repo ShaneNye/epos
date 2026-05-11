@@ -770,6 +770,7 @@ function validateOrderBeforeSave() {
 
           const lotnumber = tr.dataset.lotnumber || "";
           const inventoryMeta = tr.dataset.inventoryMeta || "";
+          const inventoryDetail = tr.querySelector(".item-inv-detail")?.value || "";
 
           const trialSel = tr.querySelector(".sixty-night-select");
           const trialOption = (trialSel?.value || "").trim();
@@ -783,6 +784,7 @@ function validateOrderBeforeSave() {
             fulfilmentMethod,
             lotnumber,
             inventoryMeta,
+            inventoryDetail,
             trialOption,
             taxCode: vatFree ? "10" : "",
           };

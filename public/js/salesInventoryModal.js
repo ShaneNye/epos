@@ -34,6 +34,31 @@ function getInventoryStoreFilterParams(row) {
 
 window.getInventoryStoreFilterParams = getInventoryStoreFilterParams;
 
+function parseInventoryDetailPart(part) {
+  const tokens = String(part || "").trim().split("|");
+  return {
+    qty: tokens[0] || "",
+    locationName: tokens[1] || "",
+    locationId: tokens[2] || "",
+    statusName: tokens[3] || "",
+    statusId: tokens[4] || "",
+    inventoryNumberName: tokens.length > 7 ? tokens.slice(5, -1).join("|") : tokens[5] || "",
+    inventoryNumberId: tokens.length > 6 ? tokens[tokens.length - 1] || "" : tokens[6] || "",
+  };
+}
+
+function formatInventoryDetailPart(detail) {
+  return [
+    detail.qty,
+    detail.locationName,
+    detail.locationId,
+    detail.statusName,
+    detail.statusId,
+    String(detail.inventoryNumberName || "").replace(/\|/g, " - "),
+    detail.inventoryNumberId,
+  ].join("|");
+}
+
 // 🧭 When user clicks the inventory cell or icon
 document.addEventListener("click", (e) => {
   if (
@@ -103,8 +128,14 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
 
   // 🧩 Parse the first inventory detail entry
   const firstPart = detailString?.split(";")[0]?.trim() || "";
-  const [qty, locName, locId, statusName, statusId, invName, invId] =
-    firstPart.split("|");
+  const firstDetail = parseInventoryDetailPart(firstPart);
+  const qty = firstDetail.qty;
+  const locName = firstDetail.locationName;
+  const locId = firstDetail.locationId;
+  const statusName = firstDetail.statusName;
+  const statusId = firstDetail.statusId;
+  const invName = firstDetail.inventoryNumberName;
+  const invId = firstDetail.inventoryNumberId;
 
   // ✅ Get fulfilment method for this line
   const fulfilSelect = targetRow.querySelector(".item-fulfilment");
@@ -200,11 +231,9 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
   const cleanedDetail = detailString
     .split(";")
     .map((part) => {
-      const tokens = part.split("|");
-      if (tokens.length > 1 && tokens[1]) {
-        tokens[1] = tokens[1].replace(/\bstore\b/gi, "").trim();
-      }
-      return tokens.join("|");
+      const detail = parseInventoryDetailPart(part);
+      detail.locationName = detail.locationName.replace(/\bstore\b/gi, "").trim();
+      return formatInventoryDetailPart(detail);
     })
     .join(";");
 
@@ -214,15 +243,15 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
 
   try {
     const jsonMeta = cleanedDetail.split(";").map((part) => {
-      const tokens = part.split("|");
+      const detail = parseInventoryDetailPart(part);
       return {
-        qty: tokens[0] || "",
-        locationName: (tokens[1] || "").replace(/\bstore\b/gi, "").trim(),
-        locationId: tokens[2] || "",
-        statusName: tokens[3] || "",
-        statusId: tokens[4] || "",
-        inventoryNumberName: tokens[5] || "",
-        inventoryNumberId: tokens[6] || "",
+        qty: detail.qty,
+        locationName: detail.locationName.replace(/\bstore\b/gi, "").trim(),
+        locationId: detail.locationId,
+        statusName: detail.statusName,
+        statusId: detail.statusId,
+        inventoryNumberName: detail.inventoryNumberName,
+        inventoryNumberId: detail.inventoryNumberId,
       };
     });
     targetRow.dataset.inventoryMetaJson = JSON.stringify(jsonMeta);
@@ -235,8 +264,8 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
     const display = cleanedDetail
       .split(";")
       .map((part) => {
-        const [qty, locName, , , , invName] = part.split("|");
-        return `${qty}× ${invName || ""} @ ${locName || ""}`;
+        const detail = parseInventoryDetailPart(part);
+        return `${detail.qty}× ${detail.inventoryNumberName || ""} @ ${detail.locationName || ""}`;
       })
       .join("<br>");
     cell.innerHTML = display;

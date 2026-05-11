@@ -129,6 +129,51 @@ function applyDistributionLineLocation(line, warehouseId, storeName) {
   return line;
 }
 
+function normalizeLotNumberId(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const candidate = raw.includes("|") ? raw.split("|").pop().trim() : raw;
+  return /^\d+$/.test(candidate) ? candidate : "";
+}
+
+function lotNumberIdFromInventoryDetail(value) {
+  const firstPart = String(value || "").split(";")[0] || "";
+  return normalizeLotNumberId(firstPart);
+}
+
+function parseInventoryDetailPart(part) {
+  const tokens = String(part || "").trim().split("|");
+  return {
+    qty: tokens[0] || "",
+    locationName: tokens[1] || "",
+    locationId: tokens[2] || "",
+    statusName: tokens[3] || "",
+    statusId: tokens[4] || "",
+    inventoryNumberName: tokens.length > 7 ? tokens.slice(5, -1).join("|") : tokens[5] || "",
+    inventoryNumberId: tokens.length > 6 ? tokens[tokens.length - 1] || "" : tokens[6] || "",
+  };
+}
+
+function normalizeInventoryDetailString(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return raw
+    .split(";")
+    .map((part) => {
+      const detail = parseInventoryDetailPart(part);
+      return [
+        detail.qty,
+        detail.locationName,
+        detail.locationId,
+        detail.statusName,
+        detail.statusId,
+        String(detail.inventoryNumberName || "").replace(/\|/g, " - ").trim(),
+        detail.inventoryNumberId,
+      ].join("|");
+    })
+    .join(";");
+}
+
 async function loadLocationFeedRows() {
   if (locationFeedCache.rows && locationFeedCache.expiresAt > Date.now()) {
     return locationFeedCache.rows;
@@ -1224,10 +1269,13 @@ router.post("/create", async (req, res) => {
           /* ======================================================
              LOT / META ALLOCATION
           ====================================================== */
-          if (i.lotnumber) {
-            line.custcol_sb_lotnumber = { id: i.lotnumber };
+          const lotNumberId =
+            normalizeLotNumberId(i.lotnumber) ||
+            (!i.inventoryMeta ? lotNumberIdFromInventoryDetail(i.inventoryDetail) : "");
+          if (lotNumberId) {
+            line.custcol_sb_lotnumber = { id: lotNumberId };
           } else if (i.inventoryMeta) {
-            line.custcol_sb_epos_inventory_meta = i.inventoryMeta;
+            line.custcol_sb_epos_inventory_meta = normalizeInventoryDetailString(i.inventoryMeta);
             line.orderallocationstrategy = null;
           }
 
@@ -2304,7 +2352,7 @@ router.post("/:id/commit", async (req, res) => {
         netAmount,
         rate,
         discountPct: Number(line.discountPct ?? line.discount ?? 0),
-        inventoryMeta: line.inventoryMeta ?? line.inventoryDetail ?? null,
+        inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta ?? line.inventoryDetail ?? null) || null,
         grossAmount,
         grossSaleprice,
       };
@@ -2703,7 +2751,7 @@ router.post("/:id/save", async (req, res) => {
         netAmount,
         rate,
         discountPct: Number(line.discountPct ?? line.discount ?? 0),
-        inventoryMeta: line.inventoryMeta ?? line.inventoryDetail ?? null,
+        inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta ?? line.inventoryDetail ?? null) || null,
         grossAmount,
         grossSaleprice,
       };
