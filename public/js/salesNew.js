@@ -714,6 +714,19 @@ function validateOrderBeforeSave() {
         if (invCell) invCell.classList.add("field-error");
       }
     }
+
+    const trialSelect = row.querySelector(".sixty-night-select");
+    const trialVisible =
+      trialSelect &&
+      trialSelect.offsetParent !== null &&
+      trialSelect.closest(".sixty-night-cell")?.style.display !== "none";
+
+    if (trialVisible && !(trialSelect.value || "").trim()) {
+      ok = false;
+      errors.push(`â€¢ Line ${lineNo}: 60 Night Trial is required.`);
+      row.classList.add("row-error");
+      trialSelect.classList.add("field-error");
+    }
   });
 
   if (!ok) {
@@ -788,7 +801,7 @@ function validateOrderBeforeSave() {
           const inventoryDetail = tr.querySelector(".item-inv-detail")?.value || "";
 
           const trialSel = tr.querySelector(".sixty-night-select");
-          const trialOption = (trialSel?.value || "").trim();
+          const trialOption = (trialSel?.value || "").trim() || null;
           const vatFree = !!tr.querySelector(".vat-free-checkbox")?.checked;
 
           return {

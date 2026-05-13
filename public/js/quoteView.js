@@ -355,6 +355,21 @@ function getItemCategoryText(item) {
   return String(raw || "").trim().toLowerCase();
 }
 
+function isQuoteNegativeValueLine(itemName) {
+  const name = String(itemName || "").toLowerCase();
+  return (
+    window.EposFinancials?.isNegativeValueLine?.(itemName) ||
+    name.includes("discount") ||
+    name.includes("blue light") ||
+    name.includes("promo") ||
+    name.includes("promotion") ||
+    name.includes("voucher") ||
+    name.includes("trade in") ||
+    name.includes("recommendation card (as a minus)") ||
+    name.includes("trade-in")
+  );
+}
+
 function collectEditableQuoteLines() {
   return [...document.querySelectorAll("#orderItemsBody tr.order-line")]
     .map((row) => {
@@ -370,7 +385,7 @@ function collectEditableQuoteLines() {
       const optionsText =
         row.querySelector(".options-summary")?.innerHTML?.trim().replace(/<br\s*\/?>/gi, "\n") || "";
       const optionsJson = row.querySelector(".item-options-json")?.value || "{}";
-      const trialOption = row.querySelector(".sixty-night-select")?.value || "N/A";
+      const trialOption = row.querySelector(".sixty-night-select")?.value?.trim() || null;
       const vatFree = !!row.querySelector(".vat-free-checkbox")?.checked;
 
       return {
@@ -399,8 +414,8 @@ function wireEditableQuoteRow(tr, line, idx) {
   const quantity = Number(line.quantity || 1);
   const itemData = findCachedItem(itemId);
   const savedAmount = Number(line.amount || 0);
-  const sale = Number(line.saleprice || 0);
-  const vat = Number(line.vat || 0);
+  const savedSale = Number(line.saleprice || 0);
+  const savedVat = Number(line.vat || 0);
   const existingTaxCode = String(
     line.taxCode?.id ||
       line.taxCode?.refName ||
@@ -413,14 +428,15 @@ function wireEditableQuoteRow(tr, line, idx) {
     existingTaxCode === "10" ||
     existingTaxCode.includes("vat free") ||
     existingTaxCode.includes("zero");
-  const negativeLine =
-    savedAmount < 0 ||
-    sale < 0 ||
-    window.EposFinancials?.isNegativeValueLine?.(itemName) ||
-    false;
+  const negativeLine = isQuoteNegativeValueLine(itemName);
+  const sign = negativeLine ? -1 : 1;
   const baseNet = itemBaseNet(itemData);
-  const fullRetailGross = baseNet > 0 ? +(baseNet * 1.2 * quantity).toFixed(2) : savedAmount;
-  const grossRrp = negativeLine ? savedAmount : fullRetailGross;
+  const fullRetailGross = baseNet > 0
+    ? +(baseNet * 1.2 * quantity).toFixed(2)
+    : Math.abs(savedAmount);
+  const grossRrp = +(Math.abs(fullRetailGross || savedAmount) * sign).toFixed(2);
+  const sale = +(Math.abs(savedSale) * sign).toFixed(2);
+  const vat = +(Math.abs(savedVat) * sign).toFixed(2);
 
   const retailGrossPerUnit =
     quantity > 0 && grossRrp !== 0 ? grossRrp / quantity : 0;
@@ -751,7 +767,7 @@ function buildQuoteSavePayload() {
       discountPct,
       discount: discountPct,
       options: optionsText || "",
-      trialOption: i.trialOption || "N/A",
+      trialOption: i.trialOption || null,
       taxCode: i.taxCode || "",
     };
   });

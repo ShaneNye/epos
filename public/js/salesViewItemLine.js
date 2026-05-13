@@ -46,6 +46,56 @@ function findExisting60NTSelect(row) {
   return null;
 }
 
+function normalise60NightTrialValue(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text === "yes" || text === "accepted") return "Accepted";
+  if (text === "no" || text === "declined") return "Declined";
+  return "";
+}
+
+function ensure60NightSelectOptions(sel) {
+  if (!sel) return;
+  const current = normalise60NightTrialValue(sel.value);
+  sel.innerHTML = `
+    <option value="">Select...</option>
+    <option value="Accepted">Accepted</option>
+    <option value="Declined">Declined</option>
+  `;
+  sel.value = current;
+  sel.required = false;
+  if (sel.dataset.sixtyNightBound !== "1") {
+    sel.dataset.sixtyNightBound = "1";
+    sel.addEventListener("change", () => {
+      sel.dataset.userEdited = "1";
+    });
+  }
+}
+
+function isMattressClassName(className) {
+  return String(className || "").trim().toLowerCase() === "mattress";
+}
+
+function isMattressProtectorClassName(className) {
+  return String(className || "").trim().toLowerCase() === "mattress protectors";
+}
+
+function sync60NightTrialAutomation(rows = document.querySelectorAll("#orderItemsBody .order-line")) {
+  const itemRows = [...rows].filter((row) =>
+    (row.querySelector(".item-internal-id")?.value || "").trim()
+  );
+  const autoValue = itemRows.some((row) => isMattressProtectorClassName(row.dataset.itemClass))
+    ? "Accepted"
+    : "Declined";
+
+  itemRows.forEach((row) => {
+    if (!isMattressClassName(row.dataset.itemClass)) return;
+    const sel = row.querySelector(".sixty-night-select");
+    if (!sel || sel.dataset.userEdited === "1") return;
+    sel.value = autoValue;
+    sel.dataset.autoValue = autoValue;
+  });
+}
+
 function ensure60NightTrialCell(row) {
   if (!row) return null;
 
@@ -65,9 +115,9 @@ function ensure60NightTrialCell(row) {
     td.className = "sixty-night-cell";
     td.innerHTML = `
       <select class="sixty-night-select">
-        <option value="N/A">N/A</option>
-        <option value="Yes">Yes</option>
-        <option value="No">No</option>
+        <option value="">Select...</option>
+        <option value="Accepted">Accepted</option>
+        <option value="Declined">Declined</option>
       </select>
       <span class="sixty-night-placeholder">—</span>
     `;
@@ -88,6 +138,7 @@ function ensure60NightTrialCell(row) {
 
   const sel = td.querySelector(".sixty-night-select");
   const ph = td.querySelector(".sixty-night-placeholder");
+  ensure60NightSelectOptions(sel);
   if (sel) sel.style.display = "none";
   if (ph) ph.style.display = "inline";
 
@@ -118,9 +169,7 @@ function update60NightTrialColumnVisibility() {
 
   rows.forEach((r) => ensure60NightTrialCell(r));
 
-  const anyMattress = [...rows].some(
-    (r) => (r.dataset.itemClass || "").toLowerCase() === "mattress"
-  );
+  const anyMattress = [...rows].some((r) => isMattressClassName(r.dataset.itemClass));
 
   header.style.display = anyMattress ? "table-cell" : "none";
 
@@ -132,13 +181,22 @@ function update60NightTrialColumnVisibility() {
 
     const sel = cell.querySelector(".sixty-night-select");
     const ph = cell.querySelector(".sixty-night-placeholder");
-    const isMattress = (r.dataset.itemClass || "").toLowerCase() === "mattress";
+    const isMattress = isMattressClassName(r.dataset.itemClass);
 
     if (sel) sel.style.display = isMattress ? "inline-block" : "none";
     if (ph) ph.style.display = isMattress ? "none" : "inline";
 
-    if (!isMattress && sel) sel.value = "N/A";
+    if (sel) {
+      sel.required = anyMattress && isMattress;
+      if (!isMattress) {
+        sel.value = "";
+        delete sel.dataset.userEdited;
+        delete sel.dataset.autoValue;
+      }
+    }
   });
+
+  sync60NightTrialAutomation(rows);
 }
 
 function ensureVatFreeCell(row) {
@@ -432,6 +490,12 @@ function applyItemToSalesViewRow(row, item, config = {}) {
 
   row.dataset.itemClass = itemClass;
   row.dataset.itemCategory = itemCategory;
+  const existingTrialSelect = row.querySelector(".sixty-night-select");
+  if (existingTrialSelect) {
+    existingTrialSelect.value = "";
+    delete existingTrialSelect.dataset.userEdited;
+    delete existingTrialSelect.dataset.autoValue;
+  }
 
   if (!row.setUnitRetail && window.SalesLineUI?.setupPriceSync) {
     window.SalesLineUI.setupPriceSync(row);
@@ -667,9 +731,9 @@ function addSalesViewRow({ fulfilmentMethods = [] } = {}) {
 
     <td class="sixty-night-cell" style="display:none;">
       <select class="sixty-night-select" style="display:none;">
-        <option value="N/A">N/A</option>
-        <option value="Yes">Yes</option>
-        <option value="No">No</option>
+        <option value="">Select...</option>
+        <option value="Accepted">Accepted</option>
+        <option value="Declined">Declined</option>
       </select>
       <span class="sixty-night-placeholder">—</span>
     </td>
@@ -1034,9 +1098,9 @@ window.renderSalesViewLines = function renderSalesViewLines({
 
       <td class="sixty-night-cell" style="display:none;">
         <select class="sixty-night-select" style="display:none;">
-          <option value="N/A">N/A</option>
-          <option value="Yes">Yes</option>
-          <option value="No">No</option>
+          <option value="">Select...</option>
+          <option value="Accepted">Accepted</option>
+          <option value="Declined">Declined</option>
         </select>
         <span class="sixty-night-placeholder">—</span>
       </td>
@@ -1061,12 +1125,13 @@ window.renderSalesViewLines = function renderSalesViewLines({
     if (sixtyNightSelect) {
       const normTrial = String(existingTrialValue || "").trim().toLowerCase();
       if (normTrial === "yes" || normTrial === "accepted") {
-        sixtyNightSelect.value = "Yes";
+        sixtyNightSelect.value = "Accepted";
       } else if (normTrial === "no" || normTrial === "declined") {
-        sixtyNightSelect.value = "No";
+        sixtyNightSelect.value = "Declined";
       } else {
-        sixtyNightSelect.value = "N/A";
+        sixtyNightSelect.value = "";
       }
+      if (sixtyNightSelect.value) sixtyNightSelect.dataset.userEdited = "1";
     }
 
     frag.appendChild(tr);

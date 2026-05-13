@@ -276,6 +276,18 @@ if (window.location.pathname.includes("/quote/view/")) {
       const saleRaw = row.querySelector(".item-saleprice")?.value;
       const baseNet = parseFloat(baseRaw);
       const saleGross = parseFloat(saleRaw);
+      const trialSelect = row.querySelector(".sixty-night-select");
+      const trialVisible =
+        trialSelect &&
+        trialSelect.offsetParent !== null &&
+        trialSelect.closest(".sixty-night-cell")?.style.display !== "none";
+
+      if (trialVisible && !(trialSelect.value || "").trim()) {
+        ok = false;
+        errors.push(`â€¢ Line ${lineNo}: 60 Night Trial is required.`);
+        row.classList.add("row-error");
+        trialSelect.classList.add("field-error");
+      }
 
       if (!Number.isFinite(baseNet) && !Number.isFinite(saleGross)) {
         console.warn(`⚠️ Line ${lineNo} has no valid base price or sale price`);
@@ -409,7 +421,7 @@ if (window.location.pathname.includes("/quote/view/")) {
           const options = optsEl ? (optsEl.innerText || "").trim() : "";
 
           const trialSel = tr.querySelector(".sixty-night-select");
-          const trialOption = (trialSel?.value || "").trim();
+          const trialOption = (trialSel?.value || "").trim() || null;
           const vatFree = !!tr.querySelector(".vat-free-checkbox")?.checked;
 
           return {

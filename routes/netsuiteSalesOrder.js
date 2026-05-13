@@ -1237,9 +1237,9 @@ router.post("/create", async (req, res) => {
           // ✅ 60 Night Trial → custcol_sb_30nighttrialoption (List/Record)
           // accepted = 1, declined = 2, n/a = 3
           const trial = String(i.trialOption || "").trim().toLowerCase();
-          if (trial === "accepted") {
+          if (trial === "accepted" || trial === "yes") {
             line.custcol_sb_30nighttrialoption = { id: "1" };
-          } else if (trial === "declined") {
+          } else if (trial === "declined" || trial === "no") {
             line.custcol_sb_30nighttrialoption = { id: "2" };
           } else if (trial === "n/a" || trial === "na") {
             line.custcol_sb_30nighttrialoption = { id: "3" };
@@ -2365,6 +2365,15 @@ router.post("/:id/commit", async (req, res) => {
       const rate = Number.isFinite(netAmount)
         ? Number((netAmount / qty).toFixed(2))
         : 0;
+      const trial = String(line.trialOption || "").trim().toLowerCase();
+      const trialField =
+        trial === "accepted" || trial === "yes"
+          ? { id: "1" }
+          : trial === "declined" || trial === "no"
+            ? { id: "2" }
+            : trial === "n/a" || trial === "na"
+              ? { id: "3" }
+              : null;
 
       const normalizedLine = {
         ...line,
@@ -2377,6 +2386,8 @@ router.post("/:id/commit", async (req, res) => {
         rate,
         discountPct: Number(line.discountPct ?? line.discount ?? 0),
         inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta ?? line.inventoryDetail ?? null) || null,
+        trialOption: line.trialOption || null,
+        ...(trialField ? { custcol_sb_30nighttrialoption: trialField } : {}),
         grossAmount,
         grossSaleprice,
       };
@@ -2764,6 +2775,15 @@ router.post("/:id/save", async (req, res) => {
       const rate = Number.isFinite(netAmount)
         ? Number((netAmount / qty).toFixed(2))
         : 0;
+      const trial = String(line.trialOption || "").trim().toLowerCase();
+      const trialField =
+        trial === "accepted" || trial === "yes"
+          ? { id: "1" }
+          : trial === "declined" || trial === "no"
+            ? { id: "2" }
+            : trial === "n/a" || trial === "na"
+              ? { id: "3" }
+              : null;
 
       const normalizedLine = {
         ...line,
@@ -2776,6 +2796,8 @@ router.post("/:id/save", async (req, res) => {
         rate,
         discountPct: Number(line.discountPct ?? line.discount ?? 0),
         inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta ?? line.inventoryDetail ?? null) || null,
+        trialOption: line.trialOption || null,
+        ...(trialField ? { custcol_sb_30nighttrialoption: trialField } : {}),
         grossAmount,
         grossSaleprice,
       };

@@ -2010,6 +2010,18 @@ function validateSalesViewItemsBeforeSave() {
         )?.classList.add("field-error");
       }
     }
+
+    const trialSelect = row.querySelector(".sixty-night-select");
+    const trialVisible =
+      trialSelect &&
+      trialSelect.offsetParent !== null &&
+      trialSelect.closest(".sixty-night-cell")?.style.display !== "none";
+
+    if (trialVisible && !(trialSelect.value || "").trim()) {
+      errors.push(`â€¢ Line ${lineNo}: 60 Night Trial is required.`);
+      row.classList.add("row-error");
+      trialSelect.classList.add("field-error");
+    }
   });
 
   if (errors.length) {
@@ -2123,6 +2135,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
             ?.innerHTML?.trim()
             .replace(/<br\s*\/?>/gi, "\n") || "";
         const vatFree = !!row.querySelector(".vat-free-checkbox")?.checked;
+        const trialOption = row.querySelector(".sixty-night-select")?.value?.trim() || "";
 
         const netAmount = Number.isFinite(amountGrossLine)
           ? Number((amountGrossLine / 1.2).toFixed(2))
@@ -2147,6 +2160,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
           amount: amountGrossLine,
           saleprice: saleGrossLine,
           optionsSummary: optionsText || null,
+          trialOption: trialOption || null,
           taxCode: vatFree ? "10" : "",
           isNew: !row.dataset.lineid,
         };
