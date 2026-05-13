@@ -228,25 +228,31 @@ function updateQuoteSummaryFromTable() {
       saleprice: parseMoneyInput(row.querySelector(".item-saleprice")?.value),
       vat: parseMoneyInput(row.querySelector(".item-vat")?.value),
       quantity: parseMoneyInput(row.querySelector(".item-qty")?.value) || 1,
+      vatFree: !!row.querySelector(".vat-free-checkbox")?.checked,
     }));
 
-  const summary = window.EposFinancials?.summariseLines
-    ? window.EposFinancials.summariseLines(lines)
-    : lines.reduce(
-        (acc, line) => {
-          const amount = Number(line.amount || 0);
-          const sale = Number(line.saleprice || 0);
-          acc.grossTotal += sale;
-          acc.discountTotal += Math.max(0, amount - sale);
-          return acc;
-        },
-        { grossTotal: 0, discountTotal: 0 }
-      );
+  const summary = lines.reduce(
+    (acc, line) => {
+      const amount = Number(line.amount || 0);
+      const sale = Number(line.saleprice || 0);
+      acc.grossTotal += sale;
+      acc.discountTotal += Math.max(0, amount - sale);
+      if (line.vatFree) {
+        acc.netTotal += sale;
+      } else {
+        const lineNet = Number((sale / 1.2).toFixed(2));
+        acc.netTotal += lineNet;
+        acc.taxTotal += Number((sale - lineNet).toFixed(2));
+      }
+      return acc;
+    },
+    { grossTotal: 0, discountTotal: 0, netTotal: 0, taxTotal: 0 }
+  );
 
   const grossTotal = Number(summary.grossTotal || 0);
   const discountTotal = Number(summary.discountTotal || 0);
-  const netTotal = grossTotal / 1.2;
-  const taxTotal = grossTotal - netTotal;
+  const netTotal = Number(summary.netTotal || 0);
+  const taxTotal = Number(summary.taxTotal || 0);
 
   safeText(document.getElementById("subTotal"), money(netTotal));
   safeText(document.getElementById("discountTotal"), money(discountTotal));
@@ -395,6 +401,18 @@ function wireEditableQuoteRow(tr, line, idx) {
   const savedAmount = Number(line.amount || 0);
   const sale = Number(line.saleprice || 0);
   const vat = Number(line.vat || 0);
+  const existingTaxCode = String(
+    line.taxCode?.id ||
+      line.taxCode?.refName ||
+      line.taxCode ||
+      line.taxcode ||
+      line.tax_code ||
+      ""
+  ).toLowerCase();
+  const existingVatFree =
+    existingTaxCode === "10" ||
+    existingTaxCode.includes("vat free") ||
+    existingTaxCode.includes("zero");
   const negativeLine =
     savedAmount < 0 ||
     sale < 0 ||
@@ -408,7 +426,11 @@ function wireEditableQuoteRow(tr, line, idx) {
     quantity > 0 && grossRrp !== 0 ? grossRrp / quantity : 0;
 
   const discountPct =
-    grossRrp > 0 ? Math.max(0, ((grossRrp - sale) / grossRrp) * 100) : 0;
+    grossRrp > 0
+      ? Math.max(0, (((existingVatFree ? grossRrp / 1.2 : grossRrp) - sale) / (existingVatFree ? grossRrp / 1.2 : grossRrp)) * 100)
+      : 0;
+  const displaySale = existingVatFree && sale === grossRrp ? grossRrp / 1.2 : sale;
+  const displayVat = existingVatFree ? 0 : vat;
 
   const optsText = line.custcol_sb_itemoptionsdisplay || line.optionsDisplay || "";
   const optsHtml = buildOptionsSummaryHtml(optsText);
@@ -506,7 +528,7 @@ function wireEditableQuoteRow(tr, line, idx) {
       <input
         type="number"
         class="item-vat"
-        value="${Number(vat || 0).toFixed(2)}"
+        value="${Number(displayVat || 0).toFixed(2)}"
         step="0.01"
         readonly
       />
@@ -516,14 +538,16 @@ function wireEditableQuoteRow(tr, line, idx) {
       <input
         type="text"
         class="item-saleprice"
-        value="${Number(sale || 0).toFixed(2)}"
+        value="${Number(displaySale || 0).toFixed(2)}"
         inputmode="decimal"
         autocomplete="off"
       />
     </td>
 
     <td class="vat-free-cell" style="display:none;">
-      <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />
+      <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" ${
+        existingVatFree ? "checked" : ""
+      } />
       <span class="vat-free-placeholder"></span>
     </td>
 
@@ -566,7 +590,8 @@ function wireEditableQuoteRow(tr, line, idx) {
   const recalcVat = () => {
     const saleVal = parseMoneyInput(tr.querySelector(".item-saleprice")?.value);
     const vatField = tr.querySelector(".item-vat");
-    if (vatField) vatField.value = (saleVal - saleVal / 1.2).toFixed(2);
+    const vatFree = !!tr.querySelector(".vat-free-checkbox")?.checked;
+    if (vatField) vatField.value = (vatFree ? 0 : saleVal - saleVal / 1.2).toFixed(2);
   };
 
   tr.querySelector(".item-qty")?.addEventListener("input", () => {
@@ -580,6 +605,11 @@ function wireEditableQuoteRow(tr, line, idx) {
   });
 
   tr.querySelector(".item-saleprice")?.addEventListener("input", () => {
+    recalcVat();
+    updateQuoteSummaryFromTable();
+  });
+
+  tr.querySelector(".vat-free-checkbox")?.addEventListener("change", () => {
     recalcVat();
     updateQuoteSummaryFromTable();
   });

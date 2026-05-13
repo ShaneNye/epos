@@ -299,6 +299,8 @@ function applyNoAddressMode() {
 window.updateOrderSummary = function () {
   let grossTotal = 0;
   let discountTotal = 0;
+  let netTotal = 0;
+  let taxTotal = 0;
 
   document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
     const itemId = (tr.querySelector(".item-internal-id")?.value || "").trim();
@@ -308,6 +310,7 @@ window.updateOrderSummary = function () {
     const amountGrossLine = parseFloat(tr.querySelector(".item-amount")?.value || 0);
     const salePriceGrossLine = parseFloat(tr.querySelector(".item-saleprice")?.value || 0);
     const discountPct = parseFloat(tr.querySelector(".item-discount")?.value || 0);
+    const vatFree = !!tr.querySelector(".vat-free-checkbox")?.checked;
 
     if (!Number.isFinite(qty) || qty === 0) return;
 
@@ -343,6 +346,13 @@ window.updateOrderSummary = function () {
     defaultGrossTotal = Number(defaultGrossTotal.toFixed(2));
 
     grossTotal += actualGrossTotal;
+    if (vatFree) {
+      netTotal += actualGrossTotal;
+    } else {
+      const lineNet = Number((actualGrossTotal / 1.2).toFixed(2));
+      netTotal += lineNet;
+      taxTotal += Number((actualGrossTotal - lineNet).toFixed(2));
+    }
 
     const discountValue =
       defaultGrossTotal > actualGrossTotal
@@ -354,9 +364,8 @@ window.updateOrderSummary = function () {
 
   grossTotal = Number(grossTotal.toFixed(2));
   discountTotal = Number(discountTotal.toFixed(2));
-
-  const netTotal = Number((grossTotal / 1.2).toFixed(2));
-  const taxTotal = Number((grossTotal - netTotal).toFixed(2));
+  netTotal = Number(netTotal.toFixed(2));
+  taxTotal = Number(taxTotal.toFixed(2));
 
   const totalDeposits = deposits.reduce(
     (sum, d) => sum + (parseFloat(d.amount) || 0),
@@ -395,6 +404,12 @@ document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
     e.target.classList.contains("item-saleprice") ||
     e.target.classList.contains("item-amount")
   ) {
+    window.updateOrderSummary();
+  }
+});
+
+document.getElementById("orderItemsBody")?.addEventListener("change", (e) => {
+  if (e.target.classList.contains("vat-free-checkbox")) {
     window.updateOrderSummary();
   }
 });

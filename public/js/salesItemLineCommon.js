@@ -237,18 +237,26 @@
     if (!amountField || !discountField || !salePriceField || !qtyField) return;
     bindMoneyInput(salePriceField);
 
+    function updateVatCell(saleTotal, vatFree) {
+      const vatCell = row.querySelector(".vat");
+      if (vatCell) vatCell.textContent = `\u00a3${(vatFree ? 0 : saleTotal - saleTotal / 1.2).toFixed(2)}`;
+    }
+
     function recalcFromDiscount() {
       const qty = Math.max(1, parseInt(qtyField.value || 1, 10));
       const baseNet = money(baseNetField?.value);
       const unitRetailGross =
         money(amountField.dataset.unitRetail) || (baseNet ? baseNet * 1.2 : 0);
       const retailTotal = unitRetailGross * qty;
+      const vatFree = !!row.querySelector(".vat-free-checkbox")?.checked;
+      const priceBasis = vatFree ? retailTotal / 1.2 : retailTotal;
 
       const d = Math.max(0, Math.min(100, money(discountField.value)));
       discountField.value = d.toFixed(1);
 
-      const saleTotal = retailTotal * (1 - d / 100);
+      const saleTotal = priceBasis * (1 - d / 100);
       salePriceField.value = saleTotal.toFixed(2);
+      updateVatCell(saleTotal, vatFree);
 
       amountField.value = retailTotal.toFixed(2);
       window.updateOrderSummary?.();
@@ -262,10 +270,13 @@
       const unitRetailGross =
         money(amountField.dataset.unitRetail) || (baseNet ? baseNet * 1.2 : 0);
       const retailTotal = unitRetailGross * qty;
+      const vatFree = !!row.querySelector(".vat-free-checkbox")?.checked;
+      const priceBasis = vatFree ? retailTotal / 1.2 : retailTotal;
 
       const saleTotal = money(salePriceField.value);
-      const d = retailTotal > 0 ? ((retailTotal - saleTotal) / retailTotal) * 100 : 0;
+      const d = priceBasis > 0 ? ((priceBasis - saleTotal) / priceBasis) * 100 : 0;
       discountField.value = Math.max(0, Math.min(100, d)).toFixed(1);
+      updateVatCell(saleTotal, vatFree);
 
       amountField.value = retailTotal.toFixed(2);
       window.updateOrderSummary?.();
@@ -276,6 +287,7 @@
     discountField.addEventListener("input", recalcFromDiscount);
     salePriceField.addEventListener("input", recalcFromSalePrice);
     qtyField.addEventListener("input", recalcFromDiscount);
+    row.querySelector(".vat-free-checkbox")?.addEventListener("change", recalcFromDiscount);
 
     recalcFromSalePrice();
 

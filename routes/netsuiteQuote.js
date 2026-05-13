@@ -30,6 +30,15 @@ function numberOrZero(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function isVatFreeTaxCode(value) {
+  const raw =
+    value && typeof value === "object"
+      ? value.id || value.value || value.refName || ""
+      : value;
+  const code = String(raw || "").trim().toLowerCase();
+  return code === "10" || code.includes("vat free") || code.includes("zero");
+}
+
 function sendNoStore(res) {
   res.set({
     "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
@@ -317,7 +326,7 @@ router.post("/create", async (req, res) => {
             ? numberOrZero(i.saleprice)
             : numberOrZero(i.amount);
           const qty = Number(i.quantity) || 1;
-          const netLineTotal = +(grossToSave / 1.2).toFixed(2);
+          const netLineTotal = +(grossToSave / (isVatFreeTaxCode(i.taxCode) ? 1 : 1.2)).toFixed(2);
           const netUnitRate = qty > 0 ? +(netLineTotal / qty).toFixed(2) : 0;
 
           return {
@@ -779,16 +788,14 @@ router.patch("/:id", async (req, res) => {
             ? numberOrZero(i.saleprice)
             : numberOrZero(i.amount);
 
-          const netLineTotal = +(grossToSave / 1.2).toFixed(2);
+          const taxCode = i.taxCode || "";
+          const netLineTotal = +(grossToSave / (isVatFreeTaxCode(taxCode) ? 1 : 1.2)).toFixed(2);
           const netUnitRate =
             qty > 0 ? +(netLineTotal / qty).toFixed(2) : 0;
 
           const existingLine = existingByIndex[index] || null;
 
-          const taxCode =
-            i.taxCode ||
-            existingLine?.taxCode ||
-            "";
+          const lineTaxCode = taxCode || existingLine?.taxCode || "";
 
           const fulfilmentMethod =
             i.fulfilmentMethod ||
@@ -806,8 +813,8 @@ router.patch("/:id", async (req, res) => {
             price: { id: "-1" },
             rate: netUnitRate,
             amount: netLineTotal,
-            ...(taxCode && {
-              taxCode: { id: String(taxCode) },
+            ...(lineTaxCode && {
+              taxCode: { id: String(lineTaxCode) },
             }),
             custcol_sb_itemoptionsdisplay: optionsValue || "",
             ...(fulfilmentMethod && {

@@ -420,10 +420,12 @@
     return isWarehouseLine(line.row) && statuses.some((status) => status.includes("clearance"));
   }
 
-  function subtotalForBasketRules(promotion) {
+  function subtotalForBasketRules(promotion, rule = {}) {
     const excludeClearance = promotion?.excludeClearance === true;
+    const includeServices = rule?.includeServices !== false;
     return manualLines().reduce((sum, line) => {
       if (excludeClearance && isWarehouseClearanceLine(line)) return sum;
+      if (!includeServices && String(line.klass || "").toLowerCase() === "service") return sum;
       return sum + Number(line.salePrice || 0);
     }, 0);
   }
@@ -433,14 +435,15 @@
     const missing = [];
 
     (state.promotions.basketDiscounts || []).forEach((promotion) => {
-      const subtotal = subtotalForBasketRules(promotion);
       const rule = (promotion.rules || []).find((entry) => {
+        const subtotal = subtotalForBasketRules(promotion, entry);
         const min = Number(entry.minValue || 0);
         const max = Number(entry.maxValue || 0);
         return entry.autoApply === true && subtotal >= min && subtotal <= max;
       });
 
       if (!rule) return;
+      const subtotal = subtotalForBasketRules(promotion, rule);
 
       const item = findItemById(rule.itemId) || findItemByName(rule.itemName);
       if (!item) {
@@ -469,8 +472,8 @@
     if (!rowItemId) return null;
 
     for (const promotion of state.promotions.basketDiscounts || []) {
-      const subtotal = subtotalForBasketRules(promotion);
       const rule = (promotion.rules || []).find((entry) => {
+        const subtotal = subtotalForBasketRules(promotion, entry);
         const min = Number(entry.minValue || 0);
         const max = Number(entry.maxValue || 0);
         return (
@@ -482,6 +485,7 @@
       });
 
       if (!rule) continue;
+      const subtotal = subtotalForBasketRules(promotion, rule);
 
       const item = findItemById(rule.itemId) || findItemByName(rule.itemName);
       const discountAmount = discountAmountForRule(rule, subtotal, item || {});

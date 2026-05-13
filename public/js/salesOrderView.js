@@ -1633,6 +1633,8 @@ function updateOrderSummaryFromTable() {
 
   let grossTotal = 0;
   let discountTotal = 0;
+  let netTotal = 0;
+  let taxTotal = 0;
 
   rows.forEach((row, idx) => {
     const itemId = (row.querySelector(".item-internal-id")?.value || "").trim();
@@ -1648,6 +1650,7 @@ function updateOrderSummaryFromTable() {
       const amountGrossLine = parseFloat(amountInp.value || 0) || 0;
       const saleGrossLine = parseFloat(saleInp.value || 0) || 0;
       const discountPct = parseFloat(discInp.value || 0) || 0;
+      const vatFree = !!row.querySelector(".vat-free-checkbox")?.checked;
 
       let defaultGrossTotal = 0;
       let actualGrossTotal = 0;
@@ -1670,6 +1673,13 @@ function updateOrderSummaryFromTable() {
       actualGrossTotal = Number(actualGrossTotal.toFixed(2));
 
       grossTotal += actualGrossTotal;
+      if (vatFree) {
+        netTotal += actualGrossTotal;
+      } else {
+        const lineNet = Number((actualGrossTotal / 1.2).toFixed(2));
+        netTotal += lineNet;
+        taxTotal += Number((actualGrossTotal - lineNet).toFixed(2));
+      }
 
       const lineDiscount =
         defaultGrossTotal > 0 && actualGrossTotal >= 0
@@ -1703,6 +1713,14 @@ function updateOrderSummaryFromTable() {
       : sale;
 
     grossTotal += sale;
+    const vatFree = !!row.querySelector(".vat-free-checkbox")?.checked;
+    if (vatFree) {
+      netTotal += sale;
+    } else {
+      const lineNet = Number((sale / 1.2).toFixed(2));
+      netTotal += lineNet;
+      taxTotal += Number((sale - lineNet).toFixed(2));
+    }
 
     const lineDiscount =
       amount > 0 && sale >= 0 ? Math.max(0, amount - sale) : 0;
@@ -1712,9 +1730,8 @@ function updateOrderSummaryFromTable() {
 
   grossTotal = Number(grossTotal.toFixed(2));
   discountTotal = Number(discountTotal.toFixed(2));
-
-  const netTotal = Number((grossTotal / 1.2).toFixed(2));
-  const taxTotal = Number((grossTotal - netTotal).toFixed(2));
+  netTotal = Number(netTotal.toFixed(2));
+  taxTotal = Number(taxTotal.toFixed(2));
 
   const subTotalEl = document.getElementById("subTotal");
   const discountEl = document.getElementById("discountTotal");
@@ -1749,6 +1766,12 @@ document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
     e.target.classList.contains("item-saleprice") ||
     e.target.classList.contains("item-amount")
   ) {
+    updateOrderSummaryFromTable();
+  }
+});
+
+document.getElementById("orderItemsBody")?.addEventListener("change", (e) => {
+  if (e.target.classList.contains("vat-free-checkbox")) {
     updateOrderSummaryFromTable();
   }
 });

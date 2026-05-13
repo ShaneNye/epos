@@ -391,6 +391,7 @@
         ? `£${Number(rule?.discountValue || 0).toFixed(2)}`
         : "Item price";
     const mode = rule?.autoApply === true ? "auto add" : "manual add";
+    const services = rule?.includeServices === false ? "excludes services" : "includes services";
     return `£${Number(rule?.minValue || 0).toFixed(2)} to £${Number(rule?.maxValue || 0).toFixed(2)}: ${escapeHtml(rule?.itemName || rule?.itemId)} (${discountText}, ${mode})`;
   }
 
@@ -505,6 +506,12 @@
         </select>
       </td>
       <td><input class="basket-rule-discount-value" type="number" min="0" step="0.01" value="${Number(rule.discountValue || 0).toFixed(2)}"></td>
+      <td>
+        <label class="promotions-rule-auto">
+          <input class="basket-rule-include-services" type="checkbox"${rule.includeServices !== false ? " checked" : ""}>
+          <span>Include</span>
+        </label>
+      </td>
       <td>
         <label class="promotions-rule-auto">
           <input class="basket-rule-auto-apply" type="checkbox"${rule.autoApply === true ? " checked" : ""}>
@@ -630,6 +637,7 @@
         itemName: getItemName(item),
         discountType: row.querySelector(".basket-rule-discount-type")?.value || "percentage",
         discountValue: Number(row.querySelector(".basket-rule-discount-value")?.value || 0),
+        includeServices: !!row.querySelector(".basket-rule-include-services")?.checked,
         autoApply: !!row.querySelector(".basket-rule-auto-apply")?.checked,
       };
     });

@@ -14,6 +14,18 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     return String(s || "").trim().toLowerCase();
   }
 
+  function taxCodeId(value) {
+    if (value && typeof value === "object") {
+      return String(value.id || value.value || value.refName || "").trim();
+    }
+    return String(value || "").trim();
+  }
+
+  function isVatFreeTaxCode(value) {
+    const code = norm(taxCodeId(value));
+    return code === "10" || code.indexOf("vat free") !== -1 || code.indexOf("zero") !== -1;
+  }
+
   function parseInventoryMeta(detailString) {
     const parts = String(detailString || "")
       .split(";")
@@ -206,18 +218,19 @@ function applyPricingToCurrentLine(soRec, u, isNewLine) {
   const saleGrossInput =
     u.saleGrossPerUnit != null ? u.saleGrossPerUnit : u.saleGrossLine ?? u.saleprice;
   const saleGrossValue = toNum(saleGrossInput);
+  const priceDivisor = isVatFreeTaxCode(u.taxCode ?? u.taxcode) ? 1 : GROSS_DIVISOR;
 
   let newRateNet = null;
 
   if (saleGrossValue !== 0 && qty > 0) {
     const saleGrossPerUnit = saleGrossValue / qty;
-    newRateNet = saleGrossPerUnit / GROSS_DIVISOR;
+    newRateNet = saleGrossPerUnit / priceDivisor;
   } else if (discountPct > 0 && currentRateNet > 0) {
     const d = Math.max(0, Math.min(100, discountPct));
     newRateNet = currentRateNet * (1 - d / 100);
   } else if (isNewLine && toNum(u.amountGrossLine ?? u.amount) !== 0 && qty > 0) {
     const amountGrossPerUnit = toNum(u.amountGrossLine ?? u.amount) / qty;
-    newRateNet = amountGrossPerUnit / GROSS_DIVISOR;
+    newRateNet = amountGrossPerUnit / priceDivisor;
   }
 
   if (newRateNet !== null && Number.isFinite(newRateNet)) {
@@ -233,6 +246,7 @@ function applyPricingToCurrentLine(soRec, u, isNewLine) {
       qty,
       discountPct,
       saleGrossInput,
+      priceDivisor,
       isNewLine,
     });
   }
@@ -274,6 +288,11 @@ function applyPricingToCurrentLine(soRec, u, isNewLine) {
         "custcol_sb_itemoptionsdisplay",
         String(optionsValue || "")
       );
+    }
+
+    if (u.taxCode !== undefined || u.taxcode !== undefined) {
+      const code = taxCodeId(u.taxCode ?? u.taxcode);
+      if (code) setCurrentIfDefined(soRec, "taxcode", code);
     }
 
     if (u.inventoryDetail !== undefined) {

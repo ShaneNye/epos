@@ -112,6 +112,7 @@ function normalizeRule(rule) {
     discountType: normalizeDiscountType(rule?.discountType),
     discountValue: cleanMoney(rule?.discountValue),
     autoApply: rule?.autoApply === true,
+    includeServices: rule?.includeServices !== false,
   };
 }
 
@@ -202,6 +203,7 @@ async function ensureTables() {
       discount_type TEXT NOT NULL DEFAULT 'item_price',
       discount_value NUMERIC(10,2) NOT NULL DEFAULT 0,
       auto_apply BOOLEAN NOT NULL DEFAULT FALSE,
+      include_services BOOLEAN NOT NULL DEFAULT TRUE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
@@ -228,6 +230,7 @@ async function ensureTables() {
     ALTER TABLE promotion_basket_rules ADD COLUMN IF NOT EXISTS discount_type TEXT NOT NULL DEFAULT 'item_price';
     ALTER TABLE promotion_basket_rules ADD COLUMN IF NOT EXISTS discount_value NUMERIC(10,2) NOT NULL DEFAULT 0;
     ALTER TABLE promotion_basket_rules ADD COLUMN IF NOT EXISTS auto_apply BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE promotion_basket_rules ADD COLUMN IF NOT EXISTS include_services BOOLEAN NOT NULL DEFAULT TRUE;
   `);
 
   initialized = true;
@@ -353,7 +356,8 @@ async function listPromotions() {
             'itemName', r.item_name,
             'discountType', r.discount_type,
             'discountValue', r.discount_value,
-            'autoApply', r.auto_apply
+            'autoApply', r.auto_apply,
+            'includeServices', r.include_services
           )
           ORDER BY r.min_value, r.max_value, r.id
         ) FILTER (WHERE r.id IS NOT NULL),
@@ -406,6 +410,7 @@ async function listPromotions() {
           discountType: normalizeDiscountType(rule.discountType),
           discountValue: Number(rule.discountValue || 0),
           autoApply: rule.autoApply === true,
+          includeServices: rule.includeServices !== false,
         }))
       : [],
   }));
@@ -600,9 +605,10 @@ async function savePromotion(client, promotionId, payload, createdBy) {
           item_name,
           discount_type,
           discount_value,
-          auto_apply
+          auto_apply,
+          include_services
         )
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
       `,
       [
         savedPromotionId,
@@ -613,6 +619,7 @@ async function savePromotion(client, promotionId, payload, createdBy) {
         rule.discountType,
         rule.discountValue,
         rule.autoApply === true,
+        rule.includeServices !== false,
       ]
     );
   }

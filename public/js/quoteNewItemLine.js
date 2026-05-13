@@ -640,20 +640,28 @@ function setupPriceSync(line) {
   const discountField = line.querySelector(".item-discount");
   const salePriceField = line.querySelector(".item-saleprice");
   const qtyField = line.querySelector(".item-qty");
+  const vatFreeField = line.querySelector(".vat-free-checkbox");
 
   if (!amountField || !discountField || !salePriceField || !qtyField) return;
   bindMoneyInput(salePriceField);
 
   let unitRetail = 0;
 
+  function updateVatField(saleTotal) {
+    const vatField = line.querySelector(".item-vat");
+    if (vatField) vatField.value = (vatFreeField?.checked ? 0 : saleTotal - saleTotal / 1.2).toFixed(2);
+  }
+
   function recalc() {
     const qty = parseInt(qtyField.value || 1, 10);
     const retailTotal = unitRetail * qty;
+    const priceBasis = vatFreeField?.checked ? retailTotal / 1.2 : retailTotal;
     amountField.value = retailTotal.toFixed(2);
 
     const discount = parseFloat(discountField.value || 0);
-    const saleTotal = retailTotal * (1 - discount / 100);
+    const saleTotal = priceBasis * (1 - discount / 100);
     salePriceField.value = saleTotal.toFixed(2);
+    updateVatField(saleTotal);
 
     recalcTotals();
   }
@@ -667,17 +675,20 @@ function setupPriceSync(line) {
   salePriceField.addEventListener("input", () => {
     const qty = parseInt(qtyField.value || 1, 10);
     const retailTotal = unitRetail * qty;
+    const priceBasis = vatFreeField?.checked ? retailTotal / 1.2 : retailTotal;
     const saleTotal = parseFloat(salePriceField.value || 0);
 
-    if (retailTotal > 0 && !isNaN(saleTotal)) {
-      const discount = ((retailTotal - saleTotal) / retailTotal) * 100;
+    if (priceBasis > 0 && !isNaN(saleTotal)) {
+      const discount = ((priceBasis - saleTotal) / priceBasis) * 100;
       discountField.value = discount.toFixed(1);
     }
 
+    updateVatField(saleTotal);
     recalcTotals();
   });
 
   qtyField.addEventListener("input", recalc);
+  vatFreeField?.addEventListener("change", recalc);
 
   line.setUnitRetail = (retailGrossPerUnit) => {
     unitRetail = parseFloat(retailGrossPerUnit || 0) || 0;

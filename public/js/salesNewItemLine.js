@@ -724,6 +724,7 @@ function setupPriceSync(line) {
   const discountField = line.querySelector(".item-discount");
   const salePriceField = line.querySelector(".item-saleprice");
   const qtyField = line.querySelector(".item-qty");
+  const vatFreeField = line.querySelector(".vat-free-checkbox");
 
   if (!amountField || !discountField || !salePriceField || !qtyField) return;
   bindMoneyInput(salePriceField);
@@ -732,11 +733,12 @@ function setupPriceSync(line) {
   function recalc() {
     const qty = parseInt(qtyField.value || 1, 10);
     const retailTotal = unitRetail * qty;
+    const priceBasis = vatFreeField?.checked ? retailTotal / 1.2 : retailTotal;
     amountField.value = retailTotal.toFixed(2);
 
     const discountPercent = clampPercent(discountField.value || 0);
     discountField.value = discountPercent.toFixed(1).replace(/\.0$/, "");
-    const saleTotal = retailTotal * (1 - discountPercent / 100);
+    const saleTotal = priceBasis * (1 - discountPercent / 100);
     salePriceField.value = saleTotal.toFixed(2);
 
     validateInventoryForRow(line);
@@ -754,9 +756,10 @@ function setupPriceSync(line) {
   salePriceField.addEventListener("input", () => {
     const qty = parseInt(qtyField.value || 1, 10);
     const retailTotal = unitRetail * qty;
+    const priceBasis = vatFreeField?.checked ? retailTotal / 1.2 : retailTotal;
     const saleTotal = parseFloat(salePriceField.value || 0) || 0;
-    if (retailTotal > 0 && !isNaN(saleTotal)) {
-      const discountPercent = clampPercent(((retailTotal - saleTotal) / retailTotal) * 100);
+    if (priceBasis > 0 && !isNaN(saleTotal)) {
+      const discountPercent = clampPercent(((priceBasis - saleTotal) / priceBasis) * 100);
       discountField.value = discountPercent.toFixed(1).replace(/\.0$/, "");
     } else {
       discountField.value = "0";
@@ -765,6 +768,7 @@ function setupPriceSync(line) {
     updateOrderSummary();
   });
   qtyField.addEventListener("input", recalc);
+  vatFreeField?.addEventListener("change", recalc);
 
   line.setUnitRetail = (retail) => {
     unitRetail = parseFloat(retail || 0);

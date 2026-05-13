@@ -76,6 +76,15 @@ function normalizeBroadLocationLookupName(value) {
     .toLowerCase();
 }
 
+function isVatFreeTaxCode(value) {
+  const raw =
+    value && typeof value === "object"
+      ? value.id || value.value || value.refName || ""
+      : value;
+  const code = String(raw || "").trim().toLowerCase();
+  return code === "10" || code.includes("vat free") || code.includes("zero");
+}
+
 function isDistributionStoreName(value) {
   return /distribution\s*ltd/i.test(String(value || "").trim());
 }
@@ -1220,7 +1229,7 @@ router.post("/create", async (req, res) => {
           const line = {
             item: { id: i.item },
             quantity: i.quantity,
-            amount: i.amount / 1.2,
+            amount: i.amount / (isVatFreeTaxCode(i.taxCode) ? 1 : 1.2),
             custcol_sb_itemoptionsdisplay: i.options || "",
           };
           applyDistributionLineLocation(line, distributionLineLocationId, storeName);
@@ -2121,6 +2130,16 @@ router.get("/:id", async (req, res) => {
 
           const rawNet = Number(r.netamount) || 0;
           const rawRate = Number(r.rate) || 0;
+          const itemNameLower = itemName.toLowerCase();
+          const isNegativeValueLine =
+            itemNameLower.includes("discount") ||
+            itemNameLower.includes("blue light") ||
+            itemNameLower.includes("promo") ||
+            itemNameLower.includes("promotion") ||
+            itemNameLower.includes("voucher") ||
+            itemNameLower.includes("trade in") ||
+            itemNameLower.includes("recommendation card (as a minus)") ||
+            itemNameLower.includes("trade-in");
 
           // ✅ Financial sign comes from the transaction values, not qty
           let net = rawNet;
@@ -2128,7 +2147,8 @@ router.get("/:id", async (req, res) => {
             net = -rawNet;
           }
 
-          const sign = net < 0 || rawRate < 0 ? -1 : 1;
+          const sign = isNegativeValueLine ? -1 : 1;
+          net = isNegativeValueLine ? -Math.abs(net) : Math.abs(net);
 
           // amount is the full displayed retail gross line total, signed.
           const retailNet = parseFloat(info.baseprice || 0);

@@ -145,6 +145,8 @@ if (window.location.pathname.includes("/quote/view/")) {
     window.updateQuoteSummary = function () {
       let grossTotal = 0;
       let discountTotal = 0;
+      let netTotal = 0;
+      let taxTotal = 0;
 
       document.querySelectorAll("#orderItemsBody .order-line").forEach((tr) => {
         const itemId = (tr.querySelector(".item-internal-id")?.value || "").trim();
@@ -158,6 +160,7 @@ if (window.location.pathname.includes("/quote/view/")) {
         const baseNet = parseFloat(baseNetRaw);
         const salePriceGrossLine = parseFloat(saleGrossRaw);
         const discountPct = parseFloat(discountRaw || 0) || 0;
+        const vatFree = !!tr.querySelector(".vat-free-checkbox")?.checked;
 
         if (!qty || qty <= 0) return;
 
@@ -184,6 +187,13 @@ if (window.location.pathname.includes("/quote/view/")) {
         const defaultGrossRounded = Number(defaultGrossLine.toFixed(2));
 
         grossTotal += actualGrossLine;
+        if (vatFree) {
+          netTotal += actualGrossLine;
+        } else {
+          const lineNet = Number((actualGrossLine / 1.2).toFixed(2));
+          netTotal += lineNet;
+          taxTotal += Number((actualGrossLine - lineNet).toFixed(2));
+        }
 
         const discountValue = Math.max(0, defaultGrossRounded - actualGrossLine);
         discountTotal += discountValue;
@@ -191,9 +201,8 @@ if (window.location.pathname.includes("/quote/view/")) {
 
       grossTotal = Number(grossTotal.toFixed(2));
       discountTotal = Number(discountTotal.toFixed(2));
-
-      const netTotal = Number((grossTotal / 1.2).toFixed(2));
-      const taxTotal = Number((grossTotal - netTotal).toFixed(2));
+      netTotal = Number(netTotal.toFixed(2));
+      taxTotal = Number(taxTotal.toFixed(2));
 
       document.getElementById("subTotal").textContent = `£${netTotal.toFixed(2)}`;
       document.getElementById("discountTotal").textContent = `£${discountTotal.toFixed(2)}`;
@@ -209,6 +218,12 @@ if (window.location.pathname.includes("/quote/view/")) {
         e.target.classList.contains("item-discount") ||
         e.target.classList.contains("item-saleprice")
       ) {
+        window.updateQuoteSummary();
+      }
+    });
+
+    document.getElementById("orderItemsBody")?.addEventListener("change", (e) => {
+      if (e.target.classList.contains("vat-free-checkbox")) {
         window.updateQuoteSummary();
       }
     });

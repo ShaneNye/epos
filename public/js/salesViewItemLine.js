@@ -480,7 +480,8 @@ function applyItemToSalesViewRow(row, item, config = {}) {
   const vatCell = row.querySelector(".vat");
   if (saleField && vatCell) {
     const saleVal = parseFloat(saleField.value || 0) || 0;
-    vatCell.textContent = `£${(saleVal - saleVal / 1.2).toFixed(2)}`;
+    const vatFree = !!row.querySelector(".vat-free-checkbox")?.checked;
+    vatCell.textContent = `£${(vatFree ? 0 : saleVal - saleVal / 1.2).toFixed(2)}`;
   }
 
   if (qtyField && qtyField.value === "") qtyField.value = "1";
@@ -555,12 +556,15 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
 
   const saleField = row.querySelector(".item-saleprice");
   const vatCell = row.querySelector(".vat");
+  const vatFreeField = row.querySelector(".vat-free-checkbox");
   if (saleField && vatCell) {
     const recalcVat = () => {
       const saleVal = parseFloat(saleField.value || 0) || 0;
-      vatCell.textContent = `£${(saleVal - saleVal / 1.2).toFixed(2)}`;
+      const vatFree = !!vatFreeField?.checked;
+      vatCell.textContent = `£${(vatFree ? 0 : saleVal - saleVal / 1.2).toFixed(2)}`;
     };
     saleField.addEventListener("input", recalcVat);
+    vatFreeField?.addEventListener("change", recalcVat);
     recalcVat();
   }
 
@@ -852,8 +856,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
 
     const itemName = String(line.item?.refName || "").toLowerCase();
 
-    const hasNegativeStoredValue = retailGrossLineTotal < 0 || saleGrossLineTotal < 0;
-    const isNegativeValueLine = hasNegativeStoredValue || (window.EposFinancials?.isNegativeValueLine
+    const isNegativeValueLine = window.EposFinancials?.isNegativeValueLine
       ? window.EposFinancials.isNegativeValueLine(itemName)
       : itemName.includes("discount") ||
         itemName.includes("blue light") ||
@@ -862,7 +865,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
         itemName.includes("voucher") ||
         itemName.includes("trade in") ||
         itemName.includes("recommendation card (as a minus)") ||
-        itemName.includes("trade-in"));
+        itemName.includes("trade-in");
 
     if (isNegativeValueLine) {
       if (retailGrossLineTotal > 0) retailGrossLineTotal = -retailGrossLineTotal;
@@ -874,15 +877,28 @@ window.renderSalesViewLines = function renderSalesViewLines({
 
     const retailGrossPerUnit = qty ? retailGrossLineTotal / qty : 0;
 
+    const existingTaxCode = salesViewRecordValue(line, [
+      "taxCode",
+      "taxcode",
+      "tax_code",
+      "Tax Code",
+    ]).toLowerCase();
+    const existingVatFree =
+      existingTaxCode === "10" ||
+      existingTaxCode.includes("vat free") ||
+      existingTaxCode.includes("zero");
+
+    const discountBasis = existingVatFree ? retailGrossLineTotal / 1.2 : retailGrossLineTotal;
+    const displaySaleLineTotal =
+      existingVatFree && saleGrossLineTotal === retailGrossLineTotal
+        ? discountBasis
+        : saleGrossLineTotal;
     const discountPct =
-      retailGrossLineTotal > 0
-        ? Math.max(
-            0,
-            ((retailGrossLineTotal - saleGrossLineTotal) / retailGrossLineTotal) * 100
-          )
+      discountBasis > 0
+        ? Math.max(0, ((discountBasis - displaySaleLineTotal) / discountBasis) * 100)
         : 0;
 
-    const taxValue = saleGrossLineTotal / 6;
+    const taxValue = existingVatFree ? 0 : displaySaleLineTotal / 6;
 
     const optionsText = line.custcol_sb_itemoptionsdisplay || line.optionsDisplay || "";
     const optsHtml = buildOptionsSummaryHtml(optionsText);
@@ -908,8 +924,8 @@ window.renderSalesViewLines = function renderSalesViewLines({
       : `${discountPct.toFixed(1)}%`;
 
     const saleCell = isPending
-      ? `<input type="text" class="item-saleprice" value="${saleGrossLineTotal.toFixed(2)}" inputmode="decimal" autocomplete="off" />`
-      : `£${saleGrossLineTotal.toFixed(2)}`;
+      ? `<input type="text" class="item-saleprice" value="${displaySaleLineTotal.toFixed(2)}" inputmode="decimal" autocomplete="off" />`
+      : `£${displaySaleLineTotal.toFixed(2)}`;
 
     const qtyCell = isPending
       ? `<input type="number" class="item-qty" value="${qty}" min="1" step="1" />`
@@ -920,17 +936,6 @@ window.renderSalesViewLines = function renderSalesViewLines({
       : isPending
         ? `<select class="item-fulfilment fulfilmentSelect" data-line="${idx}"></select>`
         : line.custcol_sb_fulfilmentlocation?.refName || "";
-
-    const existingTaxCode = salesViewRecordValue(line, [
-      "taxCode",
-      "taxcode",
-      "tax_code",
-      "Tax Code",
-    ]).toLowerCase();
-    const existingVatFree =
-      existingTaxCode === "10" ||
-      existingTaxCode.includes("vat free") ||
-      existingTaxCode.includes("zero");
 
     const inventoryDetail = existingInventoryDetail(line);
 
