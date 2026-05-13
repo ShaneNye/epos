@@ -27,11 +27,17 @@
 
     if (field.fieldType === "list_record") {
       const options = Array.isArray(field.options) ? field.options : [];
+      const currentValue = String(value ?? "");
+      const hasCurrent = options.some((option) => String(option.id) === currentValue);
+      const currentLabel = field.displayValue || currentValue;
       const optionHtml = [
         `<option value="">Select</option>`,
+        ...(!hasCurrent && currentValue
+          ? [`<option value="${escapeHtml(currentValue)}" selected>${escapeHtml(currentLabel)}</option>`]
+          : []),
         ...options.map((option) => {
           const optionValue = String(option.id || "");
-          const selected = optionValue === String(value ?? "") ? " selected" : "";
+          const selected = optionValue === currentValue ? " selected" : "";
           return `<option value="${escapeHtml(optionValue)}"${selected}>${escapeHtml(option.name || optionValue)}</option>`;
         }),
       ].join("");
@@ -84,13 +90,13 @@
       .join("");
   }
 
-  function collectCustomFieldPayload() {
+  function collectCustomFieldPayload({ includeEmpty = false } = {}) {
     return [...document.querySelectorAll(".custom-field-control")]
       .map((control) => ({
         id: control.dataset.customFieldId,
         value: control.value,
       }))
-      .filter((field) => field.id && String(field.value ?? "").trim() !== "");
+      .filter((field) => field.id && (includeEmpty || String(field.value ?? "").trim() !== ""));
   }
 
   async function loadCustomFields(recordType, { headers = {}, emptyMessage } = {}) {
@@ -144,6 +150,7 @@
   window.EposTransactionCustomFields = {
     bindTabs,
     collect: collectCustomFieldPayload,
+    collectAll: () => collectCustomFieldPayload({ includeEmpty: true }),
     load: loadCustomFields,
     render: renderCustomFields,
   };

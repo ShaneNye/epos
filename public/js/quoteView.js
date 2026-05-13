@@ -262,6 +262,18 @@ function updateQuoteSummaryFromTable() {
 
 window.updateQuoteSummary = updateQuoteSummaryFromTable;
 
+document.addEventListener("input", (event) => {
+  if (!event.target.closest(".custom-field-control")) return;
+  const status = document.getElementById("customFieldsStatus");
+  if (status) status.textContent = "Unsaved changes";
+});
+
+document.addEventListener("change", (event) => {
+  if (!event.target.closest(".custom-field-control")) return;
+  const status = document.getElementById("customFieldsStatus");
+  if (status) status.textContent = "Unsaved changes";
+});
+
 /* =========================================================
    Editable quote line helpers
 ========================================================= */
@@ -774,6 +786,7 @@ function buildQuoteSavePayload() {
 
   return {
     updates,
+    customFields: window.EposTransactionCustomFields?.collectAll?.() || [],
     headerUpdates: {
       salesExec: salesExecSelect?.value || "",
       store: storeSelect?.value || "",
@@ -853,7 +866,15 @@ function updateActionButtonForQuote() {
       }
 
       showToast?.("✅ Quote saved successfully!", "success");
-      window._lastQuoteSaveSignature = signature;
+      if (Array.isArray(data.customFields) && data.customFields.length) {
+        window.EposTransactionCustomFields?.render?.(
+          data.customFields,
+          "No custom fields are visible for this quote."
+        );
+      }
+      const customStatus = document.getElementById("customFieldsStatus");
+      if (customStatus) customStatus.textContent = "";
+      window._lastQuoteSaveSignature = stableSaveSignature(buildQuoteSavePayload());
     } catch (err) {
       console.error("❌ Save quote error:", err.message || err);
       showToast?.(`❌ ${err.message || err}`, "error");
@@ -1367,6 +1388,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     updateQuoteSummaryFromTable();
+    window.EposTransactionCustomFields?.render?.(
+      quote.customFields || [],
+      "No custom fields are visible for this quote."
+    );
     window._lastQuoteSaveSignature = stableSaveSignature(buildQuoteSavePayload());
     updateActionButtonForQuote();
     ensureQuoteAddButton();

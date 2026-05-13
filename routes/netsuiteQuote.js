@@ -6,7 +6,10 @@ const { getSession } = require("../sessions");
 const { nsPost, nsGet, nsPostRaw, nsPatch } = require("../netsuiteClient");
 const fetch = require("node-fetch");
 const { getNetSuiteAppBaseUrl } = require("../utils/netsuiteEnvironment");
-const { buildCustomFieldPatchPayload } = require("./customFields");
+const {
+  buildCustomFieldPatchPayload,
+  loadTransactionCustomFieldValues,
+} = require("./customFields");
 
 /* =====================================================
    Helpers
@@ -475,10 +478,13 @@ router.get("/:id", async (req, res) => {
       ORDER BY t.linesequencenumber
     `;
 
-    const [expandedEntity, suiteql, itemMap] = await Promise.all([
+    const suiteQlUrl = () =>
+      `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`;
+
+    const [expandedEntity, suiteql, itemMap, customFields] = await Promise.all([
       expandedEntityPromise,
       nsPostRaw(
-        `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
+        suiteQlUrl(),
         { q: query },
         userId,
         "sb"
@@ -486,6 +492,13 @@ router.get("/:id", async (req, res) => {
       getItemMapCached().catch((err) => {
         console.warn("⚠️ Could not load item retail map for quote:", err.message);
         return {};
+      }),
+      loadTransactionCustomFieldValues({
+        recordType: "quote",
+        transactionId: quote.id || id,
+        userId,
+        nsPostRaw,
+        suiteQlUrl,
       }),
     ]);
 
@@ -558,6 +571,7 @@ router.get("/:id", async (req, res) => {
 
     console.log("✅ Quote fetched successfully:", quote.tranId || quote.id);
     quote._netSuiteAppBaseUrl = netSuiteAppBaseUrl();
+    quote.customFields = customFields || [];
     const payload = { ok: true, quote };
     quoteCache.delete(cacheKey);
     return res.json({ ...payload, _cache: "BYPASS" });
@@ -578,7 +592,7 @@ router.get("/:id", async (req, res) => {
 router.post("/:id/save", async (req, res) => {
   try {
     const { id } = req.params;
-    const { updates = [], headerUpdates = {} } = req.body;
+    const { updates = [], headerUpdates = {}, customFields = [] } = req.body;
 
     console.log(`💾 Saving Quote ${id} via NetSuite RESTlet`);
     console.log("Quote save payload summary:", {
@@ -688,12 +702,46 @@ router.post("/:id/save", async (req, res) => {
     }
 
     console.log(`✅ Quote ${id} saved via RESTlet`);
+    let savedCustomFields = [];
+    if (Array.isArray(customFields) && customFields.length) {
+      const { patch, error } = await buildCustomFieldPatchPayload({
+        recordType: "quote",
+        userId,
+        updates: customFields,
+      });
+
+      if (error) {
+        return res.status(400).json({ ok: false, error });
+      }
+
+      if (Object.keys(patch).length) {
+        const customFieldQuoteId =
+          Number.isFinite(Number(id)) && Number(id) > 0
+            ? id
+            : (await nsGet(`/estimate/${encodeURIComponent(id)}`, userId, "sb"))?.id || id;
+        console.log("Saving Quote custom fields:", {
+          quoteId: customFieldQuoteId,
+          fields: Object.keys(patch),
+        });
+        await nsPatch(`/estimate/${encodeURIComponent(customFieldQuoteId)}`, patch, userId);
+        savedCustomFields = await loadTransactionCustomFieldValues({
+          recordType: "quote",
+          transactionId: customFieldQuoteId,
+          userId,
+          nsPostRaw,
+          suiteQlUrl: () =>
+            `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
+        });
+      }
+    }
+
     quoteCacheDelete(id);
 
     return res.json({
       ok: true,
       message: data.message || "Quote saved successfully",
       restletResult: data,
+      customFields: savedCustomFields,
     });
   } catch (err) {
     console.error("❌ Save Quote failed:", err);
