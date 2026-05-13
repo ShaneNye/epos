@@ -91,7 +91,9 @@ function ensure60NightTrialCell(row) {
   if (sel) sel.style.display = "none";
   if (ph) ph.style.display = "inline";
 
-  const saleTd = row.querySelector(".item-saleprice")?.closest("td");
+  const saleTd =
+    row.querySelector(".vat-free-cell") ||
+    row.querySelector(".item-saleprice")?.closest("td");
   const fulfilTd =
     row.querySelector(".item-fulfilment")?.closest("td") ||
     row.querySelector(".fulfilment-cell");
