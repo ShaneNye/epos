@@ -286,6 +286,22 @@
     return Number.isFinite(gross) ? gross : 0;
   }
 
+  function discountAmountForRule(rule, subtotal, item) {
+    const type = String(rule?.discountType || "item_price").trim().toLowerCase();
+    const value = Number(rule?.discountValue || 0);
+    let amount = 0;
+
+    if (type === "percentage") {
+      amount = subtotal * Math.max(0, Math.min(100, value)) / 100;
+    } else if (type === "fixed") {
+      amount = Math.max(0, value);
+    } else {
+      amount = Math.max(0, retailPrice(item));
+    }
+
+    return Number((Number.isFinite(amount) ? amount : 0).toFixed(2));
+  }
+
   function allItems() {
     return Array.isArray(window.items) ? window.items : [];
   }
@@ -316,7 +332,12 @@
   }
 
   function isPromotionRow(row) {
-    return row?.dataset?.promotionKind === "basket_discount";
+    if (row?.dataset?.promotionKind === "basket_discount") return true;
+    const id = String(row?.querySelector(".item-internal-id")?.value || "").trim();
+    if (!id) return false;
+    return (state.promotions.basketDiscounts || []).some((promotion) =>
+      (promotion.rules || []).some((rule) => String(rule.itemId || "").trim() === id)
+    );
   }
 
   function hasItem(row) {
@@ -416,7 +437,7 @@
       const rule = (promotion.rules || []).find((entry) => {
         const min = Number(entry.minValue || 0);
         const max = Number(entry.maxValue || 0);
-        return subtotal >= min && subtotal <= max;
+        return entry.autoApply === true && subtotal >= min && subtotal <= max;
       });
 
       if (!rule) return;
@@ -427,16 +448,55 @@
         return;
       }
 
+      const discountAmount = discountAmountForRule(rule, subtotal, item);
+      if (!(discountAmount > 0)) return;
+
       desired.push({
         promotion,
         rule,
         item,
-        signature: `${promotion.id}:${itemId(item)}:${Number(retailPrice(item)).toFixed(2)}`,
+        discountAmount,
+        signature: `${promotion.id}:${itemId(item)}:${String(rule.discountType || "item_price")}:${discountAmount.toFixed(2)}`,
       });
     });
 
     state.missingBasketItems = missing;
     return desired;
+  }
+
+  function desiredManualBasketLine(row) {
+    const rowItemId = String(row?.querySelector(".item-internal-id")?.value || "").trim();
+    if (!rowItemId) return null;
+
+    for (const promotion of state.promotions.basketDiscounts || []) {
+      const subtotal = subtotalForBasketRules(promotion);
+      const rule = (promotion.rules || []).find((entry) => {
+        const min = Number(entry.minValue || 0);
+        const max = Number(entry.maxValue || 0);
+        return (
+          entry.autoApply !== true &&
+          String(entry.itemId || "").trim() === rowItemId &&
+          subtotal >= min &&
+          subtotal <= max
+        );
+      });
+
+      if (!rule) continue;
+
+      const item = findItemById(rule.itemId) || findItemByName(rule.itemName);
+      const discountAmount = discountAmountForRule(rule, subtotal, item || {});
+      if (!(discountAmount > 0)) return null;
+
+      return {
+        promotion,
+        rule,
+        item: item || {},
+        discountAmount,
+        signature: `${promotion.id}:${rowItemId}:${String(rule.discountType || "item_price")}:${discountAmount.toFixed(2)}`,
+      };
+    }
+
+    return null;
   }
 
   function firstBlankRow() {
@@ -465,6 +525,7 @@
     row.dataset.promotionKind = "basket_discount";
     row.dataset.promotionId = String(desired.promotion.id || "");
     row.dataset.promotionSignature = desired.signature;
+    row.dataset.promotionAutoApply = "1";
     row.classList.add("promotion-auto-line");
 
     const search = row.querySelector(".item-search");
@@ -486,21 +547,90 @@
     }
   }
 
+  function markManualBasketRow(row, desired) {
+    row.dataset.promotionKind = "basket_discount";
+    row.dataset.promotionId = String(desired.promotion.id || "");
+    row.dataset.promotionSignature = desired.signature;
+    row.dataset.promotionAutoApply = "0";
+    row.classList.remove("promotion-auto-line");
+
+    const salePrice = row.querySelector(".item-saleprice");
+    if (salePrice) {
+      salePrice.readOnly = true;
+      salePrice.title = desired.promotion.title || "Manual promotion";
+    }
+  }
+
+  function clearManualBasketRow(row) {
+    if (row.dataset.promotionAutoApply !== "0") return;
+
+    delete row.dataset.promotionKind;
+    delete row.dataset.promotionId;
+    delete row.dataset.promotionSignature;
+    delete row.dataset.promotionAutoApply;
+    delete row.dataset.promotionDiscountAmount;
+
+    const salePrice = row.querySelector(".item-saleprice");
+    if (salePrice) {
+      salePrice.readOnly = false;
+      salePrice.title = "";
+    }
+  }
+
+  function setPromotionLineAmount(row, grossDiscountAmount) {
+    const discountAmount = Math.abs(Number(grossDiscountAmount || 0));
+    if (!(discountAmount > 0)) return;
+
+    const signedGross = -Number(discountAmount.toFixed(2));
+    const signedNet = Number((signedGross / 1.2).toFixed(6));
+    const amount = row.querySelector(".item-amount");
+    const base = row.querySelector(".item-baseprice");
+    const sale = row.querySelector(".item-saleprice");
+    const discount = row.querySelector(".item-discount");
+    const qty = row.querySelector(".item-qty");
+
+    if (qty) qty.value = "1";
+    if (amount) {
+      amount.value = signedGross.toFixed(2);
+      amount.dataset.unitRetail = signedGross.toFixed(2);
+    }
+    if (base) base.value = signedNet.toFixed(6);
+    if (sale) sale.value = signedGross.toFixed(2);
+    if (discount) discount.value = "0";
+
+    row.dataset.promotionDiscountAmount = discountAmount.toFixed(2);
+  }
+
   function applyDesiredLine(row, desired) {
     const editor = getEditor();
     if (!editor?.applyItemToRow) return false;
 
     editor.applyItemToRow(row, desired.item, {
       quantity: 1,
-      salePrice: retailPrice(desired.item),
+      salePrice: -Math.abs(desired.discountAmount),
       promotionMeta: {
         kind: "basket_discount",
         promotionId: desired.promotion.id,
         promotionTitle: desired.promotion.title,
       },
     });
+    setPromotionLineAmount(row, desired.discountAmount);
     markBasketRow(row, desired);
     return true;
+  }
+
+  function applyManualBasketDiscounts() {
+    rows()
+      .filter((row) => hasItem(row) && !row.classList.contains("promotion-auto-line"))
+      .forEach((row) => {
+        const desired = desiredManualBasketLine(row);
+        if (!desired) {
+          clearManualBasketRow(row);
+          return;
+        }
+        setPromotionLineAmount(row, desired.discountAmount);
+        markManualBasketRow(row, desired);
+      });
   }
 
   function syncBasketDiscounts() {
@@ -511,15 +641,26 @@
       const desired = desiredBasketLines();
       const desiredBySignature = new Map(desired.map((line) => [line.signature, line]));
 
+      applyManualBasketDiscounts();
+
       rows()
-        .filter(isPromotionRow)
+        .filter((row) => isPromotionRow(row) && row.dataset.promotionAutoApply === "1")
         .forEach((row) => {
-          if (!desiredBySignature.has(row.dataset.promotionSignature || "")) row.remove();
+          if (desiredBySignature.has(row.dataset.promotionSignature || "")) return;
+
+          const rowItemId = String(row.querySelector(".item-internal-id")?.value || "").trim();
+          const matchingDesired = desired.find((line) => itemId(line.item) === rowItemId);
+          if (matchingDesired) {
+            applyDesiredLine(row, matchingDesired);
+            return;
+          }
+
+          row.remove();
         });
 
       desired.forEach((line) => {
         const exists = rows().some(
-          (row) => isPromotionRow(row) && row.dataset.promotionSignature === line.signature
+          (row) => row.dataset.promotionAutoApply === "1" && row.dataset.promotionSignature === line.signature
         );
         if (exists) return;
 

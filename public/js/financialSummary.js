@@ -33,8 +33,6 @@
 
 function normaliseLine(line) {
   const name = lineName(line);
-  const negativeLine = isNegativeValueLine(name);
-
   const retailValue =
     hasValue(line?.retailGrossLine) ? line.retailGrossLine :
     hasValue(line?.retailGross) ? line.retailGross :
@@ -51,6 +49,12 @@ function normaliseLine(line) {
     hasValue(line?.total) ? line.total :
     hasValue(line?.lineTotal) ? line.lineTotal :
     retailValue;
+
+  const negativeLine =
+    isNegativeValueLine(name) ||
+    money(retailValue) < 0 ||
+    money(saleValue) < 0 ||
+    String(line?.promotionKind || "").trim() !== "";
 
   let retailGross = money(retailValue);
   let saleGross = money(saleValue);

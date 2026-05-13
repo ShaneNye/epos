@@ -852,7 +852,8 @@ window.renderSalesViewLines = function renderSalesViewLines({
 
     const itemName = String(line.item?.refName || "").toLowerCase();
 
-    const isNegativeValueLine = window.EposFinancials?.isNegativeValueLine
+    const hasNegativeStoredValue = retailGrossLineTotal < 0 || saleGrossLineTotal < 0;
+    const isNegativeValueLine = hasNegativeStoredValue || (window.EposFinancials?.isNegativeValueLine
       ? window.EposFinancials.isNegativeValueLine(itemName)
       : itemName.includes("discount") ||
         itemName.includes("blue light") ||
@@ -861,7 +862,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
         itemName.includes("voucher") ||
         itemName.includes("trade in") ||
         itemName.includes("recommendation card (as a minus)") ||
-        itemName.includes("trade-in");
+        itemName.includes("trade-in"));
 
     if (isNegativeValueLine) {
       if (retailGrossLineTotal > 0) retailGrossLineTotal = -retailGrossLineTotal;

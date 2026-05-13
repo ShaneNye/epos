@@ -477,7 +477,19 @@ router.get("/:id", async (req, res) => {
 
         const itemNameLower = String(itemName || "").toLowerCase();
 
+        let saleNet = Number(r.netamount) || 0;
+        let saleGross = Number(r.grossamt) || 0;
+        let vat = Number(r.tax1amt) || 0;
+        let saleNetPerUnit = Number(r.rate) || 0;
+
+        const hasNegativeStoredValue =
+          saleNet < 0 ||
+          saleGross < 0 ||
+          vat < 0 ||
+          saleNetPerUnit < 0;
+
         const isNegativeValueLine =
+          hasNegativeStoredValue ||
           itemNameLower.includes("discount") ||
           itemNameLower.includes("blue light") ||
           itemNameLower.includes("promo") ||
@@ -485,11 +497,6 @@ router.get("/:id", async (req, res) => {
           itemNameLower.includes("voucher") ||
           itemNameLower.includes("trade in") ||
           itemNameLower.includes("trade-in");
-
-        let saleNet = Number(r.netamount) || 0;
-        let saleGross = Number(r.grossamt) || 0;
-        let vat = Number(r.tax1amt) || 0;
-        let saleNetPerUnit = Number(r.rate) || 0;
 
         // NetSuite can return quote sales lines as negative internally.
         // Normal items should display positive; trade-ins/discounts should display negative.

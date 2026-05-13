@@ -383,6 +383,17 @@
       .join("");
   }
 
+  function formatBasketDiscountRuleSummary(rule) {
+    const discountType = String(rule?.discountType || "item_price");
+    const discountText = discountType === "percentage"
+      ? `${Number(rule?.discountValue || 0).toFixed(1).replace(/\.0$/, "")}%`
+      : discountType === "fixed"
+        ? `£${Number(rule?.discountValue || 0).toFixed(2)}`
+        : "Item price";
+    const mode = rule?.autoApply === true ? "auto add" : "manual add";
+    return `£${Number(rule?.minValue || 0).toFixed(2)} to £${Number(rule?.maxValue || 0).toFixed(2)}: ${escapeHtml(rule?.itemName || rule?.itemId)} (${discountText}, ${mode})`;
+  }
+
   function renderBasketDiscounts() {
     const body = document.querySelector("#basketDiscountTable tbody");
     if (!body) return;
@@ -398,10 +409,7 @@
         const rules = Array.isArray(promotion.rules) ? promotion.rules : [];
         const rulesSummary = rules.length
           ? rules
-              .map(
-                (rule) =>
-                  `£${Number(rule.minValue || 0).toFixed(2)} to £${Number(rule.maxValue || 0).toFixed(2)}: ${escapeHtml(rule.itemName || rule.itemId)}`
-              )
+              .map(formatBasketDiscountRuleSummary)
               .join("<br>")
           : "No rules";
 
@@ -488,6 +496,20 @@
       <td>
         <input class="basket-rule-item promotions-rule-item" type="text" list="promotionItemOptions" placeholder="Start typing an item name or ID" value="${escapeHtml(rule.itemName && rule.itemId ? `${rule.itemName} | ID ${rule.itemId}` : rule.itemId || "")}">
         <div class="promotion-item-preview"></div>
+      </td>
+      <td>
+        <select class="basket-rule-discount-type">
+          <option value="percentage"${rule.discountType === "percentage" ? " selected" : ""}>Percentage</option>
+          <option value="fixed"${rule.discountType === "fixed" ? " selected" : ""}>Fixed amount</option>
+          <option value="item_price"${!rule.discountType || rule.discountType === "item_price" ? " selected" : ""}>Item price</option>
+        </select>
+      </td>
+      <td><input class="basket-rule-discount-value" type="number" min="0" step="0.01" value="${Number(rule.discountValue || 0).toFixed(2)}"></td>
+      <td>
+        <label class="promotions-rule-auto">
+          <input class="basket-rule-auto-apply" type="checkbox"${rule.autoApply === true ? " checked" : ""}>
+          <span>Auto</span>
+        </label>
       </td>
       <td class="actions"><button class="action-btn action-delete promotions-rule-remove" type="button">Remove</button></td>
     `;
@@ -606,6 +628,9 @@
         maxValue: Number(row.querySelector(".basket-rule-max")?.value || 0),
         itemId: getItemId(item),
         itemName: getItemName(item),
+        discountType: row.querySelector(".basket-rule-discount-type")?.value || "percentage",
+        discountValue: Number(row.querySelector(".basket-rule-discount-value")?.value || 0),
+        autoApply: !!row.querySelector(".basket-rule-auto-apply")?.checked,
       };
     });
 

@@ -392,17 +392,20 @@ function wireEditableQuoteRow(tr, line, idx) {
   const itemName = line.item?.refName || line.itemName || "—";
   const quantity = Number(line.quantity || 1);
   const itemData = findCachedItem(itemId);
-  const negativeLine = window.EposFinancials?.isNegativeValueLine?.(itemName) || false;
-
   const savedAmount = Number(line.amount || 0);
   const sale = Number(line.saleprice || 0);
   const vat = Number(line.vat || 0);
+  const negativeLine =
+    savedAmount < 0 ||
+    sale < 0 ||
+    window.EposFinancials?.isNegativeValueLine?.(itemName) ||
+    false;
   const baseNet = itemBaseNet(itemData);
   const fullRetailGross = baseNet > 0 ? +(baseNet * 1.2 * quantity).toFixed(2) : savedAmount;
   const grossRrp = negativeLine ? savedAmount : fullRetailGross;
 
   const retailGrossPerUnit =
-    quantity > 0 && grossRrp > 0 ? grossRrp / quantity : 0;
+    quantity > 0 && grossRrp !== 0 ? grossRrp / quantity : 0;
 
   const discountPct =
     grossRrp > 0 ? Math.max(0, ((grossRrp - sale) / grossRrp) * 100) : 0;

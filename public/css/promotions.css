@@ -216,11 +216,22 @@
 }
 
 .promotions-rule-item {
-  min-width: 320px;
+  min-width: 280px;
 }
 
 .promotions-rule-remove {
   white-space: nowrap;
+}
+
+.promotions-rule-auto {
+  display: inline-flex !important;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+.promotions-rule-auto input {
+  width: auto;
 }
 
 @media (max-width: 900px) {

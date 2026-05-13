@@ -65,6 +65,17 @@ function cleanMoney(value) {
   return Number(amount.toFixed(2));
 }
 
+function normalizeDiscountType(value) {
+  const type = cleanText(value).toLowerCase();
+  if (type === "percentage" || type === "percent" || type === "discount_percentage") {
+    return "percentage";
+  }
+  if (type === "fixed" || type === "fixed_amount" || type === "amount") {
+    return "fixed";
+  }
+  return "item_price";
+}
+
 function cleanDate(value) {
   const text = cleanText(value);
   if (!text) return null;
@@ -98,6 +109,9 @@ function normalizeRule(rule) {
     maxValue: cleanMoney(rule?.maxValue),
     itemId: cleanText(rule?.itemId),
     itemName: cleanNullableText(rule?.itemName),
+    discountType: normalizeDiscountType(rule?.discountType),
+    discountValue: cleanMoney(rule?.discountValue),
+    autoApply: rule?.autoApply === true,
   };
 }
 
@@ -126,6 +140,12 @@ function validateBasketRules(rules) {
     }
     if (rule.minValue > rule.maxValue) {
       return "Basket discount minimum value cannot be greater than maximum value.";
+    }
+    if (rule.discountType !== "item_price" && rule.discountValue <= 0) {
+      return "Fixed and percentage basket discounts need a value greater than zero.";
+    }
+    if (rule.discountType === "percentage" && rule.discountValue > 100) {
+      return "Percentage basket discounts cannot be greater than 100%.";
     }
   }
 
@@ -179,6 +199,9 @@ async function ensureTables() {
       max_value NUMERIC(10,2) NOT NULL,
       item_id TEXT NOT NULL,
       item_name TEXT,
+      discount_type TEXT NOT NULL DEFAULT 'item_price',
+      discount_value NUMERIC(10,2) NOT NULL DEFAULT 0,
+      auto_apply BOOLEAN NOT NULL DEFAULT FALSE,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
@@ -202,6 +225,9 @@ async function ensureTables() {
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_size TEXT;
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_category TEXT;
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS exclude_clearance BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE promotion_basket_rules ADD COLUMN IF NOT EXISTS discount_type TEXT NOT NULL DEFAULT 'item_price';
+    ALTER TABLE promotion_basket_rules ADD COLUMN IF NOT EXISTS discount_value NUMERIC(10,2) NOT NULL DEFAULT 0;
+    ALTER TABLE promotion_basket_rules ADD COLUMN IF NOT EXISTS auto_apply BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 
   initialized = true;
@@ -324,7 +350,10 @@ async function listPromotions() {
             'minValue', r.min_value,
             'maxValue', r.max_value,
             'itemId', r.item_id,
-            'itemName', r.item_name
+            'itemName', r.item_name,
+            'discountType', r.discount_type,
+            'discountValue', r.discount_value,
+            'autoApply', r.auto_apply
           )
           ORDER BY r.min_value, r.max_value, r.id
         ) FILTER (WHERE r.id IS NOT NULL),
@@ -374,6 +403,9 @@ async function listPromotions() {
           maxValue: Number(rule.maxValue || 0),
           itemId: cleanText(rule.itemId),
           itemName: cleanText(rule.itemName),
+          discountType: normalizeDiscountType(rule.discountType),
+          discountValue: Number(rule.discountValue || 0),
+          autoApply: rule.autoApply === true,
         }))
       : [],
   }));
@@ -565,11 +597,23 @@ async function savePromotion(client, promotionId, payload, createdBy) {
           min_value,
           max_value,
           item_id,
-          item_name
+          item_name,
+          discount_type,
+          discount_value,
+          auto_apply
         )
-        VALUES ($1,$2,$3,$4,$5)
+        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
       `,
-      [savedPromotionId, rule.minValue, rule.maxValue, rule.itemId, rule.itemName]
+      [
+        savedPromotionId,
+        rule.minValue,
+        rule.maxValue,
+        rule.itemId,
+        rule.itemName,
+        rule.discountType,
+        rule.discountValue,
+        rule.autoApply === true,
+      ]
     );
   }
 
