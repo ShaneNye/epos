@@ -21,6 +21,10 @@ if (window.location.pathname.includes("/quote/view/")) {
 
     const headers = { Authorization: `Bearer ${saved.token}` };
     let currentUser = null;
+    window.EposTransactionCustomFields?.load("quote", {
+      headers,
+      emptyMessage: "No custom fields are visible for this quote.",
+    });
 
     const form = document.querySelector(".form-scroll");
     const spinner = document.getElementById("orderSpinner");
@@ -435,7 +439,8 @@ if (window.location.pathname.includes("/quote/view/")) {
         })
         .filter(Boolean);
 
-      const quotePayload = { customer, order, items };
+      const customFields = window.EposTransactionCustomFields?.collect?.() || [];
+      const quotePayload = { customer, order, items, customFields };
       showPendingReceiptButton("quote", buildPendingReceiptPayload(quotePayload));
       await submitQuote(quotePayload);
     }

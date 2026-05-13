@@ -43,6 +43,10 @@ if (window.location.pathname.includes("/sales/view/")) {
 
     const headers = { Authorization: `Bearer ${saved.token}` };
     let currentUser = null;
+    window.EposTransactionCustomFields?.load("sales_order", {
+      headers,
+      emptyMessage: "No custom fields are visible for this sales order.",
+    });
 
     function normaliseStoreName(name) {
       return String(name || "")
@@ -821,7 +825,8 @@ function validateOrderBeforeSave() {
 
       try {
         isOrderSubmitting = true;
-        const body = { customer, order, items, deposits };
+        const customFields = window.EposTransactionCustomFields?.collect?.() || [];
+        const body = { customer, order, items, deposits, customFields };
         console.log("🏷 noAddressRequired:", noAddressRequired);
         console.log("💰 Including deposits in payload:", deposits);
         showPendingReceiptButton("sale", buildPendingReceiptPayload(body));

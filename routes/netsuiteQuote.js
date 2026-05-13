@@ -6,6 +6,7 @@ const { getSession } = require("../sessions");
 const { nsPost, nsGet, nsPostRaw, nsPatch } = require("../netsuiteClient");
 const fetch = require("node-fetch");
 const { getNetSuiteAppBaseUrl } = require("../utils/netsuiteEnvironment");
+const { buildCustomFieldPatchPayload } = require("./customFields");
 
 /* =====================================================
    Helpers
@@ -238,7 +239,7 @@ function normalizeCustomerPhone(value) {
 ===================================================== */
 router.post("/create", async (req, res) => {
   try {
-    const { customer, order, items } = req.body;
+    const { customer, order, items, customFields = [] } = req.body;
     let customerId = customer?.noAddressRequired ? null : customer?.id || null;
 
     const userId = await resolveUserIdFromAuth(req);
@@ -346,6 +347,21 @@ router.post("/create", async (req, res) => {
         }),
       },
     };
+
+    if (Array.isArray(customFields) && customFields.length) {
+      const { patch, error } = await buildCustomFieldPatchPayload({
+        recordType: "quote",
+        userId,
+        updates: customFields,
+      });
+
+      if (error) {
+        return res.status(400).json({ ok: false, error });
+      }
+
+      Object.assign(estimateBody, patch);
+      console.log("Custom Quote fields included on create:", Object.keys(patch));
+    }
 
     console.log(
       "🧾 Quote payload for NetSuite:",

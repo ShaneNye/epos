@@ -18,6 +18,7 @@
     <script src="/js/nsItemFeedCache.js" defer></script>
     <script src="/js/salesNewNsFields.js" defer></script>
     <script src="/js/itemOptionsCache.js" defer></script>
+    <script src="/js/transactionCustomFields.js" defer></script>
     <script src="/js/salesNew.js" defer></script>
     <script src="/js/salesNewFetchify.js" defer></script>
     <script src="/js/salesCustomerLock.js" defer></script>
@@ -214,6 +215,16 @@
 
         <!-- === ORDER ITEMS TABLE (FULL WIDTH) === -->
         <section class="form-section order-items-section">
+            <div class="sales-view-tabs" role="tablist" aria-label="Sales order panels">
+                <button type="button" class="sales-view-tab active" data-sales-tab="items" role="tab" aria-selected="true">
+                    Order Items
+                </button>
+                <button type="button" class="sales-view-tab" data-sales-tab="customFields" role="tab" aria-selected="false">
+                    Custom Fields
+                </button>
+            </div>
+
+            <div id="salesTabItems" class="sales-tab-panel active" role="tabpanel">
             <div class="section-header-flex">
                 <h2>Order Items</h2>
                 <div style="display: flex;" class="item-line-filters">
@@ -299,6 +310,18 @@
                     </tr>
                 </tbody>
             </table>
+            </div>
+
+            <div id="salesTabCustomFields" class="sales-tab-panel" role="tabpanel" hidden>
+                <table class="related-records-table custom-fields-table">
+                    <tbody id="customFieldsBody">
+                        <tr>
+                            <td class="custom-fields-empty">Loading custom fields...</td>
+                        </tr>
+                    </tbody>
+                </table>
+                <div id="customFieldsStatus" class="custom-fields-status" aria-live="polite"></div>
+            </div>
         </section>
 
         <!-- === ACTION BUTTONS === -->

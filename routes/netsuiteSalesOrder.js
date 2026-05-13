@@ -1098,7 +1098,7 @@ router.post("/create", async (req, res) => {
       console.log("🔐 Authenticated session for SO creation:", userId);
     }
 
-    const { customer, order, items } = req.body;
+    const { customer, order, items, customFields = [] } = req.body;
     let customerId = customer?.noAddressRequired ? null : customer?.id || null;
 
     /* ======================================================
@@ -1309,6 +1309,21 @@ router.post("/create", async (req, res) => {
       console.log(
         `🏷 Distribution order type set: custbody_sb_is_web_order = ${selectedId}`
       );
+    }
+
+    if (Array.isArray(customFields) && customFields.length) {
+      const { patch, error } = await buildCustomFieldPatchPayload({
+        recordType: "sales_order",
+        userId,
+        updates: customFields,
+      });
+
+      if (error) {
+        return res.status(400).json({ ok: false, error });
+      }
+
+      Object.assign(orderBody, patch);
+      console.log("Custom Sales Order fields included on create:", Object.keys(patch));
     }
 
     /* ======================================================

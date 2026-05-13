@@ -1,6 +1,8 @@
 const express = require("express");
 const pool = require("../db");
 const { getSession } = require("../sessions");
+const { nsPostRaw } = require("../netsuiteClient");
+const { getNetSuiteAccountDash } = require("../utils/netsuiteEnvironment");
 
 const router = express.Router();
 
@@ -8,6 +10,10 @@ const RECORD_TYPES = new Set(["sales_order", "quote"]);
 const FIELD_TYPES = new Set(["free_form_text", "list_record", "number", "currency"]);
 const FIELD_ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 const LIST_ID_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
+
+function suiteQlUrl() {
+  return `https://${getNetSuiteAccountDash()}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`;
+}
 
 let tableReadyPromise = null;
 
@@ -465,12 +471,32 @@ router.get("/visible", async (req, res) => {
     const session = await resolveSession(req);
     const userId = session?.id || session?.user_id || null;
     const recordType = normalizeRecordType(req.query.recordType || req.query.record_type || "");
+    const includeOptions = String(req.query.includeOptions || req.query.include_options || "") === "1";
     if (!RECORD_TYPES.has(recordType)) {
       return res.status(400).json({ ok: false, error: "Invalid record type" });
     }
 
     const fields = await loadVisibleCustomFields(recordType, userId);
-    res.json({ ok: true, customFields: fields.map(publicField) });
+    const customFields = await Promise.all(fields.map(async (field) => {
+      const payload = {
+        ...publicField(field),
+        value: "",
+        displayValue: "",
+      };
+
+      if (includeOptions && field.field_type === "list_record") {
+        try {
+          payload.options = await loadListRecordOptions(field, userId, nsPostRaw, suiteQlUrl);
+        } catch (err) {
+          payload.options = [];
+          payload.optionsError = err.message || "Could not load list values";
+        }
+      }
+
+      return payload;
+    }));
+
+    res.json({ ok: true, customFields });
   } catch (err) {
     console.error("GET /api/custom-fields/visible failed:", err.message);
     res.status(500).json({ ok: false, error: "Database error loading custom fields" });
