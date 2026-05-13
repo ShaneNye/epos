@@ -2099,6 +2099,7 @@ router.get("/:id", async (req, res) => {
           quantity,
           netamount,
           rate,
+          taxcode,
           custcol_sb_itemoptionsdisplay AS options,
           custcol_sb_fulfilmentlocation,
           custcol_sb_epos_inventory_meta,
@@ -2130,6 +2131,8 @@ router.get("/:id", async (req, res) => {
 
           const rawNet = Number(r.netamount) || 0;
           const rawRate = Number(r.rate) || 0;
+          const taxCode = r.taxcode ? String(r.taxcode) : "";
+          const vatFree = isVatFreeTaxCode(taxCode);
           const itemNameLower = itemName.toLowerCase();
           const isNegativeValueLine =
             itemNameLower.includes("discount") ||
@@ -2155,7 +2158,7 @@ router.get("/:id", async (req, res) => {
           const retailGross = +(retailNet * 1.2).toFixed(2);
           const amount = +(retailGross * qty * sign).toFixed(2);
 
-          const vat = +(net * 0.2).toFixed(2);
+          const vat = vatFree ? 0 : +(net * 0.2).toFixed(2);
           const saleprice = +(net + vat).toFixed(2);
 
           const fulfilId =
@@ -2215,6 +2218,7 @@ router.get("/:id", async (req, res) => {
             amount,
             vat,
             saleprice,
+            taxCode,
             discount: 0,
             inventoryDetail,
             custcol_sb_epos_inventory_meta: inventoryMeta || "",
