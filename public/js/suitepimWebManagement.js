@@ -22,6 +22,7 @@
     selected: new Set(),
     options: new Map(),
     activeFilters: [],
+    sort: { fieldName: "", direction: "" },
     filterDraft: null,
     bulkDraft: null,
     page: 1,
@@ -1214,6 +1215,65 @@
     return String(value ?? "");
   }
 
+  function sortLabel(field, direction) {
+    const numeric = ["Currency", "Decimal", "Integer", "Float", "Number"].includes(field?.fieldType);
+    if (numeric) return direction === "asc" ? "Low to high" : "High to low";
+    if (field?.fieldType === "Checkbox") return direction === "asc" ? "Unchecked first" : "Checked first";
+    return direction === "asc" ? "A to Z" : "Z to A";
+  }
+
+  function sortValue(row, field) {
+    const value = row[field.name];
+    if (field.fieldType === "Checkbox") return boolValue(value) ? 1 : 0;
+    if (["Currency", "Decimal", "Integer", "Float", "Number"].includes(field.fieldType)) {
+      const parsed = parseFloat(String(valueText(value)).replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(parsed) ? parsed : null;
+    }
+    return stripHtml(valueText(value)).toLowerCase();
+  }
+
+  function compareSortValues(left, right, direction) {
+    const multiplier = direction === "desc" ? -1 : 1;
+    const leftEmpty = left == null || left === "";
+    const rightEmpty = right == null || right === "";
+    if (leftEmpty && rightEmpty) return 0;
+    if (leftEmpty) return 1;
+    if (rightEmpty) return -1;
+    if (typeof left === "number" && typeof right === "number") return (left - right) * multiplier;
+    return String(left).localeCompare(String(right), undefined, { numeric: true, sensitivity: "base" }) * multiplier;
+  }
+
+  function applySort(rows) {
+    const field = fieldByName(state.sort.fieldName);
+    if (!field || !state.sort.direction) return rows;
+    return [...rows].sort((a, b) => {
+      const valueCompare = compareSortValues(sortValue(a, field), sortValue(b, field), state.sort.direction);
+      if (valueCompare) return valueCompare;
+      return valueText(a.Name).localeCompare(valueText(b.Name), undefined, { numeric: true, sensitivity: "base" });
+    });
+  }
+
+  function sortHeaderHtml(name) {
+    const field = fieldByName(name) || {};
+    const selected = state.sort.fieldName === name ? state.sort.direction : "";
+    return `
+      <div class="suitepim-sort-header">
+        <span>${escapeHtml(name)}</span>
+        <select class="suitepim-sort-select" data-sort-field="${escapeHtml(name)}" aria-label="Sort ${escapeHtml(name)}">
+          <option value=""${selected ? "" : " selected"}>Sort</option>
+          <option value="asc"${selected === "asc" ? " selected" : ""}>${escapeHtml(sortLabel(field, "asc"))}</option>
+          <option value="desc"${selected === "desc" ? " selected" : ""}>${escapeHtml(sortLabel(field, "desc"))}</option>
+        </select>
+      </div>
+    `;
+  }
+
+  function clearHiddenSort() {
+    if (state.sort.fieldName && !state.visibleColumns.includes(state.sort.fieldName)) {
+      state.sort = { fieldName: "", direction: "" };
+    }
+  }
+
   function childItemName(value) {
     const text = String(value ?? "").trim();
     if (!text) return "";
@@ -1518,6 +1578,7 @@
   }
 
   function applyFilters() {
+    clearHiddenSort();
     const search = el.suitepimSearch.value.trim().toLowerCase();
     const stateFilter = el.suitepimStateFilter.value;
     const showChildren = !!el.suitepimShowChildren?.checked;
@@ -1549,6 +1610,7 @@
 
       return true;
     });
+    state.filteredRows = applySort(state.filteredRows);
 
     const maxPage = Math.max(1, Math.ceil(state.filteredRows.length / state.pageSize));
     if (state.page > maxPage) state.page = maxPage;
@@ -1592,7 +1654,7 @@
       <thead>
         <tr>
           <th class="suitepim-select-col"><input id="suitepimSelectPage" type="checkbox" aria-label="Select page"></th>
-          ${columns.map((name) => `<th>${escapeHtml(name)}</th>`).join("")}
+          ${columns.map((name) => `<th>${sortHeaderHtml(name)}</th>`).join("")}
         </tr>
       </thead>
       <tbody></tbody>
@@ -1643,6 +1705,17 @@
       });
       updateSummary();
       renderTable();
+    });
+
+    table.querySelectorAll(".suitepim-sort-select").forEach((select) => {
+      select.addEventListener("change", () => {
+        state.sort = {
+          fieldName: select.value ? select.dataset.sortField || "" : "",
+          direction: select.value,
+        };
+        state.page = 1;
+        applyFilters();
+      });
     });
   }
 
