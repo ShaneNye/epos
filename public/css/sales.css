@@ -785,7 +785,6 @@ body.sidebar-expanded .order-upsell-panel {
 
 .locked {
   pointer-events: none;
-  opacity: 0.6;
   user-select: none;
 }
 
@@ -825,7 +824,6 @@ body.sidebar-expanded .order-upsell-panel {
 
 .locked {
   pointer-events: none;
-  opacity: 0.6;
   user-select: none;
 }
 
@@ -834,6 +832,16 @@ body.sidebar-expanded .order-upsell-panel {
 .locked .sales-order-rating,
 .locked .sales-order-rating * {
   pointer-events: auto;
+}
+
+.form-scroll.locked {
+  opacity: 1;
+}
+
+.form-scroll.locked .form-section,
+.form-scroll.locked .order-summary > :not(#orderSpinner):not(#orderStatusArea),
+.form-scroll.locked #orderStatusArea > :not(#orderSpinner) {
+  opacity: 0.6;
 }
 
 /* === Toast Notifications === */

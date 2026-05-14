@@ -34,6 +34,7 @@ router.get("/customer-transactions/:id", async (req, res) => {
     t.trandate       AS date,
     t.recordtype     AS recordtype,
     t.status         AS status,
+    BUILTIN.DF(t.status) AS statustext,
     t.total          AS amount
   FROM transaction AS t
   WHERE t.recordtype IN (
@@ -55,39 +56,9 @@ router.get("/customer-transactions/:id", async (req, res) => {
 
     const result = await nsPostRaw(suiteqlUrl, { q: query }, userId, "sb");
 
-    // === Map readable statuses ===
-    const statusMap = {
-      "A": "Pending Approval",
-      "B": "Pending Fulfillment",
-      "C": "Partially Fulfilled",
-      "D": "Pending Billing",
-      "E": "Billed",
-      "F": "Closed",
-      "G": "Cancelled",
-      "H": "Pending Payment",
-      "I": "Paid In Full",
-      "J": "Refunded",
-      "K": "Processing",
-      "L": "Pending Return",
-      "M": "Partially Returned",
-      "N": "Returned",
-      "O": "Open",
-      "P": "Completed",
-      "Q": "In Progress",
-      "R": "Pending Approval (Credit Memo)",
-      "S": "Pending Refund",
-      "T": "Voided",
-      "U": "On Hold",
-      "V": "Pending Deposit",
-      "W": "Pending Shipment",
-      "X": "Awaiting Authorization",
-      "Y": "Open",
-      "Z": "Closed"
-    };
-
     const items = (result.items || []).map(r => ({
       ...r,
-      statusText: statusMap[r.status] || r.status || "Unknown"
+      statusText: r.statustext || r.statusText || r.status || "Unknown"
     }));
 
     console.log(`📊 Total records: ${items.length}`);

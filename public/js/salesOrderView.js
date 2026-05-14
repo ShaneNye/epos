@@ -930,16 +930,23 @@ document.addEventListener("DOMContentLoaded", async () => {
       const codeMap = {
         A: "Pending Approval",
         B: "Pending Fulfillment",
-        C: "Partially Fulfilled",
-        D: "Pending Billing",
-        E: "Billed",
-        F: "Closed",
-        G: "Cancelled",
+        C: "Cancelled",
+        D: "Partially Fulfilled",
+        E: "Pending Billing / Partially Fulfilled",
+        F: "Pending Billing",
+        G: "Billed",
+        H: "Closed",
       };
+      const normalizeStatusCode = (value) =>
+        String(value || "")
+          .trim()
+          .split(":")
+          .pop()
+          .toUpperCase();
 
       if (typeof so?.status === "string" && so.status.trim()) {
         const normalizedStatus = so.status.trim();
-        return codeMap[normalizedStatus.toUpperCase()] || normalizedStatus;
+        return codeMap[normalizeStatusCode(normalizedStatus)] || normalizedStatus;
       }
 
       if (
@@ -949,7 +956,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         so.status.refName.trim()
       ) {
         const normalizedStatusRef = so.status.refName.trim();
-        return codeMap[normalizedStatusRef.toUpperCase()] || normalizedStatusRef;
+        return codeMap[normalizeStatusCode(normalizedStatusRef)] || normalizedStatusRef;
       }
 
       const statusRef =
@@ -960,10 +967,18 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       if (statusRef) {
         const normalized = statusRef.trim();
-        const statusCodeLabel = codeMap[normalized.toUpperCase()];
+        const statusCodeLabel = codeMap[normalizeStatusCode(normalized)];
         if (statusCodeLabel) return statusCodeLabel;
 
         const explicitMap = {
+          _pendingApproval: "Pending Approval",
+          _pendingFulfillment: "Pending Fulfillment",
+          _cancelled: "Cancelled",
+          _partiallyFulfilled: "Partially Fulfilled",
+          _pendingBilling: "Pending Billing",
+          _pendingBillingPartFulfilled: "Pending Billing / Partially Fulfilled",
+          _fullyBilled: "Billed",
+          _closed: "Closed",
           pendingApproval: "Pending Approval",
           pendingFulfillment: "Pending Fulfillment",
           billed: "Billed",
@@ -985,6 +1000,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const statusId = String(so?.orderStatus?.id || so?.orderstatus?.id || so?.orderstatus || "")
         .trim()
+        .split(":")
+        .pop()
         .toUpperCase();
 
       return codeMap[statusId] || statusId || "-";
