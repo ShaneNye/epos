@@ -1,5 +1,6 @@
 const express = require("express");
 const pool = require("../db");
+const { normalizeEnvironmentName } = require("../utils/netsuiteEnvironment");
 
 const router = express.Router();
 
@@ -12,6 +13,10 @@ function cleanText(value, maxLength = 500) {
 function cleanDocumentType(value) {
   const type = cleanText(value, 20).toLowerCase();
   return type === "quote" ? "quote" : "sale";
+}
+
+function shouldRecordExperienceData() {
+  return normalizeEnvironmentName(process.env.ENVIRONMENT) === "PRODUCTION";
 }
 
 async function ensureTables() {
@@ -48,6 +53,10 @@ async function ensureTables() {
 
 async function recordDocumentCreated({ documentType, storeId, storeName }) {
   try {
+    if (!shouldRecordExperienceData()) {
+      return { ok: true, skipped: true, reason: "non_production" };
+    }
+
     await ensureTables();
     await pool.query(
       `INSERT INTO sales_order_experience_events (document_type, store_id, store_name)
@@ -58,13 +67,19 @@ async function recordDocumentCreated({ documentType, storeId, storeName }) {
         cleanText(storeName, 200) || null,
       ]
     );
+    return { ok: true, skipped: false };
   } catch (err) {
     console.warn("SalesOrder experience create-event was not recorded:", err.message);
+    return { ok: false, error: err.message };
   }
 }
 
 router.post("/feedback", async (req, res) => {
   try {
+    if (!shouldRecordExperienceData()) {
+      return res.json({ ok: true, skipped: true, reason: "non_production" });
+    }
+
     await ensureTables();
 
     const score = Number(req.body?.score);
