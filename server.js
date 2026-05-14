@@ -35,6 +35,7 @@ const { getNetSuiteHomeUrl } = require("./utils/netsuiteEnvironment");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const itemOptionsRoute = require("./routes/itemOptions");
+const salesOrderExperience = require("./routes/salesOrderExperience");
 
 function assertNetSuiteEnvironment() {
   const env = process.env.ENVIRONMENT;
@@ -509,6 +510,7 @@ app.use("/api/reset-password", require("./routes/resetPassword"));
 app.use("/api/fetchify", require("./routes/fetchify"));
 app.use("/api/netsuite/salesorder", require("./routes/netsuiteSalesOrder"));
 app.use("/api/netsuite/quote", require("./routes/netsuiteQuote"));
+app.use("/api/sales-order-experience", salesOrderExperience.router);
 app.use("/api/item-options", itemOptionsRoute.router);
 app.use("/api/netsuite/entity", require("./routes/netsuiteEntity"));
 app.use("/api/netsuite", require("./routes/netsuiteCustomerRecords"));

@@ -30,6 +30,7 @@
     <script defer src="/js/adminManagementRules.js"></script>
     <script defer src="/js/adminPromotionSettings.js"></script>
     <script defer src="/js/adminCustomFields.js"></script>
+    <script defer src="/js/adminSalesOrderExperience.js"></script>
 
     <script src="/assistant/assistant.js"></script>
     <link rel="stylesheet" href="/assistant/assistant.css" />
@@ -50,6 +51,7 @@
             
             <div class="tab" data-target="dashboard-widgets">Dashboard Widgets</div>
             <div class="tab" data-target="sales-features">Sales Features</div>
+            <div class="tab" data-target="sales-order-feedback">Sales Feedback</div>
             <div class="tab" data-target="custom-fields">Custom Fields</div>
             <div class="tab" data-target="ai-manager">AI Manager</div>
         </div>
@@ -453,6 +455,74 @@
                     <span id="adminPromotionSettingsStatus" class="admin-feature-status" aria-live="polite"></span>
                 </div>
             </section>
+        </div>
+
+        <!-- === Sales Feedback === -->
+        <div id="sales-order-feedback" class="tab-content hidden">
+            <h2>Sales Feedback</h2>
+
+            <div class="subtabs" data-subtab-group="sales-order-feedback">
+                <div class="subtab active" data-target="sub-sales-feedback-analytics">Analytics</div>
+                <div class="subtab" data-target="sub-sales-feedback-comments">Comments</div>
+            </div>
+
+            <div id="sub-sales-feedback-analytics" class="subtab-content active">
+                <div class="user-toolbar">
+                    <p style="margin:0;">Monthly SalesOrder experience response rates and average scores.</p>
+                    <button id="refreshSalesOrderFeedback" type="button" class="btn-secondary">Refresh</button>
+                </div>
+                <span id="salesOrderFeedbackStatus" class="admin-feature-status" aria-live="polite"></span>
+
+                <h3 class="admin-pivot-heading">Group Pivot</h3>
+                <div class="table-scroll-wrapper">
+                    <table id="salesOrderFeedbackGroupTable" class="admin-feedback-table">
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th>Sales/Quotes</th>
+                                <th>Responses</th>
+                                <th>Response Rate</th>
+                                <th>Average Score</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+
+                <h3 class="admin-pivot-heading">Store Breakdown Pivot</h3>
+                <div class="table-scroll-wrapper">
+                    <table id="salesOrderFeedbackStoreTable" class="admin-feedback-table">
+                        <thead>
+                            <tr>
+                                <th>Month</th>
+                                <th>Store</th>
+                                <th>Sales/Quotes</th>
+                                <th>Responses</th>
+                                <th>Response Rate</th>
+                                <th>Average Score</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <div id="sub-sales-feedback-comments" class="subtab-content hidden">
+                <div class="table-scroll-wrapper">
+                    <table id="salesOrderFeedbackCommentsTable" class="admin-feedback-table">
+                        <thead>
+                            <tr>
+                                <th>Submitted</th>
+                                <th>Type</th>
+                                <th>Store</th>
+                                <th>Score</th>
+                                <th>Comment</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </div>
+            </div>
         </div>
 
         <!-- === Custom Fields === -->

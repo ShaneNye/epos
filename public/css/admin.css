@@ -124,6 +124,7 @@
 #roleTable,
 #locationTable,
 #aiAccessTable,
+.admin-feedback-table,
 .aiPromptTable {
   width: 100%;
   border-collapse: collapse;
@@ -136,6 +137,7 @@
 #roleTable th,
 #locationTable th,
 #aiAccessTable th,
+.admin-feedback-table th,
 .aiPromptTable th {
   background: var(--brand);
   color: #fff;
@@ -150,6 +152,7 @@
 #roleTable td,
 #locationTable td,
 #aiAccessTable td,
+.admin-feedback-table td,
 .aiPromptTable td {
   padding: 0.65rem 0.8rem;
   border-bottom: 1px solid var(--line);
@@ -158,6 +161,7 @@
 #roleTable tr:nth-child(even),
 #locationTable tr:nth-child(even),
 #aiAccessTable tr:nth-child(even),
+.admin-feedback-table tr:nth-child(even),
 .aiPromptTable tr:nth-child(even) {
   background: #fafafa;
 }
@@ -165,6 +169,7 @@
 #roleTable tr:last-child td,
 #locationTable tr:last-child td,
 #aiAccessTable tr:last-child td,
+.admin-feedback-table tr:last-child td,
 .aiPromptTable tr:last-child td {
   border-bottom: none;
 }
@@ -306,6 +311,12 @@
 
 .admin-feature-status[data-tone="error"] {
   color: #b91c1c;
+}
+
+.admin-pivot-heading {
+  margin: 1.1rem 0 0.55rem;
+  color: var(--brand);
+  font-size: 1rem;
 }
 
 @media (max-width: 760px) {
@@ -659,6 +670,7 @@
   #roleTable,
   #locationTable,
   #aiAccessTable,
+  .admin-feedback-table,
   .aiPromptTable {
     min-width: 760px;
   }

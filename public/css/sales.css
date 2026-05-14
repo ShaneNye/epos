@@ -788,6 +788,13 @@ body.sidebar-expanded .order-upsell-panel {
   opacity: 0.6;
   user-select: none;
 }
+
+.locked #orderSpinner,
+.locked #salesOrderExperienceRating,
+.locked .sales-order-rating,
+.locked .sales-order-rating * {
+  pointer-events: auto;
+}
 /* === Spinner Section === */
 .order-spinner {
   display: flex;
@@ -820,6 +827,13 @@ body.sidebar-expanded .order-upsell-panel {
   pointer-events: none;
   opacity: 0.6;
   user-select: none;
+}
+
+.locked #orderSpinner,
+.locked #salesOrderExperienceRating,
+.locked .sales-order-rating,
+.locked .sales-order-rating * {
+  pointer-events: auto;
 }
 
 /* === Toast Notifications === */
@@ -864,6 +878,78 @@ body.sidebar-expanded .order-upsell-panel {
 
 @keyframes orderSpin {
   to { transform: rotate(360deg); }
+}
+
+.sales-order-rating {
+  display: grid;
+  justify-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.2rem;
+  color: var(--ink);
+  pointer-events: auto;
+}
+
+.sales-order-rating-title {
+  font-size: 0.82rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.sales-order-rating-stars {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.sales-order-rating-star {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #cfd8e3;
+  border-radius: 6px;
+  background: #fff;
+  color: #97a3af;
+  cursor: pointer;
+  font-size: 1.05rem;
+  line-height: 1;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+
+.sales-order-rating-star:hover,
+.sales-order-rating-star.is-active {
+  border-color: #d4a900;
+  color: #d4a900;
+}
+
+.sales-order-rating-star.is-selected {
+  border-color: #d4a900;
+  background: #fff7cc;
+  color: #d4a900;
+}
+
+.sales-order-rating-message {
+  min-height: 1rem;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #64748b;
+  text-align: center;
+}
+
+.sales-order-rating-message[data-tone="success"] {
+  color: #166534;
+}
+
+.sales-order-rating-comment-wrap {
+  width: 100%;
+}
+
+.sales-order-rating-comment {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  box-sizing: border-box;
+  font-size: 0.82rem;
 }
 
 .row-error {

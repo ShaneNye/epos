@@ -10,6 +10,7 @@ const {
   buildCustomFieldPatchPayload,
   loadTransactionCustomFieldValues,
 } = require("./customFields");
+const { recordDocumentCreated } = require("./salesOrderExperience");
 
 /* =====================================================
    Helpers
@@ -186,6 +187,7 @@ async function resolveSalesExecNsId(appUserId) {
 async function resolveStoreData(appStoreId) {
   if (!appStoreId) {
     return {
+      storeName: "",
       storeNsId: null,
       invoiceLocationId: null,
     };
@@ -196,7 +198,7 @@ async function resolveStoreData(appStoreId) {
 
   try {
     const result = await pool.query(
-      `SELECT netsuite_internal_id, invoice_location_id
+      `SELECT name, netsuite_internal_id, invoice_location_id
          FROM locations
         WHERE id = $1
         LIMIT 1`,
@@ -205,18 +207,21 @@ async function resolveStoreData(appStoreId) {
 
     if (!result.rows.length) {
       return setCachedLookup(cacheKey, {
+        storeName: "",
         storeNsId: null,
         invoiceLocationId: null,
       });
     }
 
     return setCachedLookup(cacheKey, {
+      storeName: result.rows[0].name || "",
       storeNsId: result.rows[0].netsuite_internal_id || null,
       invoiceLocationId: result.rows[0].invoice_location_id || null,
     });
   } catch (err) {
     console.error("❌ Failed to lookup store NetSuite ID:", err.message);
     return {
+      storeName: "",
       storeNsId: null,
       invoiceLocationId: null,
     };
@@ -301,7 +306,7 @@ router.post("/create", async (req, res) => {
       resolveSalesExecNsId(order?.salesExec),
       resolveStoreData(order?.store),
     ]);
-    const { storeNsId, invoiceLocationId } = storeData;
+    const { storeName, storeNsId, invoiceLocationId } = storeData;
 
     const estimateBody = {
       entity: { id: String(customerId) },
@@ -379,6 +384,11 @@ router.post("/create", async (req, res) => {
       const match = quoteRes._location.match(/estimate\/(\d+)/i);
       if (match) quoteId = match[1];
     }
+    await recordDocumentCreated({
+      documentType: "quote",
+      storeId: order?.store,
+      storeName,
+    });
 
     return res.json({ ok: true, quoteId, response: quoteRes });
   } catch (err) {

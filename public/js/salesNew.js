@@ -490,6 +490,7 @@ document.getElementById("orderItemsBody")?.addEventListener("change", (e) => {
   function lockForm() {
     if (form) form.classList.add("locked");
     if (spinner) spinner.classList.remove("hidden");
+    window.SalesOrderExperienceFeedback?.show?.("sale");
     if (toast) toast.classList.add("hidden");
     if (saveOrderBtn) {
       originalSaveOrderText = saveOrderBtn.textContent || originalSaveOrderText;
@@ -503,6 +504,7 @@ document.getElementById("orderItemsBody")?.addEventListener("change", (e) => {
   function unlockForm() {
     if (form) form.classList.remove("locked");
     if (spinner) spinner.classList.add("hidden");
+    window.SalesOrderExperienceFeedback?.hide?.();
     if (saveOrderBtn) {
       saveOrderBtn.disabled = false;
       saveOrderBtn.removeAttribute("aria-busy");
@@ -878,6 +880,7 @@ function validateOrderBeforeSave() {
       if (soId) localStorage.setItem("currentSalesOrderId", soId);
       if (tranId) localStorage.setItem("currentSalesOrderTranId", tranId);
       createdSuccessfully = true;
+      await window.SalesOrderExperienceFeedback?.flush?.({ documentType: "sale" });
 
       showToast(
         `✅ Order ${tranId || soId} created successfully! Redirecting...`,

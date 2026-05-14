@@ -455,6 +455,7 @@ if (window.location.pathname.includes("/quote/view/")) {
     const lockForm = (title = "Creating quote…") => {
       if (form) form.classList.add("locked");
       if (spinner) spinner.classList.remove("hidden");
+      window.SalesOrderExperienceFeedback?.show?.("quote");
       if (toast) toast.classList.add("hidden");
       if (spinnerText) spinnerText.textContent = title;
     };
@@ -462,6 +463,7 @@ if (window.location.pathname.includes("/quote/view/")) {
     const unlockForm = () => {
       if (form) form.classList.remove("locked");
       if (spinner) spinner.classList.add("hidden");
+      window.SalesOrderExperienceFeedback?.hide?.();
     };
 
     const showToast = window.showToast || function (message, type = "success") {
@@ -507,6 +509,7 @@ if (window.location.pathname.includes("/quote/view/")) {
 
       if (quoteId) localStorage.setItem("currentQuoteId", quoteId);
       if (tranId) localStorage.setItem("currentQuoteTranId", tranId);
+      await window.SalesOrderExperienceFeedback?.flush?.({ documentType: "quote" });
 
       showToast(
         `✅ Quote ${tranId || quoteId} created successfully! Redirecting...`,

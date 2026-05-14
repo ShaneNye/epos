@@ -19,6 +19,7 @@ const {
   loadTransactionCustomFieldValues,
   buildCustomFieldPatchPayload,
 } = require("./customFields");
+const { recordDocumentCreated } = require("./salesOrderExperience");
 
 // =====================================================
 // ✅ In-memory cache for GET /:id sales order payloads
@@ -725,6 +726,97 @@ function normalizeCustomerPhone(value) {
   return phone || "00000";
 }
 
+function normalizeCustomerEmail(value) {
+  return String(value || "").trim();
+}
+
+function isLikelyEmail(value) {
+  const email = normalizeCustomerEmail(value);
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+}
+
+function publicRequestError(message, statusCode = 400) {
+  const err = new Error(message);
+  err.statusCode = statusCode;
+  return err;
+}
+
+async function ensureCustomerEmailBeforeCommit(salesOrderId, headerUpdates, userId) {
+  const suppliedEmail = normalizeCustomerEmail(headerUpdates?.email);
+  if (suppliedEmail && !isLikelyEmail(suppliedEmail)) {
+    throw publicRequestError("Enter a valid customer email before committing the order.");
+  }
+
+  const so = await nsGet(
+    `/salesOrder/${encodeURIComponent(salesOrderId)}?fields=${encodeURIComponent("entity")}`,
+    userId,
+    "sb"
+  );
+  const customerId = String(so?.entity?.id || so?.entity || "").trim();
+  if (!customerId) {
+    throw publicRequestError("Could not resolve the NetSuite customer for this order.", 502);
+  }
+
+  const customer = await nsGet(
+    `/customer/${encodeURIComponent(customerId)}?fields=${encodeURIComponent("email")}`,
+    userId,
+    "sb"
+  );
+  const existingEmail = normalizeCustomerEmail(customer?.email);
+  const targetEmail = suppliedEmail || existingEmail;
+
+  if (!targetEmail) {
+    throw publicRequestError("Customer email is required before committing the order.");
+  }
+
+  if (!isLikelyEmail(targetEmail)) {
+    throw publicRequestError("Enter a valid customer email before committing the order.");
+  }
+
+  const emailMatches =
+    existingEmail.toLowerCase() === targetEmail.toLowerCase();
+
+  if (!emailMatches) {
+    console.log("Patching customer email before Sales Order commit:", {
+      salesOrderId,
+      customerId,
+      hadEmail: !!existingEmail,
+    });
+
+    await nsPatch(
+      `/customer/${encodeURIComponent(customerId)}`,
+      { email: targetEmail },
+      userId
+    );
+
+    const verifiedCustomer = await nsGet(
+      `/customer/${encodeURIComponent(customerId)}?fields=${encodeURIComponent("email")}`,
+      userId,
+      "sb"
+    );
+    const verifiedEmail = normalizeCustomerEmail(verifiedCustomer?.email);
+    if (verifiedEmail.toLowerCase() !== targetEmail.toLowerCase()) {
+      throw publicRequestError(
+        "NetSuite accepted the customer email update but did not return it before commit. Please save and try again.",
+        502
+      );
+    }
+  }
+
+  return {
+    customerId,
+    email: targetEmail,
+    patched: !emailMatches,
+  };
+}
+
+async function syncCustomerEmailFromHeaderUpdates(salesOrderId, headerUpdates, userId) {
+  const suppliedEmail = normalizeCustomerEmail(headerUpdates?.email);
+  if (!suppliedEmail) return null;
+
+  return ensureCustomerEmailBeforeCommit(salesOrderId, headerUpdates, userId);
+}
+
 function splitNetSuiteMultiValue(value) {
   return String(value || "")
     .split(/\s*,\s*/)
@@ -1353,6 +1445,11 @@ router.post("/create", async (req, res) => {
       });
 
     console.log("✅ Sales Order created successfully with ID:", salesOrderId);
+    await recordDocumentCreated({
+      documentType: "sale",
+      storeId: order?.store,
+      storeName,
+    });
     try {
       await forceSalesOrderPendingApproval(salesOrderId, userId);
     } catch (err) {
@@ -2363,6 +2460,17 @@ router.post("/:id/commit", async (req, res) => {
     }
     global._recentCommits[id] = now;
 
+    const customerEmailCheck = await ensureCustomerEmailBeforeCommit(
+      id,
+      headerUpdates,
+      userId
+    );
+    console.log("Customer email available before Sales Order commit:", {
+      salesOrderId: id,
+      customerId: customerEmailCheck.customerId,
+      patched: customerEmailCheck.patched,
+    });
+
     const patchStoreName = await resolvePatchStoreName(id, headerUpdates, userId);
     const patchWarehouseId = String(headerUpdates?.warehouse || "").trim();
     const normalizedLines = (Array.isArray(lines) ? lines : []).map((line) => {
@@ -2481,7 +2589,7 @@ router.post("/:id/commit", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Commit Sales Order failed:", err);
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       ok: false,
       error: err.message || "Unexpected server error",
     });
@@ -2773,6 +2881,19 @@ router.post("/:id/save", async (req, res) => {
     }
     global._recentSaves[id] = now;
 
+    const customerEmailSync = await syncCustomerEmailFromHeaderUpdates(
+      id,
+      headerUpdates,
+      userId
+    );
+    if (customerEmailSync) {
+      console.log("Customer email synced during Sales Order save:", {
+        salesOrderId: id,
+        customerId: customerEmailSync.customerId,
+        patched: customerEmailSync.patched,
+      });
+    }
+
     const patchStoreName = await resolvePatchStoreName(id, headerUpdates, userId);
     const patchWarehouseId = String(headerUpdates?.warehouse || "").trim();
     const normalizedLines = (Array.isArray(lines) ? lines : []).map((line) => {
@@ -2871,7 +2992,7 @@ router.post("/:id/save", async (req, res) => {
     });
   } catch (err) {
     console.error("❌ Save Sales Order failed:", err);
-    return res.status(500).json({
+    return res.status(err.statusCode || 500).json({
       ok: false,
       error: err.message || "Unexpected server error",
     });
