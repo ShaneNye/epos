@@ -20,6 +20,10 @@ const {
   buildCustomFieldPatchPayload,
 } = require("./customFields");
 const { recordDocumentCreated } = require("./salesOrderExperience");
+const {
+  getEmailAlertUserIds,
+  sendSalesQuoteCreatedEmail,
+} = require("../utils/salesQuoteEmailAlerts");
 
 // =====================================================
 // ✅ In-memory cache for GET /:id sales order payloads
@@ -1260,8 +1264,8 @@ router.post("/create", async (req, res) => {
     const [salesExecLookup, storeLookup] = await Promise.all([
       order.salesExec
         ? pool
-            .query("SELECT netsuiteid FROM users WHERE id = $1", [order.salesExec])
-            .then((resultExec) => resultExec.rows[0]?.netsuiteid || null)
+            .query("SELECT netsuiteid, firstname, lastname, email FROM users WHERE id = $1", [order.salesExec])
+            .then((resultExec) => resultExec.rows[0] || null)
             .catch((err) => {
               console.error("❌ Sales Exec lookup failed:", err.message);
               return null;
@@ -1282,7 +1286,11 @@ router.post("/create", async (req, res) => {
         : Promise.resolve(null),
     ]);
 
-    const salesExecNsId = salesExecLookup;
+    const salesExecNsId = salesExecLookup?.netsuiteid || null;
+    const salesExecName =
+      [salesExecLookup?.firstname, salesExecLookup?.lastname].filter(Boolean).join(" ").trim() ||
+      salesExecLookup?.email ||
+      "";
     const invoiceLocationId = storeLookup?.invoice_location_id || null;
     const storeNsId = storeLookup?.netsuite_internal_id || null;
     const storeName = storeLookup?.name || "";
@@ -1931,6 +1939,30 @@ router.post("/create", async (req, res) => {
       }
     } catch (err) {
       console.error("⚠️ Transfer Order creation block failed:", err.message);
+    }
+
+    try {
+      const alertUserIds = await getEmailAlertUserIds();
+      if (alertUserIds.length) {
+        const itemMap = await getItemMapCached().catch(() => ({}));
+        const itemNameById = Object.fromEntries(
+          Object.entries(itemMap || {}).map(([id, info]) => [String(id), info?.name || ""])
+        );
+        await sendSalesQuoteCreatedEmail({
+          documentType: "sale",
+          documentId: salesOrderId,
+          transactionNumber: so.tranId || so.tranid || "",
+          customer,
+          order,
+          items,
+          storeName,
+          salesExecName,
+          itemNameById,
+          appBaseUrl: `${req.protocol}://${req.get("host")}`,
+        });
+      }
+    } catch (err) {
+      console.error("Sales Order email alert failed:", err.message);
     }
 
     return res.json({

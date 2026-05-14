@@ -29,6 +29,7 @@
     <script defer src="/js/adminLocations.js"></script>
     <script defer src="/js/adminManagementRules.js"></script>
     <script defer src="/js/adminPromotionSettings.js"></script>
+    <script defer src="/js/adminEmailAlerts.js"></script>
     <script defer src="/js/adminCustomFields.js"></script>
     <script defer src="/js/adminSalesOrderExperience.js"></script>
 
@@ -51,6 +52,7 @@
             
             <div class="tab" data-target="dashboard-widgets">Dashboard Widgets</div>
             <div class="tab" data-target="sales-features">Sales Features</div>
+            <div class="tab" data-target="email-alerts">Email Alerts</div>
             <div class="tab" data-target="sales-order-feedback">Sales Feedback</div>
             <div class="tab" data-target="custom-fields">Custom Fields</div>
             <div class="tab" data-target="ai-manager">AI Manager</div>
@@ -453,6 +455,26 @@
                 <div class="admin-feature-actions">
                     <button id="adminSavePromotionSettings" type="button" class="btn-primary">Save Promotion Settings</button>
                     <span id="adminPromotionSettingsStatus" class="admin-feature-status" aria-live="polite"></span>
+                </div>
+            </section>
+        </div>
+
+        <!-- === Email Alerts === -->
+        <div id="email-alerts" class="tab-content hidden">
+            <h2>Email Alerts</h2>
+            <p>Choose which users receive an email when a sale or quote is created in EPOS.</p>
+
+            <section class="admin-feature-panel admin-email-alert-panel" aria-labelledby="emailAlertsTitle">
+                <div>
+                    <h3 id="emailAlertsTitle">Sale and Quote Creation</h3>
+                    <p>Alerts include store, sales executive, total value, customer and item breakdown.</p>
+                </div>
+
+                <div id="adminEmailAlertsUsers" class="admin-email-alert-users" aria-live="polite"></div>
+
+                <div class="admin-feature-actions">
+                    <button id="adminSaveEmailAlerts" type="button" class="btn-primary">Save Email Alerts</button>
+                    <span id="adminEmailAlertsStatus" class="admin-feature-status" aria-live="polite"></span>
                 </div>
             </section>
         </div>

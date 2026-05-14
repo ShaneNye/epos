@@ -11,6 +11,10 @@ const {
   loadTransactionCustomFieldValues,
 } = require("./customFields");
 const { recordDocumentCreated } = require("./salesOrderExperience");
+const {
+  getEmailAlertUserIds,
+  sendSalesQuoteCreatedEmail,
+} = require("../utils/salesQuoteEmailAlerts");
 
 /* =====================================================
    Helpers
@@ -184,6 +188,28 @@ async function resolveSalesExecNsId(appUserId) {
   }
 }
 
+async function resolveSalesExecName(appUserId) {
+  if (!appUserId) return "";
+  const cacheKey = `salesExecName:${appUserId}`;
+  const cached = getCachedLookup(cacheKey);
+  if (cached !== null) return cached;
+
+  try {
+    const result = await pool.query(
+      "SELECT firstname, lastname, email FROM users WHERE id = $1 LIMIT 1",
+      [appUserId]
+    );
+    const row = result.rows[0];
+    const name = row
+      ? [row.firstname, row.lastname].filter(Boolean).join(" ").trim() || row.email || ""
+      : "";
+    return setCachedLookup(cacheKey, name);
+  } catch (err) {
+    console.error("Failed to lookup Sales Exec name:", err.message);
+    return "";
+  }
+}
+
 async function resolveStoreData(appStoreId) {
   if (!appStoreId) {
     return {
@@ -302,8 +328,9 @@ router.post("/create", async (req, res) => {
 
     console.log("🧩 Using Customer ID for Quote:", customerId);
 
-    const [salesExecNsId, storeData] = await Promise.all([
+    const [salesExecNsId, salesExecName, storeData] = await Promise.all([
       resolveSalesExecNsId(order?.salesExec),
+      resolveSalesExecName(order?.salesExec),
       resolveStoreData(order?.store),
     ]);
     const { storeName, storeNsId, invoiceLocationId } = storeData;
@@ -389,6 +416,30 @@ router.post("/create", async (req, res) => {
       storeId: order?.store,
       storeName,
     });
+
+    try {
+      const alertUserIds = await getEmailAlertUserIds();
+      if (alertUserIds.length) {
+        const itemMap = await getItemMapCached().catch(() => ({}));
+        const itemNameById = Object.fromEntries(
+          Object.entries(itemMap || {}).map(([id, info]) => [String(id), info?.name || ""])
+        );
+        await sendSalesQuoteCreatedEmail({
+          documentType: "quote",
+          documentId: quoteId,
+          transactionNumber: quoteRes.tranId || quoteRes.tranid || "",
+          customer,
+          order,
+          items,
+          storeName,
+          salesExecName,
+          itemNameById,
+          appBaseUrl: `${req.protocol}://${req.get("host")}`,
+        });
+      }
+    } catch (err) {
+      console.error("Quote email alert failed:", err.message);
+    }
 
     return res.json({ ok: true, quoteId, response: quoteRes });
   } catch (err) {

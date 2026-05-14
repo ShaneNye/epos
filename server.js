@@ -504,6 +504,7 @@ app.use("/api/me", require("./routes/me"));
 app.use("/api/users", require("./routes/users"));
 app.use("/api/meta", require("./routes/meta"));
 app.use("/api/custom-fields", require("./routes/customFields"));
+app.use("/api/email-alerts", require("./routes/emailAlerts"));
 app.use("/api/session/role", require("./routes/sessionRole"));
 app.use("/api/forgot-password", require("./routes/forgotPassword"));
 app.use("/api/reset-password", require("./routes/resetPassword"));
