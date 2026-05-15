@@ -1057,6 +1057,7 @@
 
     setFulfilmentToWarehouse(row);
     setInventoryDetail(row, detail);
+    row.dataset.backorder = "";
 
     if (sameAsSelectedWarehouse(stock)) {
       row.dataset.lotnumber = stock.inventoryNumberId || stock.inventoryNumber || "";

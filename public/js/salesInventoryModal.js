@@ -59,6 +59,47 @@ function formatInventoryDetailPart(detail) {
   ].join("|");
 }
 
+function setLineFulfilmentToWarehouse(row) {
+  const fulfilSelect =
+    row?.querySelector(".item-fulfilment") || row?.querySelector(".fulfilmentSelect");
+  if (!fulfilSelect) return;
+
+  const warehouseOption = [...fulfilSelect.options].find((opt) =>
+    String(opt.textContent || "").trim().toLowerCase() === "warehouse"
+  );
+
+  fulfilSelect.value = warehouseOption?.value || "2";
+  fulfilSelect.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function applyBackOrderToLine(row) {
+  if (!row) return;
+
+  setLineFulfilmentToWarehouse(row);
+  row.dataset.backorder = "1";
+  row.dataset.lotnumber = "";
+  row.dataset.inventoryMeta = "";
+  row.dataset.inventoryMetaJson = "";
+
+  const detailField = row.querySelector(".item-inv-detail");
+  if (detailField) detailField.value = "";
+  row.dataset.invdetail = "";
+
+  const cell = row.querySelector(".inventory-cell");
+  if (cell) {
+    cell.innerHTML = "<strong>Back order</strong>";
+    cell.classList.add("flash-success");
+    setTimeout(() => cell.classList.remove("flash-success"), 800);
+  }
+
+  const summary = row.querySelector(".inv-summary");
+  if (summary) summary.textContent = "Back order";
+
+  window.SalesLineUI?.validateInventoryForRow?.(row);
+  window.updateOrderSummary?.();
+  window.updateOrderSummaryFromTable?.();
+}
+
 // 🧭 When user clicks the inventory cell or icon
 document.addEventListener("click", (e) => {
   if (
@@ -127,6 +168,13 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
   };
 
   // 🧩 Parse the first inventory detail entry
+  if (String(detailString || "").trim() === "__BACK_ORDER__") {
+    applyBackOrderToLine(targetRow);
+    return;
+  }
+
+  targetRow.dataset.backorder = "";
+
   const firstPart = detailString?.split(";")[0]?.trim() || "";
   const firstDetail = parseInventoryDetailPart(firstPart);
   const qty = firstDetail.qty;

@@ -442,6 +442,11 @@ function setInventoryButtonState(row) {
   if (!btn) return;
 
   const detailString = detailField?.value || "";
+  if (row.dataset.backorder === "1") {
+    btn.textContent = "Back order";
+    return;
+  }
+
   if (!detailString) {
     btn.textContent = "📦";
     return;
@@ -780,6 +785,46 @@ function setInventoryDetailForSalesViewRow(row, detailString) {
   }
 }
 
+function setSalesViewFulfilmentToWarehouse(row) {
+  const fulfilSelect =
+    row?.querySelector(".item-fulfilment") || row?.querySelector(".fulfilmentSelect");
+  if (!fulfilSelect) return;
+
+  const warehouseOption = [...fulfilSelect.options].find((opt) =>
+    String(opt.textContent || "").trim().toLowerCase() === "warehouse"
+  );
+
+  fulfilSelect.value = warehouseOption?.value || "2";
+  fulfilSelect.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function applyBackOrderToSalesViewRow(row) {
+  if (!row) return;
+
+  setSalesViewFulfilmentToWarehouse(row);
+  row.dataset.backorder = "1";
+  row.dataset.lotnumber = "";
+  row.dataset.inventoryMeta = "";
+  row.dataset.inventoryMetaJson = "";
+  row.dataset.invdetail = "";
+
+  const invInp = row.querySelector(".item-inv-detail");
+  if (invInp) invInp.value = "";
+
+  const summary = row.querySelector(".inv-summary");
+  if (summary) summary.textContent = "Back order";
+
+  const cell = row.querySelector(".inventory-cell");
+  if (cell) cell.innerHTML = "<strong>Back order</strong>";
+
+  window.SalesLineUI?.validateInventoryForRow?.(row);
+  setInventoryButtonState(row);
+
+  if (typeof updateOrderSummaryFromTable === "function") {
+    updateOrderSummaryFromTable();
+  }
+}
+
 /* =========================================================
    Callbacks from popups
 ========================================================= */
@@ -836,6 +881,14 @@ window.onInventorySaved = function onInventorySaved(itemId, detailString, lineIn
       console.warn("⚠️ onInventorySaved: row not found", { lineIndex, itemId });
       return;
     }
+
+    if (String(detailString || "").trim() === "__BACK_ORDER__") {
+      applyBackOrderToSalesViewRow(row);
+      console.log("Back order saved into Sales View row", { lineIndex, itemId });
+      return;
+    }
+
+    row.dataset.backorder = "";
 
     const invInp = row.querySelector(".item-inv-detail");
     if (invInp) invInp.value = detailString || "";

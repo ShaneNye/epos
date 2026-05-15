@@ -330,6 +330,12 @@
     if (!show) return;
 
     const qty = parseInt(row.querySelector(".item-qty")?.value, 10) || 0;
+    if (row.dataset.backorder === "1") {
+      button.textContent = "Back order";
+      if (invSummary) invSummary.textContent = "Back order";
+      return;
+    }
+
     if (detailField.value) {
       const totalSelected = detailField.value
         .split(";")

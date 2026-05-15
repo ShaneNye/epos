@@ -2013,8 +2013,9 @@ function validateSalesViewItemsBeforeSave() {
       const invHasValue = !!(invHidden?.value || "").trim();
       const hasLot = !!(row.dataset.lotnumber || "").trim();
       const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
+      const isBackOrder = row.dataset.backorder === "1";
 
-      if (!invHasValue && !hasLot && !hasMeta) {
+      if (!invHasValue && !hasLot && !hasMeta && !isBackOrder) {
         errors.push(
           `• Line ${lineNo}: Inventory Detail is required for "${
             fulfilText === "warehouse" ? "Warehouse" : "In Store"

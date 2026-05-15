@@ -246,6 +246,10 @@
     <tbody></tbody>
   </table>
 
+  <p id="noStockBackOrderMessage" style="display:none; margin: 10px 0 16px; font-weight: 600; color: #7a3f00;">
+    there is no stock currently avaiable for this item select back order if a stock purchase order is due in but not yet received
+  </p>
+
   <button type="button" id="addRow">➕ Add Row</button>
 
   <div class="btns">
@@ -479,6 +483,7 @@
     const tbody = document.querySelector("#invTable tbody");
     const addRowBtn = document.getElementById("addRow");
     const saveBtn = document.getElementById("saveBtn");
+    const noStockBackOrderMessage = document.getElementById("noStockBackOrderMessage");
 
     const selectedWarehouseName = window.opener?.selectedWarehouseName || "";
 
@@ -540,6 +545,20 @@
     })();
 
     function initInventoryPopup(inventoryStatusList = []) {
+      const BACK_ORDER_VALUE = "__BACK_ORDER__";
+      const hasGoodOrStockAvailability = stock.some((s) => {
+        const status = clean(s.status);
+        return safeInt(s.qty) > 0 && !status.includes("clearance") && (
+          status === "good" ||
+          status === "stock" ||
+          status.includes("good stock")
+        );
+      });
+
+      if (!hasGoodOrStockAvailability && noStockBackOrderMessage) {
+        noStockBackOrderMessage.style.display = "block";
+      }
+
       function showNoStoreStockMessage() {
         tbody.innerHTML = "";
         const tr = document.createElement("tr");
@@ -619,10 +638,10 @@
           select.innerHTML = `<option value="">${placeholder}</option>`;
           records.forEach((r) => {
             const opt = document.createElement("option");
-            opt.value = r.name || r;
+            opt.value = r.value || r.name || r;
             opt.textContent = r.name || r;
             if (r.id) opt.dataset.internalid = r.id;
-            if (selectedVal && (r.name === selectedVal || r === selectedVal)) opt.selected = true;
+            if (selectedVal && (r.name === selectedVal || r.value === selectedVal || r === selectedVal)) opt.selected = true;
             select.appendChild(opt);
           });
         }
@@ -639,11 +658,21 @@
             }
           });
 
+          if (!hasGoodOrStockAvailability) {
+            uniqueLocs.push({ name: "Back order", value: BACK_ORDER_VALUE });
+          }
+
           populate(locSel, uniqueLocs, "Select location...", location || lockedLocation);
         }
 
         function populateStatuses() {
           const locVal = locSel.value;
+
+          if (locVal === BACK_ORDER_VALUE) {
+            populate(statusSel, [], "Not required", "");
+            statusSel.disabled = true;
+            return;
+          }
 
           const filtered = stock.filter((s) =>
             !locVal || s.location === locVal
@@ -662,6 +691,7 @@
           });
 
           populate(statusSel, uniqueStatuses, "Select status...", status);
+          statusSel.disabled = false;
 
           if (uniqueStatuses.length === 1) statusSel.value = uniqueStatuses[0].name;
           if (!statusSel.value && uniqueStatuses.length) statusSel.value = uniqueStatuses[0].name;
@@ -670,6 +700,12 @@
         function populateInventoryNumbers() {
           const locVal = locSel.value;
           const statusVal = statusSel.value;
+
+          if (locVal === BACK_ORDER_VALUE) {
+            populate(invNumSel, [], "Not required", "");
+            invNumSel.disabled = true;
+            return;
+          }
 
           const filtered = stock.filter(
             (s) =>
@@ -694,6 +730,7 @@
           });
 
           populate(invNumSel, invList, "Select inventory #...", invNum);
+          invNumSel.disabled = false;
 
           if (invList.length === 1) {
             invNumSel.value = invList[0].name;
@@ -702,6 +739,16 @@
         }
 
         function updateAvailable() {
+          if (locSel.value === BACK_ORDER_VALUE) {
+            availCell.textContent = "Back order";
+            qtyInput.value = "";
+            qtyInput.disabled = true;
+            qtyInput.max = 0;
+            updateAddRowState();
+            return;
+          }
+
+          qtyInput.disabled = false;
           const match = stock.find(
             (s) =>
               (!locSel.value || s.location === locSel.value) &&
@@ -729,6 +776,12 @@
           if (!locSelVal) {
             noticeCell.textContent = "";
             noticeCell.className = "noticeCell";
+            return;
+          }
+
+          if (locSelVal === BACK_ORDER_VALUE) {
+            noticeCell.textContent = "Warehouse back order";
+            noticeCell.className = "noticeCell notice-transfer";
             return;
           }
 
@@ -878,12 +931,31 @@
           const invName = sanitizeDetailField(invSel?.value || "");
           const invId = invSel?.selectedOptions[0]?.dataset.internalid || "";
 
+          if (locSel?.value === "__BACK_ORDER__") {
+            return;
+          }
+
           if (q && locName) {
             parts.push([q, locName, locId, statusName, statusId, invName, invId].join("|"));
           }
         });
 
         const detailString = parts.join("; ");
+        const isBackOrder = [...tbody.querySelectorAll(".locSel")].some(
+          (select) => select.value === "__BACK_ORDER__"
+        );
+
+        if (isBackOrder) {
+          const line = getQueryParams().line;
+          const lineIndex = parseInt(line || "-1", 10);
+
+          if (window.opener?.onInventorySaved) {
+            window.opener.onInventorySaved(itemId, "__BACK_ORDER__", lineIndex);
+          }
+
+          window.close();
+          return;
+        }
 
         if (!detailString.trim()) {
           alert("❌ Please select inventory before saving.");

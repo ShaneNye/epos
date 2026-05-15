@@ -706,8 +706,9 @@ function validateOrderBeforeSave() {
 
       const hasLot = !!(row.dataset.lotnumber || "").trim();
       const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
+      const isBackOrder = row.dataset.backorder === "1";
 
-      if (!invHasValue && !hasLot && !hasMeta) {
+      if (!invHasValue && !hasLot && !hasMeta && !isBackOrder) {
         ok = false;
         errors.push(
           `• Line ${lineNo}: Inventory Detail is required for "${

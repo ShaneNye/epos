@@ -972,6 +972,12 @@ function validateInventoryForRow(row) {
   if (invSummary) invSummary.style.display = "inline-block";
 
   const qty = parseInt(row.querySelector(".item-qty")?.value, 10) || 0;
+  if (row.dataset.backorder === "1") {
+    button.textContent = "Back order";
+    if (invSummary) invSummary.textContent = "Back order";
+    return;
+  }
+
   if (detailField.value) {
     const totalSelected = detailField.value
       .split(";")
@@ -1187,6 +1193,11 @@ window.updateInventoryCellForRow = function (lineIndex) {
 
   const cell = row.querySelector(".inventory-cell");
   if (!cell) return;
+
+  if (row.dataset.backorder === "1") {
+    cell.innerHTML = "<strong>Back order</strong>";
+    return;
+  }
 
   if (lot) {
     cell.innerHTML = `
