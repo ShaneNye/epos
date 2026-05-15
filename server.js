@@ -826,6 +826,13 @@ fetchNetSuiteData("STOCK_REPLENISHMENT_URL", "STOCK_REPLENISHMENT", req, res, "s
 app.get("/api/netsuite/quantity-backordered", (req, res) =>
 fetchNetSuiteData("QUANTITY_BACKORDERED_URL", "QUANTITY_BACKORDERED", req, res, "quantity backordered"));
 
+// == Committed Lines
+app.get("/api/netsuite/committed-lines", (req, res) =>
+fetchNetSuiteData("COMMITTED_LINES_URL", "COMMITTED_LINES", req, res, "committed lines", {
+  noStore: true,
+  forceRefresh: true,
+}));
+
 
 // === Purchase Order Management ===
 app.get("/api/netsuite/purchase-order-management", async (req, res) => {

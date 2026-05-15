@@ -10,6 +10,10 @@
     "Inactive",
     "Page Preview",
   ];
+  const columnWidthStorageKey = "suitepim:web-management:column-widths";
+  const selectColumnWidth = 42;
+  const minColumnWidth = 140;
+  const maxColumnWidth = 720;
 
   const state = {
     environment: "production",
@@ -31,8 +35,15 @@
     previewPopup: null,
     previewRowKey: null,
     generating: new Set(),
+    inventoryRows: [],
+    inventoryByItemId: new Map(),
+    inventoryCommitments: [],
+    inventoryLoading: null,
+    inventoryLoaded: false,
+    inventoryError: "",
     aiGenerationConfigured: false,
     aiGenerationModel: "",
+    columnWidths: {},
     presets: [
       {
         name: "Step 1 : Pricing",
@@ -91,6 +102,7 @@
     { name: "Sale Price", fieldType: "Currency", toolColumn: true },
     { name: "Discount Percent", fieldType: "Decimal", toolColumn: true },
     { name: "Margin", fieldType: "Decimal", toolColumn: true },
+    { name: "Stock on hand", fieldType: "Stock", toolColumn: true, disableField: true },
     { name: "Generate Description", fieldType: "Generate", toolColumn: true, disableField: true },
     { name: "Page Preview", fieldType: "Preview", toolColumn: true, disableField: true },
   ];
@@ -176,6 +188,85 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function loadColumnWidths() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(columnWidthStorageKey) || "{}");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+      return Object.fromEntries(
+        Object.entries(parsed)
+          .map(([name, width]) => [name, clampColumnWidth(width)])
+          .filter(([, width]) => Number.isFinite(width))
+      );
+    } catch {
+      return {};
+    }
+  }
+
+  function saveColumnWidths() {
+    try {
+      localStorage.setItem(columnWidthStorageKey, JSON.stringify(state.columnWidths));
+    } catch {
+      // Column widths are a convenience preference; failing to persist should not interrupt editing.
+    }
+  }
+
+  function clampColumnWidth(width) {
+    const numeric = Number(width);
+    if (!Number.isFinite(numeric)) return NaN;
+    return Math.max(minColumnWidth, Math.min(maxColumnWidth, Math.round(numeric)));
+  }
+
+  function defaultColumnWidth(name) {
+    const field = fieldByName(name) || {};
+    if (field.fieldType === "image" || name.includes("Image")) return 220;
+    if (name === "New Feature Desc") return 320;
+    if (["reasons to buy", "Tags"].includes(name)) return 260;
+    if (["Name", "Display Name", "Supplier Name"].includes(name)) return 240;
+    if (["Currency", "Decimal", "Integer", "Float", "Number"].includes(field.fieldType)) return 140;
+    if (field.fieldType === "Checkbox") return 120;
+    if (field.fieldType === "Stock") return 150;
+    if (["Generate", "Preview"].includes(field.fieldType)) return 150;
+    return 180;
+  }
+
+  function columnWidth(name) {
+    return state.columnWidths[name] || defaultColumnWidth(name);
+  }
+
+  function tableAvailableWidth(table, columns) {
+    const wrapperWidth = table.parentElement?.clientWidth || el.suitepimMount?.clientWidth || 0;
+    const minimumWidth = selectColumnWidth + (columns.length * minColumnWidth);
+    return Math.max(minimumWidth, wrapperWidth);
+  }
+
+  function normalizedColumnWidths(columns, totalWidth) {
+    const available = Math.max(0, totalWidth - selectColumnWidth);
+    if (!columns.length || !available) return {};
+
+    const base = columns.map((name) => clampColumnWidth(columnWidth(name)));
+    const maxTotal = columns.length * maxColumnWidth;
+    const minTotal = columns.length * minColumnWidth;
+    const targetTotal = Math.max(minTotal, Math.min(maxTotal, available));
+    const baseTotal = base.reduce((sum, width) => sum + width, 0) || 1;
+    const scaled = base.map((width) => Math.max(minColumnWidth, Math.min(maxColumnWidth, Math.round((width / baseTotal) * targetTotal))));
+    let difference = targetTotal - scaled.reduce((sum, width) => sum + width, 0);
+
+    while (difference !== 0) {
+      const direction = difference > 0 ? 1 : -1;
+      const adjustable = scaled
+        .map((width, index) => ({ width, index }))
+        .filter(({ width }) => direction > 0 ? width < maxColumnWidth : width > minColumnWidth);
+      if (!adjustable.length) break;
+      adjustable.forEach(({ index }) => {
+        if (difference === 0) return;
+        scaled[index] += direction;
+        difference -= direction;
+      });
+    }
+
+    return Object.fromEntries(columns.map((name, index) => [name, scaled[index]]));
   }
 
   function extractImageUrl(value) {
@@ -851,6 +942,7 @@
     state.fields = [...config.fields, ...toolFields];
     state.aiGenerationConfigured = !!config.aiGenerationConfigured;
     state.aiGenerationModel = config.aiGenerationModel || "";
+    state.columnWidths = loadColumnWidths();
     state.visibleColumns = [...defaultVisibleColumns];
     renderFieldSelectors();
     renderColumnChooser();
@@ -1170,10 +1262,7 @@
         };
       })
       .filter(Boolean);
-    const presetFilterFields = new Set(presetFilters.map((filter) => filter.fieldName));
-    const manualFilters = state.activeFilters.filter((filter) =>
-      filter?.source !== "preset" && !presetFilterFields.has(filter.fieldName)
-    );
+    const manualFilters = state.activeFilters.filter((filter) => filter?.source !== "preset");
 
     state.activeFilters = [
       ...presetFilters,
@@ -1218,11 +1307,15 @@
   function sortLabel(field, direction) {
     const numeric = ["Currency", "Decimal", "Integer", "Float", "Number"].includes(field?.fieldType);
     if (numeric) return direction === "asc" ? "Low to high" : "High to low";
+    if (field?.fieldType === "Stock") return direction === "asc" ? "No stock first" : "Most stock first";
     if (field?.fieldType === "Checkbox") return direction === "asc" ? "Unchecked first" : "Checked first";
     return direction === "asc" ? "A to Z" : "Z to A";
   }
 
   function sortValue(row, field) {
+    if (field?.fieldType === "Stock") {
+      return stockRowsForDisplay(row).reduce((sum, stock) => sum + Math.max(stock.available, stock.onHand, 0), 0);
+    }
     const value = row[field.name];
     if (field.fieldType === "Checkbox") return boolValue(value) ? 1 : 0;
     if (["Currency", "Decimal", "Integer", "Float", "Number"].includes(field.fieldType)) {
@@ -1464,7 +1557,9 @@
     state.activeFilters.forEach((filter, index) => {
       const chip = document.createElement("div");
       chip.className = "suitepim-filter-chip";
-      chip.innerHTML = `<span>${escapeHtml(filter.fieldName)}: ${escapeHtml(filterLabel(filter))}</span>`;
+      chip.classList.toggle("is-preset", filter?.source === "preset");
+      const sourceLabel = filter?.source === "preset" ? "Preset" : "Manual";
+      chip.innerHTML = `<span><small>${escapeHtml(sourceLabel)}</small>${escapeHtml(filter.fieldName)}: ${escapeHtml(filterLabel(filter))}</span>`;
       const remove = document.createElement("button");
       remove.type = "button";
       remove.textContent = "x";
@@ -1651,10 +1746,19 @@
     const table = document.createElement("table");
     table.className = "suitepim-table";
     table.innerHTML = `
+      <colgroup>
+        <col style="width: ${selectColumnWidth}px;">
+        ${columns.map((name) => `<col data-column="${escapeHtml(name)}" style="width: ${columnWidth(name)}px;">`).join("")}
+      </colgroup>
       <thead>
         <tr>
           <th class="suitepim-select-col"><input id="suitepimSelectPage" type="checkbox" aria-label="Select page"></th>
-          ${columns.map((name) => `<th>${sortHeaderHtml(name)}</th>`).join("")}
+          ${columns.map((name) => `
+            <th class="${name === "Name" ? "suitepim-sticky-name-col" : ""}" data-column="${escapeHtml(name)}" style="width: ${columnWidth(name)}px;">
+              ${sortHeaderHtml(name)}
+              <button class="suitepim-column-resizer" type="button" title="Drag to resize column" aria-label="Resize ${escapeHtml(name)} column"></button>
+            </th>
+          `).join("")}
         </tr>
       </thead>
       <tbody></tbody>
@@ -1684,7 +1788,12 @@
       columns.forEach((column) => {
         const td = document.createElement("td");
         td.dataset.column = column;
-        td.appendChild(renderCell(row, column));
+        if (column === "Name") td.classList.add("suitepim-sticky-name-col");
+        if (isCellEditableText(row, column)) {
+          setupEditableTextCell(td, row, column);
+        } else {
+          td.appendChild(renderCell(row, column));
+        }
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -1693,8 +1802,14 @@
     const tableWrap = document.createElement("div");
     tableWrap.className = "suitepim-table-wrap";
     tableWrap.appendChild(table);
+    const topScroller = createTableScrollSlider("top");
+    const bottomScroller = createTableScrollSlider("bottom");
     el.suitepimMount.innerHTML = "";
+    el.suitepimMount.appendChild(topScroller);
     el.suitepimMount.appendChild(tableWrap);
+    el.suitepimMount.appendChild(bottomScroller);
+    applyColumnWidths(table, columns);
+    setupTableScrollSliders(el.suitepimMount, columns, topScroller, bottomScroller);
 
     const pageSelector = table.querySelector("#suitepimSelectPage");
     pageSelector.checked = rows.length > 0 && rows.every((row) => state.selected.has(row._suitepimKey));
@@ -1717,6 +1832,974 @@
         applyFilters();
       });
     });
+    setupColumnResizing(table, columns);
+  }
+
+  function createTableScrollSlider(position) {
+    const wrap = document.createElement("div");
+    wrap.className = `suitepim-table-scroll-slider suitepim-table-scroll-slider-${position}`;
+    wrap.hidden = true;
+
+    const track = document.createElement("div");
+    track.className = "suitepim-table-scrollbar";
+    track.tabIndex = 0;
+    track.setAttribute("role", "scrollbar");
+    track.setAttribute("aria-orientation", "horizontal");
+    track.setAttribute("aria-label", position === "top" ? "Scroll table horizontally" : "Scroll table horizontally at bottom");
+
+    const spacer = document.createElement("div");
+    spacer.className = "suitepim-table-scrollbar-spacer";
+    track.appendChild(spacer);
+    wrap.appendChild(track);
+    return wrap;
+  }
+
+  function setupTableScrollSliders(scroller, columns, ...sliderWraps) {
+    const tracks = sliderWraps.map((wrap) => wrap.querySelector(".suitepim-table-scrollbar")).filter(Boolean);
+    if (!tracks.length) return;
+
+    const maxScroll = () => Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+    const minimumHiddenColumnWidth = () => {
+      const widths = columns
+        .filter((name) => name !== "Name")
+        .map((name) => columnWidth(name))
+        .filter((width) => Number.isFinite(width) && width > 0);
+      return Math.max(80, Math.min(...widths, minColumnWidth));
+    };
+
+    const sync = () => {
+      const max = maxScroll();
+      const shouldShow = max >= minimumHiddenColumnWidth();
+      scroller.classList.toggle("has-horizontal-table-scroll", shouldShow);
+      sliderWraps.forEach((wrap) => {
+        wrap.hidden = !shouldShow;
+      });
+      tracks.forEach((track) => {
+        const spacer = track.querySelector(".suitepim-table-scrollbar-spacer");
+        if (spacer) spacer.style.width = `${scroller.scrollWidth}px`;
+        if (Math.abs(track.scrollLeft - scroller.scrollLeft) > 1) {
+          track.scrollLeft = scroller.scrollLeft;
+        }
+      });
+    };
+
+    tracks.forEach((track) => {
+      track.addEventListener("scroll", () => {
+        if (Math.abs(scroller.scrollLeft - track.scrollLeft) > 1) {
+          scroller.scrollLeft = track.scrollLeft;
+        }
+      }, { passive: true });
+      track.addEventListener("keydown", (event) => {
+        if (event.key === "ArrowLeft") scroller.scrollLeft -= 40;
+        if (event.key === "ArrowRight") scroller.scrollLeft += 40;
+      });
+    });
+
+    scroller.addEventListener("scroll", sync, { passive: true });
+    window.addEventListener("resize", sync, { passive: true });
+    requestAnimationFrame(sync);
+  }
+
+  function applyColumnWidths(table, columns, widths = null) {
+    const totalWidth = tableAvailableWidth(table, columns);
+    const nextWidths = widths || normalizedColumnWidths(columns, totalWidth);
+    const tableWidth = selectColumnWidth + columns.reduce((sum, name) => sum + (nextWidths[name] || columnWidth(name)), 0);
+    table.style.width = `${Math.max(totalWidth, tableWidth)}px`;
+    table.style.minWidth = `${selectColumnWidth + (columns.length * minColumnWidth)}px`;
+    columns.forEach((name) => {
+      const width = nextWidths[name] || columnWidth(name);
+      const col = table.querySelector(`col[data-column="${CSS.escape(name)}"]`);
+      const th = table.querySelector(`th[data-column="${CSS.escape(name)}"]`);
+      if (col) col.style.width = `${width}px`;
+      if (th) th.style.width = `${width}px`;
+    });
+  }
+
+  function currentRenderedWidths(table, columns) {
+    return Object.fromEntries(columns.map((name) => {
+      const th = table.querySelector(`th[data-column="${CSS.escape(name)}"]`);
+      return [name, th?.getBoundingClientRect().width || columnWidth(name)];
+    }));
+  }
+
+  function redistributeWidth(widths, targetColumn, amount) {
+    let remaining = amount;
+    while (Math.abs(remaining) >= 0.5) {
+      const candidates = Object.keys(widths).filter((name) => {
+        if (name === targetColumn) return false;
+        return remaining > 0 ? widths[name] < maxColumnWidth : widths[name] > minColumnWidth;
+      });
+      if (!candidates.length) break;
+
+      const share = remaining / candidates.length;
+      let applied = 0;
+      candidates.forEach((name) => {
+        const capacity = remaining > 0 ? maxColumnWidth - widths[name] : minColumnWidth - widths[name];
+        const change = remaining > 0 ? Math.min(capacity, share) : Math.max(capacity, share);
+        widths[name] += change;
+        applied += change;
+      });
+      if (Math.abs(applied) < 0.5) break;
+      remaining -= applied;
+    }
+    return remaining;
+  }
+
+  function resizedColumnWidths(columns, targetColumn, startWidths, delta) {
+    const widths = { ...startWidths };
+    const index = columns.indexOf(targetColumn);
+    if (index === -1 || columns.length < 2) return widths;
+
+    const totalWidth = columns.reduce((sum, name) => sum + startWidths[name], 0);
+    const targetMax = Math.min(maxColumnWidth, totalWidth - ((columns.length - 1) * minColumnWidth));
+    const startWidth = startWidths[targetColumn];
+    const nextTargetWidth = Math.max(minColumnWidth, Math.min(targetMax, startWidth + delta));
+    const targetDelta = nextTargetWidth - startWidth;
+    widths[targetColumn] = nextTargetWidth;
+
+    const leftover = redistributeWidth(widths, targetColumn, -targetDelta);
+    if (Math.abs(leftover) >= 0.5) {
+      widths[targetColumn] += leftover;
+    }
+
+    const rounded = Object.fromEntries(columns.map((name) => [name, Math.round(widths[name])]));
+    let roundedDifference = Math.round(totalWidth) - columns.reduce((sum, name) => sum + rounded[name], 0);
+    while (roundedDifference !== 0) {
+      const direction = roundedDifference > 0 ? 1 : -1;
+      const adjustable = columns.find((name) =>
+        name !== targetColumn && (direction > 0 ? rounded[name] < maxColumnWidth : rounded[name] > minColumnWidth)
+      ) || targetColumn;
+      rounded[adjustable] += direction;
+      roundedDifference -= direction;
+    }
+    return rounded;
+  }
+
+  function setupColumnResizing(table, columns) {
+    table.querySelectorAll(".suitepim-column-resizer").forEach((handle) => {
+      handle.addEventListener("pointerdown", (event) => {
+        const th = handle.closest("th[data-column]");
+        const column = th?.dataset.column;
+        if (!column) return;
+        event.preventDefault();
+        handle.setPointerCapture?.(event.pointerId);
+
+        const startX = event.clientX;
+        const startWidths = currentRenderedWidths(table, columns);
+        document.body.classList.add("suitepim-is-resizing-column");
+        table.classList.add("is-resizing-column");
+
+        const onPointerMove = (moveEvent) => {
+          const nextWidths = resizedColumnWidths(columns, column, startWidths, moveEvent.clientX - startX);
+          state.columnWidths = { ...state.columnWidths, ...nextWidths };
+          applyColumnWidths(table, columns, nextWidths);
+        };
+
+        const onPointerUp = () => {
+          document.body.classList.remove("suitepim-is-resizing-column");
+          table.classList.remove("is-resizing-column");
+          saveColumnWidths();
+          document.removeEventListener("pointermove", onPointerMove);
+          document.removeEventListener("pointerup", onPointerUp);
+          document.removeEventListener("pointercancel", onPointerUp);
+        };
+
+        document.addEventListener("pointermove", onPointerMove);
+        document.addEventListener("pointerup", onPointerUp);
+        document.addEventListener("pointercancel", onPointerUp);
+      });
+    });
+  }
+
+  function isNumericField(field) {
+    return ["Currency", "Decimal", "Integer", "Float", "Number"].includes(field?.fieldType);
+  }
+
+  function isCellEditableText(row, column) {
+    const field = fieldByName(column) || {};
+    if (column === "New Feature Desc") return false;
+    if (field.disableField || field.toolColumn) return false;
+    if (isNumericField(field)) return false;
+    if (["Checkbox", "List/Record", "multiple-select", "image", "Link", "Generate", "Preview"].includes(field.fieldType)) return false;
+    return true;
+  }
+
+  function setupEditableTextCell(td, row, column) {
+    td.classList.add("suitepim-editable-cell");
+    td.contentEditable = "plaintext-only";
+    td.role = "textbox";
+    td.tabIndex = 0;
+    td.ariaLabel = `Edit ${column}`;
+    td.textContent = valueText(row[column]);
+    td.addEventListener("input", () => updateCell(row, column, td.textContent));
+    td.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" || event.shiftKey) return;
+      event.preventDefault();
+      td.blur();
+    });
+  }
+
+  function numericStockValue(value) {
+    const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  }
+
+  function stockKeyPart(value) {
+    return String(value || "").trim().toLowerCase();
+  }
+
+  function stockNamePart(value) {
+    const text = stockKeyPart(value);
+    if (!text) return "";
+    const leaf = text.includes(":") ? text.split(":").pop() : text;
+    return leaf
+      .replace(/\([^)]*\)/g, " ")
+      .replace(/podist\d+/gi, " ")
+      .replace(/-\d+\b/g, " ")
+      .replace(/[^a-z0-9]+/g, " ")
+      .trim()
+      .replace(/\s+/g, " ");
+  }
+
+  function itemInventoryId(row) {
+    return String(row?.["Internal ID"] || row?.internalid || row?.id || "").trim();
+  }
+
+  function itemDisplayName(row) {
+    return String(row?.["Item ID"] || row?.Name || row?.["Display Name"] || itemInventoryId(row) || "").trim();
+  }
+
+  function isChildOfParent(parent, child) {
+    if (!parent || !child || parent === child || boolValue(child["Is Parent"])) return false;
+    const parentFull = itemDisplayName(parent).toLowerCase();
+    const childFull = itemDisplayName(child).toLowerCase();
+    const parentName = String(parent.Name || "").trim().toLowerCase();
+    if (parentFull && childFull.startsWith(`${parentFull} : `)) return true;
+    if (parentName && childFull.startsWith(`${parentName} : `)) return true;
+    return false;
+  }
+
+  function childRowsForParent(parent) {
+    return state.rows.filter((row) => isChildOfParent(parent, row));
+  }
+
+  function normalizeInventoryRow(row) {
+    return {
+      itemId: String(row["Item ID"] || row["Item Id"] || row.itemid || row.itemId || row.Item || "").trim(),
+      itemName: String(row.Name || row.Item || row["Item Name"] || "").trim(),
+      location: String(row.Location || row.location || "").trim(),
+      lotNumber: String(row["Inventory Number"] || row.Number || row.inventoryNumber || "").trim(),
+      bin: String(row["Bin Number"] || row.Bin || row.bin || "").trim(),
+      status: String(row.Status || row.status || "").trim(),
+      onHand: numericStockValue(row["On Hand"] ?? row.onHand ?? row.OnHand),
+      committed: numericStockValue(row.Committed ?? row.committed ?? row["Quantity Committed"] ?? row["Qty Committed"]),
+      available: numericStockValue(row.Available ?? row.available ?? row["Available Qty"] ?? row["Available Quantity"]),
+    };
+  }
+
+  function normalizeCommitmentRow(row) {
+    const itemId = String(
+      row["Internal ID"] ||
+      row["Internal Id"] ||
+      row.ItemId ||
+      row.itemId ||
+      row["Item ID"] ||
+      row["Item Id"] ||
+      row.itemid ||
+      ""
+    ).trim();
+    const lotNumber = String(row["Inventory Number"] || row.Number || row.inventoryNumber || row.lotNumber || row.Lot || row["Lot Number"] || "").trim();
+    const location = String(row.Location || row.location || "").trim();
+    const quantity = numericStockValue(
+      row["Quantity On Backorder"] ??
+      row["Quantity Committed"] ??
+      row.Committed ??
+      row.committed ??
+      row.Quantity ??
+      row.quantity
+    );
+
+    return {
+      itemId,
+      itemName: String(row.itemName || row.Name || row.Item || row["Item Name"] || "").trim(),
+      lotNumber,
+      location,
+      quantity,
+      transaction: String(row.transactionNumber || row.Transaction || row["Document Number"] || row["Sales Order"] || row["Order Number"] || row.TranID || row.tranid || "").trim(),
+      transactionId: String(row.transactionId || row["Transaction ID"] || row.internalid || "").trim(),
+      transactionType: String(row.transactionType || row.Type || row.type || "").trim(),
+      customer: String(row.Customer || row.customer || row.Entity || row.entity || row.Store || "").trim(),
+      date: String(row.Date || row.date || row["Transaction Date"] || row.trandate || "").trim(),
+      status: String(row.orderStatus || row.Status || row.status || "").trim(),
+    };
+  }
+
+  function normalizeCommitmentRows(rows) {
+    return (rows || []).map(normalizeCommitmentRow).filter((row) => row.quantity > 0);
+  }
+
+  function commitmentMatchesStock(commitment, stock) {
+    const commitmentLot = stockKeyPart(commitment.lotNumber);
+    const commitmentLocation = stockKeyPart(commitment.location);
+    const stockLot = stockKeyPart(stock.lotNumber);
+    const stockLocation = stockKeyPart(stock.location);
+    const commitmentName = stockNamePart(commitment.itemName);
+    const stockName = stockNamePart(stock.itemName);
+    const lotMatches = !!(commitmentLot && stockLot && stockPartMatches(commitmentLot, stockLot));
+    const locationMatches = !!(commitmentLocation && stockLocation && commitmentLocation === stockLocation);
+    const itemMatches = !!(commitment.itemId && stock.itemId && commitment.itemId === stock.itemId);
+    const nameMatches = !!(
+      commitmentName &&
+      (
+        (stockName && stockPartMatches(commitmentName, stockName)) ||
+        (stockLot && stockNamePart(stockLot).includes(commitmentName)) ||
+        (commitmentLot && stockName && stockNamePart(commitmentLot).includes(stockName))
+      )
+    );
+
+    if (!commitmentLot && !commitmentLocation) return false;
+    if (commitmentLot && stockLot && !lotMatches) return false;
+    if (commitmentLocation && stockLocation && !locationMatches) return false;
+    if (!itemMatches && !lotMatches && !nameMatches) return false;
+    return locationMatches && (itemMatches || lotMatches || nameMatches);
+  }
+
+  function stockPartMatches(a, b) {
+    if (!a || !b) return false;
+    return a === b || a.includes(b) || b.includes(a);
+  }
+
+  function mergeInventoryRows(balanceRows, numberRows, commitmentRows = []) {
+    const numberAgg = new Map();
+    (numberRows || []).forEach((row) => {
+      const itemId = String(row["Item Id"] || row["Item ID"] || row.itemid || row.itemId || "").trim();
+      const lotNumber = String(row.Number || row["Inventory Number"] || row.inventoryNumber || "").trim();
+      const location = String(row.Location || row.location || "").trim();
+      if (!itemId || !lotNumber || !location) return;
+
+      const key = `${itemId}||${stockKeyPart(lotNumber)}||${stockKeyPart(location)}`;
+      const existing = numberAgg.get(key) || { onHand: 0, committed: 0, available: 0, location };
+      existing.onHand += numericStockValue(row["On Hand"] ?? row.onHand ?? row.OnHand);
+      existing.committed += numericStockValue(row.Committed ?? row.committed ?? row["Quantity Committed"] ?? row["Qty Committed"]);
+      existing.available += numericStockValue(row.Available ?? row.available ?? row["Available Qty"] ?? row["Available Quantity"]);
+      existing.location = existing.location || location;
+      numberAgg.set(key, existing);
+    });
+
+    const commitments = normalizeCommitmentRows(commitmentRows);
+
+    return (balanceRows || []).map((row) => {
+      const base = normalizeInventoryRow(row);
+      const key = `${base.itemId}||${stockKeyPart(base.lotNumber)}||${stockKeyPart(base.location)}`;
+      const agg = numberAgg.get(key);
+      const merged = agg
+        ? {
+            ...base,
+            location: agg.location || base.location,
+            onHand: agg.onHand,
+            committed: agg.committed || base.committed,
+            available: agg.available,
+          }
+        : base;
+      const matchingCommitments = commitments.filter((commitment) => commitmentMatchesStock(commitment, merged));
+      const detailCommitted = matchingCommitments.reduce((sum, commitment) => sum + commitment.quantity, 0);
+      const inferredCommitted = Math.max(0, merged.onHand - merged.available);
+      return {
+        ...merged,
+        committed: Math.max(merged.committed || 0, detailCommitted, inferredCommitted),
+        commitmentDetails: matchingCommitments,
+      };
+    });
+  }
+
+  function indexInventoryRows(rows) {
+    state.inventoryRows = rows.filter((row) => row.itemId);
+    state.inventoryByItemId = state.inventoryRows.reduce((map, row) => {
+      if (!map.has(row.itemId)) map.set(row.itemId, []);
+      map.get(row.itemId).push(row);
+      return map;
+    }, new Map());
+  }
+
+  async function ensureInventoryBalances() {
+    if (state.inventoryLoaded) return;
+    if (state.inventoryLoading) return state.inventoryLoading;
+    state.inventoryError = "";
+    state.inventoryLoading = Promise.all([
+      apiFetch("/api/netsuite/inventorybalance"),
+      apiFetch("/api/netsuite/invoice-numbers").catch(() => ({ results: [] })),
+      apiFetch("/api/netsuite/committed-lines").catch(() => ({ results: [] })),
+    ])
+      .then(([balanceData, numberData, commitmentData]) => {
+        const balanceRows = balanceData.results || balanceData.rows || balanceData.items || [];
+        const numberRows = numberData.results || numberData.rows || numberData.items || [];
+        const commitmentRows = commitmentData.results || commitmentData.rows || commitmentData.items || [];
+        state.inventoryCommitments = normalizeCommitmentRows(commitmentRows);
+        indexInventoryRows(mergeInventoryRows(balanceRows, numberRows, commitmentRows));
+        state.inventoryLoaded = true;
+      })
+      .catch((err) => {
+        state.inventoryError = err.message || "Inventory unavailable";
+        state.inventoryCommitments = [];
+        indexInventoryRows([]);
+      })
+      .finally(() => {
+        state.inventoryLoading = null;
+        if (state.visibleColumns.includes("Stock on hand")) renderTable();
+      });
+    return state.inventoryLoading;
+  }
+
+  function resetInventoryBalances() {
+    state.inventoryRows = [];
+    state.inventoryByItemId = new Map();
+    state.inventoryCommitments = [];
+    state.inventoryLoading = null;
+    state.inventoryLoaded = false;
+    state.inventoryError = "";
+  }
+
+  async function apiFetch(url) {
+    const res = await fetch(url, { headers: authHeaders(), cache: "no-store" });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false) throw new Error(data.error || `Request failed: ${res.status}`);
+    return data;
+  }
+
+  function stockRowsForItem(row) {
+    return state.inventoryByItemId.get(itemInventoryId(row)) || [];
+  }
+
+  function stockRowsForDisplay(row) {
+    if (!boolValue(row?.["Is Parent"])) return stockRowsForItem(row);
+    const children = childRowsForParent(row);
+    if (!children.length) return stockRowsForItem(row);
+    return children.flatMap((child) => stockRowsForItem(child).map((stock) => ({ ...stock, itemName: itemDisplayName(child) })));
+  }
+
+  function hasAvailableStock(row) {
+    return stockRowsForDisplay(row).some((stock) => stock.available > 0 || stock.onHand > 0);
+  }
+
+  function renderStockCell(row) {
+    if (!state.inventoryLoaded && !state.inventoryLoading) {
+      ensureInventoryBalances();
+    }
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "suitepim-stock-btn";
+
+    if (state.inventoryLoading) {
+      button.textContent = "Loading";
+      button.disabled = true;
+      return button;
+    }
+
+    const hasStock = hasAvailableStock(row);
+    button.classList.toggle("has-stock", hasStock);
+    button.classList.toggle("no-stock", !hasStock);
+    button.title = hasStock ? "View inventory detail" : "No stock currently available";
+    button.innerHTML = `
+      <span class="suitepim-stock-box" aria-hidden="true"></span>
+      <span>${hasStock ? "Inventory" : "No stock"}</span>
+    `;
+    button.addEventListener("click", () => openStockPopup(row));
+    return button;
+  }
+
+  async function confirmInactiveWithStock(row) {
+    await ensureInventoryBalances();
+    if (!hasAvailableStock(row)) return true;
+    return window.confirm("There is stock currently available for this item. Are you sure you want to set it as inactive?");
+  }
+
+  function stockReportRows(row) {
+    if (!boolValue(row?.["Is Parent"])) {
+      return stockRowsForItem(row).map((stock) => ({ ...stock, itemName: itemDisplayName(row) }));
+    }
+    const children = childRowsForParent(row);
+    if (!children.length) return stockRowsForItem(row).map((stock) => ({ ...stock, itemName: itemDisplayName(row) }));
+    return children.flatMap((child) => {
+      const rows = stockRowsForItem(child);
+      if (rows.length) return rows.map((stock) => ({ ...stock, itemName: itemDisplayName(child) }));
+      return [{
+        itemName: itemDisplayName(child),
+        lotNumber: "",
+        bin: "",
+        status: "",
+        onHand: 0,
+        committed: 0,
+        available: 0,
+        commitmentDetails: [],
+      }];
+    });
+  }
+
+  async function openStockPopup(row) {
+    if (state.inventoryLoaded && !state.inventoryCommitments.length) {
+      resetInventoryBalances();
+      await ensureInventoryBalances();
+    }
+    const isParent = boolValue(row?.["Is Parent"]);
+    const rows = stockReportRows(row);
+    const title = `${itemDisplayName(row) || "Item"} stock on hand`;
+    const body = rows.length
+      ? stockReportTable(rows, isParent)
+      : `<div class="suitepim-empty-option">No inventory detail found for this item.</div>`;
+    const popup = window.open("", "suitepim-stock-report", "width=1180,height=760,resizable=yes,scrollbars=yes");
+    if (!popup) {
+      showStatus("Stock report popup was blocked by the browser.", "warning");
+      return;
+    }
+    popup.document.open();
+    popup.document.write(stockPopupDocument(title, body, state.inventoryCommitments));
+    popup.document.close();
+    popup.document.title = title;
+    popup.focus();
+  }
+
+  function stockReportTable(rows, includeItem) {
+    const itemHeader = includeItem ? "<th>Item</th>" : "";
+    const itemCells = (row) => includeItem ? `<td>${escapeHtml(row.itemName || "-")}</td>` : "";
+    const committedCell = (row) => {
+      const committed = numericStockValue(row.committed);
+      if (!committed) return "0";
+      let commitmentDetails = row.commitmentDetails || [];
+      if (!commitmentDetails.length && state.inventoryCommitments.length) {
+        commitmentDetails = state.inventoryCommitments.filter((commitment) => commitmentMatchesStock(commitment, row));
+      }
+      const details = encodeURIComponent(JSON.stringify(commitmentDetails));
+      return `<button class="stock-commitment-link" type="button" data-commitments="${details}" data-item-name="${escapeHtml(row.itemName || "")}" data-lot="${escapeHtml(row.lotNumber || "-")}" data-location="${escapeHtml(row.location || "-")}">${escapeHtml(committed)}</button>`;
+    };
+    return `
+      <section id="stockCommitmentPanel" class="commitment-panel" hidden></section>
+      <div class="suitepim-stock-report-wrap">
+        <table class="suitepim-stock-report">
+          <thead>
+            <tr>
+              ${itemHeader}
+              <th>Location</th>
+              <th>Lot number</th>
+              <th>BIN</th>
+              <th>Status</th>
+              <th>On hand</th>
+              <th>Committed</th>
+              <th>Available</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${rows.map((row) => `
+              <tr>
+                ${itemCells(row)}
+                <td data-filter-location="${escapeHtml(row.location || "-")}">${escapeHtml(row.location || "-")}</td>
+                <td>${escapeHtml(row.lotNumber || "-")}</td>
+                <td>${escapeHtml(row.bin || "-")}</td>
+                <td data-filter-status="${escapeHtml(row.status || "-")}">${escapeHtml(row.status || "-")}</td>
+                <td>${escapeHtml(row.onHand || 0)}</td>
+                <td>${committedCell(row)}</td>
+                <td>${escapeHtml(row.available || 0)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    `;
+  }
+
+  function stockPopupDocument(title, body, commitments = []) {
+    const commitmentsJson = JSON.stringify(commitments).replace(/</g, "\\u003c");
+    const filterScript = `
+      <script>
+        (function () {
+          let allCommitments = ${commitmentsJson};
+
+          function uniqueValues(selector, attr) {
+            return Array.from(document.querySelectorAll(selector))
+              .map((node) => node.getAttribute(attr) || "")
+              .filter(Boolean)
+              .filter((value, index, values) => values.indexOf(value) === index)
+              .sort((a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: "base" }));
+          }
+
+          function populate(select, values) {
+            values.forEach((value) => {
+              const option = document.createElement("option");
+              option.value = value;
+              option.textContent = value;
+              select.appendChild(option);
+            });
+          }
+
+          function applyFilters() {
+            const location = document.getElementById("stockLocationFilter").value;
+            const status = document.getElementById("stockStatusFilter").value;
+            document.querySelectorAll(".suitepim-stock-report tbody tr").forEach((row) => {
+              const rowLocation = row.querySelector("[data-filter-location]")?.getAttribute("data-filter-location") || "";
+              const rowStatus = row.querySelector("[data-filter-status]")?.getAttribute("data-filter-status") || "";
+              row.hidden = !!((location && rowLocation !== location) || (status && rowStatus !== status));
+            });
+          }
+
+          function escapeHtml(value) {
+            return String(value == null ? "" : value)
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")
+              .replace(/"/g, "&quot;");
+          }
+
+          function numericStockValue(value) {
+            const parsed = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+            return Number.isFinite(parsed) ? parsed : 0;
+          }
+
+          function normalizeCommitmentRow(row) {
+            return {
+              itemId: String(row.ItemId || row.itemId || row["Item ID"] || row["Internal ID"] || "").trim(),
+              itemName: String(row.itemName || row.Name || row.Item || row["Item Name"] || "").trim(),
+              lotNumber: String(row.lotNumber || row["Lot Number"] || row["Inventory Number"] || row.Number || "").trim(),
+              location: String(row.Location || row.location || "").trim(),
+              quantity: numericStockValue(row["Quantity Committed"] ?? row.quantity ?? row.Quantity ?? row.committed ?? row.Committed),
+              transaction: String(row.transactionNumber || row.Transaction || row["Document Number"] || row["Sales Order"] || row["Order Number"] || "").trim(),
+              transactionId: String(row.transactionId || row["Transaction ID"] || row.internalid || "").trim(),
+              transactionType: String(row.transactionType || row.Type || row.type || "").trim(),
+              customer: String(row.Store || row.Customer || row.customer || row.Entity || row.entity || "").trim(),
+              date: String(row.Date || row.date || row["Transaction Date"] || "").trim(),
+              status: String(row.orderStatus || row.Status || row.status || "").trim(),
+            };
+          }
+
+          function popupAuthHeaders() {
+            const raw = sessionStorage.getItem("eposAuth") || localStorage.getItem("eposAuth") || "";
+            try {
+              const saved = JSON.parse(raw);
+              return saved?.token ? { Authorization: \`Bearer \${saved.token}\` } : {};
+            } catch {
+              return {};
+            }
+          }
+
+          async function ensurePopupCommitments() {
+            if (allCommitments.length) return;
+            const response = await fetch("/api/netsuite/committed-lines", {
+              headers: popupAuthHeaders(),
+              cache: "no-store",
+            });
+            const data = await response.json().catch(() => ({}));
+            const rows = data.results || data.rows || data.items || [];
+            allCommitments = rows.map(normalizeCommitmentRow).filter((row) => row.quantity > 0);
+          }
+
+          function stockKeyPart(value) {
+            return String(value || "").trim().toLowerCase();
+          }
+
+          function stockNamePart(value) {
+            const text = stockKeyPart(value);
+            if (!text) return "";
+            const leaf = text.includes(":") ? text.split(":").pop() : text;
+            return leaf
+              .replace(/\\([^)]*\\)/g, " ")
+              .replace(/podist\\d+/gi, " ")
+              .replace(/-\\d+\\b/g, " ")
+              .replace(/[^a-z0-9]+/g, " ")
+              .trim()
+              .replace(/\\s+/g, " ");
+          }
+
+          function stockPartMatches(a, b) {
+            if (!a || !b) return false;
+            return a === b || a.includes(b) || b.includes(a);
+          }
+
+          function findCommitmentsForRow(itemName, lot, location) {
+            const rowLot = stockKeyPart(lot);
+            const rowLocation = stockKeyPart(location);
+            const rowName = stockNamePart(itemName || lot);
+            return allCommitments.filter((detail) => {
+              const detailLot = stockKeyPart(detail.lotNumber);
+              const detailLocation = stockKeyPart(detail.location);
+              const detailName = stockNamePart(detail.itemName || detail.lotNumber);
+              const locationMatches = detailLocation && rowLocation && detailLocation === rowLocation;
+              const lotMatches = detailLot && rowLot && stockPartMatches(detailLot, rowLot);
+              const nameMatches = detailName && rowName && stockPartMatches(detailName, rowName);
+              return locationMatches && (lotMatches || nameMatches);
+            });
+          }
+
+          function dedupeCommitments(details) {
+            const seen = new Set();
+            return details.filter((detail) => {
+              const key = [
+                detail.transactionId,
+                detail.transaction,
+                detail.itemName,
+                detail.lotNumber,
+                detail.location,
+                detail.quantity,
+                detail.date,
+              ].map((value) => String(value || "").toLowerCase()).join("|");
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            });
+          }
+
+          async function renderCommitmentDetails(button) {
+            const panel = document.getElementById("stockCommitmentPanel");
+            if (!panel) return;
+            panel.hidden = false;
+            panel.innerHTML = \`
+              <div class="commitment-panel-header">
+                <strong>Committed transactions</strong>
+                <button type="button" id="stockCommitmentClose">Close</button>
+              </div>
+              <p>Loading committed transactions...</p>
+            \`;
+            let details = [];
+            try {
+              details = JSON.parse(decodeURIComponent(button.getAttribute("data-commitments") || "%5B%5D"));
+            } catch {
+              details = [];
+            }
+            const itemName = button.getAttribute("data-item-name") || "";
+            const lot = button.getAttribute("data-lot") || "-";
+            const location = button.getAttribute("data-location") || "-";
+            if (!details.length) {
+              try {
+                await ensurePopupCommitments();
+              } catch {
+                allCommitments = [];
+              }
+              details = findCommitmentsForRow(itemName, lot, location);
+            }
+            details = dedupeCommitments(details);
+            const rows = details.length
+              ? details.map((detail) => \`
+                <tr>
+                  <td>\${escapeHtml(detail.transaction || detail.transactionId || "-")}</td>
+                  <td>\${escapeHtml(detail.transactionType || "-")}</td>
+                  <td>\${escapeHtml(detail.customer || "-")}</td>
+                  <td>\${escapeHtml(detail.date || "-")}</td>
+                  <td>\${escapeHtml(detail.status || "-")}</td>
+                  <td>\${escapeHtml(detail.quantity || 0)}</td>
+                </tr>
+              \`).join("")
+              : allCommitments.length
+                ? \`<tr><td colspan="6">No matching committed transaction was found for this item name, lot, and location in the committed-lines feed.</td></tr>\`
+                : \`<tr><td colspan="6">The committed-lines feed did not load into this popup. Restart the app server and refresh the Item Management page.</td></tr>\`;
+            panel.innerHTML = \`
+              <div class="commitment-panel-header">
+                <strong>Committed transactions</strong>
+                <button type="button" id="stockCommitmentClose">Close</button>
+              </div>
+              <p>Lot: \${escapeHtml(lot)} | Location: \${escapeHtml(location)}</p>
+              <table class="commitment-table">
+                <thead>
+                  <tr>
+                    <th>Transaction</th>
+                    <th>Type</th>
+                    <th>Store / Customer</th>
+                    <th>Date</th>
+                    <th>Status</th>
+                    <th>Quantity</th>
+                  </tr>
+                </thead>
+                <tbody>\${rows}</tbody>
+              </table>
+            \`;
+            panel.hidden = false;
+            document.getElementById("stockCommitmentClose")?.addEventListener("click", () => {
+              panel.hidden = true;
+            });
+            panel.scrollIntoView({ block: "nearest" });
+          }
+
+          const locationSelect = document.getElementById("stockLocationFilter");
+          const statusSelect = document.getElementById("stockStatusFilter");
+          if (!locationSelect || !statusSelect) return;
+          populate(locationSelect, uniqueValues("[data-filter-location]", "data-filter-location"));
+          populate(statusSelect, uniqueValues("[data-filter-status]", "data-filter-status"));
+          locationSelect.addEventListener("change", applyFilters);
+          statusSelect.addEventListener("change", applyFilters);
+          document.querySelectorAll(".stock-commitment-link").forEach((button) => {
+            button.addEventListener("click", () => renderCommitmentDetails(button));
+          });
+        })();
+      </script>
+    `;
+
+    return `<!doctype html>
+      <html>
+        <head>
+          <meta charset="utf-8">
+          <title>${escapeHtml(title)}</title>
+          <style>
+            * { box-sizing: border-box; }
+            body {
+              margin: 0;
+              background: #f8fafc;
+              color: #0f172a;
+              font-family: Arial, sans-serif;
+              font-size: 14px;
+            }
+            header {
+              position: sticky;
+              top: 0;
+              z-index: 2;
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 16px;
+              padding: 18px 22px;
+              border-bottom: 1px solid #dbe4ef;
+              background: #fff;
+            }
+            h1 {
+              margin: 0;
+              font-size: 18px;
+            }
+            button {
+              border: 1px solid #cbd5e1;
+              border-radius: 6px;
+              background: #fff;
+              color: #0f172a;
+              font: inherit;
+              font-weight: 700;
+              padding: 8px 12px;
+              cursor: pointer;
+            }
+            main { padding: 18px 22px; }
+            .filters {
+              display: flex;
+              flex-wrap: wrap;
+              gap: 12px;
+              align-items: end;
+              margin-bottom: 14px;
+            }
+            label {
+              display: grid;
+              gap: 5px;
+              color: #475569;
+              font-size: 12px;
+              font-weight: 700;
+              text-transform: uppercase;
+            }
+            select {
+              min-width: 190px;
+              border: 1px solid #cbd5e1;
+              border-radius: 6px;
+              background: #fff;
+              color: #0f172a;
+              font: inherit;
+              padding: 8px 10px;
+            }
+            .suitepim-stock-report-wrap {
+              overflow: auto;
+              border: 1px solid #dbe4ef;
+              border-radius: 8px;
+              background: #fff;
+            }
+            .suitepim-stock-report {
+              width: 100%;
+              border-collapse: collapse;
+              font-size: 13px;
+            }
+            .suitepim-stock-report th,
+            .suitepim-stock-report td {
+              border-bottom: 1px solid #e2e8f0;
+              padding: 10px 12px;
+              text-align: left;
+              white-space: nowrap;
+            }
+            .suitepim-stock-report th {
+              position: sticky;
+              top: 0;
+              background: #f1f5f9;
+              color: #334155;
+              font-size: 12px;
+              text-transform: uppercase;
+            }
+            .suitepim-empty-option {
+              border: 1px solid #dbe4ef;
+              border-radius: 8px;
+              background: #fff;
+              padding: 18px;
+              color: #64748b;
+            }
+            .stock-commitment-link {
+              min-width: 34px;
+              border-color: #bfdbfe;
+              color: #075985;
+              padding: 4px 8px;
+            }
+            .stock-commitment-link:hover {
+              background: #eff6ff;
+            }
+            .commitment-panel {
+              margin-bottom: 14px;
+              border: 1px solid #bfdbfe;
+              border-radius: 8px;
+              background: #eff6ff;
+              padding: 12px;
+            }
+            .commitment-panel-header {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              gap: 12px;
+              margin-bottom: 8px;
+            }
+            .commitment-panel p {
+              margin: 0 0 10px;
+              color: #475569;
+            }
+            .commitment-table {
+              width: 100%;
+              border-collapse: collapse;
+              background: #fff;
+              font-size: 13px;
+            }
+            .commitment-table th,
+            .commitment-table td {
+              border-bottom: 1px solid #dbe4ef;
+              padding: 8px 10px;
+              text-align: left;
+            }
+            .commitment-table th {
+              background: #dbeafe;
+              color: #1e3a8a;
+              font-size: 12px;
+              text-transform: uppercase;
+            }
+          </style>
+        </head>
+        <body>
+          <header>
+            <h1>${escapeHtml(title)}</h1>
+            <button type="button" onclick="window.close()">Close</button>
+          </header>
+          <main>
+            <div class="filters">
+              <label>
+                Location
+                <select id="stockLocationFilter">
+                  <option value="">All locations</option>
+                </select>
+              </label>
+              <label>
+                Status
+                <select id="stockStatusFilter">
+                  <option value="">All statuses</option>
+                </select>
+              </label>
+            </div>
+            ${body}
+          </main>
+          ${filterScript}
+        </body>
+      </html>`;
   }
 
   function renderCell(row, column) {
@@ -1742,6 +2825,10 @@
       return button;
     }
 
+    if (field.fieldType === "Stock") {
+      return renderStockCell(row);
+    }
+
     if (field.fieldType === "Preview") {
       const button = document.createElement("button");
       button.type = "button";
@@ -1764,7 +2851,16 @@
       const input = document.createElement("input");
       input.type = "checkbox";
       input.checked = boolValue(value);
-      input.addEventListener("change", () => updateCell(row, column, input.checked));
+      input.addEventListener("change", async () => {
+        if (column === "Inactive" && input.checked) {
+          const confirmed = await confirmInactiveWithStock(row);
+          if (!confirmed) {
+            input.checked = false;
+            return;
+          }
+        }
+        updateCell(row, column, input.checked);
+      });
       return input;
     }
 
@@ -1841,7 +2937,7 @@
     }
 
     const input = document.createElement("input");
-    input.type = ["Currency", "Decimal", "Integer", "Float", "Number"].includes(field.fieldType) ? "number" : "text";
+    input.type = isNumericField(field) ? "number" : "text";
     input.step = field.fieldType === "Currency" ? "0.01" : "0.1";
     input.value = valueText(value);
     if (isCalculatedPriceField(column)) {
@@ -1861,7 +2957,7 @@
       if (fieldName === changedColumn || !state.visibleColumns.includes(fieldName)) return;
       const cell = tr.querySelector(`[data-column="${CSS.escape(fieldName)}"]`);
       if (!cell) return;
-      const editable = cell.querySelector("input, textarea, button, select");
+      const editable = cell.querySelector("input, textarea, button, select, [contenteditable='true'], [contenteditable='plaintext-only']");
       if (editable === document.activeElement) return;
       cell.replaceChildren(renderCell(updatedRow, fieldName));
     });
