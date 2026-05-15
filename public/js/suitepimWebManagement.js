@@ -782,6 +782,28 @@
     return ["Purchase Price", "Base Price", "Retail Price", "Sale Price", "Discount Percent", "Margin"].includes(column);
   }
 
+  function isBulkTextField(field) {
+    if (!field || field.disableField || field.hiddenField || fieldUsesOptions(field)) return false;
+    return !["Checkbox", "Generate", "Preview", "Stock", "Link", "image", "Currency", "Decimal", "Integer", "Float", "Number"].includes(field.fieldType);
+  }
+
+  function rowSizeValue(row) {
+    const raw = row?.Size;
+    if (Array.isArray(raw)) {
+      const sizes = raw.map((item) => String(item).trim()).filter(Boolean);
+      return sizes.length === 1 ? sizes[0] : "";
+    }
+    const size = String(raw || "").trim();
+    return size.includes(",") ? "" : size;
+  }
+
+  function prefixSizeValue(row, value) {
+    const size = rowSizeValue(row);
+    const text = String(value || "").trim();
+    if (!size || !text) return text;
+    return text.toLowerCase().startsWith(`${size.toLowerCase()} `) ? text : `${size} ${text}`;
+  }
+
   function recalcRow(row, changedField) {
     const updated = { ...row };
     const vat = 0.2;
@@ -1593,19 +1615,49 @@
     }).catch((err) => showStatus(err.message, "error"));
   }
 
-  function renderBulkValueControl() {
-    const field = fieldByName(el.suitepimBulkField.value);
+  function renderBulkModeOptions(field) {
     const isPricing = isBulkPricingField(field?.name);
-    el.suitepimBulkMode.hidden = !isPricing;
-    el.suitepimBulkMode.disabled = !isPricing;
-    el.suitepimBulkMode.closest(".suitepim-bulk-row")?.classList.toggle("is-pricing", isPricing);
-    state.bulkDraft = {
-      fieldName: field?.name || "",
-      mode: isPricing ? el.suitepimBulkMode.value : "set",
-      value: field?.fieldType === "Generate" ? true : "",
-      valueLabel: "",
-      internalIds: null,
-    };
+    const isText = isBulkTextField(field);
+    el.suitepimBulkMode.innerHTML = "";
+
+    if (!isPricing && !isText) {
+      el.suitepimBulkMode.hidden = true;
+      el.suitepimBulkMode.disabled = true;
+      return "set";
+    }
+
+    const options = isPricing
+      ? [
+          ["set", "Set to"],
+          ["add-value", "Increase by value"],
+          ["add-percent", "Increase by percent"],
+        ]
+      : [
+          ["set", "Set to"],
+          ["prefix-size", "Prefix Size"],
+        ];
+
+    options.forEach(([value, label]) => {
+      const option = document.createElement("option");
+      option.value = value;
+      option.textContent = label;
+      el.suitepimBulkMode.appendChild(option);
+    });
+
+    el.suitepimBulkMode.hidden = false;
+    el.suitepimBulkMode.disabled = false;
+    return options.some(([value]) => value === el.suitepimBulkMode.value) ? el.suitepimBulkMode.value : "set";
+  }
+
+  function renderBulkValueForCurrentMode(field) {
+    if (state.bulkDraft?.mode === "prefix-size") {
+      el.suitepimBulkValueHost.innerHTML = `<div class="suitepim-muted-note">No value needed. Each row's Size will be prefixed to the selected text field.</div>`;
+      state.bulkDraft.value = true;
+      state.bulkDraft.valueLabel = "Prefix Size";
+      state.bulkDraft.internalIds = null;
+      return;
+    }
+
     renderTypedControl({
       host: el.suitepimBulkValueHost,
       field,
@@ -1613,13 +1665,29 @@
       onChange(value, valueLabel, internalIds = null) {
         state.bulkDraft = {
           fieldName: field.name,
-          mode: isBulkPricingField(field.name) ? el.suitepimBulkMode.value : "set",
+          mode: isBulkPricingField(field.name) || isBulkTextField(field) ? el.suitepimBulkMode.value : "set",
           value: field.fieldType === "Checkbox" ? value === "true" : value,
           valueLabel,
           internalIds: fieldUsesOptions(field) ? (internalIds ?? value) : null,
         };
       },
     }).catch((err) => showStatus(err.message, "error"));
+  }
+
+  function renderBulkValueControl() {
+    const field = fieldByName(el.suitepimBulkField.value);
+    const isPricing = isBulkPricingField(field?.name);
+    const mode = renderBulkModeOptions(field);
+    el.suitepimBulkMode.value = mode;
+    el.suitepimBulkMode.closest(".suitepim-bulk-row")?.classList.toggle("is-pricing", isPricing);
+    state.bulkDraft = {
+      fieldName: field?.name || "",
+      mode,
+      value: field?.fieldType === "Generate" ? true : "",
+      valueLabel: "",
+      internalIds: null,
+    };
+    renderBulkValueForCurrentMode(field);
   }
 
   function addFilter() {
@@ -3235,7 +3303,7 @@
     }
 
     const draft = state.bulkDraft;
-    const hasValue = field.fieldType === "Generate"
+    const hasValue = field.fieldType === "Generate" || draft.mode === "prefix-size"
       ? true
       : Array.isArray(draft.value)
       ? draft.value.length > 0
@@ -3263,6 +3331,7 @@
       return;
     }
 
+    let updatedCount = 0;
     targetRows.forEach((row) => {
       const idx = state.rows.findIndex((item) => item._suitepimKey === row._suitepimKey);
       if (idx === -1) return;
@@ -3298,6 +3367,12 @@
         }
       }
 
+      if (draft.mode === "prefix-size" && isBulkTextField(field)) {
+        const nextValue = prefixSizeValue(state.rows[idx], state.rows[idx][field.name]);
+        if (!nextValue || nextValue === String(state.rows[idx][field.name] || "").trim()) return;
+        updated[field.name] = nextValue;
+      }
+
       if (isCalculatedPriceField(field.name)) {
         updated = recalcRow(updated, field.name);
       }
@@ -3307,11 +3382,16 @@
       if (clean === state.baseline.get(updated._suitepimKey)) state.dirty.delete(updated._suitepimKey);
       else state.dirty.set(updated._suitepimKey, updated);
       state.selected.add(updated._suitepimKey);
+      updatedCount += 1;
     });
 
     state.page = 1;
     applyFilters();
-    showStatus(`Bulk update applied to ${targetRows.length.toLocaleString()} row(s). Review and push changes when ready.`, "success");
+    if (!updatedCount) {
+      showStatus("No rows were updated. Check the selected rows have a Size and a text value to prefix.", "warning");
+      return;
+    }
+    showStatus(`Bulk update applied to ${updatedCount.toLocaleString()} row(s). Review and push changes when ready.`, "success");
   }
 
   function togglePanel(button) {
@@ -3390,6 +3470,8 @@
     el.suitepimBulkField.addEventListener("change", renderBulkValueControl);
     el.suitepimBulkMode.addEventListener("change", () => {
       if (state.bulkDraft) state.bulkDraft.mode = el.suitepimBulkMode.value;
+      const field = fieldByName(state.bulkDraft?.fieldName);
+      renderBulkValueForCurrentMode(field);
     });
     el.suitepimApplyBulkBtn.addEventListener("click", applyBulkUpdate);
     el.suitepimToggleFiltersBtn.addEventListener("click", () => togglePanel(el.suitepimToggleFiltersBtn));

@@ -2450,6 +2450,10 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   margin-top: 14px;
 }
 
+.suitepim-page-wide .suitepim-pagination {
+  padding-right: 88px;
+}
+
 .suitepim-pagination button {
   padding: 0 14px;
 }
