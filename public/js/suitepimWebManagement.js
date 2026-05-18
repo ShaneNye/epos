@@ -11,6 +11,8 @@
     "Page Preview",
   ];
   const columnWidthStorageKey = "suitepim:web-management:column-widths";
+  const customPresetName = "Custom";
+  const customPresetStoragePrefix = "suitepim:web-management:custom-preset";
   const selectColumnWidth = 42;
   const minColumnWidth = 140;
   const maxColumnWidth = 720;
@@ -44,6 +46,8 @@
     aiGenerationConfigured: false,
     aiGenerationModel: "",
     columnWidths: {},
+    userPreferenceKey: "unknown",
+    customPreset: null,
     presets: [
       {
         name: "Step 1 : Pricing",
@@ -169,6 +173,29 @@
     return { Authorization: `Bearer ${saved.token}` };
   }
 
+  function safeStorageKeyPart(value) {
+    return encodeURIComponent(String(value || "unknown").trim().toLowerCase() || "unknown");
+  }
+
+  function fallbackUserPreferenceKey() {
+    const saved = typeof storageGet === "function" ? storageGet() : null;
+    return safeStorageKeyPart(saved?.username || saved?.email || "unknown");
+  }
+
+  async function loadUserPreferenceKey() {
+    state.userPreferenceKey = fallbackUserPreferenceKey();
+
+    try {
+      const res = await fetch("/api/me", { headers: authHeaders() });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data.ok === false) return;
+      const user = data.user || {};
+      state.userPreferenceKey = safeStorageKeyPart(user.id || user.email || state.userPreferenceKey);
+    } catch {
+      // User-scoped preferences are a convenience; falling back keeps the page usable.
+    }
+  }
+
   function fieldByName(name) {
     return state.fields.find((field) => field.name === name);
   }
@@ -209,6 +236,71 @@
       localStorage.setItem(columnWidthStorageKey, JSON.stringify(state.columnWidths));
     } catch {
       // Column widths are a convenience preference; failing to persist should not interrupt editing.
+    }
+  }
+
+  function customPresetStorageKey() {
+    return `${customPresetStoragePrefix}:${state.userPreferenceKey}`;
+  }
+
+  function cleanVisibleColumns(columns = []) {
+    return [...new Set(columns)].filter((name) => fieldByName(name));
+  }
+
+  function cleanCustomFilters(filters = []) {
+    return filters
+      .map((filter) => {
+        const fieldName = filter?.fieldName || filter?.field;
+        if (!fieldByName(fieldName)) return null;
+        const value = filter.value;
+        if (value === "" || value == null || (Array.isArray(value) && !value.length)) return null;
+        return {
+          fieldName,
+          value,
+          valueLabel: filter.valueLabel ?? filter.label ?? "",
+          internalId: filter.internalId ?? "",
+          source: "manual",
+        };
+      })
+      .filter(Boolean);
+  }
+
+  function defaultCustomPreset() {
+    return {
+      fields: cleanVisibleColumns(defaultVisibleColumns),
+      filters: [],
+    };
+  }
+
+  function loadCustomPreset() {
+    try {
+      const parsed = JSON.parse(localStorage.getItem(customPresetStorageKey()) || "null");
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return defaultCustomPreset();
+      const fields = cleanVisibleColumns(parsed.fields || parsed.visibleColumns || []);
+      return {
+        fields: fields.length ? fields : cleanVisibleColumns(defaultVisibleColumns),
+        filters: cleanCustomFilters(parsed.filters || []),
+      };
+    } catch {
+      return defaultCustomPreset();
+    }
+  }
+
+  function selectedPresetName() {
+    return el.suitepimPresetSelect?.value || "";
+  }
+
+  function saveCustomPreset() {
+    if (selectedPresetName() !== customPresetName) return;
+    state.customPreset = {
+      fields: cleanVisibleColumns(state.visibleColumns),
+      filters: cleanCustomFilters(state.activeFilters),
+    };
+
+    try {
+      localStorage.setItem(customPresetStorageKey(), JSON.stringify(state.customPreset));
+    } catch {
+      showStatus("Custom preset could not be saved in this browser.", "warning");
     }
   }
 
@@ -965,6 +1057,7 @@
     state.aiGenerationConfigured = !!config.aiGenerationConfigured;
     state.aiGenerationModel = config.aiGenerationModel || "";
     state.columnWidths = loadColumnWidths();
+    state.customPreset = loadCustomPreset();
     state.visibleColumns = [...defaultVisibleColumns];
     renderFieldSelectors();
     renderColumnChooser();
@@ -1142,8 +1235,9 @@
     el.suitepimPresetSelect.innerHTML = `
       <option value="">Default</option>
       ${state.presets.map((preset) => `<option value="${escapeHtml(preset.name)}">${escapeHtml(preset.name)}</option>`).join("")}
+      <option value="${customPresetName}">${customPresetName}</option>
     `;
-    if (state.presets.some((preset) => preset.name === currentPreset)) {
+    if (currentPreset === customPresetName || state.presets.some((preset) => preset.name === currentPreset)) {
       el.suitepimPresetSelect.value = currentPreset;
     }
 
@@ -1155,14 +1249,17 @@
       el.suitepimPresetSelect.insertAdjacentElement("afterend", dropdown);
     }
 
-    const selected = state.presets.find((preset) => preset.name === el.suitepimPresetSelect.value);
+    const selectedName = el.suitepimPresetSelect.value;
+    const selected = state.presets.find((preset) => preset.name === selectedName);
+    const isCustomSelected = selectedName === customPresetName;
+    const customIndex = state.presets.length;
     dropdown.innerHTML = `
       <button class="suitepim-preset-trigger" type="button" aria-haspopup="listbox" aria-expanded="false">
-        ${selected ? presetLabelHtml(selected.name, state.presets.indexOf(selected)) : `<span class="suitepim-preset-placeholder">Default</span>`}
+        ${isCustomSelected ? presetLabelHtml(customPresetName, customIndex) : selected ? presetLabelHtml(selected.name, state.presets.indexOf(selected)) : `<span class="suitepim-preset-placeholder">Default</span>`}
         <span class="suitepim-preset-chevron" aria-hidden="true"></span>
       </button>
       <div class="suitepim-preset-menu" role="listbox" aria-label="Item management presets">
-        <button class="suitepim-preset-option suitepim-preset-clear" type="button" role="option" data-preset-name="" aria-selected="${selected ? "false" : "true"}">
+        <button class="suitepim-preset-option suitepim-preset-clear" type="button" role="option" data-preset-name="" aria-selected="${selected || isCustomSelected ? "false" : "true"}">
           <span class="suitepim-preset-placeholder">Default</span>
         </button>
         ${state.presets.map((preset, index) => `
@@ -1170,6 +1267,9 @@
             ${presetLabelHtml(preset.name, index)}
           </button>
         `).join("")}
+        <button class="suitepim-preset-option ${presetToneClass(customIndex)}" type="button" role="option" data-preset-name="${customPresetName}" aria-selected="${isCustomSelected ? "true" : "false"}">
+          ${presetLabelHtml(customPresetName, customIndex)}
+        </button>
       </div>
     `;
 
@@ -1229,6 +1329,18 @@
     showStatus("Restored default table layout.", "success");
   }
 
+  function applyCustomPreset() {
+    const customPreset = state.customPreset || defaultCustomPreset();
+    state.visibleColumns = cleanVisibleColumns(customPreset.fields);
+    if (!state.visibleColumns.length) state.visibleColumns = cleanVisibleColumns(defaultVisibleColumns);
+    state.activeFilters = cleanCustomFilters(customPreset.filters);
+    state.page = 1;
+    renderColumnChooser();
+    renderActiveFilters();
+    applyFilters();
+    showStatus("Loaded Custom preset.", "success");
+  }
+
   function normalizePresetValue(field, value) {
     if (field.fieldType === "Checkbox") return boolValue(value) ? "true" : "false";
     return value;
@@ -1256,6 +1368,11 @@
     const presetName = el.suitepimPresetSelect?.value;
     if (!presetName) {
       applyDefaultPreset();
+      return;
+    }
+
+    if (presetName === customPresetName) {
+      applyCustomPreset();
       return;
     }
 
@@ -1314,6 +1431,7 @@
       input.addEventListener("change", () => {
         if (input.checked && !state.visibleColumns.includes(field.name)) state.visibleColumns.push(field.name);
         if (!input.checked) state.visibleColumns = state.visibleColumns.filter((name) => name !== field.name);
+        saveCustomPreset();
         renderTable();
       });
       label.append(input, document.createTextNode(field.name));
@@ -1590,6 +1708,7 @@
         state.activeFilters.splice(index, 1);
         state.page = 1;
         renderActiveFilters();
+        saveCustomPreset();
         applyFilters();
       });
       chip.appendChild(remove);
@@ -1702,6 +1821,7 @@
     renderFilterValueControl();
     state.page = 1;
     renderActiveFilters();
+    saveCustomPreset();
     applyFilters();
   }
 
@@ -1709,6 +1829,7 @@
     state.activeFilters = [];
     state.page = 1;
     renderActiveFilters();
+    saveCustomPreset();
     applyFilters();
   }
 
@@ -3515,6 +3636,7 @@
     try {
       state.options.clear();
       state.activeFilters = [];
+      await loadUserPreferenceKey();
       await loadConfig();
       await loadProducts();
     } catch (err) {
