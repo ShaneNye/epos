@@ -2081,6 +2081,22 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
   if (!isPendingApproval && !isPendingFulfillment) return;
 
+  function setOrderMutationBusy(isBusy) {
+    window._salesOrderMutationInFlight = !!isBusy;
+    wrapper.setAttribute("aria-busy", isBusy ? "true" : "false");
+
+    ["saveOrderBtn", "commitOrderBtn"].forEach((buttonId) => {
+      const button = document.getElementById(buttonId);
+      if (!button) return;
+      button.disabled = !!isBusy;
+      button.classList.toggle("locked-input", !!isBusy);
+    });
+  }
+
+  function orderMutationIsBusy() {
+    return window._salesOrderMutationInFlight === true;
+  }
+
   if (isPendingFulfillment) {
     // For pending fulfillment, only show Save button (for memo updates)
     wrapper.innerHTML = `
@@ -2096,7 +2112,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
   function collectEditableSalesLines() {
     return [...document.querySelectorAll("#orderItemsBody tr.order-line")]
-      .map((row) => {
+      .map((row, rowIndex) => {
         let itemId = row.querySelector(".item-internal-id")?.value?.trim() || "";
 
         if (!itemId) {
@@ -2115,6 +2131,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
           parseFloat(
             row.querySelector(".item-qty")?.value ||
               row.querySelector(".item-qty-cache")?.value ||
+              row.querySelector(".qty")?.textContent ||
               "0"
           ) || 0;
 
@@ -2143,11 +2160,23 @@ function updateActionButton(orderStatusObj, tranId, so) {
         const inventoryMeta = row.dataset.inventoryMeta || "";
         const lotnumber = row.dataset.lotnumber || "";
         const discountPct =
-          parseFloat(row.querySelector(".item-discount")?.value || "0") || 0;
+          parseFloat(
+            row.querySelector(".item-discount")?.value ||
+              row.querySelector(".discount")?.textContent?.replace(/[^0-9.-]/g, "") ||
+              "0"
+          ) || 0;
         const saleGrossLine =
-          parseFloat(row.querySelector(".item-saleprice")?.value || "0") || 0;
+          parseFloat(
+            row.querySelector(".item-saleprice")?.value ||
+              row.querySelector(".saleprice")?.textContent?.replace(/[^0-9.-]/g, "") ||
+              "0"
+          ) || 0;
         const amountGrossLine =
-          parseFloat(row.querySelector(".item-amount")?.value || "0") || 0;
+          parseFloat(
+            row.querySelector(".item-amount")?.value ||
+              row.querySelector(".amount")?.textContent?.replace(/[^0-9.-]/g, "") ||
+              "0"
+          ) || 0;
 
         const optionsText =
           row
@@ -2163,6 +2192,9 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
         return {
           lineId: row.dataset.lineid || "",
+          lineIndex: Number.isFinite(Number(row.dataset.line))
+            ? Number(row.dataset.line)
+            : rowIndex,
           itemId,
           item: itemId ? { id: itemId } : undefined,
           class: itemClass,
@@ -2257,6 +2289,12 @@ function updateActionButton(orderStatusObj, tranId, so) {
       headerFields: Object.keys(headerUpdates).filter((key) => headerUpdates[key] != null),
     });
 
+    if ((so?.item?.items || []).length > 0 && lines.length === 0) {
+      throw new Error(
+        "No item lines were collected from the sales order view. Please refresh before saving."
+      );
+    }
+
     return {
       headerUpdates,
       lines,
@@ -2268,7 +2306,12 @@ function updateActionButton(orderStatusObj, tranId, so) {
     return JSON.stringify(payload || {});
   }
 
-  window._lastSalesOrderSaveSignature = stableSalesSaveSignature(buildPayloadFromUI());
+  try {
+    window._lastSalesOrderSaveSignature = stableSalesSaveSignature(buildPayloadFromUI());
+  } catch (err) {
+    console.warn("Could not create initial Sales Order save signature:", err.message || err);
+    window._lastSalesOrderSaveSignature = "";
+  }
 
   const saveBtn = document.getElementById("saveOrderBtn");
   if (saveBtn) {
@@ -2276,33 +2319,44 @@ function updateActionButton(orderStatusObj, tranId, so) {
     const freshSaveBtn = document.getElementById("saveOrderBtn");
 
     freshSaveBtn.addEventListener("click", async () => {
+      if (orderMutationIsBusy()) return;
+
       const savedAuth = storageGet?.();
       const token = savedAuth?.token;
       if (!token) return (window.location.href = "/index.html");
 
       if (isPendingApproval && !validateSalesViewItemsBeforeSave()) return;
 
-      freshSaveBtn.disabled = true;
-      freshSaveBtn.classList.add("locked-input");
+      setOrderMutationBusy(true);
       showCommitInlineLocal("Saving…");
 
-      const payload = buildPayloadFromUI();
-      const signature = stableSalesSaveSignature(payload);
+      let payload;
+      let signature;
+      try {
+        payload = buildPayloadFromUI();
+        signature = stableSalesSaveSignature(payload);
+      } catch (err) {
+        console.error("Sales order payload build failed:", err.message || err);
+        showToast?.(err.message || "Could not collect order lines", "error");
+        showCommitInlineLocal("Save failed");
+        setTimeout(() => hideCommitInlineLocal(), 1500);
+        setOrderMutationBusy(false);
+        return;
+      }
+
       if (signature === window._lastSalesOrderSaveSignature) {
         if (customFieldsHaveChanges()) {
           showCommitInlineLocal("Saving custom fields...");
           const customResult = await saveCustomFieldsForCurrentOrder({ button: freshSaveBtn });
           showCommitInlineLocal("Saved ✅");
           setTimeout(() => hideCommitInlineLocal(), 800);
-          freshSaveBtn.disabled = false;
-          freshSaveBtn.classList.remove("locked-input");
+          setOrderMutationBusy(false);
           return;
         }
         showToast?.("No order changes to save.", "success");
         showCommitInlineLocal("No changes ✅");
         setTimeout(() => hideCommitInlineLocal(), 800);
-        freshSaveBtn.disabled = false;
-        freshSaveBtn.classList.remove("locked-input");
+        setOrderMutationBusy(false);
         return;
       }
 
@@ -2334,8 +2388,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
         showCommitInlineLocal("Save failed ❌");
         setTimeout(() => hideCommitInlineLocal(), 1500);
       } finally {
-        freshSaveBtn.disabled = false;
-        freshSaveBtn.classList.remove("locked-input");
+        setOrderMutationBusy(false);
       }
     });
   }
@@ -2429,19 +2482,19 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
   const freshCommitBtn = document.getElementById("commitOrderBtn");
 
   freshCommitBtn.addEventListener("click", async () => {
+    if (orderMutationIsBusy()) return;
+
     const savedAuth = storageGet?.();
     const token = savedAuth?.token;
     if (!token) return (window.location.href = "/index.html");
 
     if (!validateSalesViewItemsBeforeSave()) return;
 
-    freshCommitBtn.disabled = true;
-    freshCommitBtn.classList.add("locked-input");
+    setOrderMutationBusy(true);
     showCommitInlineLocal("Committing…");
 
-    const payload = buildPayloadFromUI();
-
     try {
+      const payload = buildPayloadFromUI();
       const res = await fetch(`/api/netsuite/salesorder/${tranId}/commit`, {
         method: "POST",
         headers: {
@@ -2470,8 +2523,7 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
       showCommitInlineLocal("Commit failed ❌");
       setTimeout(() => hideCommitInlineLocal(), 2000);
 
-      freshCommitBtn.disabled = false;
-      freshCommitBtn.classList.remove("locked-input");
+      setOrderMutationBusy(false);
     }
   });
 }

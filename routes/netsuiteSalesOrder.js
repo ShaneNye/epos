@@ -2535,6 +2535,7 @@ router.post("/:id/commit", async (req, res) => {
       const normalizedLine = {
         ...line,
         lineId: line.lineId || line.lineid || "",
+        lineIndex: Number.isFinite(Number(line.lineIndex)) ? Number(line.lineIndex) : null,
         item: line.item || (line.itemId ? { id: String(line.itemId) } : undefined),
         quantity: qty,
         amount: grossAmount,
@@ -2984,6 +2985,7 @@ router.post("/:id/save", async (req, res) => {
       const normalizedLine = {
         ...line,
         lineId: line.lineId || line.lineid || "",
+        lineIndex: Number.isFinite(Number(line.lineIndex)) ? Number(line.lineIndex) : null,
         item: line.item || (line.itemId ? { id: String(line.itemId) } : undefined),
         quantity: qty,
         amount: grossAmount,

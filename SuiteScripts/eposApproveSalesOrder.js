@@ -69,6 +69,34 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     return -1;
   }
 
+  function findLineIndexByPayloadFallback(soRec, u) {
+    const requestedIndex = Number(u && u.lineIndex);
+    if (!Number.isInteger(requestedIndex) || requestedIndex < 0) return -1;
+
+    const lineCount = getItemLineCount(soRec);
+    if (requestedIndex >= lineCount) return -1;
+
+    const expectedItem = String(u.itemId || (u.item && u.item.id) || "").trim();
+    if (!expectedItem) return requestedIndex;
+
+    const currentItem = String(
+      soRec.getSublistValue({
+        sublistId: "item",
+        fieldId: "item",
+        line: requestedIndex,
+      }) || ""
+    ).trim();
+
+    if (currentItem === expectedItem) return requestedIndex;
+
+    log.debug("⚠️ Line index fallback item mismatch", {
+      lineIndex: requestedIndex,
+      expectedItem,
+      currentItem,
+    });
+    return -1;
+  }
+
   function removeDeletedLines(soRec, deletedLineIds) {
     if (!Array.isArray(deletedLineIds) || !deletedLineIds.length) return [];
 
@@ -481,7 +509,10 @@ function applyPricingToCurrentLine(soRec, u, isNewLine) {
               return;
             }
 
-            const targetLine = findLineIndexByInternalLineId(soRec, u.lineId);
+            let targetLine = findLineIndexByInternalLineId(soRec, u.lineId);
+            if (targetLine < 0) {
+              targetLine = findLineIndexByPayloadFallback(soRec, u);
+            }
 
             if (targetLine < 0) {
               log.debug("⚠️ Existing line not found for update", u);

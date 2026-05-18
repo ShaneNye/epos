@@ -1043,7 +1043,24 @@ window.renderSalesViewLines = function renderSalesViewLines({
 
   tbody.innerHTML = "";
 
-  const isPending = String(so?.orderStatus?.id || "").toUpperCase() === "A";
+  const statusId = String(
+    so?.orderStatus?.id || so?.orderstatus?.id || so?.orderstatus || so?.status || ""
+  )
+    .trim()
+    .split(":")
+    .pop()
+    .toUpperCase();
+  const statusName = String(
+    so?.orderStatus?.refName ||
+      so?.orderstatus?.refName ||
+      so?.statusRef ||
+      (typeof so?.status === "object" ? so.status.refName : so?.status) ||
+      ""
+  )
+    .trim()
+    .toUpperCase();
+  const isPending =
+    statusId === "A" || `${statusId} ${statusName}`.replace(/[^A-Z]/g, "").includes("PENDINGAPPROVAL");
   const lines = so?.item?.items || [];
 
   if (!lines.length) {
