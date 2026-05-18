@@ -423,6 +423,51 @@ function existingInventoryDetail(line) {
   ]);
 }
 
+function parseSalesViewInventoryDetailPart(part) {
+  const tokens = String(part || "").trim().split("|");
+  return {
+    qty: tokens[0] || "",
+    locationName: tokens[1] || "",
+    locationId: tokens[2] || "",
+    statusName: tokens[3] || "",
+    statusId: tokens[4] || "",
+    inventoryNumberName: tokens.length > 7 ? tokens.slice(5, -1).join("|") : tokens[5] || "",
+    inventoryNumberId: tokens.length > 6 ? tokens[tokens.length - 1] || "" : tokens[6] || "",
+  };
+}
+
+function formatSalesViewInventoryDetailPart(detail) {
+  return [
+    detail.qty,
+    detail.locationName,
+    detail.locationId,
+    detail.statusName,
+    detail.statusId,
+    String(detail.inventoryNumberName || "").replace(/\|/g, " - ").trim(),
+    detail.inventoryNumberId,
+  ].join("|");
+}
+
+function normalizeSalesViewLocationName(value) {
+  return String(value || "")
+    .replace(/\b(store|warehouse)\b/gi, "")
+    .replace(/[^a-z0-9]+/gi, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function salesViewLocationMatches(a, b) {
+  const left = normalizeSalesViewLocationName(a);
+  const right = normalizeSalesViewLocationName(b);
+  return !!left && !!right && (left === right || left.includes(right) || right.includes(left));
+}
+
+function getSalesViewLineIndex(row, fallback) {
+  const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
+  const idx = rows.indexOf(row);
+  return idx >= 0 ? idx : fallback;
+}
+
 function buildOptionSchemaForItem(itemId) {
   const fromDb = window.itemOptionsCache?.getOptionsForItemSync?.(itemId) || {};
   return Object.keys(fromDb).length ? fromDb : {};
@@ -876,7 +921,26 @@ window.onOptionsSaved = function onOptionsSaved(itemId, selections) {
 
 window.onInventorySaved = function onInventorySaved(itemId, detailString, lineIndex) {
   try {
-    const row = document.querySelector(`#orderItemsBody tr.order-line[data-line="${lineIndex}"]`);
+    let row = null;
+
+    if (window.__salesInventoryTargetRowLine != null) {
+      row = document.querySelector(
+        `#orderItemsBody tr.order-line[data-line="${window.__salesInventoryTargetRowLine}"]`
+      );
+    }
+
+    if (!row && lineIndex != null) {
+      row = document.querySelector(`#orderItemsBody tr.order-line[data-line="${lineIndex}"]`);
+    }
+
+    if (!row && itemId) {
+      const matches = [...document.querySelectorAll("#orderItemsBody tr.order-line")].filter(
+        (candidate) =>
+          String(candidate.querySelector(".item-internal-id")?.value || "").trim() ===
+          String(itemId || "").trim()
+      );
+      row = matches[matches.length - 1] || null;
+    }
     if (!row) {
       console.warn("⚠️ onInventorySaved: row not found", { lineIndex, itemId });
       return;
@@ -890,14 +954,67 @@ window.onInventorySaved = function onInventorySaved(itemId, detailString, lineIn
 
     row.dataset.backorder = "";
 
-    const invInp = row.querySelector(".item-inv-detail");
-    if (invInp) invInp.value = detailString || "";
-
-    const summary = row.querySelector(".inv-summary");
-    if (summary) summary.textContent = detailString || "";
-
     const fulfilSel =
       row.querySelector(".item-fulfilment") || row.querySelector(".fulfilmentSelect");
+    const firstPart = String(detailString || "").split(";")[0]?.trim() || "";
+    const firstDetail = parseSalesViewInventoryDetailPart(firstPart);
+    const fulfilId = String(fulfilSel?.value || "").trim();
+    const fulfilText =
+      fulfilSel?.options?.[fulfilSel.selectedIndex]?.textContent?.trim().toLowerCase() || "";
+    const storeSelect = document.getElementById("store");
+    const storeName = storeSelect?.selectedOptions?.[0]?.textContent?.trim() || "";
+    const storeId = String(storeSelect?.value || "").trim();
+    const warehouseSelect = document.getElementById("warehouse");
+    const warehouseName = warehouseSelect?.selectedOptions?.[0]?.textContent?.trim() || "";
+    const warehouseId = String(warehouseSelect?.value || "").trim();
+
+    const isInStore = fulfilId === "1" || fulfilText === "in store";
+    const isWarehouse = fulfilId === "2" || fulfilText === "warehouse";
+    const sourceMatchesStore =
+      salesViewLocationMatches(firstDetail.locationName, storeName) ||
+      (!!firstDetail.locationId && !!storeId && String(firstDetail.locationId) === storeId);
+    const sourceMatchesWarehouse =
+      salesViewLocationMatches(firstDetail.locationName, warehouseName) ||
+      (!!firstDetail.locationId && !!warehouseId && String(firstDetail.locationId) === warehouseId);
+
+    if ((isInStore && sourceMatchesStore) || (isWarehouse && sourceMatchesWarehouse)) {
+      row.dataset.lotnumber = firstDetail.inventoryNumberId || "";
+      row.dataset.inventoryMeta = "";
+      row.dataset.inventoryMetaJson = "";
+      setInventoryDetailForSalesViewRow(row, detailString || "");
+
+      const summary = row.querySelector(".inv-summary");
+      if (summary) {
+        summary.textContent = firstDetail.inventoryNumberName
+          ? `Lot: ${firstDetail.inventoryNumberName}`
+          : detailString || "";
+      }
+
+      window.__salesInventoryTargetRowLine = null;
+      window.__salesInventoryTargetItemId = null;
+
+      console.log("Inventory saved as lot-only allocation", {
+        lineIndex: getSalesViewLineIndex(row, lineIndex),
+        itemId,
+        lotnumber: row.dataset.lotnumber,
+      });
+      return;
+    }
+
+    const cleanedDetail = String(detailString || "")
+      .split(";")
+      .map((part) => {
+        const detail = parseSalesViewInventoryDetailPart(part);
+        detail.locationName = detail.locationName.replace(/\bstore\b/gi, "").trim();
+        return formatSalesViewInventoryDetailPart(detail);
+      })
+      .join(";");
+
+    row.dataset.lotnumber = "";
+    row.dataset.inventoryMeta = cleanedDetail;
+    row.dataset.inventoryMetaJson = "";
+    setInventoryDetailForSalesViewRow(row, cleanedDetail);
+
     if (fulfilSel && window.SalesLineUI?.validateInventoryForRow) {
       window.SalesLineUI.validateInventoryForRow(row);
     }
@@ -1056,6 +1173,17 @@ window.renderSalesViewLines = function renderSalesViewLines({
         ? `<select class="item-fulfilment fulfilmentSelect" data-line="${idx}"></select>`
         : line.custcol_sb_fulfilmentlocation?.refName || "";
 
+    const existingInventoryMeta = salesViewRecordValue(line, [
+      "custcol_sb_epos_inventory_meta",
+      "CUSTCOL_SB_EPOS_INVENTORY_META",
+      "inventoryMeta",
+    ]);
+    const existingLotNumber = salesViewRecordValue(line, [
+      "custcol_sb_lotnumber",
+      "CUSTCOL_SB_LOTNUMBER",
+      "lotnumber",
+      "lotNumber",
+    ]);
     const inventoryDetail = existingInventoryDetail(line);
 
     const invCell = isServiceLine
@@ -1169,6 +1297,13 @@ window.renderSalesViewLines = function renderSalesViewLines({
     `;
 
     const sixtyNightSelect = tr.querySelector(".sixty-night-select");
+    tr.dataset.invdetail = String(inventoryDetail || "").trim();
+    tr.dataset.inventoryMeta = String(existingInventoryMeta || "").trim();
+    tr.dataset.inventoryMetaJson = "";
+    tr.dataset.lotnumber = tr.dataset.inventoryMeta
+      ? ""
+      : String(existingLotNumber || "").trim();
+
     const existingTrialValue =
       line.custcol_sb_30nighttrialoption?.refName ||
       line.custcol_sb_30nighttrialoption?.text ||

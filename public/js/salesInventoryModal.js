@@ -26,7 +26,6 @@ function getInventoryStoreFilterParams(row) {
     .filter(Boolean);
 
   const qs = new URLSearchParams();
-  qs.set("storeOnly", "1");
   if (storeName) qs.set("storeLocationName", storeName);
   if (storeIds.length) qs.set("storeLocationIds", [...new Set(storeIds)].join(","));
   return `&${qs.toString()}`;

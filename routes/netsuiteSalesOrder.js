@@ -94,6 +94,80 @@ function isDistributionStoreName(value) {
   return /distribution\s*ltd/i.test(String(value || "").trim());
 }
 
+function addLocationId(target, value) {
+  const id = String(value || "").trim();
+  if (id) target.add(id);
+}
+
+function locationNamesMatch(a, b) {
+  const left = normalizeLocationLookupName(a);
+  const right = normalizeLocationLookupName(b);
+  if (!left || !right) return false;
+  if (left === right || left.includes(right) || right.includes(left)) return true;
+
+  const broadLeft = normalizeBroadLocationLookupName(a);
+  const broadRight = normalizeBroadLocationLookupName(b);
+  return (
+    !!broadLeft &&
+    !!broadRight &&
+    (broadLeft === broadRight ||
+      broadLeft.includes(broadRight) ||
+      broadRight.includes(broadLeft))
+  );
+}
+
+async function resolveStoreLocationContext(order = {}, storeName = "") {
+  const ids = new Set();
+  let name = String(storeName || "").trim();
+  let transferLocationId = null;
+
+  addLocationId(ids, order.store);
+
+  try {
+    const storeRes = await pool.query(
+      `SELECT
+         name,
+         netsuite_internal_id,
+         invoice_location_id,
+         distribution_location_id
+       FROM locations
+       WHERE id = $1
+       LIMIT 1`,
+      [order.store]
+    );
+
+    if (storeRes.rows.length) {
+      const row = storeRes.rows[0];
+      const dist = String(row.distribution_location_id || "").trim();
+      const inv = String(row.invoice_location_id || "").trim();
+      const main = String(row.netsuite_internal_id || "").trim();
+
+      name = name || String(row.name || "").trim();
+      [dist, inv, main].forEach((id) => addLocationId(ids, id));
+      transferLocationId = dist || inv || main || null;
+    } else {
+      console.warn("No store record found for store ID:", order.store);
+    }
+  } catch (err) {
+    console.error("Failed to load store location context:", err.message);
+  }
+
+  return {
+    name,
+    transferLocationId,
+    ids,
+  };
+}
+
+function inventoryDetailIsAtStore(part, storeContext) {
+  const detail = parseInventoryDetailPart(part);
+  const locId = String(detail.locationId || "").trim();
+  const locName = String(detail.locationName || "").trim();
+
+  if (locId && storeContext?.ids?.has(locId)) return true;
+  return locationNamesMatch(locName, storeContext?.name);
+}
+
 async function lookupStoreNameByAppId(storeId) {
   const id = String(storeId || "").trim();
   if (!id) return "";
@@ -376,69 +450,11 @@ async function createLinkedTransferOrdersForSalesOrder({
   }
 
   try {
-    let storeDistributionLocId = null;
-    try {
-      const storeRes = await pool.query(
-        `SELECT
-           netsuite_internal_id,
-           invoice_location_id,
-           distribution_location_id
-         FROM locations
-         WHERE id = $1
-         LIMIT 1`,
-        [order.store]
-      );
-
-      if (storeRes.rows.length) {
-        const row = storeRes.rows[0];
-        const dist = (row.distribution_location_id || "").toString().trim();
-        const inv = (row.invoice_location_id || "").toString().trim();
-        const main = (row.netsuite_internal_id || "").toString().trim();
-
-        storeDistributionLocId =
-          dist !== "" ? dist : inv !== "" ? inv : main !== "" ? main : null;
-      } else {
-        console.warn("No store record found for store ID:", order.store);
-      }
-    } catch (err) {
-      console.error("Failed to load store distribution location:", err.message);
-    }
+    const storeContext = await resolveStoreLocationContext(order, storeName);
 
     for (const [idx, line] of items.entries()) {
       const fulfilMethod = String(line.fulfilmentMethod || "").trim();
       let skipTransfer = false;
-
-      if (line.lotnumber && !line.inventoryMeta) {
-        try {
-          const lotTable = await pool.query(
-            `SELECT to_regclass('public.epos_lots') AS table_name`
-          );
-
-          if (!lotTable.rows[0]?.table_name) {
-            skipTransfer = true;
-          } else {
-            const lotRes = await pool.query(
-              `SELECT location_name, location_id, distribution_location_id
-               FROM epos_lots
-               WHERE lot_id = $1
-               LIMIT 1`,
-              [line.lotnumber]
-            );
-
-            if (lotRes.rows.length) {
-              const row = lotRes.rows[0];
-              const srcName = row.location_name || "";
-              const srcInv = row.location_id || "";
-              line.inventoryMeta = `1|${srcName}|${srcInv}|||LOT|${line.lotnumber}`;
-            } else {
-              skipTransfer = true;
-            }
-          }
-        } catch (err) {
-          console.error("LOT lookup failed:", err.message);
-          skipTransfer = true;
-        }
-      }
 
       if (!line.inventoryMeta) skipTransfer = true;
 
@@ -450,16 +466,10 @@ async function createLinkedTransferOrdersForSalesOrder({
       if (metaParts.length === 0) skipTransfer = true;
 
       if (fulfilMethod === "1") {
-        try {
-          const [, locName] = metaParts[0].split("|");
-          const metaLoc = (locName || "").trim().toLowerCase();
-          const storeLower = String(storeName || "").toLowerCase();
-          const alreadyInStore =
-            metaLoc === storeLower ||
-            metaLoc.includes(storeLower) ||
-            storeLower.includes(metaLoc);
-          if (alreadyInStore) skipTransfer = true;
-        } catch {}
+        const allInventoryAlreadyInStore = metaParts.every((part) =>
+          inventoryDetailIsAtStore(part, storeContext)
+        );
+        if (allInventoryAlreadyInStore) skipTransfer = true;
       }
 
       if (fulfilMethod === "2") {
@@ -472,6 +482,10 @@ async function createLinkedTransferOrdersForSalesOrder({
       if (skipTransfer) continue;
 
       for (const part of metaParts) {
+        if (fulfilMethod === "1" && inventoryDetailIsAtStore(part, storeContext)) {
+          continue;
+        }
+
         let sourceLocId = null;
         const [qty, locName, locIdRaw, , statusIdRaw, , invIdRaw] = part.split("|");
         const quantity = parseFloat(qty || 0) || 0;
@@ -534,7 +548,7 @@ async function createLinkedTransferOrdersForSalesOrder({
 
         let destinationLocId = "";
         if (fulfilMethod === "1") {
-          destinationLocId = storeDistributionLocId;
+          destinationLocId = storeContext.transferLocationId;
         } else if (fulfilMethod === "2") {
           try {
             const w = await pool.query(
@@ -551,6 +565,7 @@ async function createLinkedTransferOrdersForSalesOrder({
         }
 
         if (!destinationLocId || !transferItemId) continue;
+        if (String(sourceLocId) === String(destinationLocId)) continue;
 
         const inventoryAssignment = {
           issueInventoryNumber: { id: invId },
@@ -2527,7 +2542,7 @@ router.post("/:id/commit", async (req, res) => {
         netAmount,
         rate,
         discountPct: Number(line.discountPct ?? line.discount ?? 0),
-        inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta ?? line.inventoryDetail ?? null) || null,
+        inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta) || null,
         trialOption: line.trialOption || null,
         ...(trialField ? { custcol_sb_30nighttrialoption: trialField } : {}),
         grossAmount,
@@ -2976,7 +2991,7 @@ router.post("/:id/save", async (req, res) => {
         netAmount,
         rate,
         discountPct: Number(line.discountPct ?? line.discount ?? 0),
-        inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta ?? line.inventoryDetail ?? null) || null,
+        inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta) || null,
         trialOption: line.trialOption || null,
         ...(trialField ? { custcol_sb_30nighttrialoption: trialField } : {}),
         grossAmount,

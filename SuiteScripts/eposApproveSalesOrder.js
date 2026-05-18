@@ -295,7 +295,21 @@ function applyPricingToCurrentLine(soRec, u, isNewLine) {
       if (code) setCurrentIfDefined(soRec, "taxcode", code);
     }
 
-    if (u.inventoryDetail !== undefined) {
+    const lotNumberValue =
+      u.lotnumber !== undefined
+        ? u.lotnumber
+        : u.lotNumber !== undefined
+          ? u.lotNumber
+          : null;
+
+    if (lotNumberValue !== null && String(lotNumberValue || "").trim() !== "") {
+      setCurrentIfDefined(soRec, "custcol_sb_lotnumber", String(lotNumberValue));
+      clearCurrentField(soRec, "custcol_sb_epos_inventory_meta");
+
+      log.debug("🔧 Current line inventory applied from explicit lot number", {
+        lotnumber: lotNumberValue,
+      });
+    } else if (u.inventoryDetail !== undefined) {
       try {
         applyInventoryDetailToCurrentLine(
           soRec,

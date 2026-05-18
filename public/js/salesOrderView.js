@@ -2140,6 +2140,8 @@ function updateActionButton(orderStatusObj, tranId, so) {
         if (isServiceLine) fulfilmentMethod = "";
 
         const inventoryDetail = row.querySelector(".item-inv-detail")?.value || "";
+        const inventoryMeta = row.dataset.inventoryMeta || "";
+        const lotnumber = row.dataset.lotnumber || "";
         const discountPct =
           parseFloat(row.querySelector(".item-discount")?.value || "0") || 0;
         const saleGrossLine =
@@ -2167,7 +2169,8 @@ function updateActionButton(orderStatusObj, tranId, so) {
           quantity,
           fulfilmentMethod: fulfilmentMethod || null,
           inventoryDetail: inventoryDetail || null,
-          inventoryMeta: inventoryDetail || null,
+          inventoryMeta: inventoryMeta || null,
+          lotnumber: lotnumber || null,
           discountPct,
           discount: discountPct,
           saleGrossLine,

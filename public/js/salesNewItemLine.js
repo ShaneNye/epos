@@ -724,7 +724,7 @@ function applyItemToRow(line, item, config = {}) {
   if (optionsSummaryEl) optionsSummaryEl.innerHTML = selectionsToSummary(selections);
 
   setInventoryDetailForRow(line, config.inventoryDetail || "");
-  line.dataset.inventoryMeta = String(config.inventoryMeta || config.inventoryDetail || "").trim();
+  line.dataset.inventoryMeta = String(config.inventoryMeta || "").trim();
   line.dataset.inventoryMetaJson = String(config.inventoryMetaJson || "").trim();
   line.dataset.lotnumber = String(config.lotnumber || "").trim();
 
