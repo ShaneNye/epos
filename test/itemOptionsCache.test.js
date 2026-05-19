@@ -44,8 +44,11 @@ test("item options getAll fetches the DB-backed option map when cache is empty",
             byItemId: {
               123: {
                 Colour: ["Blue"],
+                "Colour 2": ["Hidden"],
                 "Base Option": ["Hidden"],
+                "Frontend Height Option": ["Hidden"],
                 "Size.v1": ["Hidden"],
+                "Windsor Stained Colour Option": ["Hidden"],
               },
             },
           };

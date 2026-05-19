@@ -1201,6 +1201,35 @@ async function getSalesOrderRelatedRecords(salesOrderId, userId) {
   };
 }
 
+async function syncPairedSalesOrderMemo(salesOrderId, headerUpdates = {}, userId) {
+  if (!Object.prototype.hasOwnProperty.call(headerUpdates || {}, "memo")) {
+    return { ok: true, skipped: true, reason: "memo-not-supplied" };
+  }
+
+  const relatedRecords = await getSalesOrderRelatedRecords(salesOrderId, userId);
+  const pairedSalesOrderId = String(
+    relatedRecords?.custbody_sb_pairedsalesorder?.id || ""
+  ).trim();
+
+  if (!pairedSalesOrderId) {
+    return { ok: true, skipped: true, reason: "no-paired-sales-order" };
+  }
+
+  const memo = headerUpdates.memo == null ? "" : String(headerUpdates.memo);
+  await nsPatch(
+    `/salesOrder/${encodeURIComponent(pairedSalesOrderId)}`,
+    { memo },
+    userId
+  );
+  cacheDeleteSalesOrder(pairedSalesOrderId);
+
+  return {
+    ok: true,
+    skipped: false,
+    pairedSalesOrderId,
+  };
+}
+
 async function getSalesOrderSalesExec(salesOrderId, userId) {
   const numericId = Number(salesOrderId);
   if (!Number.isFinite(numericId) || numericId <= 0) return null;
@@ -2582,6 +2611,19 @@ router.post("/:id/commit", async (req, res) => {
 
     console.log(`✅ Sales Order ${id} approved via RESTlet`);
     cacheDeleteSalesOrder(id);
+    const pairedMemoSync = await syncPairedSalesOrderMemo(
+      id,
+      headerUpdates,
+      userId
+    ).catch((err) => {
+      console.error("Failed to sync paired Sales Order memo:", err.message);
+      return {
+        ok: false,
+        skipped: false,
+        error: err.message || "Paired Sales Order memo was not updated.",
+      };
+    });
+
     const transferCreation = await createLinkedTransferOrdersForSalesOrder({
       salesOrderId: id,
       order: headerUpdates,
@@ -2643,7 +2685,11 @@ router.post("/:id/commit", async (req, res) => {
               } order(s).`,
             ]),
         ...(comsSalesValue.ok ? [] : [comsSalesValue.error]),
+        ...(pairedMemoSync.ok
+          ? []
+          : [pairedMemoSync.error || "Paired Sales Order memo was not updated."]),
       ],
+      pairedMemoSync,
       transferCreation,
       linkedTransferOrders,
       comsSalesValue,
@@ -3038,6 +3084,18 @@ router.post("/:id/save", async (req, res) => {
     }
 
     console.log(`✅ Sales Order ${id} patched via RESTlet (save-only)`);
+    const pairedMemoSync = await syncPairedSalesOrderMemo(
+      id,
+      headerUpdates,
+      userId
+    ).catch((err) => {
+      console.error("Failed to sync paired Sales Order memo:", err.message);
+      return {
+        ok: false,
+        skipped: false,
+        error: err.message || "Paired Sales Order memo was not updated.",
+      };
+    });
 
     // ✅ Invalidate cached SO payload so next view is always fresh
     try {
@@ -3051,6 +3109,10 @@ router.post("/:id/save", async (req, res) => {
       ok: true,
       message: data.message || "Sales Order saved (not committed)",
       restletResult: data,
+      warnings: pairedMemoSync.ok
+        ? []
+        : [pairedMemoSync.error || "Paired Sales Order memo was not updated."],
+      pairedMemoSync,
     });
   } catch (err) {
     console.error("❌ Save Sales Order failed:", err);

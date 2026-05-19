@@ -270,7 +270,9 @@
 
     async function getInventoryNumbers(itemId) {
       try {
-        const res = await fetch("/api/netsuite/invoice-numbers");
+        const res = await fetch(`/api/netsuite/invoice-numbers?refresh=1&_=${Date.now()}`, {
+          cache: "no-store",
+        });
         const data = await res.json();
         if (!data.ok || !data.results) return [];
         return data.results.filter(r => {
@@ -300,7 +302,10 @@
 
     async function getInventoryBalanceRows(itemId) {
       try {
-        const res = await fetch(`/api/netsuite/inventorybalance?id=${encodeURIComponent(itemId)}`);
+        const res = await fetch(
+          `/api/netsuite/inventorybalance?id=${encodeURIComponent(itemId)}&refresh=1&_=${Date.now()}`,
+          { cache: "no-store" }
+        );
         const data = await res.json();
         if (!data.ok || !data.results) return [];
         return data.results || [];

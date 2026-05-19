@@ -76,11 +76,15 @@ function cleanText(value) {
 }
 
 const EXCLUDED_OPTION_FIELD_NAMES = new Set([
+  "adjustable bed size",
   "base option",
   "base options",
+  "colour 2",
   "fabric type",
+  "frontend height option",
   "mattress protector sizes",
   "size.v1",
+  "windsor stained colour option",
 ]);
 
 function isExcludedOptionField(option) {

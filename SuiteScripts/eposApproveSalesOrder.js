@@ -14,16 +14,13 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     return String(s || "").trim().toLowerCase();
   }
 
-  function taxCodeId(value) {
-    if (value && typeof value === "object") {
-      return String(value.id || value.value || value.refName || "").trim();
-    }
-    return String(value || "").trim();
+  function isPendingApprovalStatus(value) {
+    const status = String(value || "").trim().toUpperCase();
+    return status === "A" || status.indexOf("PENDINGAPPROVAL") !== -1;
   }
 
-  function isVatFreeTaxCode(value) {
-    const code = norm(taxCodeId(value));
-    return code === "10" || code.indexOf("vat free") !== -1 || code.indexOf("zero") !== -1;
+  function hasOwn(obj, key) {
+    return Object.prototype.hasOwnProperty.call(obj || {}, key);
   }
 
   function parseInventoryMeta(detailString) {
@@ -66,34 +63,6 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       }
     }
 
-    return -1;
-  }
-
-  function findLineIndexByPayloadFallback(soRec, u) {
-    const requestedIndex = Number(u && u.lineIndex);
-    if (!Number.isInteger(requestedIndex) || requestedIndex < 0) return -1;
-
-    const lineCount = getItemLineCount(soRec);
-    if (requestedIndex >= lineCount) return -1;
-
-    const expectedItem = String(u.itemId || (u.item && u.item.id) || "").trim();
-    if (!expectedItem) return requestedIndex;
-
-    const currentItem = String(
-      soRec.getSublistValue({
-        sublistId: "item",
-        fieldId: "item",
-        line: requestedIndex,
-      }) || ""
-    ).trim();
-
-    if (currentItem === expectedItem) return requestedIndex;
-
-    log.debug("⚠️ Line index fallback item mismatch", {
-      lineIndex: requestedIndex,
-      expectedItem,
-      currentItem,
-    });
     return -1;
   }
 
@@ -225,60 +194,58 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     }
   }
 
-function applyPricingToCurrentLine(soRec, u, isNewLine) {
-  const qty =
-    toNum(
-      soRec.getCurrentSublistValue({
-        sublistId: "item",
-        fieldId: "quantity",
-      })
-    ) || 0;
+  function applyPricingToCurrentLine(soRec, u, isNewLine) {
+    const qty =
+      toNum(
+        soRec.getCurrentSublistValue({
+          sublistId: "item",
+          fieldId: "quantity",
+        })
+      ) || 0;
 
-  const currentRateNet =
-    toNum(
-      soRec.getCurrentSublistValue({
-        sublistId: "item",
-        fieldId: "rate",
-      })
-    ) || 0;
+    const currentRateNet =
+      toNum(
+        soRec.getCurrentSublistValue({
+          sublistId: "item",
+          fieldId: "rate",
+        })
+      ) || 0;
 
-  const discountPct = toNum(u.discountPct);
-  const saleGrossInput =
-    u.saleGrossPerUnit != null ? u.saleGrossPerUnit : u.saleGrossLine ?? u.saleprice;
-  const saleGrossValue = toNum(saleGrossInput);
-  const priceDivisor = isVatFreeTaxCode(u.taxCode ?? u.taxcode) ? 1 : GROSS_DIVISOR;
+    const discountPct = toNum(u.discountPct);
+    const saleGrossInput =
+      u.saleGrossPerUnit != null ? u.saleGrossPerUnit : u.saleGrossLine;
+    const saleGrossValue = toNum(saleGrossInput);
 
-  let newRateNet = null;
+    let newRateNet = null;
 
-  if (saleGrossValue !== 0 && qty > 0) {
-    const saleGrossPerUnit = saleGrossValue / qty;
-    newRateNet = saleGrossPerUnit / priceDivisor;
-  } else if (discountPct > 0 && currentRateNet > 0) {
-    const d = Math.max(0, Math.min(100, discountPct));
-    newRateNet = currentRateNet * (1 - d / 100);
-  } else if (isNewLine && toNum(u.amountGrossLine ?? u.amount) !== 0 && qty > 0) {
-    const amountGrossPerUnit = toNum(u.amountGrossLine ?? u.amount) / qty;
-    newRateNet = amountGrossPerUnit / priceDivisor;
-  }
-
-  if (newRateNet !== null && Number.isFinite(newRateNet)) {
-    setCurrentIfDefined(soRec, "rate", +newRateNet.toFixed(6));
-
-    if (qty > 0) {
-      setCurrentIfDefined(soRec, "amount", +(newRateNet * qty).toFixed(6));
+    if (saleGrossValue > 0 && qty > 0) {
+      const saleGrossPerUnit = saleGrossValue / qty;
+      newRateNet = saleGrossPerUnit / GROSS_DIVISOR;
+    } else if (discountPct > 0 && currentRateNet > 0) {
+      const d = Math.max(0, Math.min(100, discountPct));
+      newRateNet = currentRateNet * (1 - d / 100);
+    } else if (isNewLine && toNum(u.amountGrossLine) > 0 && qty > 0) {
+      const amountGrossPerUnit = toNum(u.amountGrossLine) / qty;
+      newRateNet = amountGrossPerUnit / GROSS_DIVISOR;
     }
 
-    log.debug("💷 Pricing applied on current line", {
-      currentRateNet,
-      newRateNet,
-      qty,
-      discountPct,
-      saleGrossInput,
-      priceDivisor,
-      isNewLine,
-    });
+    if (newRateNet !== null && Number.isFinite(newRateNet)) {
+      setCurrentIfDefined(soRec, "rate", +newRateNet.toFixed(6));
+
+      if (qty > 0) {
+        setCurrentIfDefined(soRec, "amount", +(newRateNet * qty).toFixed(6));
+      }
+
+      log.debug("💷 Pricing applied on current line", {
+        currentRateNet,
+        newRateNet,
+        qty,
+        discountPct,
+        saleGrossInput,
+        isNewLine,
+      });
+    }
   }
-}
 
   function applyLineValues(soRec, u, warehouseId, warehouseTextNorm, isNewLine) {
     const optionsValue = u.options !== undefined ? u.options : u.optionsSummary;
@@ -318,26 +285,7 @@ function applyPricingToCurrentLine(soRec, u, isNewLine) {
       );
     }
 
-    if (u.taxCode !== undefined || u.taxcode !== undefined) {
-      const code = taxCodeId(u.taxCode ?? u.taxcode);
-      if (code) setCurrentIfDefined(soRec, "taxcode", code);
-    }
-
-    const lotNumberValue =
-      u.lotnumber !== undefined
-        ? u.lotnumber
-        : u.lotNumber !== undefined
-          ? u.lotNumber
-          : null;
-
-    if (lotNumberValue !== null && String(lotNumberValue || "").trim() !== "") {
-      setCurrentIfDefined(soRec, "custcol_sb_lotnumber", String(lotNumberValue));
-      clearCurrentField(soRec, "custcol_sb_epos_inventory_meta");
-
-      log.debug("🔧 Current line inventory applied from explicit lot number", {
-        lotnumber: lotNumberValue,
-      });
-    } else if (u.inventoryDetail !== undefined) {
+    if (u.inventoryDetail !== undefined) {
       try {
         applyInventoryDetailToCurrentLine(
           soRec,
@@ -394,6 +342,49 @@ function applyPricingToCurrentLine(soRec, u, isNewLine) {
         id,
         isDynamic: true,
       });
+
+      const orderStatusValue = soRec.getValue({ fieldId: "orderstatus" });
+      const orderStatusText = soRec.getText({ fieldId: "orderstatus" });
+      const headerUpdates =
+        context.headerUpdates && typeof context.headerUpdates === "object"
+          ? context.headerUpdates
+          : {};
+
+      if (
+        !doCommit &&
+        !isPendingApprovalStatus(orderStatusValue) &&
+        !isPendingApprovalStatus(orderStatusText) &&
+        hasOwn(headerUpdates, "memo")
+      ) {
+        const memo = headerUpdates.memo || "";
+
+        record.submitFields({
+          type: record.Type.SALES_ORDER,
+          id,
+          values: { memo },
+          options: {
+            enableSourcing: false,
+            ignoreMandatoryFields: true,
+          },
+        });
+
+        log.audit("💾 Processed Sales Order memo updated without line save", {
+          id,
+          orderStatusValue,
+          orderStatusText,
+        });
+
+        return {
+          ok: true,
+          id,
+          message: "✅ Sales Order memo updated (save-only)",
+          updatesApplied: 0,
+          deletedLineIds,
+          removedLineIds: [],
+          committed: false,
+          memoOnly: true,
+        };
+      }
 
       if (context.headerUpdates && typeof context.headerUpdates === "object") {
         const { leadSource, paymentInfo, warehouse, salesExec, memo } =
@@ -509,10 +500,7 @@ function applyPricingToCurrentLine(soRec, u, isNewLine) {
               return;
             }
 
-            let targetLine = findLineIndexByInternalLineId(soRec, u.lineId);
-            if (targetLine < 0) {
-              targetLine = findLineIndexByPayloadFallback(soRec, u);
-            }
+            const targetLine = findLineIndexByInternalLineId(soRec, u.lineId);
 
             if (targetLine < 0) {
               log.debug("⚠️ Existing line not found for update", u);

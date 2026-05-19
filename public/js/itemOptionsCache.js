@@ -14,11 +14,15 @@
   function isExcludedFieldName(fieldName) {
     const normalized = String(fieldName || "").trim().toLowerCase();
     return [
+      "adjustable bed size",
       "base option",
       "base options",
+      "colour 2",
       "fabric type",
+      "frontend height option",
       "mattress protector sizes",
       "size.v1",
+      "windsor stained colour option",
     ].includes(normalized);
   }
 
