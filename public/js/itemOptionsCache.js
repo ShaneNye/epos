@@ -1,6 +1,7 @@
 // public/js/itemOptionsCache.js
 (() => {
   const CACHE_KEY = "itemOptionsCache:v3";
+  const LOCAL_EXCLUSIONS_KEY = "itemOptionsExcludedFieldNames:v1";
   const TTL_MS = 60 * 60 * 1000;
 
   let memoryCache = null;
@@ -18,6 +19,7 @@
     "colour 2",
     "fabric type",
     "footend eight option",
+    "footend height option",
     "mattress protector sizes",
     "size.v1",
     "windsor stained colour option",
@@ -119,6 +121,16 @@
     return writeLocalCache({ ...byItemId, excludedFieldNames }, { complete: !itemId }).byItemId;
   }
 
+  function readLocalExcludedFieldNames() {
+    try {
+      const raw = localStorage.getItem(LOCAL_EXCLUSIONS_KEY);
+      const parsed = raw ? JSON.parse(raw) : null;
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+
   async function getAll({ forceRefresh = false } = {}) {
     if (!forceRefresh) {
       if (isFresh(memoryCache) && memoryCache.complete) return memoryCache.byItemId;
@@ -159,6 +171,28 @@
     return {};
   }
 
+  function getExcludedFieldNames() {
+    const localNames = readLocalExcludedFieldNames();
+    if (isFresh(memoryCache)) {
+      return normalizeExcludedFieldNames([
+        ...DEFAULT_EXCLUDED_FIELD_NAMES,
+        ...localNames,
+        ...(memoryCache.excludedFieldNames || []),
+      ]);
+    }
+
+    const local = readLocalCache();
+    if (isFresh(local)) {
+      return normalizeExcludedFieldNames([
+        ...DEFAULT_EXCLUDED_FIELD_NAMES,
+        ...localNames,
+        ...(local.excludedFieldNames || []),
+      ]);
+    }
+
+    return normalizeExcludedFieldNames([...DEFAULT_EXCLUDED_FIELD_NAMES, ...localNames]);
+  }
+
   async function getOptionsForItem(itemId) {
     const id = String(itemId || "").trim();
     if (!id) return {};
@@ -189,6 +223,7 @@
     getAll,
     getOptionsForItem,
     getOptionsForItemSync,
+    getExcludedFieldNames,
     clear,
     key: CACHE_KEY,
     ttlMs: TTL_MS,

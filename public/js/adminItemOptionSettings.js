@@ -3,6 +3,7 @@
     loaded: false,
     defaults: [],
   };
+  const LOCAL_EXCLUSIONS_KEY = "itemOptionsExcludedFieldNames:v1";
 
   function byId(id) {
     return document.getElementById(id);
@@ -65,6 +66,9 @@
     const names = normalizeNames(data.excludedFieldNames || []);
     state.defaults = normalizeNames(data.defaultExcludedFieldNames || []);
     if (textarea) textarea.value = names.join("\n");
+    try {
+      localStorage.setItem(LOCAL_EXCLUSIONS_KEY, JSON.stringify(names));
+    } catch {}
   }
 
   async function loadSettings(force = false) {

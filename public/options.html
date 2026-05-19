@@ -134,13 +134,60 @@
     console.log("🔎 Options found:", opts);
 
     const form = document.getElementById("optionsForm");
+    const localExclusionsKey = "itemOptionsExcludedFieldNames:v1";
 
-    function isExcludedField(field) {
-      return String(field || "").trim().toLowerCase() === "size.v1";
+    const defaultExcludedFields = [
+      "adjustable bed size",
+      "base option",
+      "base options",
+      "colour 2",
+      "fabric type",
+      "footend eight option",
+      "footend height option",
+      "mattress protector sizes",
+      "size.v1",
+      "windsor stained colour option",
+    ];
+
+    function normalizeExcludedFields(fields) {
+      const seen = new Set();
+      const names = [];
+
+      (Array.isArray(fields) ? fields : defaultExcludedFields).forEach(field => {
+        const normalized = String(field || "").trim().toLowerCase();
+        if (!normalized || seen.has(normalized)) return;
+        seen.add(normalized);
+        names.push(normalized);
+      });
+
+      return names;
     }
 
-    Object.entries(opts).forEach(([field, values]) => {
-      if (isExcludedField(field)) return;
+    function isExcludedField(field, excludedFields) {
+      const normalized = String(field || "").trim().toLowerCase();
+      return normalizeExcludedFields(excludedFields).includes(normalized);
+    }
+
+    function getExcludedFields() {
+      let storedFields = [];
+      try {
+        const parsed = JSON.parse(localStorage.getItem(localExclusionsKey) || "[]");
+        if (Array.isArray(parsed)) storedFields = parsed;
+      } catch {}
+
+      const fromCache = window.opener?.itemOptionsCache?.getExcludedFieldNames?.();
+      return normalizeExcludedFields([
+        ...defaultExcludedFields,
+        ...storedFields,
+        ...(Array.isArray(fromCache) ? fromCache : []),
+      ]);
+    }
+
+    function renderOptions() {
+      const excludedFields = getExcludedFields();
+
+      Object.entries(opts).forEach(([field, values]) => {
+        if (isExcludedField(field, excludedFields)) return;
       if (!Array.isArray(values) || values.length === 0) return;
 
       const fieldLower = String(field).toLowerCase();
@@ -286,7 +333,10 @@
 
       group.appendChild(select);
       form.appendChild(group);
-    });
+      });
+    }
+
+    renderOptions();
 
     document.getElementById("saveBtn").addEventListener("click", () => {
       const selections = {};

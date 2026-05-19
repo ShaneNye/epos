@@ -82,6 +82,7 @@ const EXCLUDED_OPTION_FIELD_NAMES = new Set([
   "colour 2",
   "fabric type",
   "footend eight option",
+  "footend height option",
   "mattress protector sizes",
   "size.v1",
   "windsor stained colour option",
