@@ -29,6 +29,7 @@
     <script defer src="/js/adminLocations.js"></script>
     <script defer src="/js/adminManagementRules.js"></script>
     <script defer src="/js/adminPromotionSettings.js"></script>
+    <script defer src="/js/adminItemOptionSettings.js"></script>
     <script defer src="/js/adminEmailAlerts.js"></script>
     <script defer src="/js/adminCustomFields.js"></script>
     <script defer src="/js/adminSalesOrderExperience.js"></script>
@@ -52,6 +53,7 @@
             
             <div class="tab" data-target="dashboard-widgets">Dashboard Widgets</div>
             <div class="tab" data-target="sales-features">Sales Features</div>
+            <div class="tab" data-target="item-options">Item Options</div>
             <div class="tab" data-target="email-alerts">Email Alerts</div>
             <div class="tab" data-target="sales-order-feedback">Sales Feedback</div>
             <div class="tab" data-target="custom-fields">Custom Fields</div>
@@ -455,6 +457,29 @@
                 <div class="admin-feature-actions">
                     <button id="adminSavePromotionSettings" type="button" class="btn-primary">Save Promotion Settings</button>
                     <span id="adminPromotionSettingsStatus" class="admin-feature-status" aria-live="polite"></span>
+                </div>
+            </section>
+        </div>
+
+        <!-- === Item Options === -->
+        <div id="item-options" class="tab-content hidden">
+            <h2>Item Options</h2>
+            <p>Exclude NetSuite item option fields from the sales and quote option picker.</p>
+
+            <section class="admin-feature-panel admin-item-options-panel" aria-labelledby="itemOptionExclusionsTitle">
+                <div>
+                    <h3 id="itemOptionExclusionsTitle">Excluded Option Fields</h3>
+                    <p>Enter one option field name per line. Matching is case-insensitive and checks the option label, select record text and source list name.</p>
+                </div>
+
+                <label class="admin-textarea-label" for="adminItemOptionExclusions">Field Names</label>
+                <textarea id="adminItemOptionExclusions" class="admin-settings-textarea" rows="10" spellcheck="false"></textarea>
+
+                <div class="admin-feature-actions">
+                    <button id="adminSaveItemOptionSettings" type="button" class="btn-primary">Save Exclusions</button>
+                    <button id="adminResetItemOptionSettings" type="button" class="btn-secondary">Reset To Defaults</button>
+                    <button id="adminSyncItemOptions" type="button" class="btn-secondary">Sync Item Options</button>
+                    <span id="adminItemOptionSettingsStatus" class="admin-feature-status" aria-live="polite"></span>
                 </div>
             </section>
         </div>

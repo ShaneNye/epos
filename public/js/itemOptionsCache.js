@@ -1,6 +1,6 @@
 // public/js/itemOptionsCache.js
 (() => {
-  const CACHE_KEY = "itemOptionsCache:v2";
+  const CACHE_KEY = "itemOptionsCache:v3";
   const TTL_MS = 60 * 60 * 1000;
 
   let memoryCache = null;
@@ -11,29 +11,45 @@
     return Date.now();
   }
 
-  function isExcludedFieldName(fieldName) {
-    const normalized = String(fieldName || "").trim().toLowerCase();
-    return [
-      "adjustable bed size",
-      "base option",
-      "base options",
-      "colour 2",
-      "fabric type",
-      "frontend height option",
-      "mattress protector sizes",
-      "size.v1",
-      "windsor stained colour option",
-    ].includes(normalized);
+  const DEFAULT_EXCLUDED_FIELD_NAMES = [
+    "adjustable bed size",
+    "base option",
+    "base options",
+    "colour 2",
+    "fabric type",
+    "footend eight option",
+    "mattress protector sizes",
+    "size.v1",
+    "windsor stained colour option",
+  ];
+
+  function normalizeExcludedFieldNames(fieldNames) {
+    const seen = new Set();
+    const names = [];
+
+    (Array.isArray(fieldNames) ? fieldNames : DEFAULT_EXCLUDED_FIELD_NAMES).forEach((fieldName) => {
+      const normalized = String(fieldName || "").trim().toLowerCase();
+      if (!normalized || seen.has(normalized)) return;
+      seen.add(normalized);
+      names.push(normalized);
+    });
+
+    return names;
   }
 
-  function sanitizeItemOptions(byItemId) {
+  function isExcludedFieldName(fieldName, excludedFieldNames) {
+    const normalized = String(fieldName || "").trim().toLowerCase();
+    return normalizeExcludedFieldNames(excludedFieldNames).includes(normalized);
+  }
+
+  function sanitizeItemOptions(byItemId, excludedFieldNames) {
     const sanitized = {};
 
     Object.entries(byItemId || {}).forEach(([itemId, fields]) => {
       const nextFields = {};
 
       Object.entries(fields || {}).forEach(([fieldName, values]) => {
-        if (isExcludedFieldName(fieldName)) return;
+        if (isExcludedFieldName(fieldName, excludedFieldNames)) return;
         nextFields[fieldName] = values;
       });
 
@@ -66,9 +82,16 @@
     const localCache = readLocalCache();
     const existingCache = isFresh(memoryCache) ? memoryCache : localCache;
     const existing = existingCache?.byItemId || {};
+    const excludedFieldNames = normalizeExcludedFieldNames(
+      byItemId?.excludedFieldNames || existingCache?.excludedFieldNames
+    );
+    const merged = { ...existing, ...byItemId };
+    delete merged.excludedFieldNames;
+
     const payload = {
       cachedAt: now(),
-      byItemId: sanitizeItemOptions({ ...existing, ...byItemId }),
+      byItemId: sanitizeItemOptions(merged, excludedFieldNames),
+      excludedFieldNames,
       complete: Boolean(complete || existingCache?.complete),
     };
 
@@ -89,10 +112,11 @@
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();
+    const excludedFieldNames = normalizeExcludedFieldNames(data.excludedFieldNames);
     const byItemId = itemId
       ? { [String(itemId)]: data.options || {} }
-      : sanitizeItemOptions(data.byItemId || data.options || {});
-    return writeLocalCache(byItemId, { complete: !itemId }).byItemId;
+      : sanitizeItemOptions(data.byItemId || data.options || {}, excludedFieldNames);
+    return writeLocalCache({ ...byItemId, excludedFieldNames }, { complete: !itemId }).byItemId;
   }
 
   async function getAll({ forceRefresh = false } = {}) {

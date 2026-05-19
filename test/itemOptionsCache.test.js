@@ -46,11 +46,18 @@ test("item options getAll fetches the DB-backed option map when cache is empty",
                 Colour: ["Blue"],
                 "Colour 2": ["Hidden"],
                 "Base Option": ["Hidden"],
-                "Frontend Height Option": ["Hidden"],
+                "Footend Eight Option": ["Hidden"],
                 "Size.v1": ["Hidden"],
                 "Windsor Stained Colour Option": ["Hidden"],
               },
             },
+            excludedFieldNames: [
+              "base option",
+              "colour 2",
+              "footend eight option",
+              "size.v1",
+              "windsor stained colour option",
+            ],
           };
         },
       };
@@ -68,7 +75,7 @@ test("item options getAll fetches the DB-backed option map when cache is empty",
 test("item options getAll reuses a fresh local cache without fetching", async () => {
   const cachedAt = Date.now();
   const initialStorage = {
-    "itemOptionsCache:v2": JSON.stringify({
+    "itemOptionsCache:v3": JSON.stringify({
       cachedAt,
       complete: true,
       byItemId: {
@@ -94,7 +101,7 @@ test("item options getAll refreshes when local cache is only a partial per-item 
   const calls = [];
   const { cache } = loadCacheScript({
     initialStorage: {
-      "itemOptionsCache:v2": JSON.stringify({
+      "itemOptionsCache:v3": JSON.stringify({
         cachedAt,
         byItemId: {
           111: {

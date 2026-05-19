@@ -81,18 +81,83 @@ const EXCLUDED_OPTION_FIELD_NAMES = new Set([
   "base options",
   "colour 2",
   "fabric type",
-  "frontend height option",
+  "footend eight option",
   "mattress protector sizes",
   "size.v1",
   "windsor stained colour option",
 ]);
+const ITEM_OPTION_EXCLUSIONS_SETTING_KEY = "item_options.excluded_field_names";
 
-function isExcludedOptionField(option) {
+function normalizeExcludedOptionName(value) {
+  return cleanText(value).toLowerCase();
+}
+
+function normalizeExcludedOptionNames(values) {
+  const seen = new Set();
+  const names = [];
+
+  (Array.isArray(values) ? values : []).forEach((value) => {
+    const normalized = normalizeExcludedOptionName(value);
+    if (!normalized || seen.has(normalized)) return;
+    seen.add(normalized);
+    names.push(normalized);
+  });
+
+  return names;
+}
+
+function parseExcludedOptionSetting(value) {
+  if (!value) return null;
+
+  try {
+    const parsed = JSON.parse(value);
+    if (Array.isArray(parsed)) return normalizeExcludedOptionNames(parsed);
+  } catch {
+    // Fall back to line/comma separated settings for easy manual DB fixes.
+  }
+
+  return normalizeExcludedOptionNames(String(value).split(/[\n,]/));
+}
+
+function defaultExcludedOptionFieldNames() {
+  return Array.from(EXCLUDED_OPTION_FIELD_NAMES);
+}
+
+async function getExcludedOptionFieldNames() {
+  await ensureTables();
+
+  const result = await pool.query(
+    "SELECT value FROM app_settings WHERE key = $1 LIMIT 1",
+    [ITEM_OPTION_EXCLUSIONS_SETTING_KEY]
+  );
+  return parseExcludedOptionSetting(result.rows[0]?.value) || defaultExcludedOptionFieldNames();
+}
+
+async function saveExcludedOptionFieldNames(values) {
+  await ensureTables();
+
+  const names = normalizeExcludedOptionNames(values);
+  await pool.query(
+    `
+      INSERT INTO app_settings (key, value, updated_at)
+      VALUES ($1, $2, NOW())
+      ON CONFLICT (key)
+      DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()
+    `,
+    [ITEM_OPTION_EXCLUSIONS_SETTING_KEY, JSON.stringify(names)]
+  );
+
+  responseCache.clear();
+  return names;
+}
+
+function isExcludedOptionField(option, excludedNames = defaultExcludedOptionFieldNames()) {
+  const excludedSet = excludedNames instanceof Set ? excludedNames : new Set(excludedNames);
   const label = cleanText(option?.label).toLowerCase();
   const selectText = cleanText(option?.selectrecordtype_text).toLowerCase();
   const sourceName = cleanText(option?.sourceResult?.source?.name).toLowerCase();
 
-  return [label, selectText, sourceName].some((value) => EXCLUDED_OPTION_FIELD_NAMES.has(value));
+  return [label, selectText, sourceName].some((value) => excludedSet.has(value));
 }
 
 function makePageUrl(page, pageSize) {
@@ -179,6 +244,12 @@ async function ensureTables() {
 
     CREATE INDEX IF NOT EXISTS idx_item_option_applied_items_item_id
       ON item_option_applied_items(item_id);
+
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
   `);
 
   initialized = true;
@@ -222,13 +293,13 @@ function slimRawOption(option) {
   };
 }
 
-function buildRowsFromOptions(options) {
+function buildRowsFromOptions(options, excludedNames) {
   const fieldRows = [];
   const valueRows = [];
   const appliedItemRows = [];
 
   for (const option of options) {
-    if (isExcludedOptionField(option)) continue;
+    if (isExcludedOptionField(option, excludedNames)) continue;
 
     const fieldId = cleanText(option.id);
     const label = cleanText(option.label);
@@ -402,6 +473,7 @@ async function syncItemOptions() {
 
   syncInFlight = (async () => {
     await ensureTables();
+    const excludedNames = await getExcludedOptionFieldNames();
 
     const startedAt = new Date();
     console.log("📡 Item options sync starting...");
@@ -432,7 +504,7 @@ async function syncItemOptions() {
             const options = Array.isArray(pageJson?.results) ? pageJson.results : [];
             syncedRecords += options.length;
 
-            await insertOptionRows(client, buildRowsFromOptions(options));
+            await insertOptionRows(client, buildRowsFromOptions(options, excludedNames));
             console.log(`Item options page ${page}/${totalPages} synced`, {
               pageRecords: options.length,
               syncedRecords,
@@ -481,7 +553,7 @@ async function syncItemOptions() {
         const appliedItemRows = [];
 
         for (const option of payload.results) {
-          if (isExcludedOptionField(option)) continue;
+          if (isExcludedOptionField(option, excludedNames)) continue;
 
           const fieldId = cleanText(option.id);
           const label = cleanText(option.label);
@@ -684,6 +756,7 @@ function rowsToOptionMap(rows) {
 
 async function getOptions(itemId) {
   await ensureTables();
+  const excludedNames = await getExcludedOptionFieldNames();
 
   const params = [];
   let itemFilter = "";
@@ -718,7 +791,7 @@ async function getOptions(itemId) {
       ${itemFilter}
     ORDER BY ai.item_id, f.label, v.sort_order, v.name
     `,
-    [...params, Array.from(EXCLUDED_OPTION_FIELD_NAMES)]
+    [...params, excludedNames]
   );
 
   return rowsToOptionMap(result.rows);
@@ -731,9 +804,10 @@ router.get("/", async (req, res) => {
     const cacheKey = itemId ? `item:${itemId}` : "all";
     if (sendMemoizedResponse(req, res, cacheKey)) return;
 
-    const [options, state] = await Promise.all([
+    const [options, state, excludedFieldNames] = await Promise.all([
       getOptions(itemId),
       pool.query("SELECT * FROM item_option_sync_state WHERE id = 1"),
+      getExcludedOptionFieldNames(),
     ]);
 
     return sendCachedJson(req, res, {
@@ -741,11 +815,40 @@ router.get("/", async (req, res) => {
       itemId: itemId || null,
       options: itemId ? options[itemId] || {} : options,
       byItemId: itemId ? undefined : options,
+      excludedFieldNames,
       sync: state.rows[0] || null,
     }, cacheKey);
   } catch (err) {
     console.error("❌ GET /api/item-options error:", err.message);
     return res.status(500).json({ ok: false, error: "Failed to load item options" });
+  }
+});
+
+router.get("/settings", async (req, res) => {
+  try {
+    const excludedFieldNames = await getExcludedOptionFieldNames();
+    return res.json({
+      ok: true,
+      excludedFieldNames,
+      defaultExcludedFieldNames: defaultExcludedOptionFieldNames(),
+    });
+  } catch (err) {
+    console.error("GET /api/item-options/settings error:", err.message);
+    return res.status(500).json({ ok: false, error: "Failed to load item option settings" });
+  }
+});
+
+router.put("/settings", async (req, res) => {
+  try {
+    const excludedFieldNames = await saveExcludedOptionFieldNames(req.body?.excludedFieldNames);
+    return res.json({
+      ok: true,
+      excludedFieldNames,
+      defaultExcludedFieldNames: defaultExcludedOptionFieldNames(),
+    });
+  } catch (err) {
+    console.error("PUT /api/item-options/settings error:", err.message);
+    return res.status(400).json({ ok: false, error: err.message || "Failed to save item option settings" });
   }
 });
 
