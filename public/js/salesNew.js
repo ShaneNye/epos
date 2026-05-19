@@ -551,6 +551,8 @@ document.getElementById("orderItemsBody")?.addEventListener("change", (e) => {
           quantity,
           retailGrossLine,
           saleGrossLine,
+          inventoryDetail: tr.querySelector(".item-inv-detail")?.value || "",
+          inventoryMeta: tr.dataset.inventoryMeta || "",
         };
       })
       .filter(Boolean);

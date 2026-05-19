@@ -63,6 +63,35 @@ document.addEventListener("DOMContentLoaded", async () => {
     hasRealValue(b) &&
     String(a).trim() === String(b).trim();
 
+  const inventoryDetailStatusContainsClearance = (value) => {
+    const raw = String(value || "").trim();
+    if (!raw) return false;
+
+    return raw
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .some((part) => {
+        const tokens = part.split("|");
+        const statusValue = String(tokens[3] || "").trim().toLowerCase();
+        return statusValue.includes("clearance");
+      });
+  };
+
+  const lineHasClearanceInventoryStatus = (line) =>
+    [
+      line?.inventoryDetail,
+      line?.inventoryMeta,
+      line?.custcol_sb_epos_inventory_meta,
+      line?.CUSTCOL_SB_EPOS_INVENTORY_META,
+    ].some(inventoryDetailStatusContainsClearance);
+
+  const updateClearanceNotice = (items) => {
+    const notice = document.getElementById("clearanceNotice");
+    if (!notice) return;
+    notice.hidden = !(Array.isArray(items) && items.some(lineHasClearanceInventoryStatus));
+  };
+
   const findReceiptStore = (locations, so) => {
     const primaryStoreId = so.custbody_sb_primarystore?.id;
     const invoiceLocationId = so.location?.id;
@@ -278,6 +307,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const items = so.item?.items || [];
     const tableBody = document.getElementById("productTableBody");
     const productTable = document.getElementById("productTable");
+
+    updateClearanceNotice(items);
 
     if (!tableBody) {
       console.error("❌ productTableBody not found");

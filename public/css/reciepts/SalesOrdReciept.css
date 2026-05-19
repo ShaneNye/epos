@@ -172,6 +172,32 @@ body{
   line-height: 1.35;
 }
 
+.clearance-notice{
+  margin: 14px 16px 2px;
+  padding: 14px 16px;
+  border: 1px solid #ef4444;
+  background: #fff1f2;
+  color: var(--ink);
+}
+
+.clearance-notice[hidden]{
+  display: none;
+}
+
+.clearance-notice h2{
+  margin: 0 0 10px;
+  color: #b91c1c;
+  font-size: 15px;
+  font-style: italic;
+  font-weight: 800;
+}
+
+.clearance-notice p{
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
 /* ==========================
    PRODUCT TABLE
    ========================== */

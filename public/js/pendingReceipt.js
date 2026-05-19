@@ -39,6 +39,36 @@
     return value !== null && value !== undefined && String(value).trim() !== "";
   }
 
+  function inventoryDetailStatusContainsClearance(value) {
+    const raw = String(value || "").trim();
+    if (!raw) return false;
+
+    return raw
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .some((part) => {
+        const tokens = part.split("|");
+        const statusValue = String(tokens[3] || "").trim().toLowerCase();
+        return statusValue.includes("clearance");
+      });
+  }
+
+  function lineHasClearanceInventoryStatus(line) {
+    return [
+      line?.inventoryDetail,
+      line?.inventoryMeta,
+      line?.custcol_sb_epos_inventory_meta,
+      line?.CUSTCOL_SB_EPOS_INVENTORY_META,
+    ].some(inventoryDetailStatusContainsClearance);
+  }
+
+  function updateClearanceNotice(items) {
+    const notice = document.getElementById("clearanceNotice");
+    if (!notice) return;
+    notice.hidden = !(Array.isArray(items) && items.some(lineHasClearanceInventoryStatus));
+  }
+
   function todayDdMmYyyy() {
     const d = new Date();
     return `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}/${d.getFullYear()}`;
@@ -297,6 +327,7 @@
     }
 
     renderProducts(items, type);
+    updateClearanceNotice(items);
     renderDeposits(deposits);
     renderSummary(items, deposits, type);
     await revealAndPrint();

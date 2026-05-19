@@ -1839,6 +1839,8 @@ function buildSalesReceiptPayloadFromDom(tranId) {
         quantity,
         retailGrossLine,
         saleGrossLine,
+        inventoryDetail: row.querySelector(".item-inv-detail")?.value || "",
+        inventoryMeta: row.dataset.inventoryMeta || "",
       };
     })
     .filter(Boolean);
