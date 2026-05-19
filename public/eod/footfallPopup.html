@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>End Of Day – Footfall</title>
+    <title>End Of Day - Footfall</title>
 
     <link rel="stylesheet" href="/eod/footfallPopup.css" />
     <script src="/js/storage.js"></script>
@@ -16,13 +16,13 @@
         <div class="popup-card">
 
             <div class="popup-header">
-                <h2>Footfall – Today</h2>
+                <h2>Footfall - Today</h2>
             </div>
 
             <div class="popup-body">
 
                 <h3>End of Day Footfall</h3>
-                <p class="muted">Select your store and complete today’s footfall records.</p>
+                <p class="muted">Select your store and complete today's footfall records.</p>
 
                 <div class="form-grid">
                     <div>
@@ -33,29 +33,58 @@
                     </div>
                 </div>
 
-                <div class="section-title">Footfall Details</div>
-
-                <div class="table-wrapper">
-                    <table id="footfallTable">
-                        <thead>
-                            <tr id="footfallHeaderRow"></tr>
-                        </thead>
-                        <tbody id="footfallTableBody"></tbody>
-                    </table>
+                <div id="emptyState" class="empty-state">
+                    Choose a store to start entering today's footfall.
                 </div>
 
+                <div id="footfallForm" class="footfall-form hidden">
+                    <div class="record-summary">
+                        <div>
+                            <span class="summary-label">Store</span>
+                            <strong id="selectedStoreName"></strong>
+                        </div>
+                        <div>
+                            <span class="summary-label">Record ID</span>
+                            <strong id="selectedRecordId"></strong>
+                        </div>
+                    </div>
 
+                    <div class="section-title">Team</div>
+                    <div class="form-grid staff-grid">
+                        <div id="bedSpecialistField">
+                            <label for="storeLeader">Bed Specialist <span class="required">*</span></label>
+                            <select id="storeLeader" class="user-select" required></select>
+                        </div>
+                        <div id="bedSpecialist2Field" class="hidden">
+                            <label for="bedSpecialist">Bed Specialist 2</label>
+                            <select id="bedSpecialist" class="user-select"></select>
+                        </div>
+                        <div id="bedSpecialist3Field" class="hidden">
+                            <label for="bedSpecialist2">Bed Specialist 3</label>
+                            <select id="bedSpecialist2" class="user-select"></select>
+                        </div>
+                    </div>
+
+                    <div class="section-title"></div>
+                    <div class="highlight-field">
+                        <label for="teamFootfallCount">Team Footfall Count</label>
+                        <input id="teamFootfallCount" type="number" data-field="team footfall count" min="0" />
+                    </div>
+
+                    <div class="section-title">Non-Purchase Reasons</div>
+                    <div id="metricGrid" class="metric-grid"></div>
+                </div>
 
                 <div class="form-actions">
                     <button id="closeBtn" class="btn-secondary" onclick="window.close()">Close</button>
-                    <button id="saveFootfallBtn" class="btn-primary">Save Footfall</button>
+                    <button id="saveFootfallBtn" class="btn-primary" disabled>Save Footfall</button>
                 </div>
 
             </div>
 
         </div>
     </div>
-    <!-- Saving Spinner Overlay -->
+
     <div id="savingOverlay" class="saving-overlay hidden">
         <div class="saving-box">
             <div class="loader"></div>

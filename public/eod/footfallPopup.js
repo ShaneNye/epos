@@ -1,10 +1,7 @@
 // public/eod/footfallPopup.js
 document.addEventListener("DOMContentLoaded", async () => {
-  console.log("🟢 Footfall popup loaded");
+  console.log("Footfall popup loaded");
 
-  /* ============================================================================
-      NORMALISE LABEL
-     ============================================================================ */
   function normalizeLabel(label) {
     return String(label || "")
       .replace(/\u00A0/g, " ")
@@ -13,21 +10,34 @@ document.addEventListener("DOMContentLoaded", async () => {
       .toLowerCase();
   }
 
-  /* ============================================================================
-      RAW FIELD MAP (FULL & EXACT)
-     ============================================================================ */
+  function cleanStoreName(name) {
+    const value = String(name || "").replace(/\u00A0/g, " ").trim();
+    return value.includes(":") ? value.split(":").pop().trim() : value;
+  }
+
+  function toNumber(value) {
+    const number = Number(String(value || "0").replace(/,/g, ""));
+    return Number.isFinite(number) ? number : 0;
+  }
+
+  function escapeHtml(value) {
+    return String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   const RAW_FIELD_MAP = {
     "Date": "custrecord_ff_date",
     "Day": "custrecord_ff_day",
     "Footfall Count": "custrecord_ff_footfallcount",
     "Store Manager": "custrecord_ff_storemanager",
     "Team Footfall Count": "custrecord_sb_team_ff_count",
-
-    // Personnel
     "Bed Specialist": "custrecord_sb_bed_specialist_1",
     "Bed Specialist 2": "custrecord_sb_bed_specialist_2",
     "Team Leader": "custrecord_sb_team_leader",
-
     "Email Trigger": "custrecord1425",
     "What was not available?": "custrecord1512",
     "What Was Too Expensive?": "custrecord1513",
@@ -67,269 +77,255 @@ document.addEventListener("DOMContentLoaded", async () => {
     "What was Too Expensive? - Old": "custrecord_ff_whatwastooexpensive"
   };
 
-  /* ============================================================================
-      NORMALISED FIELD MAP (lowercased)
-     ============================================================================ */
   const FIELD_MAP = {};
-  Object.entries(RAW_FIELD_MAP).forEach(([k, v]) => {
-    FIELD_MAP[normalizeLabel(k)] = v;
+  Object.entries(RAW_FIELD_MAP).forEach(([label, fieldId]) => {
+    FIELD_MAP[normalizeLabel(label)] = fieldId;
   });
 
-  /* ============================================================================
-      AUTH
-     ============================================================================ */
+  const skipFields = new Set([
+    "store", "date", "day", "name", "script id", "store manager",
+    "email trigger", "other web reason",
+    "what was too expensive? - old", "what was not available? - old",
+    "inactive", "footfall count", "team footfall count",
+    "bed specialist", "bed specialist 2", "team leader", "internal id"
+  ]);
+
+  const customerOutcomeFields = [
+    "Quote Count",
+    "Needs to Measure Up",
+    "Needs to Choose Colour",
+    "Needs to Ask Partner",
+    "Wants to Visit Competitor",
+    "Product not Available",
+    "Couldn't get to, Busy Serving",
+    "Couldn't Connect with Customer",
+    "Lead Time Too Long",
+    "Running out of Time",
+    "Too Expensive",
+    "Finance Declined",
+    "Couldn't Decide on Product",
+    "What was not available?",
+    "What Was Too Expensive?"
+  ];
+
   const auth = storageGet?.();
   const token = auth?.token;
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
 
-  /* ============================================================================
-      DOM ELEMENTS
-     ============================================================================ */
   const storeSelect = document.getElementById("storeSelect");
-  const theadRow = document.getElementById("footfallHeaderRow");
-  const tbody = document.getElementById("footfallTableBody");
+  const emptyState = document.getElementById("emptyState");
+  const footfallForm = document.getElementById("footfallForm");
+  const selectedStoreName = document.getElementById("selectedStoreName");
+  const selectedRecordId = document.getElementById("selectedRecordId");
+  const metricGrid = document.getElementById("metricGrid");
+  const saveBtn = document.getElementById("saveFootfallBtn");
+  const overlay = document.getElementById("savingOverlay");
 
-  /* ============================================================================
-      STATE
-     ============================================================================ */
   let users = [];
   let footfallResults = [];
   let locations = [];
   let currentRow = null;
 
-  /* ============================================================================
-      LOAD USERS
-     ============================================================================ */
-  try {
-    const res = await fetch("/api/users", { headers });
-    const data = await res.json();
-    users = data.users || [];
-    console.log("👤 Loaded users:", users);
-  } catch (err) {
-    console.error("❌ Load users failed:", err);
-  }
-
   function populateUserOptions() {
-    document.querySelectorAll(".user-select").forEach(sel => {
-      sel.innerHTML = `<option value="">Select...</option>`;
-      users.forEach(u => {
-        const opt = document.createElement("option");
-        opt.value = u.id;
-        opt.textContent = `${u.firstName} ${u.lastName}`;
-        sel.appendChild(opt);
+    const sortedUsers = [...users].sort((a, b) => {
+      const nameA = `${a.firstName || ""} ${a.lastName || ""}`.trim();
+      const nameB = `${b.firstName || ""} ${b.lastName || ""}`.trim();
+      return nameA.localeCompare(nameB, undefined, { sensitivity: "base" });
+    });
+
+    document.querySelectorAll(".user-select").forEach(select => {
+      select.innerHTML = `<option value="">Select...</option>`;
+      sortedUsers.forEach(user => {
+        const option = document.createElement("option");
+        option.value = user.id;
+        option.textContent = `${user.firstName} ${user.lastName}`;
+        select.appendChild(option);
       });
     });
   }
 
-  /* ============================================================================
-      LOAD LOCATIONS
-     ============================================================================ */
+  function preselectUser(selectId, rowLabel) {
+    const select = document.getElementById(selectId);
+    const userName = currentRow?.[rowLabel];
+    if (!select || !userName) return;
+
+    [...select.options].forEach(option => {
+      if (option.textContent.trim() === String(userName).trim()) {
+        select.value = option.value;
+      }
+    });
+  }
+
+  function updateBedSpecialistVisibility() {
+    const first = document.getElementById("storeLeader");
+    const second = document.getElementById("bedSpecialist");
+    const secondField = document.getElementById("bedSpecialist2Field");
+    const thirdField = document.getElementById("bedSpecialist3Field");
+
+    const hasFirst = !!first?.value;
+    const hasSecond = !!second?.value;
+
+    if (!hasFirst && second) second.value = "";
+    if ((!hasFirst || !hasSecond) && document.getElementById("bedSpecialist2")) {
+      document.getElementById("bedSpecialist2").value = "";
+    }
+
+    secondField?.classList.toggle("hidden", !hasFirst);
+    thirdField?.classList.toggle("hidden", !hasFirst || !second?.value);
+  }
+
+  function getDynamicFields() {
+    if (!currentRow) return [];
+
+    return customerOutcomeFields.filter(label => {
+      const normalized = normalizeLabel(label);
+      if (skipFields.has(normalized)) return false;
+      if (!FIELD_MAP[normalized]) return false;
+      return Object.prototype.hasOwnProperty.call(currentRow, label);
+    });
+  }
+
+  function buildMetricField(label) {
+    const normalized = normalizeLabel(label);
+    const value = toNumber(currentRow[label]);
+
+    return `
+      <label class="metric-field">
+        <span>${escapeHtml(label)}</span>
+        <input
+          type="number"
+          class="num-input"
+          data-field="${escapeHtml(normalized)}"
+          value="${value}"
+          min="0"
+          inputmode="numeric"
+        />
+      </label>
+    `;
+  }
+
+  function renderFootfallForm() {
+    selectedStoreName.textContent = cleanStoreName(currentRow.Store || storeSelect.value);
+    selectedRecordId.textContent = currentRow["Internal ID"] || "-";
+
+    populateUserOptions();
+    preselectUser("storeLeader", "Team Leader");
+    preselectUser("bedSpecialist", "Bed Specialist");
+    preselectUser("bedSpecialist2", "Bed Specialist 2");
+    updateBedSpecialistVisibility();
+
+    const teamFootfallInput = document.getElementById("teamFootfallCount");
+    teamFootfallInput.value = toNumber(currentRow["Team Footfall Count"]);
+
+    const dynamicFields = getDynamicFields();
+    metricGrid.innerHTML = dynamicFields.length
+      ? dynamicFields.map(buildMetricField).join("")
+      : `<div class="empty-state compact">No additional numeric fields found for this record.</div>`;
+
+    emptyState.classList.add("hidden");
+    footfallForm.classList.remove("hidden");
+    saveBtn.disabled = false;
+  }
+
+  function resetForm(message = "Choose a store to start entering today's footfall.") {
+    currentRow = null;
+    metricGrid.innerHTML = "";
+    selectedStoreName.textContent = "";
+    selectedRecordId.textContent = "";
+    emptyState.textContent = message;
+    emptyState.classList.remove("hidden");
+    footfallForm.classList.add("hidden");
+    saveBtn.disabled = true;
+  }
+
+  try {
+    const res = await fetch("/api/users", { headers });
+    const data = await res.json();
+    users = data.users || [];
+  } catch (err) {
+    console.error("Load users failed:", err);
+  }
+
   try {
     const res = await fetch("/api/meta/locations", { headers });
     const data = await res.json();
     locations = data.locations || [];
   } catch (err) {
-    console.error("❌ Failed to load locations:", err);
+    console.error("Failed to load locations:", err);
   }
 
   storeSelect.innerHTML = `<option value="">Select Store...</option>`;
-  locations.forEach(loc => {
-    const clean = loc.name.includes(":")
-      ? loc.name.split(":")[1].trim()
-      : loc.name.trim();
-
-    const opt = document.createElement("option");
-    opt.value = clean;
-    opt.textContent = clean;
-    storeSelect.appendChild(opt);
+  locations.forEach(location => {
+    const clean = cleanStoreName(location.name);
+    const option = document.createElement("option");
+    option.value = clean;
+    option.textContent = clean;
+    storeSelect.appendChild(option);
   });
 
-  /* ============================================================================
-      LOAD FOOTFALL RESULTS
-     ============================================================================ */
   try {
     const res = await fetch("/api/eod/footfall", { headers });
     const data = await res.json();
     footfallResults = data.results || [];
   } catch (err) {
-    console.error("❌ Footfall fetch failed:", err);
+    console.error("Footfall fetch failed:", err);
   }
 
-  /* ============================================================================
-      FIELDS TO SKIP (NOT SHOWN AS COLUMNS)
-     ============================================================================ */
-  const skipFields = new Set([
-    "store", "date", "day", "name", "script id", "store manager",
-    "email trigger", "other web reason", "what was too expensive?",
-    "what was too expensive? - old", "what was not available? - old",
-    "what was not available?", "inactive",
-    "footfall count", // replaced by team footfall count
-    "team footfall count",
-    "bed specialist", "bed specialist 2", "team leader",
-    "internal id"
-  ]);
-
-  /* ============================================================================
-      BUILD FULL NON-PAGINATED TABLE
-     ============================================================================ */
-  function buildFullTable() {
-    tbody.innerHTML = "";
-    theadRow.innerHTML = "";
-
-    // ---- FIXED FIRST COLUMNS ----
-    const fixedCols = [
-      "Internal ID",
-      "Sales Executive",
-      "Sales Executive",
-      "Sales Executive",
-      "Team Footfall Count"
-    ];
-
-    fixedCols.forEach(c => theadRow.innerHTML += `<th>${c}</th>`);
-
-    // ---- DYNAMIC COLUMNS ----
-    const dynamicFields = Object.keys(currentRow).filter(k => {
-      const normalized = normalizeLabel(k);
-      if (skipFields.has(normalized)) return false;
-      return !isNaN(Number(String(currentRow[k] || "0").replace(/,/g, "")));
-    });
-
-    dynamicFields.forEach(f => theadRow.innerHTML += `<th>${f}</th>`);
-
-    // ---- BUILD ROW ----
-    const tr = document.createElement("tr");
-
-    tr.innerHTML += `<td><input readonly value="${currentRow["Internal ID"]}" /></td>`;
-
-    tr.innerHTML += `<td><select id="storeLeader" class="user-select" required></select></td>`;
-    tr.innerHTML += `<td><select id="bedSpecialist" class="user-select"></select></td>`;
-    tr.innerHTML += `<td><select id="bedSpecialist2" class="user-select"></select></td>`;
-
-    tr.innerHTML += `
-      <td>
-        <input type="number" 
-               data-field="team footfall count"
-               value="${Number(currentRow["Team Footfall Count"] || 0)}"
-               min="0"/>
-      </td>
-    `;
-
-    dynamicFields.forEach(label => {
-      const val = Number(String(currentRow[label] || "0").replace(/,/g, ""));
-      tr.innerHTML += `
-        <td>
-          <input type="number"
-                 class="num-input"
-                 data-field="${normalizeLabel(label)}"
-                 value="${val}"
-                 min="0"/>
-        </td>
-      `;
-    });
-
-    tbody.appendChild(tr);
-
-    populateUserOptions();
-
-    // ----- PRESELECT STORE LEADER -----
-    const sl = document.getElementById("storeLeader");
-    const slName = currentRow["Team Leader"];
-    if (slName) {
-      [...sl.options].forEach(o => {
-        if (o.textContent.trim() === slName.trim()) sl.value = o.value;
-      });
-    }
-
-    // ----- PRESELECT BS1 -----
-    const bs1 = document.getElementById("bedSpecialist");
-    const bs1Name = currentRow["Bed Specialist"];
-    if (bs1Name) {
-      [...bs1.options].forEach(o => {
-        if (o.textContent.trim() === bs1Name.trim()) bs1.value = o.value;
-      });
-    }
-
-    // ----- PRESELECT BS2 -----
-    const bs2 = document.getElementById("bedSpecialist2");
-    const bs2Name = currentRow["Bed Specialist 2"];
-    if (bs2Name) {
-      [...bs2.options].forEach(o => {
-        if (o.textContent.trim() === bs2Name.trim()) bs2.value = o.value;
-      });
-    }
-  }
-
-  /* ============================================================================
-      STORE SELECTION
-     ============================================================================ */
   storeSelect.addEventListener("change", () => {
     const selected = storeSelect.value.trim().toLowerCase();
+    if (!selected) return resetForm();
 
-    currentRow = footfallResults.find(r => {
-      let raw = r["Store"] || "";
-      raw = raw.replace(/\u00A0/g, " ");
-      let clean = raw.includes(":") ? raw.split(":")[1].trim() : raw.trim();
-      return clean.toLowerCase() === selected;
+    currentRow = footfallResults.find(row => {
+      return cleanStoreName(row.Store).toLowerCase() === selected;
     });
 
-    if (!currentRow) return;
+    if (!currentRow) {
+      return resetForm("No footfall record was found for the selected store.");
+    }
 
-    buildFullTable();
+    renderFootfallForm();
   });
 
-  /* ============================================================================
-      SAVE FOOTFALL
-     ============================================================================ */
-  document.getElementById("saveFootfallBtn").addEventListener("click", async () => {
-    if (!currentRow) return alert("No store selected.");
+  document.getElementById("storeLeader")?.addEventListener("change", updateBedSpecialistVisibility);
+  document.getElementById("bedSpecialist")?.addEventListener("change", updateBedSpecialistVisibility);
 
-    const sl = document.getElementById("storeLeader");
-    if (!sl?.value) {
-      return alert("Please select Sales Executive.");
+  saveBtn.addEventListener("click", async () => {
+    if (!currentRow) return alert("Please select a store first.");
+
+    const teamLeader = document.getElementById("storeLeader");
+    if (!teamLeader?.value) {
+      teamLeader.focus();
+      return alert("Please select the Bed Specialist before saving.");
     }
 
     const internalId = currentRow["Internal ID"];
     const payload = {};
 
-    const overlay = document.getElementById("savingOverlay");
-
-    // 🔵 SHOW SPINNER
     overlay.classList.remove("hidden");
+    saveBtn.disabled = true;
 
-    /* ---- TEAM FOOTFALL COUNT ---- */
-    const teamFF = document.querySelector(`input[data-field="team footfall count"]`);
-    if (teamFF) payload[FIELD_MAP["team footfall count"]] = Number(teamFF.value);
-
-    /* ---- STORE LEADER ---- */
-    if (sl.value) {
-      const user = users.find(u => String(u.id) === String(sl.value));
-      const nsId = user?.netsuiteId || user?.netsuiteid;
-      if (nsId) payload[FIELD_MAP["team leader"]] = String(nsId);
+    const teamFootfall = document.getElementById("teamFootfallCount");
+    if (teamFootfall) {
+      payload[FIELD_MAP["team footfall count"]] = toNumber(teamFootfall.value);
     }
 
-    /* ---- BED SPECIALISTS ---- */
-    const bs1 = document.getElementById("bedSpecialist");
-    if (bs1?.value) {
-      const user = users.find(u => String(u.id) === String(bs1.value));
-      const nsId = user?.netsuiteId || user?.netsuiteid;
-      if (nsId) payload[FIELD_MAP["bed specialist"]] = String(nsId);
-    }
+    [
+      ["storeLeader", "team leader"],
+      ["bedSpecialist", "bed specialist"],
+      ["bedSpecialist2", "bed specialist 2"]
+    ].forEach(([selectId, fieldLabel]) => {
+      const select = document.getElementById(selectId);
+      if (!select?.value) return;
 
-    const bs2 = document.getElementById("bedSpecialist2");
-    if (bs2?.value) {
-      const user = users.find(u => String(u.id) === String(bs2.value));
+      const user = users.find(u => String(u.id) === String(select.value));
       const nsId = user?.netsuiteId || user?.netsuiteid;
-      if (nsId) payload[FIELD_MAP["bed specialist 2"]] = String(nsId);
-    }
-
-    /* ---- ALL DYNAMIC NUMBER FIELDS ---- */
-    document.querySelectorAll(".num-input[data-field]").forEach(input => {
-      const norm = normalizeLabel(input.dataset.field);
-      const mapped = FIELD_MAP[norm];
-      if (mapped) payload[mapped] = Number(input.value);
+      if (nsId) payload[FIELD_MAP[fieldLabel]] = String(nsId);
     });
 
-    console.log("📤 Final PATCH Payload:", payload);
+    document.querySelectorAll(".num-input[data-field]").forEach(input => {
+      const mapped = FIELD_MAP[normalizeLabel(input.dataset.field)];
+      if (mapped) payload[mapped] = toNumber(input.value);
+    });
 
     try {
       const res = await fetch("/api/eod/footfall/update", {
@@ -342,29 +338,29 @@ document.addEventListener("DOMContentLoaded", async () => {
       });
 
       const json = await res.json();
-      console.log("📥 Patch response:", json);
 
       if (!json.ok) {
         overlay.classList.add("hidden");
-        return alert("❌ Update failed: " + json.error);
+        saveBtn.disabled = false;
+        return alert("Update failed: " + json.error);
       }
 
-      // 🌟 SUCCESS
       setTimeout(() => {
         try {
           if (window.opener && !window.opener.closed) {
             window.opener.location.reload();
           }
-        } catch (e) {
-          console.warn("⚠ Could not refresh opener:", e);
+        } catch (err) {
+          console.warn("Could not refresh opener:", err);
         }
 
         window.close();
       }, 400);
     } catch (err) {
-      console.error("❌ Save failed:", err);
+      console.error("Save failed:", err);
       overlay.classList.add("hidden");
-      alert("❌ Failed to save footfall record.");
+      saveBtn.disabled = false;
+      alert("Failed to save footfall record.");
     }
   });
 });

@@ -23,6 +23,36 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     return Object.prototype.hasOwnProperty.call(obj || {}, key);
   }
 
+  function syncPairedSalesOrderMemo(soRec, memo) {
+    const pairedSalesOrderId = soRec.getValue({
+      fieldId: "custbody_sb_pairedsalesorder",
+    });
+
+    if (!pairedSalesOrderId) {
+      return { ok: true, skipped: true, reason: "no-paired-sales-order" };
+    }
+
+    record.submitFields({
+      type: record.Type.SALES_ORDER,
+      id: pairedSalesOrderId,
+      values: { memo: memo || "" },
+      options: {
+        enableSourcing: false,
+        ignoreMandatoryFields: true,
+      },
+    });
+
+    log.audit("💾 Paired Sales Order memo updated", {
+      pairedSalesOrderId,
+    });
+
+    return {
+      ok: true,
+      skipped: false,
+      pairedSalesOrderId: String(pairedSalesOrderId),
+    };
+  }
+
   function parseInventoryMeta(detailString) {
     const parts = String(detailString || "")
       .split(";")
@@ -357,6 +387,11 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
         hasOwn(headerUpdates, "memo")
       ) {
         const memo = headerUpdates.memo || "";
+        let pairedMemoSync = {
+          ok: true,
+          skipped: true,
+          reason: "not-attempted",
+        };
 
         record.submitFields({
           type: record.Type.SALES_ORDER,
@@ -368,10 +403,22 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
           },
         });
 
+        try {
+          pairedMemoSync = syncPairedSalesOrderMemo(soRec, memo);
+        } catch (pairedErr) {
+          log.error("⚠️ Failed to update paired Sales Order memo", pairedErr);
+          pairedMemoSync = {
+            ok: false,
+            skipped: false,
+            error: pairedErr.message || String(pairedErr),
+          };
+        }
+
         log.audit("💾 Processed Sales Order memo updated without line save", {
           id,
           orderStatusValue,
           orderStatusText,
+          pairedMemoSync,
         });
 
         return {
@@ -383,6 +430,7 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
           removedLineIds: [],
           committed: false,
           memoOnly: true,
+          pairedMemoSync,
         };
       }
 
@@ -582,11 +630,31 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
         ignoreMandatoryFields: true,
       });
 
+      let pairedMemoSync = {
+        ok: true,
+        skipped: true,
+        reason: "memo-not-supplied",
+      };
+
+      if (hasOwn(headerUpdates, "memo")) {
+        try {
+          pairedMemoSync = syncPairedSalesOrderMemo(soRec, headerUpdates.memo || "");
+        } catch (pairedErr) {
+          log.error("⚠️ Failed to update paired Sales Order memo", pairedErr);
+          pairedMemoSync = {
+            ok: false,
+            skipped: false,
+            error: pairedErr.message || String(pairedErr),
+          };
+        }
+      }
+
       log.audit("💾 Sales Order saved with updates", {
         id: savedId,
         doCommit,
         removedLineIds,
         updatesApplied: updates.length || 0,
+        pairedMemoSync,
       });
 
       return {
@@ -599,6 +667,7 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
         deletedLineIds,
         removedLineIds,
         committed: doCommit,
+        pairedMemoSync,
       };
     } catch (e) {
       log.error("❌ RESTlet Error", e);

@@ -1,5 +1,5 @@
 /* =====================================================
-   FOOTFALL POPUP — MATCH SURVEY STYLE
+   FOOTFALL POPUP
    ===================================================== */
 
 html,
@@ -14,23 +14,25 @@ body {
   align-items: flex-start;
 }
 
-/* Wrapper + Card */
+.hidden {
+  display: none !important;
+}
+
 .popup-wrapper {
   width: 100%;
-  max-width: 760px;
+  max-width: 880px;
   padding: 1.5rem;
   box-sizing: border-box;
 }
 
 .popup-card {
   background: #fff;
-  border-radius: 10px;
+  border-radius: 8px;
   border: 1px solid #e6eef3;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   overflow: hidden;
 }
 
-/* Header */
 .popup-header {
   background: linear-gradient(90deg, #007ea8, #0092c7);
   padding: 1rem 1.25rem;
@@ -41,9 +43,9 @@ body {
   margin: 0;
   font-size: 1.15rem;
   font-weight: 600;
+  letter-spacing: 0;
 }
 
-/* Body */
 .popup-body {
   padding: 1.5rem;
   box-sizing: border-box;
@@ -54,45 +56,55 @@ body {
   margin: 0 0 0.4rem;
 }
 
-.popup-body .muted {
+.muted {
   color: #6f7a81;
-  font-size: 0.9rem;
+  font-size: 0.92rem;
   margin: 0 0 1.25rem;
 }
 
-/* Section divider */
 .section-title {
-  margin: 1.75rem 0 0.75rem;
+  margin: 1.5rem 0 0.75rem;
   padding-top: 1rem;
   border-top: 1px dashed #d6dde3;
-  font-weight: 600;
+  font-weight: 700;
   color: #273036;
   font-size: 0.95rem;
 }
 
-/* Form grid */
-.form-grid {
+.form-grid,
+.metric-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
-  gap: 1.25rem 1.5rem;
-  margin-bottom: 0.75rem;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 1rem;
 }
 
-label {
+.staff-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+label,
+.metric-field span {
   font-weight: 600;
   font-size: 0.9rem;
   color: #273036;
-  margin-bottom: 0.35rem;
+}
+
+label {
   display: block;
 }
 
-/* Inputs */
+.required {
+  color: #b3261e;
+}
+
 input[type="text"],
 input[type="number"],
 select {
   width: 100%;
-  padding: 0.55rem 0.65rem;
-  font-size: 0.9rem;
+  min-height: 44px;
+  margin-top: 0.35rem;
+  padding: 0.65rem 0.7rem;
+  font-size: 1rem;
   border-radius: 6px;
   border: 1px solid #ccd8df;
   background: #fff;
@@ -107,113 +119,20 @@ select:focus {
   box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.15);
 }
 
-.readonly-cell {
-  background: #f3f6f9;
-  color: #555;
-}
-
-/* =====================================================
-   FOOTFALL TABLE — MAKE EACH ROW MORE LEGIBLE
-   ===================================================== */
-
-#footfallTable {
-  width: 100%;
-  border-collapse: separate;
-  border-spacing: 0;
-  margin-top: 0.5rem;
-  font-size: 0.95rem;
-}
-
-#footfallTable thead th {
-  background: #f3f7fb;
-  border-bottom: 1px solid #d8e2eb;
-  padding: 0.85rem 0.75rem;
-  text-align: left;
-  font-weight: 700;
-  color: #273036;
-  white-space: nowrap;
-  font-size: 0.95rem;
-}
-
-#footfallTable tbody td {
-  border-bottom: 1px solid #eef2f6;
-  padding: 0.75rem 0.65rem;
-  vertical-align: middle;
-  background: #fff;
-}
-
-/* zebra striping helps users track across a row */
-#footfallTable tbody tr:nth-child(even) td {
-  background: #fafcfd;
-}
-
-#footfallTable tbody tr:hover td {
-  background: #f2f9fc;
-}
-
-/* Make fields easier to read and click */
-#footfallTable input[type="number"],
-#footfallTable input[type="text"],
-#footfallTable select {
-  width: 100%;
-  min-height: 44px;
-  padding: 0.7rem 0.75rem;
-  font-size: 1rem;
-  border-radius: 8px;
-  border: 1px solid #ccd8df;
-  box-sizing: border-box;
-  background: #fff;
-}
-
-/* clearer focus */
-#footfallTable input[type="number"]:focus,
-#footfallTable input[type="text"]:focus,
-#footfallTable select:focus {
-  outline: none;
-  border-color: #0081ab;
-  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.15);
-}
-
-/* if you have readonly cells in the row */
-#footfallTable .readonly-cell {
-  background: #f3f6f9 !important;
-  color: #555;
-  font-weight: 600;
-}
-
-/* Chrome / Edge / Safari */
-.table-wrapper::-webkit-scrollbar {
-  height: 33px; /* bigger click / drag area */
-}
-
-.table-wrapper::-webkit-scrollbar-track {
-  background: #dfe7ec;
-  border-radius: 999px;
-}
-
-.table-wrapper::-webkit-scrollbar-thumb {
-  background: linear-gradient(90deg, #007ea8, #0092c7);
-  border-radius: 999px;
-  border: 4px solid #dfe7ec; /* chunkier thumb */
-  min-width: 60px;
-}
-
-.table-wrapper::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(90deg, #008cb8, #00a4d6);
-}
-
-/* =====================================================
-   BUTTONS (reusing survey style)
-   ===================================================== */
-
 button {
-  padding: 0.55rem 1.2rem;
-  font-size: 0.9rem;
+  padding: 0.65rem 1.2rem;
+  min-height: 42px;
+  font-size: 0.92rem;
   border-radius: 6px;
   border: none;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.15s ease;
+}
+
+button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 
 .btn-primary {
@@ -221,7 +140,7 @@ button {
   color: white;
 }
 
-.btn-primary:hover {
+.btn-primary:hover:not(:disabled) {
   background: linear-gradient(90deg, #008cb8, #00a4d6);
 }
 
@@ -234,100 +153,92 @@ button {
   background: #e1ebf0;
 }
 
-/* Footer actions */
+.empty-state {
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px dashed #c9d7df;
+  border-radius: 8px;
+  background: #f8fbfd;
+  color: #55636b;
+  text-align: center;
+}
+
+.empty-state.compact {
+  grid-column: 1 / -1;
+  margin-top: 0;
+  text-align: left;
+}
+
+.record-summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin-top: 1.25rem;
+  padding: 1rem;
+  border: 1px solid #dce8ee;
+  border-radius: 8px;
+  background: #f8fbfd;
+}
+
+.record-summary strong {
+  display: block;
+  margin-top: 0.25rem;
+  color: #273036;
+  font-size: 1rem;
+}
+
+.summary-label {
+  display: block;
+  color: #6f7a81;
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.highlight-field {
+  max-width: 340px;
+  padding: 1rem;
+  border: 1px solid #cfe3ec;
+  border-radius: 8px;
+  background: #f5fbfd;
+}
+
+.highlight-field input {
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.metric-field {
+  padding: 0.85rem;
+  border: 1px solid #e2ebf0;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.metric-field span {
+  display: block;
+  min-height: 2.2em;
+  line-height: 1.15;
+}
+
 .form-actions {
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
-  margin-top: 1.75rem;
+  margin: 1.75rem -1.5rem -1.5rem;
+  padding: 1rem 1.5rem;
   border-top: 1px solid #e6eef3;
-  padding-top: 1.25rem;
+  background: rgba(255, 255, 255, 0.96);
+  backdrop-filter: blur(6px);
 }
 
-/* =====================================================
-   (Optional) Pagination controls styling
-   If/when you add next/back page buttons
-   ===================================================== */
-.nav-cell {
-  text-align: right;
-  white-space: nowrap;
-}
-
-.pager-btn {
-  padding: 0.4rem 0.85rem;
-  font-size: 0.85rem;
-  border-radius: 6px;
-  border: none;
-  background: #eef3f6;
-  color: #333;
-  cursor: pointer;
-  margin: 0 0.15rem;
-}
-
-.pager-btn:hover:not(:disabled) {
-  background: #e1ebf0;
-}
-
-.pager-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-/* Existing survey-based theme retained… */
-
-.wizard-nav {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: 1.25rem;
-    margin-top: 1.25rem;
-}
-
-.pager-btn {
-    padding: 0.5rem 1rem;
-    font-size: 0.9rem;
-    border-radius: 6px;
-    background: #eef3f6;
-    border: 1px solid #d3dbe2;
-    cursor: pointer;
-    transition: background 0.2s ease;
-}
-
-.pager-btn:hover:not(:disabled) {
-    background: #e1ebf0;
-}
-
-.pager-btn:disabled {
-    opacity: 0.45;
-    cursor: not-allowed;
-}
-
-.page-indicator {
-    font-size: 0.9rem;
-    color: #4b565d;
-    font-weight: 600;
-}
-
-/* Keep table styling consistent */
-.table-wrapper {
-    margin-top: 0.5rem;
-    overflow-x: auto;
-}
-
-#footfallTable th,
-#footfallTable td {
-    padding: 0.55rem 0.45rem;
-    font-size: 0.9rem;
-}
-/* =======================
-   Saving Overlay
-======================= */
 .saving-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: rgba(255,255,255,0.80);
+  inset: 0;
+  background: rgba(255, 255, 255, 0.80);
   backdrop-filter: blur(3px);
   display: flex;
   align-items: center;
@@ -335,27 +246,22 @@ button {
   z-index: 9999;
 }
 
-.saving-overlay.hidden {
-  display: none;
-}
-
 .saving-box {
   background: #fff;
   padding: 1.5rem 2rem;
-  border-radius: 12px;
+  border-radius: 8px;
   border: 1px solid #dce6ec;
-  box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
   text-align: center;
 }
 
 .saving-box p {
-  margin-top: 1rem;
+  margin: 1rem 0 0;
   color: #007ea8;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 1rem;
 }
 
-/* Spinner */
 .loader {
   width: 38px;
   height: 38px;
@@ -372,7 +278,7 @@ button {
   }
 }
 
-@media (max-width: 700px) {
+@media (max-width: 760px) {
   .popup-wrapper {
     padding: 0.75rem;
   }
@@ -381,24 +287,23 @@ button {
     padding: 1rem;
   }
 
-  .form-grid {
+  .staff-grid,
+  .record-summary {
     grid-template-columns: 1fr;
-    gap: 0.85rem;
   }
 
-  #footfallTable {
-    min-width: 640px;
+  .highlight-field {
+    max-width: none;
   }
 
-  .form-actions,
-  .wizard-nav {
-    flex-direction: column;
+  .form-actions {
+    flex-direction: column-reverse;
     align-items: stretch;
+    margin: 1.5rem -1rem -1rem;
+    padding: 1rem;
   }
 
-  .form-actions button,
-  .wizard-nav button {
+  .form-actions button {
     width: 100%;
-    min-height: 40px;
   }
 }

@@ -62,6 +62,14 @@ function cacheDeleteSalesOrder(id) {
   }
 }
 
+function restletPairedMemoSyncResult(data) {
+  return data?.pairedMemoSync || {
+    ok: true,
+    skipped: true,
+    reason: "restlet-did-not-return-paired-memo-sync",
+  };
+}
+
 function suiteQlUrl() {
   return `https://${getNetSuiteAccountDash()}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`;
 }
@@ -2611,18 +2619,7 @@ router.post("/:id/commit", async (req, res) => {
 
     console.log(`✅ Sales Order ${id} approved via RESTlet`);
     cacheDeleteSalesOrder(id);
-    const pairedMemoSync = await syncPairedSalesOrderMemo(
-      id,
-      headerUpdates,
-      userId
-    ).catch((err) => {
-      console.error("Failed to sync paired Sales Order memo:", err.message);
-      return {
-        ok: false,
-        skipped: false,
-        error: err.message || "Paired Sales Order memo was not updated.",
-      };
-    });
+    const pairedMemoSync = restletPairedMemoSyncResult(data);
 
     const transferCreation = await createLinkedTransferOrdersForSalesOrder({
       salesOrderId: id,
@@ -3084,18 +3081,7 @@ router.post("/:id/save", async (req, res) => {
     }
 
     console.log(`✅ Sales Order ${id} patched via RESTlet (save-only)`);
-    const pairedMemoSync = await syncPairedSalesOrderMemo(
-      id,
-      headerUpdates,
-      userId
-    ).catch((err) => {
-      console.error("Failed to sync paired Sales Order memo:", err.message);
-      return {
-        ok: false,
-        skipped: false,
-        error: err.message || "Paired Sales Order memo was not updated.",
-      };
-    });
+    const pairedMemoSync = restletPairedMemoSyncResult(data);
 
     // ✅ Invalidate cached SO payload so next view is always fresh
     try {
