@@ -22,9 +22,10 @@
     const names = [];
 
     lines.forEach((line) => {
-      const name = String(line || "").trim().toLowerCase();
-      if (!name || seen.has(name)) return;
-      seen.add(name);
+      const name = String(line || "").trim();
+      const key = name.toLowerCase();
+      if (!name || seen.has(key)) return;
+      seen.add(key);
       names.push(name);
     });
 

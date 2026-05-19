@@ -97,10 +97,11 @@ function normalizeExcludedOptionNames(values) {
   const names = [];
 
   (Array.isArray(values) ? values : []).forEach((value) => {
-    const normalized = normalizeExcludedOptionName(value);
+    const name = cleanText(value);
+    const normalized = normalizeExcludedOptionName(name);
     if (!normalized || seen.has(normalized)) return;
     seen.add(normalized);
-    names.push(normalized);
+    names.push(name);
   });
 
   return names;
@@ -152,7 +153,9 @@ async function saveExcludedOptionFieldNames(values) {
 }
 
 function isExcludedOptionField(option, excludedNames = defaultExcludedOptionFieldNames()) {
-  const excludedSet = excludedNames instanceof Set ? excludedNames : new Set(excludedNames);
+  const excludedSet = excludedNames instanceof Set
+    ? excludedNames
+    : new Set(excludedNames.map(normalizeExcludedOptionName));
   const label = cleanText(option?.label).toLowerCase();
   const selectText = cleanText(option?.selectrecordtype_text).toLowerCase();
   const sourceName = cleanText(option?.sourceResult?.source?.name).toLowerCase();
@@ -791,7 +794,7 @@ async function getOptions(itemId) {
       ${itemFilter}
     ORDER BY ai.item_id, f.label, v.sort_order, v.name
     `,
-    [...params, excludedNames]
+    [...params, excludedNames.map(normalizeExcludedOptionName)]
   );
 
   return rowsToOptionMap(result.rows);
