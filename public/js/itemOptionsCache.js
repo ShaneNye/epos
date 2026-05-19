@@ -1,6 +1,7 @@
 // public/js/itemOptionsCache.js
 (() => {
   const CACHE_KEY = "itemOptionsCache:v3";
+  const INVALIDATION_KEY = "itemOptionsCache:invalidatedAt:v1";
   const LOCAL_EXCLUSIONS_KEY = "itemOptionsExcludedFieldNames:v1";
   const TTL_MS = 60 * 60 * 1000;
 
@@ -108,9 +109,16 @@
     return payload;
   }
 
-  async function fetchFresh(itemId = "") {
-    const qs = itemId ? `?itemId=${encodeURIComponent(itemId)}` : "";
-    const res = await fetch(`/api/item-options${qs}`, { credentials: "same-origin" });
+  async function fetchFresh(itemId = "", { forceRefresh = false } = {}) {
+    const params = new URLSearchParams();
+    if (itemId) params.set("itemId", itemId);
+    if (forceRefresh) params.set("_", String(now()));
+
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const res = await fetch(`/api/item-options${qs}`, {
+      credentials: "same-origin",
+      cache: forceRefresh ? "no-store" : "default",
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();
@@ -144,7 +152,7 @@
 
     if (inFlight) return inFlight;
 
-    inFlight = fetchFresh("")
+    inFlight = fetchFresh("", { forceRefresh })
       .catch((err) => {
         console.warn("Failed to fetch item options cache:", err);
         return {};
@@ -193,16 +201,18 @@
     return normalizeExcludedFieldNames([...DEFAULT_EXCLUDED_FIELD_NAMES, ...localNames]);
   }
 
-  async function getOptionsForItem(itemId) {
+  async function getOptionsForItem(itemId, { forceRefresh = false } = {}) {
     const id = String(itemId || "").trim();
     if (!id) return {};
 
-    const cached = getOptionsForItemSync(id);
-    if (Object.keys(cached).length) return cached;
+    if (!forceRefresh) {
+      const cached = getOptionsForItemSync(id);
+      if (Object.keys(cached).length) return cached;
+    }
 
     if (itemInFlight.has(id)) return itemInFlight.get(id);
 
-    const pending = fetchFresh(id)
+    const pending = fetchFresh(id, { forceRefresh })
       .then((fresh) => fresh[id] || {})
       .finally(() => itemInFlight.delete(id));
 
@@ -212,12 +222,26 @@
 
   function clear() {
     memoryCache = null;
+    itemInFlight.clear();
     try {
       localStorage.removeItem(CACHE_KEY);
+      localStorage.setItem(INVALIDATION_KEY, String(now()));
     } catch (err) {
       console.warn("Failed to clear item options cache:", err);
     }
   }
+
+  window.addEventListener?.("storage", (event) => {
+    if (event.key === CACHE_KEY && event.newValue === null) {
+      memoryCache = null;
+      itemInFlight.clear();
+    }
+
+    if (event.key === INVALIDATION_KEY) {
+      memoryCache = null;
+      itemInFlight.clear();
+    }
+  });
 
   window.itemOptionsCache = {
     getAll,

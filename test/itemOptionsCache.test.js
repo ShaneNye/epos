@@ -9,6 +9,7 @@ function loadCacheScript({ fetchImpl, initialStorage = {} } = {}) {
   const context = {
     console,
     fetch: fetchImpl,
+    URLSearchParams,
     localStorage: {
       getItem(key) {
         return Object.prototype.hasOwnProperty.call(storage, key) ? storage[key] : null;
@@ -137,4 +138,44 @@ test("item options getAll refreshes when local cache is only a partial per-item 
       222: { Finish: ["Walnut"] },
     })
   );
+});
+
+test("item options getAll forceRefresh bypasses the browser cache", async () => {
+  const cachedAt = Date.now();
+  const calls = [];
+  const { cache } = loadCacheScript({
+    initialStorage: {
+      "itemOptionsCache:v3": JSON.stringify({
+        cachedAt,
+        complete: true,
+        byItemId: {
+          111: {
+            Colour: ["Cached"],
+          },
+        },
+      }),
+    },
+    fetchImpl: async (url, options) => {
+      calls.push({ url, options });
+      return {
+        ok: true,
+        async json() {
+          return {
+            byItemId: {
+              111: {
+                Colour: ["Fresh"],
+              },
+            },
+          };
+        },
+      };
+    },
+  });
+
+  const result = await cache.getAll({ forceRefresh: true });
+
+  assert.equal(calls.length, 1);
+  assert.match(calls[0].url, /^\/api\/item-options\?_=.+/);
+  assert.equal(calls[0].options.cache, "no-store");
+  assert.equal(JSON.stringify(result), JSON.stringify({ 111: { Colour: ["Fresh"] } }));
 });

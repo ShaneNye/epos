@@ -6,6 +6,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
   <title>Item Options</title>
+  <script src="/js/storage.js"></script>
   <style>
     body {
       font-family: "Segoe UI", Roboto, sans-serif;
@@ -130,8 +131,8 @@
     console.log("🔎 Parent cache snapshot:", window.opener?.optionsCache);
 
     const optionsCache = window.opener?.optionsCache || {};
-    const opts = optionsCache[itemId] || {};
-    console.log("🔎 Options found:", opts);
+    let opts = optionsCache[itemId] || {};
+    console.log("🔎 Cached options found:", opts);
 
     const form = document.getElementById("optionsForm");
     const localExclusionsKey = "itemOptionsExcludedFieldNames:v1";
@@ -183,8 +184,38 @@
       ]);
     }
 
+    async function loadLatestOptions() {
+      if (!itemId) return opts || {};
+
+      try {
+        const params = new URLSearchParams({
+          itemId,
+          refresh: "1",
+          _: String(Date.now()),
+        });
+        const res = await fetch(`/api/item-options?${params.toString()}`, {
+          credentials: "same-origin",
+          cache: "no-store",
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+        const fresh = data.options || {};
+        if (Object.keys(fresh).length) {
+          window.opener.optionsCache = window.opener.optionsCache || {};
+          window.opener.optionsCache[itemId] = fresh;
+          opts = fresh;
+        }
+      } catch (err) {
+        console.warn("⚠️ Failed to refresh item options, using opener cache:", err);
+      }
+
+      return opts || {};
+    }
+
     function renderOptions() {
       const excludedFields = getExcludedFields();
+      form.innerHTML = "";
 
       Object.entries(opts).forEach(([field, values]) => {
         if (isExcludedField(field, excludedFields)) return;
@@ -336,7 +367,7 @@
       });
     }
 
-    renderOptions();
+    loadLatestOptions().then(renderOptions);
 
     document.getElementById("saveBtn").addEventListener("click", () => {
       const selections = {};

@@ -805,8 +805,12 @@ router.get("/", async (req, res) => {
   try {
     await ensureTables();
     const itemId = req.query.itemId ? String(req.query.itemId) : "";
+    const forceRefresh =
+      req.query.refresh === "1" ||
+      req.query.force === "1" ||
+      req.query._;
     const cacheKey = itemId ? `item:${itemId}` : "all";
-    if (sendMemoizedResponse(req, res, cacheKey)) return;
+    if (!forceRefresh && sendMemoizedResponse(req, res, cacheKey)) return;
 
     const [options, state, excludedFieldNames] = await Promise.all([
       getOptions(itemId),
