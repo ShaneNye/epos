@@ -4,7 +4,7 @@ const { getSession } = require("../sessions");
 
 const router = express.Router();
 
-const ALLOWED_ATTACHMENT_TYPES = new Set(["document", "video", "web"]);
+const ALLOWED_ATTACHMENT_TYPES = new Set(["document", "video", "image", "web"]);
 
 let initPromise;
 

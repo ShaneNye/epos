@@ -99,8 +99,32 @@
 
   function attachmentIcon(type) {
     if (type === "video") return "Video";
+    if (type === "image") return "Image";
     if (type === "web") return "Link";
     return "Doc";
+  }
+
+  function googleDriveImageUrl(url) {
+    try {
+      const parsed = new URL(url);
+      const host = parsed.hostname.replace(/^www\./, "");
+      const fileMatch = parsed.pathname.match(/\/file\/d\/([^/]+)/);
+      const openId = parsed.searchParams.get("id");
+      const id = fileMatch?.[1] || openId;
+
+      if (id && /(^|\.)google\.com$/i.test(host)) {
+        const thumbnailUrl = new URL("https://drive.google.com/thumbnail");
+        thumbnailUrl.searchParams.set("id", id);
+        thumbnailUrl.searchParams.set("sz", "w1200");
+        const resourceKey = parsed.searchParams.get("resourcekey");
+        if (resourceKey) thumbnailUrl.searchParams.set("resourcekey", resourceKey);
+        return thumbnailUrl.href;
+      }
+    } catch {
+      return url;
+    }
+
+    return url;
   }
 
   function getPageLabel(value) {
@@ -156,8 +180,8 @@
     list.innerHTML = state.attachments
       .map(
         (item, index) => `
-          <span class="attachment-chip">
-            ${attachmentIcon(item.type)}
+          <span class="attachment-chip attachment-chip-${escapeHtml(item.type)}">
+            <span class="attachment-type">${attachmentIcon(item.type)}</span>
             ${escapeHtml(item.label)}
             <button type="button" data-remove-attachment="${index}" aria-label="Remove ${escapeHtml(item.label)}">&times;</button>
           </span>
@@ -176,7 +200,8 @@
   function renderPostAttachments(attachments) {
     const items = Array.isArray(attachments) ? attachments : [];
     const videos = items.filter((item) => item.type === "video");
-    const links = items.filter((item) => item.type !== "video");
+    const images = items.filter((item) => item.type === "image");
+    const links = items.filter((item) => item.type !== "video" && item.type !== "image");
 
     const videoHtml = videos
       .map((item) => {
@@ -192,14 +217,15 @@
       })
       .join("");
 
-    const tagHtml = links.length
+    const imageHtml = images.length
       ? `
-        <div class="news-attachment-tags">
-          ${links
+        <div class="news-image-grid">
+          ${images
             .map(
               (item) => `
-                <a class="news-attachment-tag" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">
-                  ${attachmentIcon(item.type)} ${escapeHtml(item.label)}
+                <a class="news-image-link" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">
+                  <img src="${escapeHtml(googleDriveImageUrl(item.url))}" alt="${escapeHtml(item.label)}" loading="lazy">
+                  <span>${escapeHtml(item.label)}</span>
                 </a>
               `
             )
@@ -208,7 +234,24 @@
       `
       : "";
 
-    return `${videoHtml}${tagHtml}`;
+    const tagHtml = links.length
+      ? `
+        <div class="news-attachment-tags">
+          ${links
+            .map(
+              (item) => `
+                <a class="news-attachment-tag news-attachment-${escapeHtml(item.type)}" href="${escapeHtml(item.url)}" target="_blank" rel="noopener noreferrer">
+                  <span class="attachment-type">${attachmentIcon(item.type)}</span>
+                  <span>${escapeHtml(item.label)}</span>
+                </a>
+              `
+            )
+            .join("")}
+        </div>
+      `
+      : "";
+
+    return `${videoHtml}${imageHtml}${tagHtml}`;
   }
 
   function renderPostMeta(post) {
