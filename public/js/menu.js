@@ -35,6 +35,12 @@ function initMenuLogic() {
   const currentPath = normalizePath(window.location.pathname);
   const menuRoot = document.getElementById("menu");
   if (menuRoot) {
+    const menu = menuRoot.querySelector(".menu");
+    const newsLink = menuRoot.querySelector('a[href="/news"]');
+    if (menu && newsLink && newsLink.parentElement === menu) {
+      menu.appendChild(newsLink);
+    }
+
     menuRoot.querySelectorAll(".menu-item").forEach(link => {
       const href = normalizePath(link.getAttribute("href"));
       link.classList.toggle("active", href === currentPath);
@@ -191,6 +197,7 @@ applyUserTheme(user.themeHex || user.themehex);
       // Apply UI and access restrictions
       roleSelect.value = activeRole;
       await applyAccessRestrictions(activeRole, saved.token);
+      await refreshNewsNotification();
 
 roleSelect.addEventListener("change", async e => {
   const newRole = e.target.value;
@@ -260,7 +267,12 @@ async function applyAccessRestrictions(activeRole, token) {
     // Update visible menu items based on access list
     document.querySelectorAll(".menu-item").forEach(link => {
       const href = normalizeAccessSlug(link.getAttribute("href"));
-      link.style.display = href === "news" || normalizedAllowed.includes(href) ? "" : "none";
+      const canSeeNews =
+        href === "news" &&
+        (normalizedAllowed.includes("news") ||
+          normalizedAllowed.includes("news-post") ||
+          normalizedAllowed.includes("admin"));
+      link.style.display = canSeeNews || normalizedAllowed.includes(href) ? "" : "none";
     });
 
     // Normalize paths
@@ -295,6 +307,33 @@ async function applyAccessRestrictions(activeRole, token) {
     console.error("❌ Failed to apply access restrictions:", err);
   }
 }
+
+async function refreshNewsNotification() {
+  const dot = document.getElementById("newsNotificationDot");
+  const newsItem = document.getElementById("newsMenuItem");
+  const saved = storageGet();
+
+  if (!dot || !newsItem || !saved?.token) return;
+
+  try {
+    const res = await fetch("/api/news/summary", {
+      headers: { Authorization: `Bearer ${saved.token}` },
+    });
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Failed to fetch news summary");
+
+    dot.classList.toggle("hidden", !data.hasUnread);
+    newsItem.setAttribute(
+      "aria-label",
+      data.hasUnread ? "News, unread posts available" : "News"
+    );
+  } catch (err) {
+    console.warn("Failed to refresh news notification:", err.message || err);
+    dot.classList.add("hidden");
+  }
+}
+
+window.refreshNewsNotification = refreshNewsNotification;
 
 
 loadMenu();

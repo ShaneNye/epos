@@ -46,6 +46,13 @@ body {
   width: 260px;
 }
 
+.sidebar > div:first-child {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+}
+
 /* when sidebar is expanded, push page content over */
 body.sidebar-expanded {
   padding-left: 260px;
@@ -101,6 +108,36 @@ body.sidebar-expanded {
   border-left: 4px solid transparent;
   transition: all 0.25s ease;
   white-space: nowrap;
+}
+
+.news-menu-item {
+  margin-top: auto;
+  order: 999;
+}
+
+.menu a[href="/news"] {
+  margin-top: auto;
+  order: 999;
+}
+
+.news-notification-dot {
+  position: absolute;
+  top: 12px;
+  right: 16px;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #006d8d;
+  border-radius: 50%;
+  background: #FFD700;
+  box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.22);
+}
+
+.news-notification-dot.hidden {
+  display: none;
+}
+
+.sidebar.expanded .news-notification-dot {
+  right: 18px;
 }
 
 .sidebar:not(.expanded) .menu-item {

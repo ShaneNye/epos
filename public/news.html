@@ -24,7 +24,7 @@
     <header class="news-header">
       <div>
         <h1>News</h1>
-        <p>Company updates, documents, videos and useful links.</p>
+        <p>EPOS updates - demos and documentation</p>
       </div>
       <button id="refreshNewsBtn" type="button" class="news-icon-btn" title="Refresh news" aria-label="Refresh news">
         <span aria-hidden="true">&#8635;</span>
@@ -34,7 +34,12 @@
     <section id="newsComposer" class="news-composer hidden" aria-labelledby="newsComposerTitle">
       <div class="news-composer-title">
         <h2 id="newsComposerTitle">Create Post</h2>
-        <span id="composerTimestamp">Date set when posted</span>
+        <div class="news-composer-controls">
+          <span id="composerTimestamp">Date set when posted</span>
+          <button id="toggleNewsComposerBtn" type="button" class="news-icon-btn news-collapse-btn" aria-expanded="true" aria-controls="newsPostForm" title="Minimise post form">
+            <span aria-hidden="true">-</span>
+          </button>
+        </div>
       </div>
 
       <form id="newsPostForm">
@@ -75,6 +80,7 @@
 
         <div class="news-form-actions">
           <span id="newsFormStatus" aria-live="polite"></span>
+          <button id="cancelNewsEditBtn" type="button" class="btn-secondary hidden">Cancel Edit</button>
           <button type="submit" class="btn-primary">Post</button>
         </div>
       </form>

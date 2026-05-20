@@ -25,6 +25,11 @@ function initNewsTables() {
         ADD COLUMN IF NOT EXISTS page_key TEXT,
         ADD COLUMN IF NOT EXISTS page_label TEXT,
         ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
+
+      CREATE TABLE IF NOT EXISTS news_post_views (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
     `);
   }
   return initPromise;
@@ -168,9 +173,10 @@ router.get("/permissions", async (req, res) => {
 router.get("/posts", async (req, res) => {
   try {
     await initNewsTables();
-    await getSessionContext(req);
+    const context = await getSessionContext(req);
 
-    const result = await pool.query(`
+    const result = await pool.query(
+      `
       SELECT
         np.id,
         np.title,
@@ -181,17 +187,80 @@ router.get("/posts", async (req, res) => {
         np.tags,
         np.created_at,
         u.email AS created_by_email,
-        COALESCE(NULLIF(TRIM(CONCAT(u.firstname, ' ', u.lastname)), ''), u.email, 'Unknown user') AS created_by_name
+        u.profileimage AS created_by_profile_image,
+        COALESCE(NULLIF(TRIM(CONCAT(u.firstname, ' ', u.lastname)), ''), u.email, 'Unknown user') AS created_by_name,
+        np.created_by = $1 AS can_manage
       FROM news_posts np
       LEFT JOIN users u ON u.id = np.created_by
       ORDER BY np.created_at DESC
       LIMIT 100;
-    `);
+      `,
+      [context.user.id]
+    );
 
     res.json({ ok: true, posts: result.rows });
   } catch (err) {
     console.error("GET /api/news/posts failed:", err);
     res.status(err.status || 500).json({ ok: false, error: "Failed to load news posts" });
+  }
+});
+
+router.get("/summary", async (req, res) => {
+  try {
+    await initNewsTables();
+    const context = await getSessionContext(req);
+
+    const result = await pool.query(
+      `
+      SELECT
+        MAX(np.created_at) AS latest_post_at,
+        nv.last_seen_at
+      FROM news_posts np
+      LEFT JOIN news_post_views nv ON nv.user_id = $1
+      GROUP BY nv.last_seen_at;
+      `,
+      [context.user.id]
+    );
+
+    const row = result.rows[0] || {};
+    const latestPostAt = row.latest_post_at || null;
+    const lastSeenAt = row.last_seen_at || null;
+    const hasUnread = Boolean(
+      latestPostAt &&
+        (!lastSeenAt || new Date(latestPostAt).getTime() > new Date(lastSeenAt).getTime())
+    );
+
+    res.json({
+      ok: true,
+      hasUnread,
+      latestPostAt,
+      lastSeenAt,
+    });
+  } catch (err) {
+    console.error("GET /api/news/summary failed:", err);
+    res.status(err.status || 500).json({ ok: false, error: "Failed to load news summary" });
+  }
+});
+
+router.post("/seen", async (req, res) => {
+  try {
+    await initNewsTables();
+    const context = await getSessionContext(req);
+
+    await pool.query(
+      `
+      INSERT INTO news_post_views (user_id, last_seen_at)
+      VALUES ($1, NOW())
+      ON CONFLICT (user_id)
+      DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at;
+      `,
+      [context.user.id]
+    );
+
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("POST /api/news/seen failed:", err);
+    res.status(err.status || 500).json({ ok: false, error: "Failed to mark news as seen" });
   }
 });
 
@@ -234,6 +303,80 @@ router.post("/posts", async (req, res) => {
   } catch (err) {
     console.error("POST /api/news/posts failed:", err);
     res.status(err.status || 500).json({ ok: false, error: "Failed to create news post" });
+  }
+});
+
+router.put("/posts/:id", async (req, res) => {
+  try {
+    await initNewsTables();
+    const context = await getSessionContext(req);
+
+    const title = String(req.body?.title || "").trim();
+    const body = String(req.body?.body || "").trim();
+    const attachments = cleanAttachments(req.body?.attachments);
+    const tags = cleanTags(req.body?.tags);
+    const pageMeta = cleanPageMeta(req.body);
+
+    if (!title || !body) {
+      return res.status(400).json({ ok: false, error: "Title and notification body are required" });
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE news_posts
+      SET
+        title = $1,
+        body = $2,
+        attachments = $3::jsonb,
+        page_key = $4,
+        page_label = $5,
+        tags = $6::text[],
+        updated_at = NOW()
+      WHERE id = $7
+        AND created_by = $8
+      RETURNING id, updated_at;
+      `,
+      [
+        title.slice(0, 180),
+        body,
+        JSON.stringify(attachments),
+        pageMeta.pageKey,
+        pageMeta.pageLabel,
+        tags,
+        req.params.id,
+        context.user.id,
+      ]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ ok: false, error: "Post not found or not owned by you" });
+    }
+
+    res.json({ ok: true, post: result.rows[0] });
+  } catch (err) {
+    console.error("PUT /api/news/posts/:id failed:", err);
+    res.status(err.status || 500).json({ ok: false, error: "Failed to update news post" });
+  }
+});
+
+router.delete("/posts/:id", async (req, res) => {
+  try {
+    await initNewsTables();
+    const context = await getSessionContext(req);
+
+    const result = await pool.query(
+      "DELETE FROM news_posts WHERE id = $1 AND created_by = $2 RETURNING id;",
+      [req.params.id, context.user.id]
+    );
+
+    if (!result.rowCount) {
+      return res.status(404).json({ ok: false, error: "Post not found or not owned by you" });
+    }
+
+    res.json({ ok: true, id: result.rows[0].id });
+  } catch (err) {
+    console.error("DELETE /api/news/posts/:id failed:", err);
+    res.status(err.status || 500).json({ ok: false, error: "Failed to delete news post" });
   }
 });
 
