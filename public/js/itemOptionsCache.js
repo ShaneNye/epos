@@ -30,7 +30,7 @@
     const seen = new Set();
     const names = [];
 
-    (Array.isArray(fieldNames) ? fieldNames : DEFAULT_EXCLUDED_FIELD_NAMES).forEach((fieldName) => {
+    (Array.isArray(fieldNames) ? fieldNames : []).forEach((fieldName) => {
       const normalized = String(fieldName || "").trim().toLowerCase();
       if (!normalized || seen.has(normalized)) return;
       seen.add(normalized);
@@ -85,9 +85,12 @@
     const localCache = readLocalCache();
     const existingCache = isFresh(memoryCache) ? memoryCache : localCache;
     const existing = existingCache?.byItemId || {};
-    const excludedFieldNames = normalizeExcludedFieldNames(
-      byItemId?.excludedFieldNames || existingCache?.excludedFieldNames
-    );
+    const excludedFieldNamesSource = Array.isArray(byItemId?.excludedFieldNames)
+      ? byItemId.excludedFieldNames
+      : Array.isArray(existingCache?.excludedFieldNames)
+        ? existingCache.excludedFieldNames
+        : DEFAULT_EXCLUDED_FIELD_NAMES;
+    const excludedFieldNames = normalizeExcludedFieldNames(excludedFieldNamesSource);
     const merged = { ...existing, ...byItemId };
     delete merged.excludedFieldNames;
 
@@ -182,23 +185,23 @@
   function getExcludedFieldNames() {
     const localNames = readLocalExcludedFieldNames();
     if (isFresh(memoryCache)) {
-      return normalizeExcludedFieldNames([
-        ...DEFAULT_EXCLUDED_FIELD_NAMES,
-        ...localNames,
-        ...(memoryCache.excludedFieldNames || []),
-      ]);
+      return normalizeExcludedFieldNames(
+        Array.isArray(memoryCache.excludedFieldNames)
+          ? [...localNames, ...memoryCache.excludedFieldNames]
+          : localNames
+      );
     }
 
     const local = readLocalCache();
     if (isFresh(local)) {
-      return normalizeExcludedFieldNames([
-        ...DEFAULT_EXCLUDED_FIELD_NAMES,
-        ...localNames,
-        ...(local.excludedFieldNames || []),
-      ]);
+      return normalizeExcludedFieldNames(
+        Array.isArray(local.excludedFieldNames)
+          ? [...localNames, ...local.excludedFieldNames]
+          : localNames
+      );
     }
 
-    return normalizeExcludedFieldNames([...DEFAULT_EXCLUDED_FIELD_NAMES, ...localNames]);
+    return normalizeExcludedFieldNames(localNames.length ? localNames : DEFAULT_EXCLUDED_FIELD_NAMES);
   }
 
   async function getOptionsForItem(itemId, { forceRefresh = false } = {}) {

@@ -260,7 +260,7 @@ async function applyAccessRestrictions(activeRole, token) {
     // Update visible menu items based on access list
     document.querySelectorAll(".menu-item").forEach(link => {
       const href = normalizeAccessSlug(link.getAttribute("href"));
-      link.style.display = normalizedAllowed.includes(href) ? "" : "none";
+      link.style.display = href === "news" || normalizedAllowed.includes(href) ? "" : "none";
     });
 
     // Normalize paths
@@ -280,7 +280,7 @@ async function applyAccessRestrictions(activeRole, token) {
     // ✅ Skip redirect for home, login, or if role not yet applied
     if (
       !currentPath ||
-      ["", "home", "index.html"].includes(currentPath)
+      ["", "home", "index.html", "news"].includes(currentPath)
     ) {
       console.log("🏠 Base or home path detected — skipping access redirect");
       return;

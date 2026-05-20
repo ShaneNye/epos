@@ -161,6 +161,7 @@
 
     const optionsCache = window.opener?.optionsCache || {};
     let opts = optionsCache[itemId] || {};
+    let latestExcludedFields = null;
     console.log("🔎 Cached options found:", opts);
 
     const form = document.getElementById("optionsForm");
@@ -183,7 +184,7 @@
       const seen = new Set();
       const names = [];
 
-      (Array.isArray(fields) ? fields : defaultExcludedFields).forEach(field => {
+      (Array.isArray(fields) ? fields : []).forEach(field => {
         const normalized = String(field || "").trim().toLowerCase();
         if (!normalized || seen.has(normalized)) return;
         seen.add(normalized);
@@ -206,11 +207,15 @@
       } catch {}
 
       const fromCache = window.opener?.itemOptionsCache?.getExcludedFieldNames?.();
-      return normalizeExcludedFields([
-        ...defaultExcludedFields,
-        ...storedFields,
-        ...(Array.isArray(fromCache) ? fromCache : []),
-      ]);
+      const activeFields = Array.isArray(latestExcludedFields)
+        ? latestExcludedFields
+        : Array.isArray(fromCache) && fromCache.length
+          ? fromCache
+          : storedFields.length
+            ? storedFields
+            : defaultExcludedFields;
+
+      return normalizeExcludedFields(activeFields);
     }
 
     async function loadLatestOptions() {
@@ -229,6 +234,9 @@
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
         const data = await res.json();
+        if (Array.isArray(data.excludedFieldNames)) {
+          latestExcludedFields = data.excludedFieldNames;
+        }
         const fresh = data.options || {};
         if (Object.keys(fresh).length) {
           window.opener.optionsCache = window.opener.optionsCache || {};

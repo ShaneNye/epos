@@ -8,6 +8,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const accessSelect = document.getElementById("accessSelect");
   const ACCESS_OPTIONS = [
     { value: "home", label: "Home" },
+    { value: "news", label: "News" },
+    { value: "news-post", label: "News Post" },
     { value: "sales/new", label: "New Sales Order" },
     { value: "sales/kiosk", label: "Sales Kiosk" },
     { value: "quote/new", label: "New Quote" },

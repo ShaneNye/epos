@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>News</title>
+
+  <link rel="stylesheet" href="/assistant/assistant.css" />
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/news.css" />
+
+  <script src="/js/storage.js"></script>
+  <script src="/assistant/assistant.js"></script>
+  <script src="/js/menu.js"></script>
+  <script defer src="/js/news.js"></script>
+</head>
+
+<body>
+  <div id="menu"></div>
+
+  <main class="content news-page">
+    <header class="news-header">
+      <div>
+        <h1>News</h1>
+        <p>Company updates, documents, videos and useful links.</p>
+      </div>
+      <button id="refreshNewsBtn" type="button" class="news-icon-btn" title="Refresh news" aria-label="Refresh news">
+        <span aria-hidden="true">&#8635;</span>
+      </button>
+    </header>
+
+    <section id="newsComposer" class="news-composer hidden" aria-labelledby="newsComposerTitle">
+      <div class="news-composer-title">
+        <h2 id="newsComposerTitle">Create Post</h2>
+        <span id="composerTimestamp">Date set when posted</span>
+      </div>
+
+      <form id="newsPostForm">
+        <label>
+          Title
+          <input id="newsTitle" name="title" type="text" maxlength="180" required />
+        </label>
+
+        <div class="news-meta-row">
+          <label>
+            Page
+            <select id="newsPageSelect" name="pageKey"></select>
+          </label>
+
+          <label>
+            Tags
+            <input id="newsTags" name="tags" type="text" placeholder="training, delivery, quote" />
+          </label>
+        </div>
+
+        <label>
+          Notification
+          <textarea id="newsBody" name="body" rows="7" required></textarea>
+        </label>
+
+        <div class="news-link-toolbar" aria-label="Add media link">
+          <select id="attachmentType" aria-label="Attachment type">
+            <option value="document">Document</option>
+            <option value="video">Video</option>
+            <option value="web">Web link</option>
+          </select>
+          <input id="attachmentLabel" type="text" placeholder="Label" aria-label="Attachment label" />
+          <input id="attachmentUrl" type="url" placeholder="Google Drive or web link" aria-label="Attachment URL" />
+          <button id="addAttachmentBtn" type="button" class="btn-secondary">Add</button>
+        </div>
+
+        <div id="attachmentDraftList" class="attachment-draft-list" aria-live="polite"></div>
+
+        <div class="news-form-actions">
+          <span id="newsFormStatus" aria-live="polite"></span>
+          <button type="submit" class="btn-primary">Post</button>
+        </div>
+      </form>
+    </section>
+
+    <section id="newsNoPostAccess" class="news-view-note hidden">
+      You can view the news feed. Posting is available to roles with News Post access.
+    </section>
+
+    <section class="news-filter-bar" aria-label="Search news posts">
+      <label>
+        Search
+        <input id="newsSearchInput" type="search" placeholder="Search title, body, tags, page or author" />
+      </label>
+      <label>
+        Page
+        <select id="newsPageFilter"></select>
+      </label>
+      <button id="clearNewsFiltersBtn" type="button" class="btn-secondary">Clear</button>
+    </section>
+
+    <section id="newsFeed" class="news-feed" aria-live="polite"></section>
+  </main>
+</body>
+
+</html>
