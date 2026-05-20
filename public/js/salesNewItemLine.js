@@ -287,10 +287,12 @@ function hideSuggestions() {
 }
 
 function normaliseMoneyText(value) {
-  const text = String(value || "").replace(/[^\d.]/g, "");
+  const raw = String(value || "");
+  const sign = raw.trim().startsWith("-") ? "-" : "";
+  const text = raw.replace(/[^\d.]/g, "");
   const firstDot = text.indexOf(".");
-  if (firstDot === -1) return text;
-  return text.slice(0, firstDot + 1) + text.slice(firstDot + 1).replace(/\./g, "");
+  if (firstDot === -1) return sign + text;
+  return sign + text.slice(0, firstDot + 1) + text.slice(firstDot + 1).replace(/\./g, "");
 }
 
 function formatMoneyText(value) {
@@ -305,7 +307,7 @@ function bindMoneyInput(input) {
   input.type = "text";
   input.inputMode = "decimal";
   input.autocomplete = "off";
-  input.pattern = "\\d*(\\.\\d*)?";
+  input.pattern = "-?\\d*(\\.\\d*)?";
 
   input.addEventListener("input", () => {
     const cleaned = normaliseMoneyText(input.value);

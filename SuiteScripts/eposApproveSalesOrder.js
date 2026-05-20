@@ -245,10 +245,14 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     const saleGrossInput =
       u.saleGrossPerUnit != null ? u.saleGrossPerUnit : u.saleGrossLine;
     const saleGrossValue = toNum(saleGrossInput);
+    const hasSaleGrossInput =
+      saleGrossInput !== undefined &&
+      saleGrossInput !== null &&
+      String(saleGrossInput).trim() !== "";
 
     let newRateNet = null;
 
-    if (saleGrossValue > 0 && qty > 0) {
+    if (hasSaleGrossInput && Number.isFinite(saleGrossValue) && qty > 0) {
       const saleGrossPerUnit = saleGrossValue / qty;
       newRateNet = saleGrossPerUnit / GROSS_DIVISOR;
     } else if (discountPct > 0 && currentRateNet > 0) {
