@@ -77,6 +77,35 @@
       color: #111827;
     }
 
+    .options-loading {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin: 12px 0;
+      padding: 14px 12px;
+      background: #fff;
+      border: 1px solid #e5e7eb;
+      border-radius: 8px;
+      color: #4b5563;
+      font-weight: 600;
+    }
+
+    .options-spinner {
+      width: 18px;
+      height: 18px;
+      border: 3px solid #d1d5db;
+      border-top-color: #0081ab;
+      border-radius: 50%;
+      animation: options-spin 0.8s linear infinite;
+      flex: 0 0 auto;
+    }
+
+    @keyframes options-spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
     @media (max-width: 560px) {
       body {
         padding: 12px;
@@ -367,6 +396,16 @@
       });
     }
 
+    function renderLoading() {
+      form.innerHTML = `
+        <div class="options-loading" role="status" aria-live="polite">
+          <span class="options-spinner" aria-hidden="true"></span>
+          <span>Loading item options...</span>
+        </div>
+      `;
+    }
+
+    renderLoading();
     loadLatestOptions().then(renderOptions);
 
     document.getElementById("saveBtn").addEventListener("click", () => {
