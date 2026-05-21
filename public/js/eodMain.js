@@ -1138,13 +1138,36 @@ async function initDailyBalancing() {
       const data = await res.json();
       const users = data.users || data || [];
 
-      users.forEach((u) => {
-        const opt = document.createElement("option");
-        opt.value = u.id;
-        opt.textContent =
-          `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
-        signoffUserSelect.appendChild(opt);
-      });
+      users
+        .slice()
+        .sort((a, b) => {
+          const firstNameCompare = String(a.firstName || "").localeCompare(
+            String(b.firstName || ""),
+            undefined,
+            { sensitivity: "base" }
+          );
+          if (firstNameCompare) return firstNameCompare;
+
+          const lastNameCompare = String(a.lastName || "").localeCompare(
+            String(b.lastName || ""),
+            undefined,
+            { sensitivity: "base" }
+          );
+          if (lastNameCompare) return lastNameCompare;
+
+          return String(a.email || "").localeCompare(
+            String(b.email || ""),
+            undefined,
+            { sensitivity: "base" }
+          );
+        })
+        .forEach((u) => {
+          const opt = document.createElement("option");
+          opt.value = u.id;
+          opt.textContent =
+            `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email;
+          signoffUserSelect.appendChild(opt);
+        });
     } catch (err) {
       console.error("❌ Failed to load users for signoff", err);
     }
