@@ -38,18 +38,23 @@
          PANEL 1 — Cashflow Overview
     ============================== -->
             <div class="cashflow-panel left">
-                <h2>Store Cash Balances</h2>
-                <p>Live safe and float balances for all stores.</p>
+                <div class="cashflow-panel-header">
+                    <div>
+                        <h2>Store Cash Balances</h2>
+                        <p>Live safe and float balances for all stores.</p>
+                    </div>
+                    <button id="downloadBalancesCsvBtn" class="btn-secondary" type="button">Download CSV</button>
+                </div>
 
                 <div class="table-wrapper">
                     <table class="cashflow-table">
                         <thead>
                             <tr>
                                 <th>Store</th>
-                                <th style="width:100px;">Float Balance</th>
-                                <th style="width:50px;">Safe Balance</th>
-                                <th style="width:10px;">Empty</th>
-                                <th style="width: 100px;">Save</th>
+                                <th>Float Balance</th>
+                                <th>Safe Balance</th>
+                                <th>Empty</th>
+                                <th>Save</th>
                             </tr>
                         </thead>
                         <tbody id="cashflowOverviewBody">

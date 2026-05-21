@@ -31,58 +31,102 @@
       </button>
     </header>
 
-    <section id="newsComposer" class="news-composer hidden" aria-labelledby="newsComposerTitle">
+    <section class="news-filter-bar" aria-label="Search news posts">
+      <div class="news-search-row">
+        <label>
+          Search
+          <input id="newsSearchInput" type="search" placeholder="Search title, body, tags, department, page or author" />
+        </label>
+        <button id="toggleNewsFiltersBtn" type="button" class="btn-secondary" aria-expanded="false" aria-controls="newsAdvancedFilters">Filters</button>
+      </div>
+      <div id="newsAdvancedFilters" class="news-advanced-filters hidden">
+        <label>
+          Department
+          <select id="newsDepartmentFilter"></select>
+        </label>
+        <label>
+          Page
+          <select id="newsPageFilter"></select>
+        </label>
+        <label>
+          From
+          <input id="newsDateFromFilter" type="date" />
+        </label>
+        <label>
+          To
+          <input id="newsDateToFilter" type="date" />
+        </label>
+        <button id="clearNewsFiltersBtn" type="button" class="btn-secondary">Clear</button>
+      </div>
+    </section>
+
+    <section id="newsFeed" class="news-feed" aria-live="polite"></section>
+
+    <section id="newsComposer" class="news-composer hidden" aria-label="News post composer">
       <div class="news-composer-title">
-        <h2 id="newsComposerTitle">Create Post</h2>
+        <span id="composerTimestamp">Date set when posted</span>
         <div class="news-composer-controls">
-          <span id="composerTimestamp">Date set when posted</span>
-          <button id="toggleNewsComposerBtn" type="button" class="news-icon-btn news-collapse-btn" aria-expanded="true" aria-controls="newsPostForm" title="Minimise post form">
-            <span aria-hidden="true">-</span>
+          <button id="closeNewsComposerBtn" type="button" class="news-icon-btn news-composer-close" title="Close post form" aria-label="Close post form">
+            <span aria-hidden="true">&times;</span>
+          </button>
+          <button id="newsSubmitBtn" type="submit" form="newsPostForm" class="btn-primary news-submit-btn" title="Post">
+            <span class="news-submit-label">Post</span>
+            <span class="news-submit-icon" aria-hidden="true">&#10148;</span>
           </button>
         </div>
       </div>
 
-      <form id="newsPostForm">
-        <label>
-          Title
-          <input id="newsTitle" name="title" type="text" maxlength="180" required />
-        </label>
-
-        <div class="news-meta-row">
+      <form id="newsPostForm" novalidate>
+        <div id="newsComposerBodyStep" class="news-composer-step">
           <label>
-            Page
-            <select id="newsPageSelect" name="pageKey"></select>
+            Post message
+            <textarea id="newsBody" name="body" rows="4" placeholder="Write an update..." required></textarea>
           </label>
 
+          <div class="news-toolbar-heading">Add media links</div>
+          <div class="news-link-toolbar" aria-label="Add media link">
+            <select id="attachmentType" aria-label="Attachment type">
+              <option value="document">Document</option>
+              <option value="video">Video</option>
+              <option value="image">Image</option>
+              <option value="web">Web link</option>
+            </select>
+            <input id="attachmentLabel" type="text" placeholder="Label" aria-label="Attachment label" />
+            <input id="attachmentUrl" type="url" placeholder="Google Drive or web link" aria-label="Attachment URL" />
+            <button id="addAttachmentBtn" type="button" class="btn-secondary">Add</button>
+          </div>
+
+          <div id="attachmentDraftList" class="attachment-draft-list" aria-live="polite"></div>
+        </div>
+
+        <div id="newsComposerDetailsStep" class="news-composer-step hidden">
           <label>
-            Tags
-            <input id="newsTags" name="tags" type="text" placeholder="training, delivery, quote" />
+            Title
+            <input id="newsTitle" name="title" type="text" maxlength="180" />
           </label>
+
+          <div class="news-meta-row">
+            <label>
+              Department
+              <select id="newsDepartmentSelect" name="departmentKey"></select>
+            </label>
+
+            <label>
+              Page
+              <select id="newsPageSelect" name="pageKey"></select>
+            </label>
+
+            <label>
+              Tags
+              <input id="newsTags" name="tags" type="text" placeholder="training, delivery, quote" />
+            </label>
+          </div>
         </div>
-
-        <label>
-          Notification
-          <textarea id="newsBody" name="body" rows="7" required></textarea>
-        </label>
-
-        <div class="news-link-toolbar" aria-label="Add media link">
-          <select id="attachmentType" aria-label="Attachment type">
-            <option value="document">Document</option>
-            <option value="video">Video</option>
-            <option value="image">Image</option>
-            <option value="web">Web link</option>
-          </select>
-          <input id="attachmentLabel" type="text" placeholder="Label" aria-label="Attachment label" />
-          <input id="attachmentUrl" type="url" placeholder="Google Drive or web link" aria-label="Attachment URL" />
-          <button id="addAttachmentBtn" type="button" class="btn-secondary">Add</button>
-        </div>
-
-        <div id="attachmentDraftList" class="attachment-draft-list" aria-live="polite"></div>
 
         <div class="news-form-actions">
           <span id="newsFormStatus" aria-live="polite"></span>
+          <button id="newsComposerBackBtn" type="button" class="btn-secondary hidden">Back</button>
           <button id="cancelNewsEditBtn" type="button" class="btn-secondary hidden">Cancel Edit</button>
-          <button type="submit" class="btn-primary">Post</button>
         </div>
       </form>
     </section>
@@ -91,19 +135,20 @@
       You can view the news feed. Posting is available to roles with News Post access.
     </section>
 
-    <section class="news-filter-bar" aria-label="Search news posts">
-      <label>
-        Search
-        <input id="newsSearchInput" type="search" placeholder="Search title, body, tags, page or author" />
-      </label>
-      <label>
-        Page
-        <select id="newsPageFilter"></select>
-      </label>
-      <button id="clearNewsFiltersBtn" type="button" class="btn-secondary">Clear</button>
-    </section>
-
-    <section id="newsFeed" class="news-feed" aria-live="polite"></section>
+    <div id="newsAnalyticsModal" class="news-modal hidden" role="dialog" aria-modal="true" aria-labelledby="newsAnalyticsTitle">
+      <div class="news-modal-panel">
+        <div class="news-modal-header">
+          <div>
+            <h2 id="newsAnalyticsTitle">Post Analytics</h2>
+            <p id="newsAnalyticsSubtitle"></p>
+          </div>
+          <button id="closeNewsAnalyticsBtn" type="button" class="news-icon-btn" aria-label="Close analytics">
+            <span aria-hidden="true">&times;</span>
+          </button>
+        </div>
+        <div id="newsAnalyticsContent" class="news-modal-content"></div>
+      </div>
+    </div>
   </main>
 </body>
 

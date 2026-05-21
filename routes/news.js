@@ -24,11 +24,28 @@ function initNewsTables() {
       ALTER TABLE news_posts
         ADD COLUMN IF NOT EXISTS page_key TEXT,
         ADD COLUMN IF NOT EXISTS page_label TEXT,
+        ADD COLUMN IF NOT EXISTS department_key TEXT,
+        ADD COLUMN IF NOT EXISTS department_label TEXT,
         ADD COLUMN IF NOT EXISTS tags TEXT[] NOT NULL DEFAULT ARRAY[]::TEXT[];
 
       CREATE TABLE IF NOT EXISTS news_post_views (
         user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
         last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS news_post_reads (
+        post_id INTEGER NOT NULL REFERENCES news_posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        viewed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (post_id, user_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS news_post_reactions (
+        post_id INTEGER NOT NULL REFERENCES news_posts(id) ON DELETE CASCADE,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        reaction TEXT NOT NULL CHECK (reaction IN ('like', 'dislike')),
+        reacted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (post_id, user_id)
       );
     `);
   }
@@ -160,6 +177,17 @@ function cleanPageMeta(body) {
   return { pageKey, pageLabel };
 }
 
+function cleanDepartmentMeta(body) {
+  const departmentKey = String(body?.departmentKey || "").trim().toLowerCase().slice(0, 80);
+  const departmentLabel = String(body?.departmentLabel || "").trim().slice(0, 120);
+
+  if (!departmentKey || !departmentLabel) {
+    return { departmentKey: null, departmentLabel: null };
+  }
+
+  return { departmentKey, departmentLabel };
+}
+
 router.get("/permissions", async (req, res) => {
   try {
     await initNewsTables();
@@ -184,14 +212,29 @@ router.get("/posts", async (req, res) => {
         np.attachments,
         np.page_key,
         np.page_label,
+        np.department_key,
+        np.department_label,
         np.tags,
         np.created_at,
         u.email AS created_by_email,
         u.profileimage AS created_by_profile_image,
         COALESCE(NULLIF(TRIM(CONCAT(u.firstname, ' ', u.lastname)), ''), u.email, 'Unknown user') AS created_by_name,
-        np.created_by = $1 AS can_manage
+        np.created_by = $1 AS can_manage,
+        COALESCE(reactions.like_count, 0)::int AS like_count,
+        COALESCE(reactions.dislike_count, 0)::int AS dislike_count,
+        my_reaction.reaction AS my_reaction
       FROM news_posts np
       LEFT JOIN users u ON u.id = np.created_by
+      LEFT JOIN LATERAL (
+        SELECT
+          COUNT(*) FILTER (WHERE reaction = 'like') AS like_count,
+          COUNT(*) FILTER (WHERE reaction = 'dislike') AS dislike_count
+        FROM news_post_reactions npr
+        WHERE npr.post_id = np.id
+      ) reactions ON TRUE
+      LEFT JOIN news_post_reactions my_reaction
+        ON my_reaction.post_id = np.id
+       AND my_reaction.user_id = $1
       ORDER BY np.created_at DESC
       LIMIT 100;
       `,
@@ -257,6 +300,17 @@ router.post("/seen", async (req, res) => {
       [context.user.id]
     );
 
+    await pool.query(
+      `
+      INSERT INTO news_post_reads (post_id, user_id, viewed_at)
+      SELECT id, $1, NOW()
+      FROM news_posts
+      ON CONFLICT (post_id, user_id)
+      DO UPDATE SET viewed_at = EXCLUDED.viewed_at;
+      `,
+      [context.user.id]
+    );
+
     res.json({ ok: true });
   } catch (err) {
     console.error("POST /api/news/seen failed:", err);
@@ -277,6 +331,7 @@ router.post("/posts", async (req, res) => {
     const attachments = cleanAttachments(req.body?.attachments);
     const tags = cleanTags(req.body?.tags);
     const pageMeta = cleanPageMeta(req.body);
+    const departmentMeta = cleanDepartmentMeta(req.body);
 
     if (!title || !body) {
       return res.status(400).json({ ok: false, error: "Title and notification body are required" });
@@ -284,8 +339,8 @@ router.post("/posts", async (req, res) => {
 
     const result = await pool.query(
       `
-      INSERT INTO news_posts (title, body, attachments, page_key, page_label, tags, created_by)
-      VALUES ($1, $2, $3::jsonb, $4, $5, $6::text[], $7)
+      INSERT INTO news_posts (title, body, attachments, page_key, page_label, department_key, department_label, tags, created_by)
+      VALUES ($1, $2, $3::jsonb, $4, $5, $6, $7, $8::text[], $9)
       RETURNING id, created_at;
       `,
       [
@@ -294,6 +349,8 @@ router.post("/posts", async (req, res) => {
         JSON.stringify(attachments),
         pageMeta.pageKey,
         pageMeta.pageLabel,
+        departmentMeta.departmentKey,
+        departmentMeta.departmentLabel,
         tags,
         context.user.id,
       ]
@@ -303,6 +360,129 @@ router.post("/posts", async (req, res) => {
   } catch (err) {
     console.error("POST /api/news/posts failed:", err);
     res.status(err.status || 500).json({ ok: false, error: "Failed to create news post" });
+  }
+});
+
+router.post("/posts/:id/reaction", async (req, res) => {
+  try {
+    await initNewsTables();
+    const context = await getSessionContext(req);
+    const reaction = String(req.body?.reaction || "").trim().toLowerCase();
+
+    if (!["like", "dislike", ""].includes(reaction)) {
+      return res.status(400).json({ ok: false, error: "Reaction must be like or dislike" });
+    }
+
+    const postRes = await pool.query("SELECT id FROM news_posts WHERE id = $1 LIMIT 1;", [req.params.id]);
+    if (!postRes.rowCount) {
+      return res.status(404).json({ ok: false, error: "Post not found" });
+    }
+
+    if (!reaction) {
+      await pool.query(
+        "DELETE FROM news_post_reactions WHERE post_id = $1 AND user_id = $2;",
+        [req.params.id, context.user.id]
+      );
+    } else {
+      await pool.query(
+        `
+        INSERT INTO news_post_reactions (post_id, user_id, reaction, reacted_at)
+        VALUES ($1, $2, $3, NOW())
+        ON CONFLICT (post_id, user_id)
+        DO UPDATE SET reaction = EXCLUDED.reaction, reacted_at = EXCLUDED.reacted_at;
+        `,
+        [req.params.id, context.user.id, reaction]
+      );
+    }
+
+    const counts = await pool.query(
+      `
+      SELECT
+        COUNT(*) FILTER (WHERE reaction = 'like')::int AS like_count,
+        COUNT(*) FILTER (WHERE reaction = 'dislike')::int AS dislike_count
+      FROM news_post_reactions
+      WHERE post_id = $1;
+      `,
+      [req.params.id]
+    );
+
+    res.json({
+      ok: true,
+      reaction: reaction || null,
+      likeCount: counts.rows[0]?.like_count || 0,
+      dislikeCount: counts.rows[0]?.dislike_count || 0,
+    });
+  } catch (err) {
+    console.error("POST /api/news/posts/:id/reaction failed:", err);
+    res.status(err.status || 500).json({ ok: false, error: "Failed to save reaction" });
+  }
+});
+
+router.get("/posts/:id/analytics", async (req, res) => {
+  try {
+    await initNewsTables();
+    await getSessionContext(req);
+
+    const postRes = await pool.query(
+      "SELECT id, title, created_at FROM news_posts WHERE id = $1 LIMIT 1;",
+      [req.params.id]
+    );
+    if (!postRes.rowCount) {
+      return res.status(404).json({ ok: false, error: "Post not found" });
+    }
+
+    const userRes = await pool.query(
+      `
+      SELECT
+        u.id,
+        u.email,
+        COALESCE(NULLIF(TRIM(CONCAT(u.firstname, ' ', u.lastname)), ''), u.email, 'Unknown user') AS name,
+        COALESCE(npr.viewed_at, CASE WHEN npv.last_seen_at >= np.created_at THEN npv.last_seen_at END) AS viewed_at
+      FROM news_posts np
+      CROSS JOIN users u
+      LEFT JOIN news_post_reads npr
+        ON npr.post_id = np.id
+       AND npr.user_id = u.id
+      LEFT JOIN news_post_views npv
+        ON npv.user_id = u.id
+      WHERE np.id = $1
+      ORDER BY viewed_at NULLS LAST, name ASC;
+      `,
+      [req.params.id]
+    );
+
+    const viewed = [];
+    const notViewed = [];
+    userRes.rows.forEach((row) => {
+      const item = {
+        id: row.id,
+        name: row.name,
+        email: row.email,
+        viewedAt: row.viewed_at,
+      };
+      if (row.viewed_at) viewed.push(item);
+      else notViewed.push(item);
+    });
+
+    const total = userRes.rowCount;
+    const viewedCount = viewed.length;
+    const viewedPercent = total ? Math.round((viewedCount / total) * 100) : 0;
+
+    res.json({
+      ok: true,
+      post: postRes.rows[0],
+      metrics: {
+        totalUsers: total,
+        viewedCount,
+        notViewedCount: notViewed.length,
+        viewedPercent,
+      },
+      viewed,
+      notViewed,
+    });
+  } catch (err) {
+    console.error("GET /api/news/posts/:id/analytics failed:", err);
+    res.status(err.status || 500).json({ ok: false, error: "Failed to load post analytics" });
   }
 });
 
@@ -316,6 +496,7 @@ router.put("/posts/:id", async (req, res) => {
     const attachments = cleanAttachments(req.body?.attachments);
     const tags = cleanTags(req.body?.tags);
     const pageMeta = cleanPageMeta(req.body);
+    const departmentMeta = cleanDepartmentMeta(req.body);
 
     if (!title || !body) {
       return res.status(400).json({ ok: false, error: "Title and notification body are required" });
@@ -330,10 +511,12 @@ router.put("/posts/:id", async (req, res) => {
         attachments = $3::jsonb,
         page_key = $4,
         page_label = $5,
-        tags = $6::text[],
+        department_key = $6,
+        department_label = $7,
+        tags = $8::text[],
         updated_at = NOW()
-      WHERE id = $7
-        AND created_by = $8
+      WHERE id = $9
+        AND created_by = $10
       RETURNING id, updated_at;
       `,
       [
@@ -342,6 +525,8 @@ router.put("/posts/:id", async (req, res) => {
         JSON.stringify(attachments),
         pageMeta.pageKey,
         pageMeta.pageLabel,
+        departmentMeta.departmentKey,
+        departmentMeta.departmentLabel,
         tags,
         req.params.id,
         context.user.id,

@@ -15,6 +15,7 @@
 }
 
 :root {
+  --app-ui-scale: 80%;
   --brand: #006f93;
   --brand-50: #edf8fb;
   --brand-100: #d8eef5;
@@ -55,6 +56,12 @@ body {
     linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0) 260px),
     var(--bg);
   letter-spacing: 0;
+}
+
+@media (min-width: 901px) {
+  html {
+    font-size: var(--app-ui-scale);
+  }
 }
 
 ::selection {

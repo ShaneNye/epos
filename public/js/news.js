@@ -2,7 +2,9 @@
   const state = {
     attachments: [],
     canPost: false,
+    composerStep: "body",
     editingPostId: null,
+    hasScrolledOnLoad: false,
     posts: [],
   };
 
@@ -22,6 +24,17 @@
     { value: "suitepim", label: "SuitePim" },
     { value: "systems-processes", label: "Systems & Processes" },
     { value: "admin", label: "Admin" },
+  ];
+
+  const NEWS_DEPARTMENT_OPTIONS = [
+    { value: "", label: "General" },
+    { value: "sales", label: "Sales" },
+    { value: "product-development", label: "Product Development" },
+    { value: "it", label: "IT" },
+    { value: "hr", label: "HR" },
+    { value: "operations", label: "Operations" },
+    { value: "finance", label: "Finance" },
+    { value: "leadership", label: "Leadership" },
   ];
 
   function getToken() {
@@ -131,19 +144,27 @@
     return NEWS_PAGE_OPTIONS.find((option) => option.value === value)?.label || "";
   }
 
-  function populatePageSelects() {
+  function getDepartmentLabel(value) {
+    return NEWS_DEPARTMENT_OPTIONS.find((option) => option.value === value)?.label || "";
+  }
+
+  function buildOptions(options, includeAllLabel) {
+    const optionItems = includeAllLabel ? [{ value: "", label: includeAllLabel }, ...options.filter((option) => option.value)] : options;
+    return optionItems
+      .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
+      .join("");
+  }
+
+  function populateMetaSelects() {
     const composer = document.getElementById("newsPageSelect");
     const filter = document.getElementById("newsPageFilter");
-    const optionsHtml = NEWS_PAGE_OPTIONS.map(
-      (option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`
-    ).join("");
+    const departmentComposer = document.getElementById("newsDepartmentSelect");
+    const departmentFilter = document.getElementById("newsDepartmentFilter");
 
-    if (composer) composer.innerHTML = optionsHtml;
-    if (filter) {
-      filter.innerHTML = `<option value="">All pages</option>${NEWS_PAGE_OPTIONS.filter((option) => option.value)
-        .map((option) => `<option value="${escapeHtml(option.value)}">${escapeHtml(option.label)}</option>`)
-        .join("")}`;
-    }
+    if (composer) composer.innerHTML = buildOptions(NEWS_PAGE_OPTIONS);
+    if (filter) filter.innerHTML = buildOptions(NEWS_PAGE_OPTIONS, "All pages");
+    if (departmentComposer) departmentComposer.innerHTML = buildOptions(NEWS_DEPARTMENT_OPTIONS);
+    if (departmentFilter) departmentFilter.innerHTML = buildOptions(NEWS_DEPARTMENT_OPTIONS, "All departments");
   }
 
   function googleDrivePreviewUrl(url) {
@@ -257,13 +278,33 @@
   function renderPostMeta(post) {
     const tags = Array.isArray(post.tags) ? post.tags.filter(Boolean) : [];
     const pageLabel = post.page_label || getPageLabel(post.page_key);
+    const departmentLabel = post.department_label || getDepartmentLabel(post.department_key);
 
-    if (!pageLabel && !tags.length) return "";
+    if (!departmentLabel && !pageLabel && !tags.length) return "";
 
     return `
       <div class="news-post-taxonomy">
+        ${departmentLabel ? `<span class="news-department-pill">${escapeHtml(departmentLabel)}</span>` : ""}
         ${pageLabel ? `<span class="news-page-pill">${escapeHtml(pageLabel)}</span>` : ""}
         ${tags.map((tag) => `<span class="news-tag">#${escapeHtml(tag)}</span>`).join("")}
+      </div>
+    `;
+  }
+
+  function renderPostReactions(post) {
+    const likeActive = post.my_reaction === "like" ? " is-active" : "";
+    const dislikeActive = post.my_reaction === "dislike" ? " is-active" : "";
+
+    return `
+      <div class="news-post-reactions" aria-label="Post reactions">
+        <button type="button" class="news-reaction-btn${likeActive}" data-news-reaction="like" data-post-id="${post.id}" aria-pressed="${post.my_reaction === "like"}" title="Like">
+          <span aria-hidden="true">&#128077;</span>
+          <span data-like-count="${post.id}">${Number(post.like_count || 0)}</span>
+        </button>
+        <button type="button" class="news-reaction-btn${dislikeActive}" data-news-reaction="dislike" data-post-id="${post.id}" aria-pressed="${post.my_reaction === "dislike"}" title="Dislike">
+          <span aria-hidden="true">&#128078;</span>
+          <span data-dislike-count="${post.id}">${Number(post.dislike_count || 0)}</span>
+        </button>
       </div>
     `;
   }
@@ -271,14 +312,36 @@
   function postMatchesFilters(post) {
     const search = document.getElementById("newsSearchInput")?.value.trim().toLowerCase() || "";
     const page = document.getElementById("newsPageFilter")?.value || "";
+    const department = document.getElementById("newsDepartmentFilter")?.value || "";
+    const dateFrom = document.getElementById("newsDateFromFilter")?.value || "";
+    const dateTo = document.getElementById("newsDateToFilter")?.value || "";
 
     if (page && post.page_key !== page) return false;
+    if (department && post.department_key !== department) return false;
+
+    if (dateFrom || dateTo) {
+      const created = new Date(post.created_at);
+      if (Number.isNaN(created.getTime())) return false;
+
+      if (dateFrom) {
+        const start = new Date(`${dateFrom}T00:00:00`);
+        if (created < start) return false;
+      }
+
+      if (dateTo) {
+        const end = new Date(`${dateTo}T23:59:59.999`);
+        if (created > end) return false;
+      }
+    }
+
     if (!search) return true;
 
     const haystack = [
       post.title,
       post.body,
       post.created_by_name,
+      post.department_label,
+      post.department_key,
       post.page_label,
       post.page_key,
       ...(Array.isArray(post.tags) ? post.tags : []),
@@ -317,17 +380,51 @@
                 <h2>${escapeHtml(post.title)}</h2>
                 <div class="news-post-meta">Posted by ${escapeHtml(post.created_by_name)} &middot; ${escapeHtml(formatDate(post.created_at))}</div>
               </div>
-              ${post.can_manage ? renderPostActions(post) : ""}
+              ${renderPostActions(post)}
             </header>
-            ${renderPostMeta(post)}
             <div class="news-post-body">${escapeHtml(post.body)}</div>
             ${renderPostAttachments(post.attachments)}
+            ${renderPostMeta(post)}
+            ${renderPostReactions(post)}
           </article>
         `
       )
       .join("");
 
     bindPostActionMenus();
+  }
+
+  function updateComposerViewportSpace() {
+    const composer = document.getElementById("newsComposer");
+    const page = document.querySelector(".news-page");
+    if (!composer || !page) return;
+
+    if (composer.classList.contains("hidden")) {
+      page.style.setProperty("--news-composer-space", "28px");
+      return;
+    }
+
+    const height = composer.offsetHeight || 0;
+    page.style.setProperty("--news-composer-space", `${height + 8}px`);
+  }
+
+  function scrollToNewsBottomOnce() {
+    if (state.hasScrolledOnLoad) return;
+    state.hasScrolledOnLoad = true;
+
+    const scrollToBottom = () => {
+      const height = Math.max(document.body.scrollHeight, document.documentElement.scrollHeight);
+      window.scrollTo({ top: height, behavior: "auto" });
+    };
+
+    requestAnimationFrame(() => {
+      updateComposerViewportSpace();
+      requestAnimationFrame(() => {
+        scrollToBottom();
+        window.setTimeout(scrollToBottom, 150);
+        window.setTimeout(scrollToBottom, 500);
+      });
+    });
   }
 
   function renderPostActions(post) {
@@ -337,8 +434,9 @@
           <span aria-hidden="true">...</span>
         </button>
         <div class="news-post-menu hidden" data-news-menu-panel="${post.id}">
-          <button type="button" data-news-edit="${post.id}">Edit</button>
-          <button type="button" class="danger" data-news-delete="${post.id}">Delete</button>
+          <button type="button" data-news-analytics="${post.id}">Analytics</button>
+          ${post.can_manage ? `<button type="button" data-news-edit="${post.id}">Edit</button>` : ""}
+          ${post.can_manage ? `<button type="button" class="danger" data-news-delete="${post.id}">Delete</button>` : ""}
         </div>
       </div>
     `;
@@ -373,6 +471,19 @@
         deletePost(Number(button.dataset.newsDelete));
       });
     });
+
+    document.querySelectorAll("[data-news-analytics]").forEach((button) => {
+      button.addEventListener("click", () => {
+        closePostMenus();
+        openAnalytics(Number(button.dataset.newsAnalytics));
+      });
+    });
+
+    document.querySelectorAll("[data-news-reaction]").forEach((button) => {
+      button.addEventListener("click", () => {
+        toggleReaction(Number(button.dataset.postId), button.dataset.newsReaction);
+      });
+    });
   }
 
   function closePostMenus() {
@@ -389,6 +500,7 @@
     document.getElementById("newsComposer")?.classList.toggle("hidden", !state.canPost);
     document.getElementById("newsNoPostAccess")?.classList.toggle("hidden", state.canPost);
     restoreComposerState();
+    updateComposerViewportSpace();
   }
 
   async function loadPosts() {
@@ -404,6 +516,8 @@
 
       state.posts = data.posts || [];
       renderPosts();
+      updateComposerViewportSpace();
+      scrollToNewsBottomOnce();
       await markNewsSeen();
     } catch (err) {
       console.error("Failed to load news:", err);
@@ -425,23 +539,141 @@
     }
   }
 
+  async function toggleReaction(postId, reaction) {
+    const post = state.posts.find((item) => Number(item.id) === Number(postId));
+    if (!post) return;
+
+    const nextReaction = post.my_reaction === reaction ? "" : reaction;
+
+    try {
+      const res = await fetch(`/api/news/posts/${encodeURIComponent(postId)}/reaction`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reaction: nextReaction }),
+      });
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to save reaction");
+
+      post.my_reaction = data.reaction;
+      post.like_count = data.likeCount;
+      post.dislike_count = data.dislikeCount;
+      renderPosts();
+    } catch (err) {
+      alert(err.message || "Unable to save reaction.");
+    }
+  }
+
+  function renderUserList(users, emptyText) {
+    if (!users.length) return `<div class="news-analytics-empty">${escapeHtml(emptyText)}</div>`;
+
+    return `
+      <div class="news-analytics-users">
+        ${users
+          .map(
+            (user) => `
+              <div class="news-analytics-user">
+                <span>${escapeHtml(user.name || user.email)}</span>
+                <small>${escapeHtml(user.viewedAt ? formatDate(user.viewedAt) : user.email || "")}</small>
+              </div>
+            `
+          )
+          .join("")}
+      </div>
+    `;
+  }
+
+  function renderAnalytics(data) {
+    const content = document.getElementById("newsAnalyticsContent");
+    const title = document.getElementById("newsAnalyticsTitle");
+    const subtitle = document.getElementById("newsAnalyticsSubtitle");
+    if (!content) return;
+
+    const metrics = data.metrics || {};
+    const percent = Number(metrics.viewedPercent || 0);
+
+    if (title) title.textContent = "Post Analytics";
+    if (subtitle) subtitle.textContent = data.post?.title || "";
+
+    content.innerHTML = `
+      <div class="news-analytics-summary">
+        <div class="news-analytics-ring" style="--viewed-percent: ${percent};" aria-label="${percent}% viewed">
+          <span>${percent}%</span>
+        </div>
+        <div class="news-analytics-counts">
+          <strong>${Number(metrics.viewedCount || 0)} of ${Number(metrics.totalUsers || 0)} viewed</strong>
+          <span>${Number(metrics.notViewedCount || 0)} not viewed</span>
+        </div>
+      </div>
+      <div class="news-analytics-grid">
+        <section>
+          <h3>Viewed</h3>
+          ${renderUserList(data.viewed || [], "No users have viewed this post yet.")}
+        </section>
+        <section>
+          <h3>Not Viewed</h3>
+          ${renderUserList(data.notViewed || [], "Everyone has viewed this post.")}
+        </section>
+      </div>
+    `;
+  }
+
+  async function openAnalytics(postId) {
+    const modal = document.getElementById("newsAnalyticsModal");
+    const content = document.getElementById("newsAnalyticsContent");
+    if (!modal || !content) return;
+
+    modal.classList.remove("hidden");
+    content.innerHTML = `<div class="news-empty">Loading analytics...</div>`;
+
+    try {
+      const res = await fetch(`/api/news/posts/${encodeURIComponent(postId)}/analytics`);
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "Failed to load analytics");
+      renderAnalytics(data);
+    } catch (err) {
+      content.innerHTML = `<div class="news-empty">${escapeHtml(err.message || "Unable to load analytics.")}</div>`;
+    }
+  }
+
+  function closeAnalytics() {
+    document.getElementById("newsAnalyticsModal")?.classList.add("hidden");
+  }
+
   function setComposerCollapsed(collapsed) {
     const composer = document.getElementById("newsComposer");
     const form = document.getElementById("newsPostForm");
-    const button = document.getElementById("toggleNewsComposerBtn");
-    if (!composer || !form || !button) return;
+    if (!composer || !form) return;
 
     composer.classList.toggle("is-collapsed", collapsed);
     form.hidden = collapsed;
-    button.setAttribute("aria-expanded", String(!collapsed));
-    button.title = collapsed ? "Expand post form" : "Minimise post form";
-    button.querySelector("span").textContent = collapsed ? "+" : "-";
-    localStorage.setItem("eposNewsComposerCollapsed", collapsed ? "1" : "0");
+    document.getElementById("newsSubmitBtn")?.setAttribute("aria-expanded", String(!collapsed));
+    updateComposerViewportSpace();
   }
 
   function restoreComposerState() {
     if (!state.canPost) return;
-    setComposerCollapsed(localStorage.getItem("eposNewsComposerCollapsed") !== "0");
+    setComposerCollapsed(true);
+  }
+
+  function setComposerStep(step) {
+    state.composerStep = step === "details" ? "details" : "body";
+    const bodyStep = document.getElementById("newsComposerBodyStep");
+    const detailsStep = document.getElementById("newsComposerDetailsStep");
+    const back = document.getElementById("newsComposerBackBtn");
+    const submit = document.getElementById("newsSubmitBtn");
+    const label = submit?.querySelector(".news-submit-label");
+    const icon = submit?.querySelector(".news-submit-icon");
+    const isDetails = state.composerStep === "details";
+    const isCollapsed = document.getElementById("newsComposer")?.classList.contains("is-collapsed");
+
+    bodyStep?.classList.toggle("hidden", isDetails);
+    detailsStep?.classList.toggle("hidden", !isDetails);
+    back?.classList.toggle("hidden", !isDetails);
+
+    if (label) label.textContent = isDetails ? (state.editingPostId ? "Save" : "Publish") : "Post";
+    if (icon) icon.textContent = isDetails && !isCollapsed ? "" : "\u27A4";
+    if (submit) submit.title = isDetails ? "Publish post" : "Post";
+    updateComposerViewportSpace();
   }
 
   function addAttachment() {
@@ -472,14 +704,13 @@
   }
 
   function setEditMode(post) {
-    const submit = document.querySelector('#newsPostForm button[type="submit"]');
     const cancel = document.getElementById("cancelNewsEditBtn");
-    const title = document.getElementById("newsComposerTitle");
+    const headerSubmit = document.getElementById("newsSubmitBtn");
+    const label = headerSubmit?.querySelector(".news-submit-label");
 
     state.editingPostId = post?.id || null;
 
-    if (title) title.textContent = post ? "Edit Post" : "Create Post";
-    if (submit) submit.textContent = post ? "Save Changes" : "Post";
+    if (label) label.textContent = state.composerStep === "details" ? (post ? "Save" : "Publish") : "Post";
     cancel?.classList.toggle("hidden", !post);
   }
 
@@ -489,6 +720,8 @@
     state.attachments = [];
     renderDraftAttachments();
     setEditMode(null);
+    setComposerStep("body");
+    setComposerCollapsed(true);
   }
 
   function startEditPost(id) {
@@ -500,10 +733,12 @@
 
     document.getElementById("newsTitle").value = post.title || "";
     document.getElementById("newsBody").value = post.body || "";
+    document.getElementById("newsDepartmentSelect").value = post.department_key || "";
     document.getElementById("newsPageSelect").value = post.page_key || "";
     document.getElementById("newsTags").value = Array.isArray(post.tags) ? post.tags.join(", ") : "";
     state.attachments = Array.isArray(post.attachments) ? post.attachments.map((item) => ({ ...item })) : [];
     renderDraftAttachments();
+    setComposerStep("body");
     document.getElementById("newsComposer")?.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
@@ -526,7 +761,34 @@
     event.preventDefault();
     const form = event.currentTarget;
     const status = document.getElementById("newsFormStatus");
-    const submit = form.querySelector("button[type='submit']");
+    const submit = document.getElementById("newsSubmitBtn");
+
+    if (document.getElementById("newsComposer")?.classList.contains("is-collapsed")) {
+      setComposerCollapsed(false);
+      setComposerStep("body");
+      document.getElementById("newsBody")?.focus();
+      return;
+    }
+
+    if (state.composerStep === "body") {
+      const body = document.getElementById("newsBody")?.value.trim() || "";
+      if (!body) {
+        if (status) status.textContent = "Write the post message first.";
+        document.getElementById("newsBody")?.focus();
+        return;
+      }
+      if (status) status.textContent = "";
+      setComposerStep("details");
+      document.getElementById("newsTitle")?.focus();
+      return;
+    }
+
+    const title = document.getElementById("newsTitle")?.value.trim() || "";
+    if (!title) {
+      if (status) status.textContent = "Add a title before publishing.";
+      document.getElementById("newsTitle")?.focus();
+      return;
+    }
 
     if (status) status.textContent = "Posting...";
     if (submit) submit.disabled = true;
@@ -542,6 +804,8 @@
         body: JSON.stringify({
           title: document.getElementById("newsTitle")?.value,
           body: document.getElementById("newsBody")?.value,
+          departmentKey: document.getElementById("newsDepartmentSelect")?.value,
+          departmentLabel: document.getElementById("newsDepartmentSelect")?.selectedOptions?.[0]?.textContent,
           pageKey: document.getElementById("newsPageSelect")?.value,
           pageLabel: document.getElementById("newsPageSelect")?.selectedOptions?.[0]?.textContent,
           tags: document.getElementById("newsTags")?.value,
@@ -565,29 +829,51 @@
   document.addEventListener("DOMContentLoaded", async () => {
     if (!getToken()) return;
 
-    populatePageSelects();
+    populateMetaSelects();
 
     const timestamp = document.getElementById("composerTimestamp");
-    if (timestamp) timestamp.textContent = `Current time: ${formatDate(new Date().toISOString())}`;
+    if (timestamp) timestamp.textContent = formatDate(new Date().toISOString());
 
     document.getElementById("addAttachmentBtn")?.addEventListener("click", addAttachment);
     document.getElementById("newsPostForm")?.addEventListener("submit", submitPost);
+    document.getElementById("newsComposerBackBtn")?.addEventListener("click", () => setComposerStep("body"));
+    document.getElementById("closeNewsComposerBtn")?.addEventListener("click", resetComposer);
     document.getElementById("cancelNewsEditBtn")?.addEventListener("click", resetComposer);
-    document.getElementById("toggleNewsComposerBtn")?.addEventListener("click", () => {
-      const composer = document.getElementById("newsComposer");
-      setComposerCollapsed(!composer?.classList.contains("is-collapsed"));
+    document.getElementById("closeNewsAnalyticsBtn")?.addEventListener("click", closeAnalytics);
+    document.getElementById("newsAnalyticsModal")?.addEventListener("click", (event) => {
+      if (event.target.id === "newsAnalyticsModal") closeAnalytics();
+    });
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") closeAnalytics();
     });
     document.getElementById("refreshNewsBtn")?.addEventListener("click", loadPosts);
     document.getElementById("newsSearchInput")?.addEventListener("input", renderPosts);
+    document.getElementById("newsDepartmentFilter")?.addEventListener("change", renderPosts);
     document.getElementById("newsPageFilter")?.addEventListener("change", renderPosts);
+    document.getElementById("newsDateFromFilter")?.addEventListener("change", renderPosts);
+    document.getElementById("newsDateToFilter")?.addEventListener("change", renderPosts);
+    document.getElementById("toggleNewsFiltersBtn")?.addEventListener("click", () => {
+      const filters = document.getElementById("newsAdvancedFilters");
+      const button = document.getElementById("toggleNewsFiltersBtn");
+      const isOpening = filters?.classList.contains("hidden");
+      filters?.classList.toggle("hidden", !isOpening);
+      button?.setAttribute("aria-expanded", String(Boolean(isOpening)));
+    });
     document.getElementById("clearNewsFiltersBtn")?.addEventListener("click", () => {
       const search = document.getElementById("newsSearchInput");
+      const department = document.getElementById("newsDepartmentFilter");
       const page = document.getElementById("newsPageFilter");
+      const dateFrom = document.getElementById("newsDateFromFilter");
+      const dateTo = document.getElementById("newsDateToFilter");
       if (search) search.value = "";
+      if (department) department.value = "";
       if (page) page.value = "";
+      if (dateFrom) dateFrom.value = "";
+      if (dateTo) dateTo.value = "";
       renderPosts();
     });
     document.addEventListener("click", closePostMenus);
+    window.addEventListener("resize", updateComposerViewportSpace);
 
     try {
       await loadPermissions();

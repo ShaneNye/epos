@@ -1,6 +1,12 @@
 // routes/meta.js
 const express = require("express");
 const pool = require("../db");
+const {
+  ensureCashBalanceAuditTable,
+  logCashBalanceChange,
+  money,
+  resolveUserContextFromRequest,
+} = require("../utils/cashBalanceAudit");
 const router = express.Router();
 
 /* ---------------- helpers ---------------- */
@@ -347,6 +353,234 @@ router.put("/locations/:id", async (req, res) => {
 //   SAFE EMPTIED (SET TO ZERO)
 // ============================
 router.post("/locations/:id/safe-emptied", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const id = req.params.id;
+    const user = await resolveUserContextFromRequest(req);
+
+    await client.query("BEGIN");
+
+    const before = await client.query(
+      "SELECT * FROM locations WHERE id = $1 FOR UPDATE",
+      [id]
+    );
+
+    if (before.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ ok: false, error: "Location not found" });
+    }
+
+    const oldSafe = money(before.rows[0].safe_balance);
+
+    const result = await client.query(
+      "UPDATE locations SET safe_balance = 0 WHERE id = $1 RETURNING *",
+      [id]
+    );
+
+    await logCashBalanceChange(client, {
+      locationId: id,
+      balanceType: "safe",
+      changeSource: "manual",
+      oldBalance: oldSafe,
+      adjustmentAmount: -oldSafe,
+      newBalance: 0,
+      updatedBy: user.id,
+      updatedByName: user.name,
+      referenceType: "safe_emptied",
+    });
+
+    await client.query("COMMIT");
+
+    res.json({ ok: true, message: "Safe reset to GBP 0.00", location: result.rows[0] });
+
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("POST /locations/:id/safe-emptied error:", err.message);
+    res.status(500).json({ ok: false, error: "Failed to reset safe balance" });
+  } finally {
+    client.release();
+  }
+});
+
+router.post("/locations/:id/balances", async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const id = req.params.id;
+    const { float_balance, safe_balance } = req.body;
+    const user = await resolveUserContextFromRequest(req);
+
+    const floatBalance = Number(float_balance);
+    const safeBalance = Number(safe_balance);
+
+    if (!Number.isFinite(floatBalance) || !Number.isFinite(safeBalance)) {
+      return res.status(400).json({
+        ok: false,
+        error: "Valid float_balance and safe_balance are required"
+      });
+    }
+
+    if (floatBalance < 0 || safeBalance < 0) {
+      return res.status(400).json({
+        ok: false,
+        error: "Balances cannot be negative"
+      });
+    }
+
+    await client.query("BEGIN");
+
+    const before = await client.query(
+      "SELECT * FROM locations WHERE id = $1 FOR UPDATE",
+      [id]
+    );
+
+    if (before.rowCount === 0) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({
+        ok: false,
+        error: "Location not found"
+      });
+    }
+
+    const oldFloat = money(before.rows[0].float_balance);
+    const oldSafe = money(before.rows[0].safe_balance);
+
+    const result = await client.query(
+      `
+      UPDATE locations
+      SET float_balance = $1,
+          safe_balance = $2
+      WHERE id = $3
+      RETURNING *
+      `,
+      [floatBalance, safeBalance, id]
+    );
+
+    await logCashBalanceChange(client, {
+      locationId: id,
+      balanceType: "float",
+      changeSource: "manual",
+      oldBalance: oldFloat,
+      newBalance: floatBalance,
+      updatedBy: user.id,
+      updatedByName: user.name,
+      referenceType: "cashflow_manual_save",
+    });
+
+    await logCashBalanceChange(client, {
+      locationId: id,
+      balanceType: "safe",
+      changeSource: "manual",
+      oldBalance: oldSafe,
+      newBalance: safeBalance,
+      updatedBy: user.id,
+      updatedByName: user.name,
+      referenceType: "cashflow_manual_save",
+    });
+
+    await client.query("COMMIT");
+
+    return res.json({
+      ok: true,
+      message: "Balances updated successfully",
+      location: result.rows[0]
+    });
+  } catch (err) {
+    await client.query("ROLLBACK").catch(() => {});
+    console.error("POST /locations/:id/balances error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: "Failed to update balances"
+    });
+  } finally {
+    client.release();
+  }
+});
+
+router.get("/locations/:id/balance-history", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id) || id <= 0) {
+      return res.status(400).json({ ok: false, error: "Invalid location id" });
+    }
+
+    await ensureCashBalanceAuditTable();
+
+    const { from, to, updatedBy } = req.query;
+    const filters = ["a.location_id = $1"];
+    const values = [id];
+
+    if (from) {
+      values.push(from);
+      filters.push(`a.created_at >= $${values.length}::date`);
+    }
+
+    if (to) {
+      values.push(to);
+      filters.push(`a.created_at < ($${values.length}::date + INTERVAL '1 day')`);
+    }
+
+    if (updatedBy) {
+      if (updatedBy === "unknown") {
+        filters.push("a.updated_by IS NULL");
+      } else {
+        const updatedById = Number(updatedBy);
+        if (!Number.isFinite(updatedById) || updatedById <= 0) {
+          return res.status(400).json({ ok: false, error: "Invalid updated by filter" });
+        }
+        values.push(updatedById);
+        filters.push(`a.updated_by = $${values.length}`);
+      }
+    }
+
+    const result = await pool.query(
+      `SELECT
+          a.id,
+          a.location_id,
+          a.balance_type,
+          a.change_source,
+          a.old_balance,
+          a.adjustment_amount,
+          a.new_balance,
+          a.updated_by,
+          COALESCE(a.updated_by_name, NULLIF(CONCAT_WS(' ', u.firstname, u.lastname), ''), u.email) AS updated_by_name,
+          a.reference_type,
+          a.reference_id,
+          a.created_at
+       FROM cash_balance_audit a
+       LEFT JOIN users u ON u.id = a.updated_by
+       WHERE ${filters.join(" AND ")}
+       ORDER BY a.created_at DESC, a.id DESC
+       LIMIT 100`,
+      values
+    );
+
+    const updatedByResult = await pool.query(
+      `SELECT DISTINCT
+          COALESCE(a.updated_by::text, 'unknown') AS value,
+          COALESCE(a.updated_by_name, NULLIF(CONCAT_WS(' ', u.firstname, u.lastname), ''), u.email, 'Unknown') AS label
+       FROM cash_balance_audit a
+       LEFT JOIN users u ON u.id = a.updated_by
+       WHERE a.location_id = $1
+       ORDER BY label`,
+      [id]
+    );
+
+    return res.json({
+      ok: true,
+      history: result.rows,
+      updatedByOptions: updatedByResult.rows
+    });
+  } catch (err) {
+    console.error("GET /locations/:id/balance-history error:", err.message);
+    return res.status(500).json({ ok: false, error: "Failed to load balance history" });
+  }
+});
+
+/*
+ * Legacy duplicate balance routes removed from the active router.
+ * The audited handlers above are the single source of truth for balance changes.
+ *
+router.post("/locations/:id/safe-emptied", async (req, res) => {
   try {
     const id = req.params.id;
 
@@ -423,5 +657,6 @@ router.post("/locations/:id/balances", async (req, res) => {
 
 
 
+*/
 
 module.exports = router;

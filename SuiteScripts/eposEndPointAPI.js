@@ -146,7 +146,7 @@ define(['N/search', 'N/runtime', 'N/log'], (search, runtime, log) => {
       const columns = loadedSearch.columns || [];
       const fallbackSorts = [];
 
-      ['item', 'location', 'internalid'].forEach(name => {
+      ['item', 'location', 'internalid', 'inventorynumber', 'binnumber'].forEach(name => {
         const existing = columns.find(col => col.name === name && !col.summary && !col.formula);
         const alreadySorted =
           columns.some(col => col.name === name && !!col.sort) ||
@@ -162,18 +162,6 @@ define(['N/search', 'N/runtime', 'N/log'], (search, runtime, log) => {
           );
         }
       });
-
-      if (
-        !columns.some(col => col.name === 'internalid' && !!col.sort) &&
-        !fallbackSorts.some(col => col.name === 'internalid')
-      ) {
-        fallbackSorts.push(
-          search.createColumn({
-            name: 'internalid',
-            sort: search.Sort.ASC
-          })
-        );
-      }
 
       if (fallbackSorts.length) loadedSearch.columns = columns.concat(fallbackSorts);
     } catch (sortErr) {

@@ -7,6 +7,7 @@ const nsClient = require("../netsuiteClient");
 const pool = require("../db");
 const db = require("../db");
 const { getBusinessDate } = require("../utils/businessDate");
+const { logCashBalanceChange, money } = require("../utils/cashBalanceAudit");
 
 const router = express.Router();
 
@@ -325,6 +326,20 @@ router.post("/submit", async (req, res) => {
             /* ------------------------------------------
                UPDATE store safe/float balances
             ------------------------------------------ */
+            const beforeBalance = await client.query(
+                "SELECT safe_balance, float_balance FROM locations WHERE id = $1 FOR UPDATE",
+                [locationId]
+            );
+
+            if (beforeBalance.rowCount === 0) {
+                throw new Error("Location not found");
+            }
+
+            const oldSafeBalance = money(beforeBalance.rows[0].safe_balance);
+            const oldFloatBalance = money(beforeBalance.rows[0].float_balance);
+            const safeAdjustment = money(totals.safe);
+            const floatAdjustment = money(totals.float);
+
             const updateBalance = `
                 UPDATE locations
                 SET 
@@ -338,6 +353,32 @@ router.post("/submit", async (req, res) => {
                 totals.float,
                 locationId
             ]);
+
+            await logCashBalanceChange(client, {
+                locationId,
+                balanceType: "safe",
+                changeSource: "eod",
+                oldBalance: oldSafeBalance,
+                adjustmentAmount: safeAdjustment,
+                newBalance: oldSafeBalance + safeAdjustment,
+                updatedBy: signoffUserId || session.id,
+                updatedByName: null,
+                referenceType: "end_of_day",
+                referenceId: eodId,
+            });
+
+            await logCashBalanceChange(client, {
+                locationId,
+                balanceType: "float",
+                changeSource: "eod",
+                oldBalance: oldFloatBalance,
+                adjustmentAmount: floatAdjustment,
+                newBalance: oldFloatBalance + floatAdjustment,
+                updatedBy: signoffUserId || session.id,
+                updatedByName: null,
+                referenceType: "end_of_day",
+                referenceId: eodId,
+            });
 
             await client.query("COMMIT");
 
