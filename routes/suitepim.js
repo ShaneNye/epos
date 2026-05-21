@@ -1187,7 +1187,6 @@ function normalizeRowAliases(row) {
     "Record Type",
     "recordtype",
     "recordType",
-    "type",
   ]) || next["Record Type"] || "";
 
   next["Woo ID"] = String(firstLooseDefinedValue(next, [
@@ -1383,6 +1382,8 @@ function normalizeRecordType(value) {
   const compact = type.toLowerCase().replace(/[^a-z0-9]/g, "");
   const aliases = {
     inventoryitem: "inventoryItem",
+    inventory: "inventoryItem",
+    inventoryitemforsale: "inventoryItem",
     invtpart: "lotNumberedInventoryItem",
     inventorypart: "lotNumberedInventoryItem",
     lotnumberedinventoryitem: "lotNumberedInventoryItem",
@@ -1394,7 +1395,7 @@ function normalizeRecordType(value) {
     serviceitem: "serviceSaleItem",
   };
 
-  return aliases[compact] || type;
+  return aliases[compact] || normalizeResolvedRecordType(type);
 }
 
 async function resolveRecordType(cfg, userId, internalId, preferredType = "") {
@@ -1582,7 +1583,7 @@ async function processRow(row, job) {
     itemId: row["Item ID"] || row["Name"] || row["Internal ID"],
     internalId: row["Internal ID"],
     recordType: null,
-    changedFields: Object.keys(row || {}).filter((key) => !["Internal ID", "Item ID", "Name"].includes(key) && !key.endsWith("_InternalId") && !key.startsWith("__")),
+    changedFields: Object.keys(row || {}).filter((key) => !["Internal ID", "Item ID", "Name", "Record Type"].includes(key) && !key.endsWith("_InternalId") && !key.startsWith("__")),
     status: "Pending",
     response: { main: null, prices: [], images: [], supplier: null, error: null, diagnostics: null },
   };
@@ -1613,6 +1614,7 @@ async function processRow(row, job) {
 
     for (const field of fields) {
       if (!field.internalid && field.name !== "Base Price" && field.name !== "Preferred Supplier") continue;
+      if (field.disableField && field.name !== "Base Price" && field.name !== "Preferred Supplier") continue;
 
       if (field.name === "Base Price") {
         const parsed = parseFloat(row[field.name]);

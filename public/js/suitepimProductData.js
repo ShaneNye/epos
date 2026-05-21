@@ -287,11 +287,10 @@
       "Internal ID": clean["Internal ID"],
       "Item ID": clean["Item ID"],
       "Name": clean.Name,
-      "Record Type": clean["Record Type"],
     };
 
     Object.keys(clean).forEach((key) => {
-      if (key === "Internal ID" || key === "Item ID" || key === "Name") return;
+      if (key === "Internal ID" || key === "Item ID" || key === "Name" || key === "Record Type") return;
       if (key.endsWith("_InternalId")) return;
       if (JSON.stringify(clean[key] ?? null) === JSON.stringify(base[key] ?? null)) return;
 
