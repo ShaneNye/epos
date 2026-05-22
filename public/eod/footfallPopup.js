@@ -108,6 +108,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     "What Was Too Expensive?"
   ];
 
+  const textAreaFields = new Set([
+    normalizeLabel("What was not available?"),
+    normalizeLabel("What Was Too Expensive?")
+  ]);
+
   const auth = storageGet?.();
   const token = auth?.token;
   const headers = token ? { Authorization: `Bearer ${token}` } : {};
@@ -187,7 +192,21 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   function buildMetricField(label) {
     const normalized = normalizeLabel(label);
-    const value = toNumber(currentRow[label]);
+    const isTextArea = textAreaFields.has(normalized);
+    const value = isTextArea ? String(currentRow[label] ?? "") : toNumber(currentRow[label]);
+
+    if (isTextArea) {
+      return `
+        <label class="metric-field metric-field-wide">
+          <span>${escapeHtml(label)}</span>
+          <textarea
+            class="text-input"
+            data-field="${escapeHtml(normalized)}"
+            rows="4"
+          >${escapeHtml(value)}</textarea>
+        </label>
+      `;
+    }
 
     return `
       <label class="metric-field">
@@ -325,6 +344,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.querySelectorAll(".num-input[data-field]").forEach(input => {
       const mapped = FIELD_MAP[normalizeLabel(input.dataset.field)];
       if (mapped) payload[mapped] = toNumber(input.value);
+    });
+
+    document.querySelectorAll(".text-input[data-field]").forEach(input => {
+      const mapped = FIELD_MAP[normalizeLabel(input.dataset.field)];
+      if (mapped) payload[mapped] = input.value.trim();
     });
 
     try {

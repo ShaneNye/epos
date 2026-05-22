@@ -99,6 +99,7 @@ label {
 
 input[type="text"],
 input[type="number"],
+textarea,
 select {
   width: 100%;
   min-height: 44px;
@@ -113,10 +114,17 @@ select {
 }
 
 input:focus,
+textarea:focus,
 select:focus {
   outline: none;
   border-color: #0081ab;
   box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.15);
+}
+
+textarea {
+  min-height: 110px;
+  line-height: 1.35;
+  resize: vertical;
 }
 
 button {
@@ -213,6 +221,10 @@ button:disabled {
   border: 1px solid #e2ebf0;
   border-radius: 8px;
   background: #fff;
+}
+
+.metric-field-wide {
+  grid-column: 1 / -1;
 }
 
 .metric-field span {
