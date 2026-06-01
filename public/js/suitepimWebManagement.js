@@ -1896,10 +1896,29 @@
     });
     state.filteredRows = applySort(state.filteredRows);
 
-    const maxPage = Math.max(1, Math.ceil(state.filteredRows.length / state.pageSize));
-    if (state.page > maxPage) state.page = maxPage;
+    const totalPages = maxPage();
+    if (state.page > totalPages) state.page = totalPages;
     updateSummary();
     renderTable();
+  }
+
+  function hasActiveTableFilter() {
+    return !!(
+      el.suitepimSearch?.value.trim() ||
+      (el.suitepimStateFilter?.value && el.suitepimStateFilter.value !== "all") ||
+      state.activeFilters.length ||
+      el.suitepimShowChildren?.checked === false
+    );
+  }
+
+  function filteredResultsArePaginated() {
+    return !hasActiveTableFilter();
+  }
+
+  function maxPage() {
+    return filteredResultsArePaginated()
+      ? Math.max(1, Math.ceil(state.filteredRows.length / state.pageSize))
+      : 1;
   }
 
   function updateSummary() {
@@ -1910,8 +1929,37 @@
   }
 
   function pageRows() {
+    if (!filteredResultsArePaginated()) return state.filteredRows;
     const start = (state.page - 1) * state.pageSize;
     return state.filteredRows.slice(start, start + state.pageSize);
+  }
+
+  function renderPagination() {
+    const pagination = el.suitepimPageLabel?.closest(".suitepim-pagination");
+    const paginated = filteredResultsArePaginated();
+    const totalPages = maxPage();
+
+    if (pagination) pagination.hidden = false;
+
+    if (!paginated) {
+      state.page = 1;
+      if (el.suitepimPageLabel) {
+        el.suitepimPageLabel.textContent = `Showing all ${state.filteredRows.length.toLocaleString()} filtered row${state.filteredRows.length === 1 ? "" : "s"}`;
+      }
+      if (el.suitepimPrevPage) el.suitepimPrevPage.hidden = true;
+      if (el.suitepimNextPage) el.suitepimNextPage.hidden = true;
+      return;
+    }
+
+    if (el.suitepimPageLabel) el.suitepimPageLabel.textContent = `Page ${state.page} of ${totalPages}`;
+    if (el.suitepimPrevPage) {
+      el.suitepimPrevPage.hidden = false;
+      el.suitepimPrevPage.disabled = state.page <= 1;
+    }
+    if (el.suitepimNextPage) {
+      el.suitepimNextPage.hidden = false;
+      el.suitepimNextPage.disabled = state.page >= totalPages;
+    }
   }
 
   function renderTable() {
@@ -1927,10 +1975,7 @@
 
     const rows = pageRows();
     const columns = state.visibleColumns.filter((name) => fieldByName(name));
-    const maxPage = Math.max(1, Math.ceil(state.filteredRows.length / state.pageSize));
-    el.suitepimPageLabel.textContent = `Page ${state.page} of ${maxPage}`;
-    el.suitepimPrevPage.disabled = state.page <= 1;
-    el.suitepimNextPage.disabled = state.page >= maxPage;
+    renderPagination();
 
     const table = document.createElement("table");
     table.className = "suitepim-table";
@@ -1941,7 +1986,7 @@
       </colgroup>
       <thead>
         <tr>
-          <th class="suitepim-select-col"><input id="suitepimSelectPage" type="checkbox" aria-label="Select page"></th>
+          <th class="suitepim-select-col"><input id="suitepimSelectPage" type="checkbox" aria-label="${filteredResultsArePaginated() ? "Select page" : "Select filtered results"}"></th>
           ${columns.map((name) => `
             <th class="${name === "Name" ? "suitepim-sticky-name-col" : ""}" data-column="${escapeHtml(name)}" style="width: ${columnWidth(name)}px;">
               ${sortHeaderHtml(name)}
@@ -3612,8 +3657,7 @@
       renderTable();
     });
     el.suitepimNextPage.addEventListener("click", () => {
-      const maxPage = Math.max(1, Math.ceil(state.filteredRows.length / state.pageSize));
-      state.page = Math.min(maxPage, state.page + 1);
+      state.page = Math.min(maxPage(), state.page + 1);
       renderTable();
     });
     el.suitepimColumnsBtn.addEventListener("click", () => {
