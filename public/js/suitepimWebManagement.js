@@ -2403,44 +2403,17 @@
     return a === b || a.includes(b) || b.includes(a);
   }
 
-  function mergeInventoryRows(balanceRows, numberRows, commitmentRows = []) {
-    const numberAgg = new Map();
-    (numberRows || []).forEach((row) => {
-      const itemId = String(row["Item Id"] || row["Item ID"] || row.itemid || row.itemId || "").trim();
-      const lotNumber = String(row.Number || row["Inventory Number"] || row.inventoryNumber || "").trim();
-      const location = String(row.Location || row.location || "").trim();
-      if (!itemId || !lotNumber || !location) return;
-
-      const key = `${itemId}||${stockKeyPart(lotNumber)}||${stockKeyPart(location)}`;
-      const existing = numberAgg.get(key) || { onHand: 0, committed: 0, available: 0, location };
-      existing.onHand += numericStockValue(row["On Hand"] ?? row.onHand ?? row.OnHand);
-      existing.committed += numericStockValue(row.Committed ?? row.committed ?? row["Quantity Committed"] ?? row["Qty Committed"]);
-      existing.available += numericStockValue(row.Available ?? row.available ?? row["Available Qty"] ?? row["Available Quantity"]);
-      existing.location = existing.location || location;
-      numberAgg.set(key, existing);
-    });
-
+  function mergeInventoryRows(balanceRows, commitmentRows = []) {
     const commitments = normalizeCommitmentRows(commitmentRows);
 
     return (balanceRows || []).map((row) => {
       const base = normalizeInventoryRow(row);
-      const key = `${base.itemId}||${stockKeyPart(base.lotNumber)}||${stockKeyPart(base.location)}`;
-      const agg = numberAgg.get(key);
-      const merged = agg
-        ? {
-            ...base,
-            location: agg.location || base.location,
-            onHand: agg.onHand,
-            committed: agg.committed || base.committed,
-            available: agg.available,
-          }
-        : base;
-      const matchingCommitments = commitments.filter((commitment) => commitmentMatchesStock(commitment, merged));
+      const matchingCommitments = commitments.filter((commitment) => commitmentMatchesStock(commitment, base));
       const detailCommitted = matchingCommitments.reduce((sum, commitment) => sum + commitment.quantity, 0);
-      const inferredCommitted = Math.max(0, merged.onHand - merged.available);
+      const inferredCommitted = Math.max(0, base.onHand - base.available);
       return {
-        ...merged,
-        committed: Math.max(merged.committed || 0, detailCommitted, inferredCommitted),
+        ...base,
+        committed: Math.max(base.committed || 0, detailCommitted, inferredCommitted),
         commitmentDetails: matchingCommitments,
       };
     });
@@ -2461,15 +2434,13 @@
     state.inventoryError = "";
     state.inventoryLoading = Promise.all([
       apiFetch("/api/netsuite/inventorybalance"),
-      apiFetch("/api/netsuite/invoice-numbers").catch(() => ({ results: [] })),
       apiFetch("/api/netsuite/committed-lines").catch(() => ({ results: [] })),
     ])
-      .then(([balanceData, numberData, commitmentData]) => {
+      .then(([balanceData, commitmentData]) => {
         const balanceRows = balanceData.results || balanceData.rows || balanceData.items || [];
-        const numberRows = numberData.results || numberData.rows || numberData.items || [];
         const commitmentRows = commitmentData.results || commitmentData.rows || commitmentData.items || [];
         state.inventoryCommitments = normalizeCommitmentRows(commitmentRows);
-        indexInventoryRows(mergeInventoryRows(balanceRows, numberRows, commitmentRows));
+        indexInventoryRows(mergeInventoryRows(balanceRows, commitmentRows));
         state.inventoryLoaded = true;
       })
       .catch((err) => {

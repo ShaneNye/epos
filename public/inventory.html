@@ -261,29 +261,9 @@
   <script>
     /* ============================================================
        Inventory Detail Popup Script
-       Updated to match stockSearch.js availability logic:
-       - merge inventorybalance + invoice-numbers
-       - aggregate invoice numbers by item + inv number + location
-       - collapse duplicate inventorybalance rows
-       - use invoice-number available qty as source of truth
+       Uses inventorybalance as the single stock source of truth.
     ============================================================ */
 
-    async function getInventoryNumbers(itemId) {
-      try {
-        const res = await fetch(`/api/netsuite/invoice-numbers?refresh=1&_=${Date.now()}`, {
-          cache: "no-store",
-        });
-        const data = await res.json();
-        if (!data.ok || !data.results) return [];
-        return data.results.filter(r => {
-          const rowItemId = String(r["Item Id"] || r["Item ID"] || r["itemid"] || "").trim();
-          return rowItemId === String(itemId).trim();
-        });
-      } catch (err) {
-        console.error("❌ Failed to fetch invoice numbers:", err);
-        return [];
-      }
-    }
 
     async function getInventoryStatuses() {
       try {
@@ -331,6 +311,16 @@
     const clean = (v) => String(v || "").trim().toLowerCase();
     const idStr = (v) => (v == null ? "" : String(v).trim());
     const sanitizeDetailField = (v) => String(v || "").replace(/\|/g, " - ").trim();
+    const binText = (row) => [
+      row?.["Bin Number"],
+      row?.["Bin"],
+      row?.bin,
+      row?.binNumber,
+      row?.binnumber,
+      row?.["Bin Name"],
+      row?.binName,
+    ].map((value) => String(value || "").trim()).filter(Boolean).join(" ");
+    const isOutboundBinRow = (row) => binText(row).toUpperCase().includes("OUTBOUND");
 
     function parseInventoryDetailPart(part) {
       const tokens = String(part || "").trim().split("|");
@@ -354,117 +344,57 @@
       loadingOverlay?.classList.add("hidden");
     }
 
-    function buildMergedStock(balanceRows, liveFeed, statuses) {
+    function buildStockFromInventoryDetail(balanceRows, statuses) {
       const statusMap = {};
       (statuses || []).forEach(s => {
         const key = clean(s.name);
         if (key) statusMap[key] = String(s.id || "");
       });
 
-      // 1) Aggregate invoice-number rows by item + inventory number + location
-      const numberAgg = {};
-
-      for (const row of (liveFeed || [])) {
-        const numItemId = idStr(row["Item Id"] || row["Item ID"] || row["itemid"]);
-        const inv = clean(row["Number"]);
-        const loc = clean(row["Location"]);
-        if (!numItemId || !inv || !loc) continue;
-
-        const key = `${numItemId}||${inv}||${loc}`;
-
-        if (!numberAgg[key]) {
-          numberAgg[key] = {
-            available: 0,
-            onHand: 0,
-            itemId: numItemId,
-            itemName: row["Item"] || "",
-            invNumberId: row["inv number id"] || row["Internal ID"] || "",
-            location: String(row["Location"] || "").trim(),
-            locationId: String(row["Location ID"] || "").trim(),
-          };
-        }
-
-        numberAgg[key].available += safeInt(row["Available"]);
-        numberAgg[key].onHand += safeInt(row["On Hand"]);
-
-        if (!numberAgg[key].invNumberId) {
-          numberAgg[key].invNumberId = row["inv number id"] || row["Internal ID"] || "";
-        }
-        if (!numberAgg[key].location) {
-          numberAgg[key].location = String(row["Location"] || "").trim();
-        }
-        if (!numberAgg[key].locationId) {
-          numberAgg[key].locationId = String(row["Location ID"] || "").trim();
-        }
-      }
-
-      // 2) Collapse duplicate inventorybalance rows by item + inventory number + location
-      const collapsed = {};
-
+      const stockByDetail = {};
       for (const bal of (balanceRows || [])) {
+        if (isOutboundBinRow(bal)) continue;
         const balItemId = idStr(bal["Item ID"] || bal["Item Id"] || bal["itemid"] || bal["Item"]);
         const inv = clean(bal["Inventory Number"]);
         const loc = clean(bal["Location"]);
-        if (!balItemId || !inv || !loc) continue;
-
-        const key = `${balItemId}||${inv}||${loc}`;
-        if (!collapsed[key]) collapsed[key] = bal;
-      }
-
-      // 3) Merge and use invoice-number aggregate as source of truth
-      const merged = Object.values(collapsed).map((bal) => {
-        const balItemId = idStr(bal["Item ID"] || bal["Item Id"] || bal["itemid"] || bal["Item"]);
-        const invClean = clean(bal["Inventory Number"]);
-        const locClean = clean(bal["Location"]);
-        const key = `${balItemId}||${invClean}||${locClean}`;
-
-        const agg = numberAgg[key] || {
-          available: 0,
-          onHand: 0,
-          itemId: balItemId,
-          itemName: "",
-          invNumberId: "",
-          location: "",
-          locationId: "",
-        };
-
         const statusName = String(bal["Status"] || "").trim();
         const statusKey = clean(statusName);
+        const bin = String(bal["Bin Number"] || bal["Bin"] || bal.bin || "").trim();
+        if (!balItemId || !inv || !loc) continue;
 
-        return {
-          itemId: agg.itemId || balItemId,
-          itemName: agg.itemName || bal["Name"] || bal["Item"] || "",
-          location: agg.location || String(bal["Location"] || "").trim(),
-          locationId: agg.locationId || String(bal["Location ID"] || "").trim(),
-          qty: safeInt(agg.available),
-          onHand: safeInt(agg.onHand),
-          bin: String(bal["Bin Number"] || "").trim(),
-          status: statusName,
-          statusId: statusMap[statusKey] || "",
-          inventoryNumber: String(bal["Inventory Number"] || "").trim(),
-          inventoryNumberId: String(agg.invNumberId || "").trim(),
-        };
-      });
+        const key = `${balItemId}||${inv}||${loc}||${clean(statusName)}`;
+        if (!stockByDetail[key]) {
+          stockByDetail[key] = {
+            itemId: balItemId,
+            itemName: bal["Name"] || bal["Item"] || "",
+            location: String(bal["Location"] || "").trim(),
+            locationId: String(bal["Location ID"] || bal.locationId || "").trim(),
+            qty: 0,
+            onHand: 0,
+            bin,
+            status: statusName,
+            statusId: statusMap[statusKey] || "",
+            inventoryNumber: String(bal["Inventory Number"] || "").trim(),
+            inventoryNumberId: String(bal["Inventory Number ID"] || bal["inv number id"] || bal["Internal ID"] || bal.inventoryNumberId || "").trim(),
+            bins: new Set(),
+          };
+        }
 
-      Object.entries(numberAgg).forEach(([key, agg]) => {
-        if (collapsed[key]) return;
-        merged.push({
-          itemId: agg.itemId || "",
-          itemName: agg.itemName || "",
-          location: agg.location || "",
-          locationId: agg.locationId || "",
-          qty: safeInt(agg.available),
-          onHand: safeInt(agg.onHand),
-          bin: "",
-          status: "",
-          statusId: "",
-          inventoryNumber: key.split("||")[1] || "",
-          inventoryNumberId: String(agg.invNumberId || "").trim(),
-        });
-      });
+        stockByDetail[key].qty += safeInt(bal["Available"]);
+        stockByDetail[key].onHand += safeInt(bal["On Hand"]);
+        if (bin) stockByDetail[key].bins.add(bin);
+        stockByDetail[key].bin = Array.from(stockByDetail[key].bins).join(", ");
+        if (!stockByDetail[key].locationId) {
+          stockByDetail[key].locationId = String(bal["Location ID"] || bal.locationId || "").trim();
+        }
+        if (!stockByDetail[key].inventoryNumberId) {
+          stockByDetail[key].inventoryNumberId = String(bal["Inventory Number ID"] || bal["inv number id"] || bal["Internal ID"] || bal.inventoryNumberId || "").trim();
+        }
+      }
 
-      // 4) Match stockSearch.js behaviour: only rows with available > 0
-      return merged.filter(s => safeInt(s.qty) > 0);
+      return Object.values(stockByDetail)
+        .map(({ bins, ...stock }) => stock)
+        .filter((s) => s.itemId && s.inventoryNumber && s.location && safeInt(s.qty) > 0);
     }
 
     const params = getQueryParams();
@@ -497,15 +427,14 @@
           console.warn("⚠️ Popup opened without itemId. URL params:", params);
         }
 
-        const [liveFeed, statuses, balanceRows] = await Promise.all([
-          getInventoryNumbers(itemId),
+        const [statuses, balanceRows] = await Promise.all([
           getInventoryStatuses(),
           getInventoryBalanceRows(itemId),
         ]);
 
-        stock = buildMergedStock(balanceRows, liveFeed, statuses);
+        stock = buildStockFromInventoryDetail(balanceRows, statuses);
 
-        // cache the merged version back to opener so subsequent popups are consistent
+        // cache the inventory-detail version back to opener so subsequent popups are consistent
         try {
           if (window.opener) {
             window.opener.inventoryCache = window.opener.inventoryCache || {};

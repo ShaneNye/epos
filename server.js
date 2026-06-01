@@ -102,6 +102,37 @@ function isApiRequest(req) {
   return req.path.startsWith("/api/") || req.get("accept")?.includes("application/json");
 }
 
+function rowBinText(row) {
+  if (!row || typeof row !== "object") return "";
+  return [
+    row["Bin Number"],
+    row["Bin"],
+    row.bin,
+    row.binNumber,
+    row.binnumber,
+    row["Bin Name"],
+    row.binName,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean)
+    .join(" ");
+}
+
+function isOutboundBinRow(row) {
+  return rowBinText(row).toUpperCase().includes("OUTBOUND");
+}
+
+function excludeOutboundBinRows(payload) {
+  if (Array.isArray(payload)) return payload.filter((row) => !isOutboundBinRow(row));
+  if (!payload || typeof payload !== "object") return payload;
+  const filterRows = (rows) => (Array.isArray(rows) ? rows.filter((row) => !isOutboundBinRow(row)) : rows);
+  return {
+    ...payload,
+    results: filterRows(payload.results),
+    data: filterRows(payload.data),
+  };
+}
+
 function normalizeAccessPath(value) {
   const slug = String(value || "")
     .replace(/^\//, "")
@@ -251,7 +282,10 @@ async function fetchNetSuiteData(envUrlKey, envTokenKey, req, res, label, option
         const response = await fetch(nsUrl);
         if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
 
-        const json = await response.json();
+        let json = await response.json();
+        if (typeof options.transformJson === "function") {
+          json = options.transformJson(json);
+        }
         if (noStore) {
           suiteletCache.delete(cacheKey);
         } else {
@@ -710,7 +744,7 @@ app.get("/api/netsuite/inventorybalance", async (req, res) => {
     const json = await response.json();
 
     const itemId = req.query.id;
-    let results = json.results || json;
+    let results = (json.results || json).filter((row) => !isOutboundBinRow(row));
     if (itemId) {
       const wanted = String(itemId).trim();
       results = results.filter((r) => {
@@ -734,7 +768,9 @@ app.get("/api/netsuite/inventorybalance", async (req, res) => {
 
 // === Invoice Numbers ===
 app.get("/api/netsuite/invoice-numbers", (req, res) =>
-  fetchNetSuiteData("SALES_ORDER_INV_NUMBER_URL", "SALES_ORDER_INV_NUMBER", req, res, "invoice numbers")
+  fetchNetSuiteData("SALES_ORDER_INV_NUMBER_URL", "SALES_ORDER_INV_NUMBER", req, res, "invoice numbers", {
+    transformJson: excludeOutboundBinRows,
+  })
 );
 
 // === Inventory Status ===

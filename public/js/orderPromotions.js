@@ -710,63 +710,51 @@
     return state.inventoryStatuses;
   }
 
-  async function getInvoiceNumbers() {
-    if (Array.isArray(state.invoiceNumbers)) return state.invoiceNumbers;
-    const data = await fetchJson("/api/netsuite/invoice-numbers");
-    state.invoiceNumbers = Array.isArray(data.results) ? data.results : [];
-    return state.invoiceNumbers;
-  }
-
-  function buildMergedStock(itemId, balanceRows, liveFeed, statuses) {
+  function buildStockFromInventoryDetail(itemId, balanceRows, statuses) {
     const statusMap = {};
     (statuses || []).forEach((status) => {
       const key = clean(status.name);
       if (key) statusMap[key] = String(status.id || "");
     });
 
-    const numberAgg = {};
-    (liveFeed || []).forEach((row) => {
-      const numItemId = String(row["Item Id"] || row["Item ID"] || row.itemid || "").trim();
-      const inv = clean(row.Number);
+    const stockByDetail = {};
+
+    (balanceRows || []).forEach((row) => {
+      const balItemId = String(row["Item ID"] || row["Item Id"] || row.itemid || "").trim();
+      const inv = clean(row["Inventory Number"]);
       const loc = clean(row.Location);
-      if (String(numItemId) !== String(itemId) || !inv || !loc) return;
+      const status = String(row.Status || "").trim();
+      const bin = String(row["Bin Number"] || row.Bin || row.bin || "").trim();
+      if (String(balItemId) !== String(itemId) || !balItemId || !inv || !loc) return;
 
-      const key = `${numItemId}||${inv}||${loc}`;
-      if (!numberAgg[key]) {
-        numberAgg[key] = {
-          available: 0,
-          onHand: 0,
-          invNumberId: row["inv number id"] || row["Internal ID"] || "",
-          location: String(row.Location || "").trim(),
-          locationId: String(row["Location ID"] || "").trim(),
-        };
-      }
-      numberAgg[key].available += safeInt(row.Available);
-      numberAgg[key].onHand += safeInt(row["On Hand"]);
-      if (!numberAgg[key].invNumberId) numberAgg[key].invNumberId = row["inv number id"] || row["Internal ID"] || "";
-      if (!numberAgg[key].locationId) numberAgg[key].locationId = row["Location ID"] || "";
-    });
-
-    return (balanceRows || [])
-      .map((row) => {
-        const balItemId = String(row["Item ID"] || row["Item Id"] || row.itemid || "").trim();
-        const inv = clean(row["Inventory Number"]);
-        const loc = clean(row.Location);
-        const agg = numberAgg[`${balItemId}||${inv}||${loc}`] || {};
-        const status = String(row.Status || "").trim();
-
-        return {
+      const key = `${balItemId}||${inv}||${loc}||${clean(status)}`;
+      if (!stockByDetail[key]) {
+        stockByDetail[key] = {
           itemId: balItemId,
-          location: agg.location || String(row.Location || "").trim(),
-          locationId: String(agg.locationId || row["Location ID"] || "").trim(),
-          qty: safeInt(agg.available ?? row.Available),
-          onHand: safeInt(agg.onHand ?? row["On Hand"]),
+          location: String(row.Location || "").trim(),
+          locationId: String(row["Location ID"] || row.locationId || "").trim(),
+          qty: 0,
+          onHand: 0,
           status,
           statusId: statusMap[clean(status)] || "",
           inventoryNumber: String(row["Inventory Number"] || "").trim(),
-          inventoryNumberId: String(agg.invNumberId || row["Inventory Number ID"] || "").trim(),
+          inventoryNumberId: String(row["Inventory Number ID"] || row["inv number id"] || row["Internal ID"] || row.inventoryNumberId || "").trim(),
+          bins: new Set(),
         };
-      })
+      }
+      stockByDetail[key].qty += safeInt(row.Available);
+      stockByDetail[key].onHand += safeInt(row["On Hand"]);
+      if (bin) stockByDetail[key].bins.add(bin);
+      if (!stockByDetail[key].locationId) {
+        stockByDetail[key].locationId = String(row["Location ID"] || row.locationId || "").trim();
+      }
+      if (!stockByDetail[key].inventoryNumberId) {
+        stockByDetail[key].inventoryNumberId = String(row["Inventory Number ID"] || row["inv number id"] || row["Internal ID"] || row.inventoryNumberId || "").trim();
+      }
+    });
+
+    return Object.values(stockByDetail)
+      .map(({ bins, ...stock }) => stock)
       .filter((stock) => stock.itemId && stock.inventoryNumber && stock.qty > 0);
   }
 
@@ -776,12 +764,11 @@
 
     state.stockLoading.add(id);
     try {
-      const [balanceData, invoiceNumbers, statuses] = await Promise.all([
+      const [balanceData, statuses] = await Promise.all([
         fetchJson(`/api/netsuite/inventorybalance?id=${encodeURIComponent(id)}`),
-        getInvoiceNumbers(),
         getInventoryStatuses(),
       ]);
-      state.stockByItemId.set(id, buildMergedStock(id, balanceData.results || [], invoiceNumbers, statuses));
+      state.stockByItemId.set(id, buildStockFromInventoryDetail(id, balanceData.results || [], statuses));
       renderUpsellPanel();
     } catch (err) {
       console.warn("Failed to load fulfilment suggestion stock:", err);
