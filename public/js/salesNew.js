@@ -704,7 +704,10 @@ function validateOrderBeforeSave() {
 
     if (requiresInv) {
       const invHidden = row.querySelector(".item-inv-detail");
-      const invHasValue = !!(invHidden?.value || "").trim();
+      const invHasValue = !!(
+        (invHidden?.value || "").trim() ||
+        (row.dataset.invdetail || "").trim()
+      );
 
       const hasLot = !!(row.dataset.lotnumber || "").trim();
       const hasMeta = !!(row.dataset.inventoryMeta || "").trim();
@@ -807,7 +810,10 @@ function validateOrderBeforeSave() {
 
           const lotnumber = tr.dataset.lotnumber || "";
           const inventoryMeta = tr.dataset.inventoryMeta || "";
-          const inventoryDetail = tr.querySelector(".item-inv-detail")?.value || "";
+          const inventoryDetail =
+            tr.querySelector(".item-inv-detail")?.value ||
+            tr.dataset.invdetail ||
+            "";
 
           const trialSel = tr.querySelector(".sixty-night-select");
           const trialOption = (trialSel?.value || "").trim() || null;

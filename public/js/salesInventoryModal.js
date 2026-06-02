@@ -58,6 +58,28 @@ function formatInventoryDetailPart(detail) {
   ].join("|");
 }
 
+function setInventoryCellContent(row, html, detailString) {
+  const cell = row?.querySelector(".inventory-cell");
+  if (!cell) return;
+
+  cell.innerHTML = html;
+
+  let detailField = cell.querySelector(".item-inv-detail");
+  if (!detailField) {
+    detailField = document.createElement("input");
+    detailField.type = "hidden";
+    detailField.className = "item-inv-detail";
+    cell.appendChild(detailField);
+  }
+  detailField.value = String(detailString || "").trim();
+
+  if (!cell.querySelector(".inv-summary")) {
+    const summary = document.createElement("span");
+    summary.className = "inv-summary";
+    cell.appendChild(summary);
+  }
+}
+
 function setLineFulfilmentToWarehouse(row) {
   const fulfilSelect =
     row?.querySelector(".item-fulfilment") || row?.querySelector(".fulfilmentSelect");
@@ -86,7 +108,7 @@ function applyBackOrderToLine(row) {
 
   const cell = row.querySelector(".inventory-cell");
   if (cell) {
-    cell.innerHTML = "<strong>Back order</strong>";
+    setInventoryCellContent(row, "<strong>Back order</strong>", "");
     cell.classList.add("flash-success");
     setTimeout(() => cell.classList.remove("flash-success"), 800);
   }
@@ -260,9 +282,9 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
 
     const cell = targetRow.querySelector(".inventory-cell");
     if (cell) {
-      cell.innerHTML = `
+      setInventoryCellContent(targetRow, `
         <strong>Lot:</strong> ${invName || "-"}<br>
-        <small>ID: ${invId || "-"}</small>`;
+        <small>ID: ${invId || "-"}</small>`, detailString || "");
       cell.classList.add("flash-success");
       setTimeout(() => cell.classList.remove("flash-success"), 800);
     }
@@ -315,7 +337,7 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
         return `${detail.qty}× ${detail.inventoryNumberName || ""} @ ${detail.locationName || ""}`;
       })
       .join("<br>");
-    cell.innerHTML = display;
+    setInventoryCellContent(targetRow, display, cleanedDetail);
     cell.classList.add("flash-success");
     setTimeout(() => cell.classList.remove("flash-success"), 800);
   }

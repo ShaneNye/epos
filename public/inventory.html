@@ -311,6 +311,37 @@
     const clean = (v) => String(v || "").trim().toLowerCase();
     const idStr = (v) => (v == null ? "" : String(v).trim());
     const sanitizeDetailField = (v) => String(v || "").replace(/\|/g, " - ").trim();
+    function firstField(row, keys) {
+      for (const key of keys) {
+        const value = row?.[key];
+        if (value != null && String(value).trim()) return String(value).trim();
+      }
+      return "";
+    }
+    const inventoryNumberIdFromBalance = (row) => firstField(row, [
+      "Inventory Number ID",
+      "Inventory Number Internal ID",
+      "Inventory Number_value",
+      "inv number id",
+      "Internal ID",
+      "inventoryNumberId",
+      "inventorynumberId",
+      "inventorynumberid",
+      "inventorynumber_internalid",
+      "inventorynumber.internalid",
+      "inventoryNumber.internalId",
+      "inventoryNumber.id",
+    ]);
+    const locationIdFromBalance = (row) => firstField(row, [
+      "Location ID",
+      "Location Internal ID",
+      "Location_value",
+      "locationId",
+      "locationid",
+      "location_internalid",
+      "location.internalid",
+      "location.id",
+    ]);
     const binText = (row) => [
       row?.["Bin Number"],
       row?.["Bin"],
@@ -368,14 +399,14 @@
             itemId: balItemId,
             itemName: bal["Name"] || bal["Item"] || "",
             location: String(bal["Location"] || "").trim(),
-            locationId: String(bal["Location ID"] || bal.locationId || "").trim(),
+            locationId: locationIdFromBalance(bal),
             qty: 0,
             onHand: 0,
             bin,
             status: statusName,
             statusId: statusMap[statusKey] || "",
             inventoryNumber: String(bal["Inventory Number"] || "").trim(),
-            inventoryNumberId: String(bal["Inventory Number ID"] || bal["inv number id"] || bal["Internal ID"] || bal.inventoryNumberId || "").trim(),
+            inventoryNumberId: inventoryNumberIdFromBalance(bal),
             bins: new Set(),
           };
         }
@@ -385,10 +416,10 @@
         if (bin) stockByDetail[key].bins.add(bin);
         stockByDetail[key].bin = Array.from(stockByDetail[key].bins).join(", ");
         if (!stockByDetail[key].locationId) {
-          stockByDetail[key].locationId = String(bal["Location ID"] || bal.locationId || "").trim();
+          stockByDetail[key].locationId = locationIdFromBalance(bal);
         }
         if (!stockByDetail[key].inventoryNumberId) {
-          stockByDetail[key].inventoryNumberId = String(bal["Inventory Number ID"] || bal["inv number id"] || bal["Internal ID"] || bal.inventoryNumberId || "").trim();
+          stockByDetail[key].inventoryNumberId = inventoryNumberIdFromBalance(bal);
         }
       }
 

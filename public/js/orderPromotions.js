@@ -16,6 +16,7 @@
     invoiceNumbers: null,
     initialized: false,
     dismissedStockAlternatives: new Set(),
+    stockAlternativeIndexes: new Map(),
   };
 
   function money(value) {
@@ -50,6 +51,104 @@
 
   function itemName(item) {
     return String(item?.Name || item?.name || "Unnamed item").trim();
+  }
+
+  function firstStockField(row, keys) {
+    for (const key of keys) {
+      const value = row?.[key];
+      if (value != null && String(value).trim()) return String(value).trim();
+    }
+    return "";
+  }
+
+  function inventoryNumberIdFromBalance(row) {
+    return firstStockField(row, [
+      "Inventory Number ID",
+      "Inventory Number Internal ID",
+      "Inventory Number_value",
+      "inv number id",
+      "Internal ID",
+      "inventoryNumberId",
+      "inventorynumberId",
+      "inventorynumberid",
+      "inventorynumber_internalid",
+      "inventorynumber.internalid",
+      "inventoryNumber.internalId",
+      "inventoryNumber.id",
+    ]);
+  }
+
+  function locationIdFromBalance(row) {
+    return firstStockField(row, [
+      "Location ID",
+      "Location Internal ID",
+      "Location_value",
+      "locationId",
+      "locationid",
+      "location_internalid",
+      "location.internalid",
+      "location.id",
+    ]);
+  }
+
+  function itemIdFromBalance(row) {
+    return firstStockField(row, [
+      "Item ID",
+      "Item Id",
+      "Item Internal ID",
+      "Item_value",
+      "itemid",
+      "itemId",
+      "Item",
+    ]);
+  }
+
+  function locationNameFromBalance(row) {
+    return firstStockField(row, [
+      "Location",
+      "location",
+      "locationName",
+    ]);
+  }
+
+  function statusNameFromBalance(row) {
+    return firstStockField(row, [
+      "Status",
+      "status",
+      "Inventory Status",
+      "inventoryStatus",
+    ]);
+  }
+
+  function inventoryNumberFromBalance(row) {
+    return firstStockField(row, [
+      "Inventory Number",
+      "inventoryNumber",
+      "inventorynumber",
+      "Lot Number",
+      "lotNumber",
+    ]);
+  }
+
+  function availableQtyFromBalance(row) {
+    return firstStockField(row, [
+      "Available",
+      "available",
+      "Available Qty",
+      "availableQty",
+      "Quantity Available",
+      "quantityAvailable",
+    ]);
+  }
+
+  function onHandQtyFromBalance(row) {
+    return firstStockField(row, [
+      "On Hand",
+      "onHand",
+      "OnHand",
+      "Quantity On Hand",
+      "quantityOnHand",
+    ]);
   }
 
   function itemClass(item) {
@@ -720,10 +819,12 @@
     const stockByDetail = {};
 
     (balanceRows || []).forEach((row) => {
-      const balItemId = String(row["Item ID"] || row["Item Id"] || row.itemid || "").trim();
-      const inv = clean(row["Inventory Number"]);
-      const loc = clean(row.Location);
-      const status = String(row.Status || "").trim();
+      const balItemId = itemIdFromBalance(row);
+      const inventoryNumber = inventoryNumberFromBalance(row);
+      const location = locationNameFromBalance(row);
+      const inv = clean(inventoryNumber);
+      const loc = clean(location);
+      const status = statusNameFromBalance(row);
       const bin = String(row["Bin Number"] || row.Bin || row.bin || "").trim();
       if (String(balItemId) !== String(itemId) || !balItemId || !inv || !loc) return;
 
@@ -731,25 +832,25 @@
       if (!stockByDetail[key]) {
         stockByDetail[key] = {
           itemId: balItemId,
-          location: String(row.Location || "").trim(),
-          locationId: String(row["Location ID"] || row.locationId || "").trim(),
+          location,
+          locationId: locationIdFromBalance(row),
           qty: 0,
           onHand: 0,
           status,
           statusId: statusMap[clean(status)] || "",
-          inventoryNumber: String(row["Inventory Number"] || "").trim(),
-          inventoryNumberId: String(row["Inventory Number ID"] || row["inv number id"] || row["Internal ID"] || row.inventoryNumberId || "").trim(),
+          inventoryNumber,
+          inventoryNumberId: inventoryNumberIdFromBalance(row),
           bins: new Set(),
         };
       }
-      stockByDetail[key].qty += safeInt(row.Available);
-      stockByDetail[key].onHand += safeInt(row["On Hand"]);
+      stockByDetail[key].qty += safeInt(availableQtyFromBalance(row));
+      stockByDetail[key].onHand += safeInt(onHandQtyFromBalance(row));
       if (bin) stockByDetail[key].bins.add(bin);
       if (!stockByDetail[key].locationId) {
-        stockByDetail[key].locationId = String(row["Location ID"] || row.locationId || "").trim();
+        stockByDetail[key].locationId = locationIdFromBalance(row);
       }
       if (!stockByDetail[key].inventoryNumberId) {
-        stockByDetail[key].inventoryNumberId = String(row["Inventory Number ID"] || row["inv number id"] || row["Internal ID"] || row.inventoryNumberId || "").trim();
+        stockByDetail[key].inventoryNumberId = inventoryNumberIdFromBalance(row);
       }
     });
 
@@ -820,18 +921,31 @@
           return null;
         }
 
-        const stock = [...(state.stockByItemId.get(line.id) || [])]
+        const lineKey = stockLineKey(line);
+        const stocks = [...(state.stockByItemId.get(line.id) || [])]
           .filter((entry) => safeInt(entry.qty) > 0 && clean(entry.status) !== "showroom")
-          .sort((a, b) => scoreStock(b, line.quantity) - scoreStock(a, line.quantity))[0];
+          .sort((a, b) => scoreStock(b, line.quantity) - scoreStock(a, line.quantity))
+          .filter((entry) => !state.dismissedStockAlternatives.has(stockSuggestionKey(line, entry)));
 
-        if (!stock) return null;
+        if (!stocks.length) return null;
+        const selectedIndex = Math.max(0, Number(state.stockAlternativeIndexes.get(lineKey) || 0)) % stocks.length;
+        if (state.stockAlternativeIndexes.get(lineKey) !== selectedIndex) {
+          state.stockAlternativeIndexes.set(lineKey, selectedIndex);
+        }
+        const stock = stocks[selectedIndex];
         const suggestionKey = stockSuggestionKey(line, stock);
-        if (state.dismissedStockAlternatives.has(suggestionKey)) return null;
 
         const item = findItemById(line.id) || findItemByName(line.name);
-        return { line, item, stock, suggestionKey };
+        return { line, item, stock, suggestionKey, lineKey, selectedIndex, stockCount: stocks.length };
       })
       .filter(Boolean);
+  }
+
+  function stockLineKey(line) {
+    return [
+      line?.row?.dataset?.line || "",
+      line?.id || "",
+    ].map((value) => String(value || "").trim()).join("::");
   }
 
   function stockSuggestionKey(line, stock) {
@@ -960,7 +1074,7 @@
           <span>Fulfilment</span>
           <strong>Stock alternatives</strong>
         </div>
-        ${fulfilmentSuggestions.map(({ line, item, stock, suggestionKey }) => {
+        ${fulfilmentSuggestions.map(({ line, item, stock, suggestionKey, lineKey, selectedIndex, stockCount }) => {
           const name = item ? itemName(item) : line.name;
           const fallbackText = name.slice(0, 2).toUpperCase();
           return `
@@ -991,6 +1105,7 @@
               </div>
               <div class="order-stock-actions">
                 <button type="button" class="btn-primary small-btn" data-action="use-stock" data-line="${escapeHtml(line.row.dataset.line || "")}" data-item-id="${escapeHtml(line.id)}" data-stock-key="${escapeHtml(stockKey(stock))}">Yes</button>
+                ${stockCount > 1 ? `<button type="button" class="btn-secondary small-btn" data-action="next-stock" data-line-key="${escapeHtml(lineKey)}" data-stock-count="${escapeHtml(stockCount)}">Next ${escapeHtml(String(selectedIndex + 1))}/${escapeHtml(String(stockCount))}</button>` : ""}
                 <button type="button" class="btn-secondary small-btn" data-action="dismiss-stock" data-suggestion-key="${escapeHtml(suggestionKey)}">Dismiss</button>
               </div>
             </article>
@@ -1032,6 +1147,28 @@
     row.dataset.invdetail = normalized;
   }
 
+  function setInventoryCellContent(row, html, detail) {
+    const cell = row?.querySelector(".inventory-cell");
+    if (!cell) return;
+
+    cell.innerHTML = html;
+
+    let detailField = cell.querySelector(".item-inv-detail");
+    if (!detailField) {
+      detailField = document.createElement("input");
+      detailField.type = "hidden";
+      detailField.className = "item-inv-detail";
+      cell.appendChild(detailField);
+    }
+    detailField.value = String(detail || "").trim();
+
+    if (!cell.querySelector(".inv-summary")) {
+      const summary = document.createElement("span");
+      summary.className = "inv-summary";
+      cell.appendChild(summary);
+    }
+  }
+
   function applyStockSuggestion(lineId, itemIdValue, selectedStockKey) {
     const row = rows().find((entry) => String(entry.dataset.line || "") === String(lineId || ""));
     const stock = (state.stockByItemId.get(String(itemIdValue || "")) || []).find(
@@ -1066,9 +1203,13 @@
 
     const cell = row.querySelector(".inventory-cell");
     if (cell) {
-      cell.innerHTML = sameAsSelectedWarehouse(stock)
-        ? `<strong>Lot:</strong> ${escapeHtml(stock.inventoryNumber || "-")}<br><small>ID: ${escapeHtml(stock.inventoryNumberId || "-")}</small>`
-        : `${qty}x ${escapeHtml(stock.inventoryNumber || "")} @ ${escapeHtml(stock.location || "")}`;
+      setInventoryCellContent(
+        row,
+        sameAsSelectedWarehouse(stock)
+          ? `<strong>Lot:</strong> ${escapeHtml(stock.inventoryNumber || "-")}<br><small>ID: ${escapeHtml(stock.inventoryNumberId || "-")}</small>`
+          : `${qty}x ${escapeHtml(stock.inventoryNumber || "")} @ ${escapeHtml(stock.location || "")}`,
+        detail
+      );
       cell.classList.add("flash-success");
       setTimeout(() => cell.classList.remove("flash-success"), 800);
     }
@@ -1264,6 +1405,15 @@
       const dismissButton = event.target.closest('button[data-action="dismiss-stock"]');
       if (dismissButton) {
         state.dismissedStockAlternatives.add(String(dismissButton.dataset.suggestionKey || ""));
+        renderUpsellPanel();
+      }
+
+      const nextStockButton = event.target.closest('button[data-action="next-stock"]');
+      if (nextStockButton) {
+        const lineKey = String(nextStockButton.dataset.lineKey || "");
+        const stockCount = Math.max(1, safeInt(nextStockButton.dataset.stockCount || "1"));
+        const current = Math.max(0, Number(state.stockAlternativeIndexes.get(lineKey) || 0));
+        state.stockAlternativeIndexes.set(lineKey, (current + 1) % stockCount);
         renderUpsellPanel();
       }
     });
