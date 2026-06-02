@@ -245,6 +245,14 @@ function sendCachedJson(req, res, payload, { ttlMs = 5 * 60 * 1000, noStore = fa
   return res.type("application/json").send(body);
 }
 
+function getEnvAny(...keys) {
+  for (const key of keys) {
+    const value = process.env[key];
+    if (value) return String(value).trim().replace(/^["']|["']$/g, "");
+  }
+  return "";
+}
+
 /**
  * Utility to call NetSuite external Suitelet JSON endpoints.
  * It pulls the base URL + token from env vars dynamically.
@@ -556,6 +564,7 @@ app.use("/api/meta/management-rules", require("./routes/managementRules"));
 app.use("/api/promotions", require("./routes/promotions"));
 app.use("/api/vsa", require("./routes/vsa"));
 app.use("/api/systems-processes", require("./routes/systemsProcesses"));
+app.use("/api/google", require("./routes/google").router);
 const intercompanyRoutes = require("./routes/intercompany");
 app.use("/api/netsuite/intercompany", intercompanyRoutes);
 // === Engagement (Announcements, Analytics) ===
@@ -784,6 +793,45 @@ app.get("/api/netsuite/order-management", (req, res) =>
     forceRefresh: true,
   })
 );
+
+app.get("/api/netsuite/breathe-rota", async (req, res) => {
+  try {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
+    const baseUrl = getEnvAny("BREATHE_ROTA_URL", "breathe_rota_url");
+    const token = getEnvAny("BREATHE_ROTA", "breathe_rota");
+    if (!baseUrl || !token) {
+      throw new Error("Missing BREATHE_ROTA_URL/breathe_rota_url or BREATHE_ROTA/breathe_rota in environment");
+    }
+
+    const nsUrl = new URL(baseUrl);
+    nsUrl.searchParams.set("token", token);
+    nsUrl.searchParams.set("_", String(Date.now()));
+    Object.entries(req.query || {}).forEach(([key, value]) => {
+      if (["token", "refresh", "force", "fresh"].includes(String(key).toLowerCase())) return;
+      if (value === undefined || value === null || value === "") return;
+      nsUrl.searchParams.set(key, String(value));
+    });
+
+    console.log("Fetching Breathe rota from NetSuite");
+    const response = await fetch(nsUrl.toString());
+    if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
+
+    const json = await response.json();
+    res.json({
+      ok: json?.ok !== false,
+      ...json,
+      results: Array.isArray(json?.results) ? json.results : Array.isArray(json) ? json : [],
+    });
+  } catch (err) {
+    console.error("NetSuite Breathe rota proxy error:", err);
+    res.status(500).json({ ok: false, error: "Failed to fetch Breathe rota data" });
+  }
+});
 
 
 
@@ -1037,6 +1085,7 @@ app.get("/cashflow", (req, res) => sendNoCacheFile(res, path.join(__dirname, "pu
 app.get("/logistics", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "logistics.html")))
 app.get("/suitepim", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim.html")))
 app.get("/systems-processes", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "systems-processes.html")))
+app.get("/rota", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "rota.html")))
 app.get("/suitepim/product-data", (req, res) => res.redirect(302, "/suitepim/web-management"))
 app.get("/suitepim/web-management", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-web-management.html")))
 app.get("/suitepim/product-validation", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-product-validation.html")))

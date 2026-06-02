@@ -6,6 +6,7 @@ const publicExactPaths = new Set([
   "/api/login",
   "/api/forgot-password",
   "/api/reset-password",
+  "/api/google/callback",
   "/health",
 ]);
 

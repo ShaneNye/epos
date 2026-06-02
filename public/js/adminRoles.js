@@ -19,6 +19,7 @@ document.addEventListener("DOMContentLoaded", () => {
     { value: "cashflow", label: "Cashflow" },
     { value: "engagement", label: "Engagement" },
     { value: "logistics", label: "Logistics" },
+    { value: "rota", label: "Rota" },
     { value: "suitepim", label: "SuitePim" },
     { value: "systems-processes", label: "Systems & Processes" },
     { value: "promotions", label: "Promotions" },

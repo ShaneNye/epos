@@ -272,7 +272,9 @@ async function applyAccessRestrictions(activeRole, token) {
         (normalizedAllowed.includes("news") ||
           normalizedAllowed.includes("news-post") ||
           normalizedAllowed.includes("admin"));
-      link.style.display = canSeeNews || normalizedAllowed.includes(href) ? "" : "none";
+      const canSeeAdminDefault =
+        normalizedAllowed.includes("admin") && ["admin", "rota"].includes(href);
+      link.style.display = canSeeNews || canSeeAdminDefault || normalizedAllowed.includes(href) ? "" : "none";
     });
 
     // Normalize paths
@@ -295,6 +297,10 @@ async function applyAccessRestrictions(activeRole, token) {
       ["", "home", "index.html", "news"].includes(currentPath)
     ) {
       console.log("🏠 Base or home path detected — skipping access redirect");
+      return;
+    }
+
+    if (currentPath === "rota" && normalizedAllowed.includes("admin")) {
       return;
     }
 

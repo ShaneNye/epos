@@ -1,0 +1,70 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>EPOS Rota</title>
+  <link rel="stylesheet" href="/css/rota.css">
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/js/rota.js" defer></script>
+</head>
+
+<body>
+  <div id="menu"></div>
+
+  <main class="content rota-page">
+    <header class="rota-header">
+      <div>
+        <h1>Rota</h1>
+        <p id="rotaSummary">Loading this week's rota...</p>
+      </div>
+      <div class="rota-actions">
+        <button type="button" id="previousWeekBtn" class="rota-icon-btn" title="Previous week" aria-label="Previous week">
+          <span aria-hidden="true">&lt;</span>
+        </button>
+        <button type="button" id="thisWeekBtn" class="btn-secondary">This Week</button>
+        <button type="button" id="nextWeekBtn" class="rota-icon-btn" title="Next week" aria-label="Next week">
+          <span aria-hidden="true">&gt;</span>
+        </button>
+        <button type="button" id="refreshRotaBtn" class="btn-primary">Refresh</button>
+      </div>
+    </header>
+
+    <section class="rota-filters" aria-label="Rota filters">
+      <label>
+        Start
+        <input type="date" id="startDateFilter">
+      </label>
+      <label>
+        End
+        <input type="date" id="endDateFilter">
+      </label>
+      <label>
+        Employee
+        <select id="employeeFilter">
+          <option value="">All Employees</option>
+        </select>
+      </label>
+      <label>
+        Location
+        <select id="locationFilter">
+          <option value="">All Locations</option>
+        </select>
+      </label>
+    </section>
+
+    <section class="rota-calendar-panel" aria-live="polite">
+      <div id="rotaLoading" class="rota-loading">
+        <div class="rota-spinner" aria-hidden="true"></div>
+        <span>Loading rota...</span>
+      </div>
+      <div id="rotaEmpty" class="rota-empty hidden">No rota entries match these filters.</div>
+      <div id="rotaCalendar" class="rota-calendar"></div>
+    </section>
+  </main>
+</body>
+
+</html>
