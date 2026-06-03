@@ -4,6 +4,14 @@ const pool = require("../db");
 const router = express.Router();
 const { getSession } = require("../sessions");
 const { clearUserTokenCache } = require("../netsuiteClient");
+const {
+  cleanupExpiredUserStatuses,
+  ensureUserStatusColumn,
+  normalizeStatusEmoji,
+  normalizeStatusText,
+  normalizeUserStatus,
+  statusExpirySql,
+} = require("../utils/userStatus");
 
 
 /* -------------------- Helper -------------------- */
@@ -15,6 +23,10 @@ function maskUser(u) {
     lastName: u.lastname,
     netsuiteId: u.netsuiteid,
     profileImage: u.profileimage,
+    eposStatus: normalizeUserStatus(u.epos_status),
+    eposStatusEmoji: u.epos_status_emoji || "",
+    eposStatusText: u.epos_status_text || "",
+    eposStatusExpiresAt: u.epos_status_expires_at || null,
     createdAt: u.createdat,
     roles: u.roles || [],
     location: u.location_id
@@ -30,9 +42,12 @@ function maskUser(u) {
 /* -------------------- GET all users -------------------- */
 router.get("/", async (req, res) => {
   try {
+    await cleanupExpiredUserStatuses();
+    res.set("Cache-Control", "no-store");
     const result = await pool.query(`
   SELECT 
-    u.id, u.email, u.firstname, u.lastname, u.netsuiteid, u.profileimage, u.createdat,
+    u.id, u.email, u.firstname, u.lastname, u.netsuiteid, u.profileimage,
+    u.epos_status, u.epos_status_emoji, u.epos_status_text, u.epos_status_expires_at, u.createdat,
     u.location_id, l.name AS location_name, l.netsuite_internal_id,
     STRING_AGG(r.name, ',' ORDER BY r.id) AS role_names,
     STRING_AGG(r.id::text, ',' ORDER BY r.id) AS role_ids,
@@ -65,8 +80,101 @@ router.get("/", async (req, res) => {
     res.status(500).json({ ok: false, error: "DB error" });
   }
 });
+
+router.post("/status", async (req, res) => {
+  try {
+    await cleanupExpiredUserStatuses();
+    res.set("Cache-Control", "no-store");
+
+    const authHeader = req.headers.authorization || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+    if (!token) return res.status(401).json({ ok: false, error: "Missing token" });
+
+    const session = await getSession(token);
+    if (!session) return res.status(401).json({ ok: false, error: "Invalid session" });
+
+    const body = req.body || {};
+    const status = normalizeUserStatus(body.status || body.epos_status);
+    const emoji = normalizeStatusEmoji(body.emoji ?? body.epos_status_emoji);
+    const text = normalizeStatusText(body.text ?? body.epos_status_text);
+    const clearIfText = normalizeStatusText(body.clearIfText);
+    const hasCustomStatus = Boolean(emoji || text);
+    const expiresInSeconds = Math.min(
+      900,
+      Math.max(30, Number(body.expiresInSeconds || 120) || 120)
+    );
+
+    if (status === "available" && !hasCustomStatus && clearIfText) {
+      const result = await pool.query(
+        `UPDATE users
+            SET epos_status = 'available',
+                epos_status_emoji = NULL,
+                epos_status_text = NULL,
+                epos_status_expires_at = NULL
+          WHERE id = $1
+            AND epos_status_text = $2
+        RETURNING id, epos_status, epos_status_emoji, epos_status_text, epos_status_expires_at`,
+        [session.id, clearIfText]
+      );
+
+      const user = result.rows[0];
+      return res.json({
+        ok: true,
+        skipped: !user,
+        user: user
+          ? {
+              id: user.id,
+              eposStatus: normalizeUserStatus(user.epos_status),
+              eposStatusEmoji: user.epos_status_emoji || "",
+              eposStatusText: user.epos_status_text || "",
+              eposStatusExpiresAt: user.epos_status_expires_at || null,
+            }
+          : null,
+      });
+    }
+
+    const result = await pool.query(
+      `UPDATE users
+          SET epos_status = $1,
+              epos_status_emoji = $2,
+              epos_status_text = $3,
+              epos_status_expires_at = CASE
+                WHEN $4::boolean THEN NOW() + ($5::int * INTERVAL '1 second')
+                ELSE NULL
+              END
+        WHERE id = $6
+      RETURNING id, epos_status, epos_status_emoji, epos_status_text, epos_status_expires_at`,
+      [
+        status,
+        hasCustomStatus ? emoji || null : null,
+        hasCustomStatus ? text || null : null,
+        hasCustomStatus,
+        expiresInSeconds,
+        session.id,
+      ]
+    );
+
+    const user = result.rows[0];
+    return res.json({
+      ok: true,
+      user: {
+        id: user.id,
+        eposStatus: normalizeUserStatus(user.epos_status),
+        eposStatusEmoji: user.epos_status_emoji || "",
+        eposStatusText: user.epos_status_text || "",
+        eposStatusExpiresAt: user.epos_status_expires_at || null,
+      },
+    });
+  } catch (err) {
+    console.error("POST /api/users/status failed:", err);
+    res.status(500).json({ ok: false, error: "Server error" });
+  }
+});
+
 router.put("/self-update", async (req, res) => {
   try {
+    await cleanupExpiredUserStatuses();
+    res.set("Cache-Control", "no-store");
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
     if (!token) return res.status(401).json({ ok: false, error: "Missing token" });
@@ -119,6 +227,7 @@ router.put("/self-update", async (req, res) => {
       if (f === "firstName") allowedDb.add("firstname");
       else if (f === "lastName") allowedDb.add("lastname");
       else if (f === "profileImage") allowedDb.add("profileimage");
+      else if (f === "eposStatus") allowedDb.add("epos_status");
       else if (f === "primaryStore") allowedDb.add("location_id");
       else if (f === "locationId") allowedDb.add("location_id");
       else if (f === "netsuiteId") allowedDb.add("netsuiteid");
@@ -139,11 +248,29 @@ router.put("/self-update", async (req, res) => {
       themehex: body.themehex,
     };
 
+    if (Object.prototype.hasOwnProperty.call(body, "epos_status") || Object.prototype.hasOwnProperty.call(body, "eposStatus")) {
+      candidateUpdates.epos_status = normalizeUserStatus(body.epos_status ?? body.eposStatus);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "epos_status_emoji") || Object.prototype.hasOwnProperty.call(body, "eposStatusEmoji")) {
+      candidateUpdates.epos_status_emoji = normalizeStatusEmoji(body.epos_status_emoji ?? body.eposStatusEmoji);
+    }
+    if (Object.prototype.hasOwnProperty.call(body, "epos_status_text") || Object.prototype.hasOwnProperty.call(body, "eposStatusText")) {
+      candidateUpdates.epos_status_text = normalizeStatusText(body.epos_status_text ?? body.eposStatusText);
+    }
+
     const updates = {};
     for (const [k, v] of Object.entries(candidateUpdates)) {
-      if (!allowedDb.has(k)) continue;
+      if (!["epos_status", "epos_status_emoji", "epos_status_text"].includes(k) && !allowedDb.has(k)) continue;
       if (v === undefined) continue;
       updates[k] = (v === "" ? null : v);
+    }
+
+    if (
+      Object.prototype.hasOwnProperty.call(updates, "epos_status_emoji") ||
+      Object.prototype.hasOwnProperty.call(updates, "epos_status_text")
+    ) {
+      const hasCustomStatus = Boolean(updates.epos_status_emoji || updates.epos_status_text);
+      updates.epos_status_expires_at = hasCustomStatus ? { rawSql: statusExpirySql() } : null;
     }
 
     const keys = Object.keys(updates);
@@ -160,14 +287,23 @@ router.put("/self-update", async (req, res) => {
       });
     }
 
-    const setClauses = keys.map((col, i) => `${col} = $${i + 1}`).join(", ");
-    const values = keys.map(k => updates[k]);
+    const values = [];
+    const setClauses = keys.map((col) => {
+      const value = updates[col];
+      if (value && typeof value === "object" && value.rawSql) {
+        return `${col} = ${value.rawSql}`;
+      }
+      values.push(value);
+      return `${col} = $${values.length}`;
+    }).join(", ");
 
     const result = await pool.query(
       `UPDATE users
           SET ${setClauses}
         WHERE id = $${values.length + 1}
-      RETURNING id, email, firstname, lastname, profileimage, location_id, netsuiteid, invoicelocationid`,
+      RETURNING id, email, firstname, lastname, profileimage,
+        epos_status, epos_status_emoji, epos_status_text, epos_status_expires_at,
+        location_id, netsuiteid, invoicelocationid`,
       [...values, userId]
     );
 
@@ -182,6 +318,10 @@ router.put("/self-update", async (req, res) => {
         firstName: u.firstname,
         lastName: u.lastname,
         profileImage: u.profileimage,
+        eposStatus: normalizeUserStatus(u.epos_status),
+        eposStatusEmoji: u.epos_status_emoji || "",
+        eposStatusText: u.epos_status_text || "",
+        eposStatusExpiresAt: u.epos_status_expires_at || null,
         primaryStore: u.location_id || null,
         netsuiteId: u.netsuiteid || null,
         invoiceLocationId: u.invoicelocationid || null,
@@ -197,6 +337,7 @@ router.put("/self-update", async (req, res) => {
 /* -------------------- GET single user -------------------- */
 router.get("/:id", async (req, res) => {
   try {
+    await cleanupExpiredUserStatuses();
     const userResult = await pool.query(
       `
       SELECT 

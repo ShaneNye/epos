@@ -12,6 +12,7 @@
 
     <!-- MUST be absolute for popup -->
     <script src="/js/storage.js"></script>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/emoji-picker-element@1/index.js"></script>
 
     <style>
         body {
@@ -65,6 +66,79 @@
             border-radius: 6px;
             font-size: 0.95rem;
             box-sizing: border-box;
+        }
+
+        .status-grid {
+            display: grid;
+            grid-template-columns: 48px 1fr;
+            gap: 8px;
+        }
+
+        .emoji-field {
+            position: relative;
+        }
+
+        .emoji-trigger {
+            width: 48px;
+            height: 38px;
+            padding: 0;
+            border: 1px solid #d1d8e0;
+            border-radius: 6px;
+            background: #fff;
+            cursor: pointer;
+            font-size: 1.2rem;
+            line-height: 1;
+        }
+
+        .emoji-trigger:hover,
+        .emoji-trigger:focus-visible {
+            border-color: var(--brand);
+            outline: none;
+        }
+
+        .emoji-picker-popover {
+            position: absolute;
+            top: calc(100% + 6px);
+            left: 0;
+            z-index: 30;
+            width: min(360px, calc(100vw - 32px));
+            overflow: hidden;
+            border: 1px solid #d1d8e0;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 10px 28px rgba(15, 23, 42, 0.18);
+        }
+
+        .emoji-clear {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 100%;
+            min-height: 34px;
+            border: 0;
+            border-bottom: 1px solid #e3e7ec;
+            background: #fafbfc;
+            color: #536170;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: 700;
+        }
+
+        .emoji-clear:hover,
+        .emoji-clear:focus-visible {
+            background: #edf8fb;
+            color: var(--brand);
+            outline: none;
+        }
+
+        .emoji-picker-popover[hidden] {
+            display: none;
+        }
+
+        .emoji-picker-popover emoji-picker {
+            width: 100%;
+            height: 360px;
+            --border-radius: 8px;
         }
 
         /* Make the color picker show as a real color picker even if global styles are aggressive */
@@ -140,7 +214,13 @@
         --------------------------------------------------------- */
         const session = storageGet();
         const token = session?.token;
-        const activeRoleName = session?.activeRole;
+        function getActiveRoleName(session) {
+            if (typeof session?.activeRole === "string") return session.activeRole;
+            if (session?.activeRole?.name) return session.activeRole.name;
+            return "";
+        }
+
+        const activeRoleName = getActiveRoleName(session);
 
         if (!token || !activeRoleName) {
             alert("Missing session. Please log in again.");
@@ -195,6 +275,17 @@
             "prod_netsuite_token_secret"
         ];
 
+        const STATUS_FIELDS = [
+            "epos_status",
+            "eposStatus",
+            "epos_status_emoji",
+            "eposStatusEmoji",
+            "epos_status_text",
+            "eposStatusText",
+            "epos_status_expires_at",
+            "eposStatusExpiresAt"
+        ];
+
         /* ---------------------------------------------------------
            Location fields (DB-driven)
         --------------------------------------------------------- */
@@ -208,6 +299,20 @@
             "storeId",
             "primaryStore"
         ];
+
+        const STATUS_OPTIONS = [
+            { value: "available", label: "Available", colour: "#168461" },
+            { value: "busy", label: "Busy", colour: "#d97706" },
+            { value: "unavailable", label: "Unavailable", colour: "#c2413a" }
+        ];
+
+        function escapeAttr(value) {
+            return String(value || "")
+                .replace(/&/g, "&amp;")
+                .replace(/"/g, "&quot;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;");
+        }
 
         /* ---------------------------------------------------------
            Get user value (handles snake_case vs camelCase)
@@ -238,6 +343,117 @@
             if (user[camel] !== undefined && user[camel] !== null) return user[camel];
 
             return "";
+        }
+
+        function createStatusField(value) {
+            const current = STATUS_OPTIONS.some(option => option.value === value) ? value : "available";
+            const wrapper = document.createElement("div");
+            wrapper.className = "form-field";
+            wrapper.innerHTML = `
+                <label>Status</label>
+                <select name="epos_status">
+                    ${STATUS_OPTIONS.map(option => `
+                        <option value="${option.value}" ${option.value === current ? "selected" : ""}>
+                            ${option.label}
+                        </option>
+                    `).join("")}
+                </select>
+                <small style="display:block; margin-top:6px; opacity:.75;">
+                    This controls your call availability on the rota.
+                </small>
+            `;
+            return wrapper;
+        }
+
+        function createCustomStatusField(user) {
+            const wrapper = document.createElement("div");
+            wrapper.className = "form-field";
+            const currentEmoji = user.eposStatusEmoji || "";
+            const currentText = escapeAttr(user.eposStatusText || "");
+            wrapper.innerHTML = `
+                <label>One-Time Status</label>
+                <div class="status-grid">
+                    <div class="emoji-field">
+                        <button
+                            type="button"
+                            class="emoji-trigger"
+                            aria-label="Choose status emoji"
+                            aria-expanded="false"
+                        >${escapeAttr(currentEmoji) || "☺"}</button>
+                        <input
+                            type="hidden"
+                            name="epos_status_emoji"
+                            value="${escapeAttr(currentEmoji)}"
+                            data-emoji-input
+                        >
+                        <div class="emoji-picker-popover" hidden>
+                            <button type="button" class="emoji-clear" aria-label="Clear status emoji">×</button>
+                            <emoji-picker></emoji-picker>
+                        </div>
+                    </div>
+                    <input
+                        type="text"
+                        name="epos_status_text"
+                        value="${currentText}"
+                        maxlength="80"
+                        placeholder="e.g. On lunch, at warehouse"
+                    >
+                </div>
+                <small style="display:block; margin-top:6px; opacity:.75;">
+                    Optional. Clears automatically at 5pm.
+                </small>
+            `;
+            wireEmojiPicker(wrapper);
+            return wrapper;
+        }
+
+        function wireEmojiPicker(root) {
+            const trigger = root.querySelector(".emoji-trigger");
+            const input = root.querySelector("[data-emoji-input]");
+            const popover = root.querySelector(".emoji-picker-popover");
+            const picker = root.querySelector("emoji-picker");
+            const clear = root.querySelector(".emoji-clear");
+            if (!trigger || !input || !popover || !picker || !clear) return;
+
+            function closePicker() {
+                popover.hidden = true;
+                trigger.setAttribute("aria-expanded", "false");
+            }
+
+            function openPicker() {
+                popover.hidden = false;
+                trigger.setAttribute("aria-expanded", "true");
+            }
+
+            trigger.addEventListener("click", (event) => {
+                event.stopPropagation();
+                if (popover.hidden) openPicker();
+                else closePicker();
+            });
+
+            picker.addEventListener("emoji-click", (event) => {
+                const emoji = event.detail?.unicode || event.detail?.emoji?.unicode || "";
+                if (!emoji) return;
+                input.value = emoji;
+                trigger.textContent = emoji;
+                closePicker();
+            });
+
+            clear.addEventListener("click", (event) => {
+                event.stopPropagation();
+                input.value = "";
+                trigger.textContent = "☺";
+                closePicker();
+            });
+
+            document.addEventListener("click", (event) => {
+                if (root.contains(event.target)) return;
+                closePicker();
+            });
+
+            document.addEventListener("keydown", (event) => {
+                if (event.key === "Escape") closePicker();
+            });
         }
 
         /* ---------------------------------------------------------
@@ -363,15 +579,19 @@
             const locations = await loadLocations();
 
             manageForm.innerHTML = "";
+            manageForm.appendChild(createStatusField(user.eposStatus || "available"));
+            manageForm.appendChild(createCustomStatusField(user));
 
             if (allowed.length === 0) {
-                manageForm.innerHTML = `<p>No editable fields assigned to this role.</p>`;
-                document.getElementById("saveBtn").disabled = true;
+                const note = document.createElement("p");
+                note.textContent = "No other editable fields are assigned to this role.";
+                manageForm.appendChild(note);
                 return;
             }
 
             for (const field of allowed) {
                 if (DISALLOWED_FIELDS.includes(field)) continue;
+                if (STATUS_FIELDS.includes(field)) continue;
                 manageForm.appendChild(createField(field, getUserValue(user, field), locations));
             }
         }

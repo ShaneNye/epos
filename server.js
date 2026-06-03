@@ -31,6 +31,7 @@ const {
   isPublicPath,
 } = require("./utils/accessControlRules");
 const { getNetSuiteHomeUrl } = require("./utils/netsuiteEnvironment");
+const { ensureUserStatusColumn } = require("./utils/userStatus");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1160,5 +1161,8 @@ app.use((req, res) => {
 app.listen(PORT, () => {
   console.log(`✅ Server running at http://localhost:${PORT}`);
   itemOptionsRoute.startScheduler();
+  ensureUserStatusColumn().catch((err) => {
+    console.error("Failed to initialize user status columns:", err.message);
+  });
 
 });

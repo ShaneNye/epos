@@ -15,6 +15,7 @@ const MANAGEMENT_FIELDS = [
   "location_id",
   "netsuiteid",
   "invoicelocationid",
+  "epos_status",
   "themehex",  
 ];
 

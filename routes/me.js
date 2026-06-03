@@ -2,11 +2,18 @@
 const express = require("express");
 const pool = require("../db");
 const { getSession } = require("../sessions");
+const {
+  cleanupExpiredUserStatuses,
+  ensureUserStatusColumn,
+  normalizeUserStatus,
+} = require("../utils/userStatus");
 
 const router = express.Router();
 
 router.get("/", async (req, res) => {
   try {
+    await cleanupExpiredUserStatuses();
+    res.set("Cache-Control", "no-store");
     const authHeader = req.headers.authorization || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
     if (!token) {
@@ -26,6 +33,10 @@ router.get("/", async (req, res) => {
           firstname,
           lastname,
           profileimage,
+          epos_status,
+          epos_status_emoji,
+          epos_status_text,
+          epos_status_expires_at,
           themehex,
           location_id AS "primaryStore"
        FROM users
@@ -59,6 +70,10 @@ router.get("/", async (req, res) => {
         firstName: u.firstname,
         lastName: u.lastname,
         profileImage: u.profileimage,
+        eposStatus: normalizeUserStatus(u.epos_status),
+        eposStatusEmoji: u.epos_status_emoji || "",
+        eposStatusText: u.epos_status_text || "",
+        eposStatusExpiresAt: u.epos_status_expires_at || null,
         roles,
         primaryStore: u.primaryStore || null,
         themeHex: u.themehex || null,

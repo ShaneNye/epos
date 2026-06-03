@@ -229,10 +229,18 @@
   font-size: 0.84rem;
   font-weight: 700;
   line-height: 1.25;
+  cursor: pointer;
 }
 
 .rota-chip:last-child {
   margin-bottom: 0;
+}
+
+.rota-chip:hover,
+.rota-chip:focus-visible {
+  border-color: var(--brand, #006f93);
+  background: #e7f5f8;
+  outline: none;
 }
 
 .rota-avatar {
@@ -270,6 +278,47 @@
   overflow-wrap: anywhere;
 }
 
+.rota-employee-status {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+}
+
+.rota-status-dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #168461;
+  box-shadow: 0 0 0 2px rgba(22, 132, 97, 0.12);
+}
+
+.rota-status-emoji {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 16px;
+  width: 16px;
+  height: 16px;
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.rota-status-busy .rota-status-dot {
+  background: #d97706;
+  box-shadow: 0 0 0 2px rgba(217, 119, 6, 0.14);
+}
+
+.rota-status-unavailable {
+  opacity: 0.72;
+}
+
+.rota-status-unavailable .rota-status-dot {
+  background: #c2413a;
+  box-shadow: 0 0 0 2px rgba(194, 65, 58, 0.14);
+}
+
 .rota-employee-text {
   display: block;
   flex: 1 1 auto;
@@ -282,6 +331,16 @@
   color: var(--muted, #697684);
   font-size: 0.72rem;
   font-weight: 700;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+
+.rota-custom-status {
+  display: block;
+  margin-top: 3px;
+  color: #3b4a56;
+  font-size: 0.72rem;
+  font-weight: 800;
   line-height: 1.15;
   overflow-wrap: anywhere;
 }
@@ -310,6 +369,19 @@
 .rota-call-btn:hover {
   border-color: var(--brand, #006f93);
   background: #fffdf0;
+}
+
+.rota-call-btn:disabled {
+  border-color: #d7dde3;
+  background: #eef2f5;
+  color: #94a0aa;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.rota-call-btn:disabled:hover {
+  border-color: #d7dde3;
+  background: #eef2f5;
 }
 
 .rota-empty,
