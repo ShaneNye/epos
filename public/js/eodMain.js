@@ -213,6 +213,8 @@ async function initDailyBalancing() {
   const tableBody = document.getElementById("dailyBalanceTableBody");
   const summaryPill = document.getElementById("dailyBalanceSummaryPill");
   const summaryText = document.getElementById("dailyBalanceSummaryText");
+  const outstandingIntPosTableBody = document.getElementById("outstandingIntPosTableBody");
+  const outstandingIntPosSummary = document.getElementById("outstandingIntPosSummary");
 
   // Sign-off elements
   const signoffUserSelect = document.getElementById("signoffUserSelect");
@@ -234,6 +236,8 @@ async function initDailyBalancing() {
   const cashBody = document.getElementById("cashflowTableBody");
 
   let allDeposits = [];
+  let allOutstandingIntPos = [];
+  let currentOutstandingIntPosRows = [];
   let expandedMethod = null;
   let selectedLocationId = null;
   let locations = [];
@@ -738,6 +742,21 @@ async function initDailyBalancing() {
   }
 
   /* -------------------------------------------------
+     LOAD OUTSTANDING INTERCOMPANY PURCHASE ORDERS
+  ------------------------------------------------- */
+  try {
+    const res = await fetch(`/api/eod/outstanding-int-pos?refresh=1&_=${Date.now()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      cache: "no-store",
+    });
+    const data = await res.json();
+    allOutstandingIntPos = data.results || [];
+    console.log("Loaded outstanding intercompany POs:", allOutstandingIntPos.length);
+  } catch (err) {
+    console.error("Failed to load outstanding intercompany POs", err);
+  }
+
+  /* -------------------------------------------------
      RENDER STORE ➝ GROUPED PAYMENT METHODS
   ------------------------------------------------- */
   function renderStore(storeName) {
@@ -848,6 +867,52 @@ async function initDailyBalancing() {
       tableBody.appendChild(tr);
       tableBody.appendChild(detail);
     });
+  }
+
+  function renderOutstandingIntPos(storeName) {
+    currentOutstandingIntPosRows = [];
+    if (!outstandingIntPosTableBody) return;
+
+    outstandingIntPosTableBody.innerHTML = "";
+
+    if (!storeName) {
+      outstandingIntPosSummary?.classList.add("hidden");
+      outstandingIntPosTableBody.innerHTML = `
+        <tr><td colspan="2" class="outstanding-int-pos-empty">
+          Select a store to view outstanding intercompany purchase orders.
+        </td></tr>`;
+      return;
+    }
+
+    currentOutstandingIntPosRows = allOutstandingIntPos.filter(
+      (r) => cleanStore(r["Store"]).toLowerCase() === storeName.toLowerCase()
+    );
+
+    if (currentOutstandingIntPosRows.length === 0) {
+      outstandingIntPosSummary?.classList.add("hidden");
+      outstandingIntPosTableBody.innerHTML = `
+        <tr><td colspan="2" class="outstanding-int-pos-empty">
+          No outstanding intercompany purchase orders found for this store.
+        </td></tr>`;
+      return;
+    }
+
+    if (outstandingIntPosSummary) {
+      outstandingIntPosSummary.textContent =
+        `${storeName} - ${currentOutstandingIntPosRows.length} outstanding intercompany purchase order${currentOutstandingIntPosRows.length === 1 ? "" : "s"}`;
+      outstandingIntPosSummary.classList.remove("hidden");
+    }
+
+    outstandingIntPosTableBody.innerHTML = currentOutstandingIntPosRows
+      .map(
+        (row) => `
+          <tr>
+            <td>${escapeHtml(row["Date"] || "")}</td>
+            <td>${escapeHtml(row["Document Number"] || "")}</td>
+          </tr>
+        `
+      )
+      .join("");
   }
 
   /* -------------------------------------------------
@@ -1093,6 +1158,7 @@ async function initDailyBalancing() {
     updateCurrentBalances();
 
     renderStore(selected);
+    renderOutstandingIntPos(selected);
     renderCashflow(selected);
 
     try {
@@ -1114,6 +1180,7 @@ async function initDailyBalancing() {
     updateCurrentBalances();
 
     renderStore(userStoreName);
+    renderOutstandingIntPos(userStoreName);
     renderCashflow(userStoreName);
 
     try {
@@ -1188,6 +1255,14 @@ async function initDailyBalancing() {
         signoffStatus.textContent = "Please select a store in Step 2.";
         signoffStatus.classList.add("signoff-status--error");
         return;
+      }
+
+      if (currentOutstandingIntPosRows.length > 0) {
+        const continueWithOutstanding = confirm(
+          "There are still outstanding intercompany purchase orders are you sure you want to continue"
+        );
+
+        if (!continueWithOutstanding) return;
       }
 
       const depositsForStore = allDeposits.filter(

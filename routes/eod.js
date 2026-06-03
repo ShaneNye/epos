@@ -258,6 +258,75 @@ router.get("/daily-balance", async (req, res) => {
 
 
 /* ============================================================
+   GET OUTSTANDING INTERCOMPANY PURCHASE ORDERS
+   Via NetSuite Scriptlet from EOD_OUTSTANDING_INT_POS_URL
+   ============================================================ */
+router.get("/outstanding-int-pos", async (req, res) => {
+  try {
+    setNoStore(res);
+
+    const baseUrl = process.env.EOD_OUTSTANDING_INT_POS_URL;
+    const token = process.env.EOD_OUTSTANDING_INT_POS;
+
+    if (!baseUrl || !token) {
+      return res.status(500).json({
+        ok: false,
+        error: "Missing EOD_OUTSTANDING_INT_POS_URL or EOD_OUTSTANDING_INT_POS in .env",
+      });
+    }
+
+    const url = `${baseUrl}&token=${encodeURIComponent(token)}`;
+    console.log("Fetching outstanding intercompany POs from NetSuite:", url);
+
+    const nsRes = await fetch(url);
+    const text = await nsRes.text();
+
+    if (!nsRes.ok) {
+      console.error("NetSuite outstanding intercompany POs scriptlet error:", text);
+      return res.status(500).json({
+        ok: false,
+        error: "NetSuite outstanding intercompany POs scriptlet returned an error.",
+        raw: text,
+      });
+    }
+
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch (err) {
+      console.error("Invalid JSON from NetSuite outstanding intercompany POs:", err.message);
+      return res.status(500).json({
+        ok: false,
+        error: "NetSuite scriptlet returned invalid JSON.",
+        raw: text,
+      });
+    }
+
+    let results = [];
+
+    if (Array.isArray(json)) {
+      results = json;
+    } else if (Array.isArray(json.results)) {
+      results = json.results;
+    } else if (Array.isArray(json.data)) {
+      results = json.data;
+    }
+
+    return res.json({
+      ok: true,
+      recordType: json.recordType || "transaction",
+      searchId: json.searchId || "",
+      count: results.length,
+      results,
+    });
+  } catch (err) {
+    console.error("/api/eod/outstanding-int-pos error:", err);
+    return res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+
+/* ============================================================
    POST /api/eod/submit  — Save End Of Day
 ============================================================ */
 router.post("/submit", async (req, res) => {

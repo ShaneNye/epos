@@ -248,6 +248,48 @@
 }
 
 /* ============================================================
+   OUTSTANDING INTERCOMPANY PURCHASE ORDERS
+============================================================ */
+
+.outstanding-int-pos-summary {
+    background: #fff8e8;
+    border: 1px solid #f1d9a5;
+    padding: 10px 12px;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    color: #694a12;
+    margin-bottom: 1rem;
+}
+
+.outstanding-int-pos-table-wrapper {
+    margin-top: 10px;
+    overflow-x: auto;
+}
+
+.outstanding-int-pos-table {
+    width: 100%;
+    border-collapse: collapse;
+}
+
+.outstanding-int-pos-table th {
+    background: #f3f7fb;
+    border-bottom: 1px solid #d8e2eb;
+    padding: 9px;
+    font-weight: 600;
+}
+
+.outstanding-int-pos-table td {
+    padding: 9px;
+    border-bottom: 1px solid #eef2f6;
+}
+
+.outstanding-int-pos-empty {
+    text-align: center;
+    padding: 14px;
+    color: #888;
+}
+
+/* ============================================================
    STEP 3 — CASHFLOW
 ============================================================ */
 
