@@ -576,7 +576,7 @@ tr:hover td,
   body:not(.sidebar-expanded),
   body.sidebar-expanded {
     padding-left: 0;
-    padding-bottom: 72px;
+    padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
   }
 
   .sidebar,
@@ -868,7 +868,7 @@ tr:hover td,
   body,
   body:not(.sidebar-expanded),
   body.sidebar-expanded {
-    padding-bottom: 82px;
+    padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px));
   }
 }
 
@@ -877,7 +877,7 @@ tr:hover td,
   body:not(.sidebar-expanded),
   body.sidebar-expanded {
     padding-left: 0 !important;
-    padding-bottom: 82px !important;
+    padding-bottom: calc(108px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
   .sidebar,

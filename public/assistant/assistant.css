@@ -270,3 +270,26 @@
     transform: rotate(360deg);
   }
 }
+
+@media (max-width: 900px) {
+  .assistant-toggle {
+    right: 14px;
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px) + 12px);
+    width: 48px;
+    height: 48px;
+    box-shadow: 0 8px 20px rgba(0, 72, 96, 0.28);
+  }
+
+  .assistant-toggle svg {
+    width: 24px;
+    height: 24px;
+  }
+
+  .assistant {
+    right: 10px;
+    bottom: calc(74px + env(safe-area-inset-bottom, 0px) + 68px);
+    width: min(360px, calc(100vw - 20px));
+    height: min(460px, calc(100dvh - 170px));
+    border-radius: 10px;
+  }
+}

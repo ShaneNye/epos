@@ -75,7 +75,8 @@ document.addEventListener("DOMContentLoaded", () => {
         { key: "salesThisMonth", id: "salesThisMonthWidget" },
         { key: "salesByStore", id: "salesByStoreWidget" },
         { key: "topThree", id: "topThreeWidget" },
-        { key: "salesForcast", id: "salesForecastWidget"}
+        { key: "salesForcast", id: "salesForecastWidget"},
+        { key: "homeRota", id: "homeRotaWidget", selfManaged: true}
       ];
 
       /* ============================================================
@@ -84,6 +85,7 @@ document.addEventListener("DOMContentLoaded", () => {
       allWidgets.forEach(({ key, id }) => {
         const el = document.getElementById(id);
         if (!el) return;
+        if (el.id === "homeRotaWidget") return;
         if (allowedWidgets.has(key)) {
           el.style.display = "flex";
         } else {
@@ -97,10 +99,13 @@ document.addEventListener("DOMContentLoaded", () => {
       ============================================================ */
       const visible = allWidgets.some(({ id }) => {
         const el = document.getElementById(id);
-        return el && el.style.display !== "none";
+        return el && !el.hidden && el.style.display !== "none";
       });
+      const hasSelfManagedWidget = allWidgets.some(({ id, selfManaged }) =>
+        selfManaged && document.getElementById(id)
+      );
 
-      if (!visible) {
+      if (!visible && !hasSelfManagedWidget) {
         const grid = document.getElementById("dashboardGrid");
         if (grid) {
           grid.innerHTML = `
