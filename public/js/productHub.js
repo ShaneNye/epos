@@ -292,6 +292,7 @@
       return {
         itemId,
         itemName: agg.itemName || row.Name || row.Item || "",
+        lotNumber: row["Inventory Number"] || row.inventoryNumber || "-",
         location: row.Location || "-",
         bin: row["Bin Number"] || row.Bin || row.bin || "-",
         status: row.Status || "-",
@@ -303,7 +304,7 @@
 
   function renderStockLoading() {
     if (!el.productHubStockBody) return;
-    el.productHubStockBody.innerHTML = `<tr><td colspan="4">Loading stock...</td></tr>`;
+    el.productHubStockBody.innerHTML = `<tr><td colspan="5">Loading stock...</td></tr>`;
   }
 
   function renderStock(row) {
@@ -316,9 +317,10 @@
       .forEach((stock) => {
         const available = parseNumber(stock.available);
         if (available <= 0) return;
-        const key = `${clean(stock.location)}||${clean(stock.bin)}||${clean(stock.status)}`;
+        const key = `${clean(stock.location)}||${clean(stock.lotNumber)}||${clean(stock.bin)}||${clean(stock.status)}`;
         const existing = grouped.get(key) || {
           location: stock.location || "-",
+          lotNumber: stock.lotNumber || "-",
           bin: stock.bin || "-",
           status: stock.status || "-",
           available: 0,
@@ -329,6 +331,7 @@
 
     const rows = Array.from(grouped.values()).sort((a, b) =>
       clean(a.location).localeCompare(clean(b.location)) ||
+      clean(a.lotNumber).localeCompare(clean(b.lotNumber)) ||
       clean(a.bin).localeCompare(clean(b.bin)) ||
       clean(a.status).localeCompare(clean(b.status))
     );
@@ -337,12 +340,13 @@
       ? rows.map((stock) => `
           <tr>
             <td>${escapeHtml(stock.location)}</td>
+            <td>${escapeHtml(stock.lotNumber)}</td>
             <td>${escapeHtml(stock.bin)}</td>
             <td>${escapeHtml(stock.status)}</td>
             <td class="align-right">${stock.available}</td>
           </tr>
         `).join("")
-      : `<tr><td colspan="4">No available stock found for this item.</td></tr>`;
+      : `<tr><td colspan="5">No available stock found for this item.</td></tr>`;
   }
 
   async function startScanner() {
