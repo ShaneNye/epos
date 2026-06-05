@@ -307,6 +307,20 @@ async function setupDirectMessage(accessToken, targetEmail) {
   });
 }
 
+async function setupPersonalStockSpace(accessToken, userId, displayName) {
+  return googleJson("https://chat.googleapis.com/v1/spaces:setup", {
+    method: "POST",
+    accessToken,
+    body: {
+      requestId: `epos-product-hub-stock-${userId}`,
+      space: {
+        spaceType: "SPACE",
+        displayName: String(displayName || "EPOS Product Hub Stock").slice(0, 128),
+      },
+    },
+  });
+}
+
 function googleMeetUrl(space) {
   return (
     space?.meetingUri ||
@@ -458,6 +472,53 @@ router.post("/meet-call", async (req, res) => {
       ok: false,
       code: err.code || "GOOGLE_CALL_FAILED",
       error: err.message || "Failed to start Google call.",
+    });
+  }
+});
+
+router.post("/self-message", async (req, res) => {
+  try {
+    const session = await sessionFromRequest(req);
+    if (!session?.id) return res.status(401).json({ ok: false, error: "Not authenticated" });
+
+    const message = String(req.body?.message || req.body?.text || "").trim();
+    if (!message) {
+      return res.status(400).json({ ok: false, error: "Message text is required." });
+    }
+
+    const { accessToken, googleEmail } = await googleClientForUser(req, session.id);
+    const targetEmail = cleanEmail(googleEmail || session.email);
+    if (!targetEmail || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(targetEmail)) {
+      return res.status(400).json({ ok: false, error: "No Google email is connected for this user." });
+    }
+
+    const space = await setupPersonalStockSpace(
+      accessToken,
+      session.id,
+      `EPOS Product Hub Stock - ${targetEmail}`
+    );
+    const spaceName = space?.name;
+    if (!spaceName) throw new Error("Google Chat did not return a stock notes space.");
+
+    await googleJson(`https://chat.googleapis.com/v1/${spaceName}/messages`, {
+      method: "POST",
+      accessToken,
+      body: {
+        text: message.slice(0, 3900),
+      },
+    });
+
+    return res.json({
+      ok: true,
+      targetEmail,
+      chatSpace: spaceName,
+    });
+  } catch (err) {
+    console.error("Google self-message failed:", err.message, err.googlePayload || "");
+    return res.status(err.status || 500).json({
+      ok: false,
+      code: err.code || "GOOGLE_SELF_MESSAGE_FAILED",
+      error: err.message || "Failed to send Google Chat message.",
     });
   }
 });

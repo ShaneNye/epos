@@ -225,6 +225,56 @@
   text-align: right;
 }
 
+.product-hub-action-col {
+  width: 48px;
+}
+
+.product-hub-stock-action {
+  width: 48px;
+  text-align: center;
+}
+
+.product-hub-send-stock {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--line, #dce4eb);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--brand, #006f93);
+  cursor: pointer;
+}
+
+.product-hub-send-stock:hover:not(:disabled),
+.product-hub-send-stock:focus-visible {
+  border-color: var(--brand, #006f93);
+  background: var(--brand-50, #edf8fb);
+  outline: 0;
+}
+
+.product-hub-send-stock:disabled {
+  cursor: wait;
+  opacity: 0.75;
+}
+
+.product-hub-send-stock.is-sent {
+  border-color: var(--success, #168461);
+  background: rgba(22, 132, 97, 0.1);
+  color: var(--success, #168461);
+}
+
+.product-hub-send-stock svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
 .product-hub-table tr:last-child td {
   border-bottom: 0;
 }

@@ -5,6 +5,7 @@
     selected: null,
     inventoryRows: [],
     inventoryLoaded: false,
+    googleConnected: false,
     scannerStream: null,
     scannerFrame: 0,
   };
@@ -304,7 +305,7 @@
 
   function renderStockLoading() {
     if (!el.productHubStockBody) return;
-    el.productHubStockBody.innerHTML = `<tr><td colspan="5">Loading stock...</td></tr>`;
+    el.productHubStockBody.innerHTML = `<tr><td colspan="6">Loading stock...</td></tr>`;
   }
 
   function renderStock(row) {
@@ -319,6 +320,7 @@
         if (available <= 0) return;
         const key = `${clean(stock.location)}||${clean(stock.lotNumber)}||${clean(stock.bin)}||${clean(stock.status)}`;
         const existing = grouped.get(key) || {
+          key,
           location: stock.location || "-",
           lotNumber: stock.lotNumber || "-",
           bin: stock.bin || "-",
@@ -344,9 +346,156 @@
             <td>${escapeHtml(stock.bin)}</td>
             <td>${escapeHtml(stock.status)}</td>
             <td class="align-right">${stock.available}</td>
+            <td class="product-hub-stock-action">
+              <button class="product-hub-send-stock" type="button" title="Send stock row to Google Chat" aria-label="Send stock row to Google Chat" data-stock-key="${escapeHtml(stock.key)}">
+                <svg aria-hidden="true" viewBox="0 0 24 24">
+                  <path d="M22 2 11 13"></path>
+                  <path d="M22 2 15 22l-4-9-9-4 20-7z"></path>
+                </svg>
+              </button>
+            </td>
           </tr>
         `).join("")
-      : `<tr><td colspan="5">No available stock found for this item.</td></tr>`;
+      : `<tr><td colspan="6">No available stock found for this item.</td></tr>`;
+
+    if (rows.length) {
+      const rowByKey = new Map(rows.map((stock) => [stock.key, stock]));
+      el.productHubStockBody.querySelectorAll(".product-hub-send-stock").forEach((button) => {
+        button.addEventListener("click", () => {
+          const stock = rowByKey.get(button.dataset.stockKey);
+          if (stock) sendStockRowToChat(button, stock);
+        });
+      });
+    }
+  }
+
+  async function sendStockRowToChat(button, stock) {
+    const connected = await ensureGoogleConnected();
+    if (!connected) return;
+
+    const saved = typeof storageGet === "function" ? storageGet() : null;
+    const originalTitle = button.title;
+    button.disabled = true;
+    button.classList.add("is-sending");
+    button.title = "Sending...";
+
+    try {
+      const res = await fetch("/api/google/self-message", {
+        method: "POST",
+        cache: "no-store",
+        headers: {
+          "Content-Type": "application/json",
+          ...(saved?.token ? { Authorization: `Bearer ${saved.token}` } : {}),
+        },
+        body: JSON.stringify({ message: stockChatMessage(stock) }),
+      });
+      const data = await res.json().catch(() => ({}));
+
+      if (!res.ok || data.ok === false) {
+        if (data.code === "GOOGLE_NOT_CONNECTED" || data.code === "GOOGLE_RECONNECT_REQUIRED") {
+          state.googleConnected = false;
+        }
+        throw new Error(data.error || "Could not send the stock row to Google Chat.");
+      }
+
+      button.classList.remove("is-sending");
+      button.classList.add("is-sent");
+      button.title = "Sent";
+      setStatus("Stock row sent to your Google Chat.");
+      setTimeout(() => {
+        button.classList.remove("is-sent");
+        button.disabled = false;
+        button.title = originalTitle;
+      }, 1800);
+    } catch (err) {
+      console.error("Product Hub Google Chat send failed:", err);
+      button.classList.remove("is-sending");
+      button.disabled = false;
+      button.title = originalTitle;
+      alert(err.message || "Could not send the stock row to Google Chat.");
+    }
+  }
+
+  function stockChatMessage(stock) {
+    const productName = getProductName(state.selected);
+    const itemId = getProductId(state.selected);
+    return [
+      "Product Hub stock row",
+      productName ? `Item: ${productName}` : "",
+      itemId ? `Internal ID: ${itemId}` : "",
+      `Location: ${stock.location || "-"}`,
+      `Bin: ${stock.bin || "-"}`,
+      `Lot: ${stock.lotNumber || "-"}`,
+      `Status: ${stock.status || "-"}`,
+      `Available: ${stock.available ?? "-"}`,
+    ].filter(Boolean).join("\n");
+  }
+
+  async function fetchGoogleStatus() {
+    try {
+      const saved = typeof storageGet === "function" ? storageGet() : null;
+      const res = await fetch("/api/google/status", {
+        cache: "no-store",
+        headers: saved?.token ? { Authorization: `Bearer ${saved.token}` } : {},
+      });
+      const data = await res.json().catch(() => ({}));
+      state.googleConnected = Boolean(res.ok && data.ok && data.connected);
+      return state.googleConnected;
+    } catch {
+      state.googleConnected = false;
+      return false;
+    }
+  }
+
+  async function connectGoogle() {
+    const saved = typeof storageGet === "function" ? storageGet() : null;
+    if (!saved?.token) {
+      alert("Please sign in again before connecting Google.");
+      return false;
+    }
+
+    const res = await fetch(`/api/google/auth?format=json&returnTo=${encodeURIComponent(window.location.pathname)}`, {
+      headers: { Authorization: `Bearer ${saved.token}` },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data.ok === false || !data.url) {
+      alert(data.error || "Could not start Google connection.");
+      return false;
+    }
+
+    return new Promise((resolve) => {
+      const popup = window.open(data.url, "GoogleConnect", "width=520,height=720,resizable=yes,scrollbars=yes");
+      if (!popup) {
+        alert("Please allow pop-ups to connect Google.");
+        resolve(false);
+        return;
+      }
+
+      const timeout = setTimeout(() => {
+        window.removeEventListener("message", onMessage);
+        resolve(false);
+      }, 2 * 60 * 1000);
+
+      function onMessage(event) {
+        if (event.origin !== window.location.origin) return;
+        if (event.data?.type !== "google-auth-complete") return;
+        clearTimeout(timeout);
+        window.removeEventListener("message", onMessage);
+        popup.close();
+        fetchGoogleStatus().then(resolve);
+      }
+
+      window.addEventListener("message", onMessage);
+    });
+  }
+
+  async function ensureGoogleConnected() {
+    if (state.googleConnected) return true;
+    if (await fetchGoogleStatus()) return true;
+
+    const shouldConnect = confirm("Connect your Google account to send this stock row to yourself in Google Chat?");
+    if (!shouldConnect) return false;
+    return connectGoogle();
   }
 
   async function startScanner() {
