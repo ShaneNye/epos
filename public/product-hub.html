@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico" />
+  <title>Product Hub</title>
+
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/product-hub.css" />
+
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/js/productHub.js" defer></script>
+</head>
+
+<body>
+  <div id="menu"></div>
+
+  <main class="content product-hub-page">
+    <header class="product-hub-header">
+      <div>
+        <p>Mobile stock tool</p>
+        <h1>Product Hub</h1>
+      </div>
+      <button id="productHubRefresh" class="product-hub-icon-btn" type="button" title="Refresh product data" aria-label="Refresh product data">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M20 6v5h-5"></path>
+          <path d="M4 18v-5h5"></path>
+          <path d="M18.3 9A7 7 0 0 0 6.8 6.7L4 9"></path>
+          <path d="M5.7 15a7 7 0 0 0 11.5 2.3L20 15"></path>
+        </svg>
+      </button>
+    </header>
+
+    <section class="product-hub-search-panel" aria-label="Product lookup">
+      <div class="product-hub-search">
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <circle cx="11" cy="11" r="7"></circle>
+          <path d="M16.5 16.5 21 21"></path>
+        </svg>
+        <input id="productHubSearch" type="search" inputmode="search" autocomplete="off" placeholder="Search product, SKU or internal ID" list="productHubSuggestions" />
+        <datalist id="productHubSuggestions"></datalist>
+        <button id="productHubScan" class="product-hub-scan-btn" type="button" title="Scan barcode" aria-label="Scan barcode">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M4 8V6a2 2 0 0 1 2-2h2"></path>
+            <path d="M16 4h2a2 2 0 0 1 2 2v2"></path>
+            <path d="M20 16v2a2 2 0 0 1-2 2h-2"></path>
+            <path d="M8 20H6a2 2 0 0 1-2-2v-2"></path>
+            <path d="M7 12h10"></path>
+            <path d="M9 9v6"></path>
+            <path d="M15 9v6"></path>
+          </svg>
+        </button>
+      </div>
+      <div id="productHubResults" class="product-hub-results" aria-live="polite"></div>
+      <p id="productHubStatus" class="product-hub-status">Loading product feed...</p>
+    </section>
+
+    <section id="productHubSelected" class="product-hub-selected is-empty" aria-live="polite">
+      <p>Select a product to view details and stock.</p>
+    </section>
+
+    <section id="productHubTabs" class="product-hub-tabs hidden">
+      <div class="product-hub-tab-list" role="tablist" aria-label="Product Hub sections">
+        <button id="productHubInfoTab" class="active" type="button" role="tab" aria-selected="true" aria-controls="productHubInfoPanel">Item info</button>
+        <button id="productHubStockTab" type="button" role="tab" aria-selected="false" aria-controls="productHubStockPanel">Stock</button>
+      </div>
+
+      <div id="productHubInfoPanel" class="product-hub-panel active" role="tabpanel" aria-labelledby="productHubInfoTab">
+        <div class="product-hub-table-scroll">
+          <table class="product-hub-table">
+            <thead>
+              <tr>
+                <th>Field</th>
+                <th>Value</th>
+              </tr>
+            </thead>
+            <tbody id="productHubInfoBody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div id="productHubStockPanel" class="product-hub-panel" role="tabpanel" aria-labelledby="productHubStockTab">
+        <div class="product-hub-table-scroll">
+          <table class="product-hub-table">
+            <thead>
+              <tr>
+                <th>Location</th>
+                <th>Bin</th>
+                <th>Status</th>
+                <th class="align-right">Available</th>
+              </tr>
+            </thead>
+            <tbody id="productHubStockBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <dialog id="productHubScanner" class="product-hub-scanner">
+      <div class="product-hub-scanner-head">
+        <h2>Scan barcode</h2>
+        <button id="productHubScannerClose" class="product-hub-icon-btn" type="button" title="Close scanner" aria-label="Close scanner">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M18 6 6 18"></path>
+            <path d="M6 6l12 12"></path>
+          </svg>
+        </button>
+      </div>
+      <div class="product-hub-video-wrap">
+        <video id="productHubVideo" autoplay playsinline muted></video>
+        <div class="product-hub-scan-frame" aria-hidden="true"></div>
+      </div>
+      <p id="productHubScannerStatus" class="product-hub-status">Starting camera...</p>
+    </dialog>
+  </main>
+</body>
+
+</html>

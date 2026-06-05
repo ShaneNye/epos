@@ -1079,6 +1079,7 @@ app.get("/reset", (req, res) => sendNoCacheFile(res, path.join(__dirname, "publi
 app.get("/sales/new", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "newSalesOrder.html")));
 app.get("/sales/kiosk", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "salesKiosk.html")));
 app.get("/quote/new", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "quoteNew.html")));
+app.get("/product-hub", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "product-hub.html")))
 app.get("/reports", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "reports.html")))
 app.get("/promotions", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "promotions.html")))
 app.get("/eod", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "endOfDay.html")))
