@@ -810,10 +810,12 @@ function updateActionButtonForQuote() {
 
   wrapper.innerHTML = `
     <button id="saveQuoteBtn" class="btn-secondary">Save Quote</button>
+    <button id="closeQuoteBtn" class="btn-secondary">Close Quote</button>
     <button id="convertToSaleBtn" class="btn-primary">Convert to Sale</button>
   `;
 
   const saveBtn = document.getElementById("saveQuoteBtn");
+  const closeBtn = document.getElementById("closeQuoteBtn");
   const convertBtn = document.getElementById("convertToSaleBtn");
 
   saveBtn?.addEventListener("click", async () => {
@@ -830,8 +832,10 @@ function updateActionButtonForQuote() {
     if (!quoteIdOrTran) return alert("No Quote ID found in URL.");
 
     saveBtn.disabled = true;
+    if (closeBtn) closeBtn.disabled = true;
     if (convertBtn) convertBtn.disabled = true;
     saveBtn.classList.add("locked-input");
+    closeBtn?.classList.add("locked-input");
     convertBtn?.classList.add("locked-input");
 
     try {
@@ -881,9 +885,73 @@ function updateActionButtonForQuote() {
     } finally {
       showConvertSpinner(false);
       saveBtn.disabled = false;
+      if (closeBtn) closeBtn.disabled = false;
       if (convertBtn) convertBtn.disabled = false;
       saveBtn.classList.remove("locked-input");
+      closeBtn?.classList.remove("locked-input");
       convertBtn?.classList.remove("locked-input");
+    }
+  });
+
+  closeBtn?.addEventListener("click", async () => {
+    const confirmed = window.confirm(
+      "Close this quote as Closed lost? This will update the quote status in NetSuite."
+    );
+    if (!confirmed) return;
+
+    let savedAuth = storageGet?.();
+    const token = savedAuth?.token;
+    if (!token) return (window.location.href = "/index.html");
+
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    };
+
+    const currentQuote = window._currentQuote || {};
+    const quoteIdOrTran =
+      currentQuote.id ||
+      currentQuote.internalId ||
+      currentQuote.internalid ||
+      getIdFromPath();
+    if (!quoteIdOrTran) return alert("No Quote ID found in URL.");
+
+    closeBtn.disabled = true;
+    if (saveBtn) saveBtn.disabled = true;
+    if (convertBtn) convertBtn.disabled = true;
+    closeBtn.classList.add("locked-input");
+    saveBtn?.classList.add("locked-input");
+    convertBtn?.classList.add("locked-input");
+
+    try {
+      showConvertSpinner(true, "Closing quote...");
+      showToast?.("Closing quote...", "success");
+
+      const res = await fetch(`/api/netsuite/quote/${encodeURIComponent(quoteIdOrTran)}/close`, {
+        method: "POST",
+        headers,
+        body: JSON.stringify({}),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok || !data.ok) {
+        throw new Error(data?.error || `Close failed (HTTP ${res.status})`);
+      }
+
+      showToast?.("Quote closed as Closed lost.", "success");
+      setTimeout(() => window.location.reload(), 300);
+    } catch (err) {
+      console.error("Close quote error:", err.message || err);
+      showToast?.(`${err.message || err}`, "error");
+      closeBtn.disabled = false;
+      if (saveBtn) saveBtn.disabled = false;
+      if (convertBtn) convertBtn.disabled = false;
+      closeBtn.classList.remove("locked-input");
+      saveBtn?.classList.remove("locked-input");
+      convertBtn?.classList.remove("locked-input");
+    } finally {
+      showConvertSpinner(false);
     }
   });
 
@@ -902,8 +970,10 @@ function updateActionButtonForQuote() {
 
     convertBtn.disabled = true;
     if (saveBtn) saveBtn.disabled = true;
+    if (closeBtn) closeBtn.disabled = true;
     convertBtn.classList.add("locked-input");
     saveBtn?.classList.add("locked-input");
+    closeBtn?.classList.add("locked-input");
 
     try {
       showConvertSpinner(true, "Converting quote to sales order...");
@@ -940,8 +1010,10 @@ function updateActionButtonForQuote() {
       showToast?.(`❌ ${err.message || err}`, "error");
       convertBtn.disabled = false;
       if (saveBtn) saveBtn.disabled = false;
+      if (closeBtn) closeBtn.disabled = false;
       convertBtn.classList.remove("locked-input");
       saveBtn?.classList.remove("locked-input");
+      closeBtn?.classList.remove("locked-input");
     } finally {
       showConvertSpinner(false);
     }

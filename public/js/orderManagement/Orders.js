@@ -146,12 +146,15 @@ const storeRes = await fetch(`/api/meta/store/${storeId}`, { headers });        
     if (pendingTab) pendingTab.textContent = `Pending Orders (${pending.length})`;
 
     // === READY TABLE (updated: Document Number as anchor) ===
+    const isOrderOnHold = (order) =>
+      String(order?.["Order On Hold?"] || order?.orderOnHold || "").trim().toLowerCase() === "on hold";
+
     const renderReadyRow = (o) => {
       const docNum = o["Document Number"]
         ? `<a href="/sales/view/${o.ID}" class="doc-link">${o["Document Number"]}</a>`
         : "";
       return `
-        <tr>
+        <tr class="${isOrderOnHold(o) ? "order-on-hold-row" : ""}">
           <td>${o.Date || ""}</td>
           <td>${o.Name || ""}</td>
           <td>${docNum}</td>
@@ -176,7 +179,7 @@ const storeRes = await fetch(`/api/meta/store/${storeId}`, { headers });        
         .join("<br>");
 
       return `
-        <tr>
+        <tr class="${isOrderOnHold(o) ? "order-on-hold-row" : ""}">
           <td>${o.Date || ""}</td>
           <td>${o.Name || ""}</td>
           <td>${docNum}</td>

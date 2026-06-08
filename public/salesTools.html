@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+    <title>EPOS : Sales Tools</title>
+
+    <link rel="stylesheet" href="/css/home.css">
+    <link rel="stylesheet" href="/css/salesTools.css">
+
+    <script src="/js/storage.js"></script>
+    <script src="/js/menu.js"></script>
+    <script src="/js/salesTools.js" defer></script>
+    <script src="/assistant/assistant.js"></script>
+    <link rel="stylesheet" href="/assistant/assistant.css" />
+</head>
+
+<body>
+    <div id="menu"></div>
+
+    <main class="content sales-tools-page">
+        <h1 class="page-title">Sales Tools</h1>
+
+        <div class="tabs" id="salesToolsTabs">
+            <button class="tab active" type="button" data-tab="dispatchTrackAgeing">Dispatch Track Ageing</button>
+        </div>
+
+        <div class="tab-content">
+            <section id="dispatchTrackAgeing" class="tab-panel active">
+                <div class="panel-header">
+                    <div>
+                        <h2>Dispatch Track Ageing</h2>
+                        <p>Ready-for-delivery sales orders that have been exported to Dispatch Track for 60 days or more.</p>
+                    </div>
+                    <button id="refreshDispatchTrackAgeing" class="refresh-btn" type="button">Refresh</button>
+                </div>
+
+                <div class="summary-grid" aria-live="polite">
+                    <div class="summary-card">
+                        <span class="summary-label">60-89 Days</span>
+                        <strong id="count60">0</strong>
+                    </div>
+                    <div class="summary-card">
+                        <span class="summary-label">90-99 Days</span>
+                        <strong id="count90">0</strong>
+                    </div>
+                    <div class="summary-card urgent">
+                        <span class="summary-label">100+ Days</span>
+                        <strong id="count100">0</strong>
+                    </div>
+                </div>
+
+                <div class="toolbar">
+                    <div class="filter-field">
+                        <label for="ageBucketFilter">Age:</label>
+                        <select id="ageBucketFilter">
+                            <option value="all">All 60+ days</option>
+                            <option value="60">60-89 days</option>
+                            <option value="90">90-99 days</option>
+                            <option value="100+">100+ days</option>
+                        </select>
+                    </div>
+                    <div class="filter-field sales-tools-search">
+                        <label for="salesToolsSearch">Search:</label>
+                        <input type="search" id="salesToolsSearch" placeholder="Document #, customer, or store" autocomplete="off">
+                    </div>
+                </div>
+
+                <div class="table-container">
+                    <table class="data-table fixed-header">
+                        <thead>
+                            <tr>
+                                <th>Days</th>
+                                <th>Exported To DT</th>
+                                <th>Customer</th>
+                                <th>Document #</th>
+                                <th>DT Document #</th>
+                                <th>Store</th>
+                                <th>Order Type</th>
+                                <th>Schedule</th>
+                            </tr>
+                        </thead>
+                    </table>
+
+                    <div class="table-scroll">
+                        <table class="data-table" id="dispatchTrackAgeingTable">
+                            <tbody>
+                                <tr>
+                                    <td colspan="8">Loading Dispatch Track ageing...</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </main>
+</body>
+
+</html>

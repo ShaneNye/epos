@@ -245,6 +245,18 @@ main.content {
   background: #fafafa;
 }
 
+.table-scroll tr.order-on-hold-row,
+.table-scroll tr.order-on-hold-row:nth-child(even) {
+  background: #fff1dd;
+  color: #7a3f00;
+  font-weight: 700;
+}
+
+.table-scroll tr.order-on-hold-row a {
+  color: #8a4600;
+  font-weight: 700;
+}
+
 /* Scrollbar styling */
 .table-scroll::-webkit-scrollbar {
   width: 8px;

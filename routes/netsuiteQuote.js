@@ -966,7 +966,65 @@ router.patch("/:id", async (req, res) => {
 });
 
 /* =====================================================
-   === CONVERT QUOTE → SALES ORDER =====================
+   === CLOSE QUOTE (Estimate) ==========================
+===================================================== */
+router.post("/:id/close", async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!id) return res.status(400).json({ ok: false, error: "Missing Quote ID." });
+
+    const userId = await resolveUserIdFromAuth(req);
+    console.log(`Closing Quote ${id} as Closed lost...`);
+
+    const patchBodies = [
+      { entitystatus: { id: "14" } },
+      { entityStatus: { id: "14" } },
+    ];
+
+    let result = null;
+    let lastError = null;
+    for (const patchBody of patchBodies) {
+      try {
+        result = await nsPatch(
+          `/estimate/${encodeURIComponent(id)}`,
+          patchBody,
+          userId,
+          "sb"
+        );
+        lastError = null;
+        break;
+      } catch (err) {
+        lastError = err;
+        console.warn(
+          "Quote close status patch failed with field variant:",
+          Object.keys(patchBody)[0],
+          err.message
+        );
+      }
+    }
+
+    if (lastError) throw lastError;
+
+    quoteCacheDelete(id);
+
+    return res.json({
+      ok: true,
+      quoteId: id,
+      entitystatus: "14",
+      message: "Quote closed as Closed lost",
+      response: result,
+    });
+  } catch (err) {
+    console.error("Close Quote failed:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to close quote",
+    });
+  }
+});
+
+/* =====================================================
+   === CONVERT QUOTE TO SALES ORDER ====================
 ===================================================== */
 router.post("/:id/convert", async (req, res) => {
   try {

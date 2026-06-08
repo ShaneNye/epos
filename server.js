@@ -795,6 +795,208 @@ app.get("/api/netsuite/order-management", (req, res) =>
   })
 );
 
+app.get("/api/netsuite/dt-system-notes", (req, res) =>
+  fetchNetSuiteData("DT_SYSTEM_NOTES_URL", "DT_SYSTEM_NOTES", req, res, "Dispatch Track system notes", {
+    noStore: true,
+    forceRefresh: true,
+  })
+);
+
+function rowsFromSuiteletPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (!payload || typeof payload !== "object") return [];
+  if (Array.isArray(payload.results)) return payload.results;
+  if (Array.isArray(payload.data)) return payload.data;
+  return [];
+}
+
+function normalizeDocumentNumber(value) {
+  return String(value || "").trim().toUpperCase();
+}
+
+function extractDispatchTrackDocumentNumberFromSchedule(value) {
+  const raw = String(value || "");
+  const match = raw.match(/service-orders\/([^"'<>\s]+)/i);
+  return match ? match[1] : "";
+}
+
+function orderDispatchTrackDocumentCandidates(order = {}) {
+  return [
+    order["Paired Sales Order Document Number"],
+    order["Paired Sales Order"],
+    order["Dispatch Track Document Number"],
+    order["DT Document Number"],
+    order.pairedSalesOrderDocumentNumber,
+    order.pairedSalesOrder,
+    order.dispatchTrackDocumentNumber,
+    extractDispatchTrackDocumentNumberFromSchedule(order.Schedule || order.schedule),
+    order["Document Number"],
+    order.documentNumber,
+    order.tranid,
+    order.TranID,
+  ]
+    .map(normalizeDocumentNumber)
+    .filter(Boolean);
+}
+
+function parseDispatchTrackDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return null;
+
+  const match = raw.match(
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i
+  );
+  if (match) {
+    const [, dayText, monthText, yearText, hourText = "0", minuteText = "0", secondText = "0", meridiem] = match;
+    let hour = Number(hourText);
+    if (/pm/i.test(meridiem || "") && hour < 12) hour += 12;
+    if (/am/i.test(meridiem || "") && hour === 12) hour = 0;
+
+    const date = new Date(
+      Number(yearText),
+      Number(monthText) - 1,
+      Number(dayText),
+      hour,
+      Number(minuteText),
+      Number(secondText)
+    );
+    return Number.isNaN(date.getTime()) ? null : date;
+  }
+
+  const fallback = new Date(raw);
+  return Number.isNaN(fallback.getTime()) ? null : fallback;
+}
+
+function startOfLocalDay(date) {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function daysBetweenDates(fromDate, toDate = new Date()) {
+  const from = startOfLocalDay(fromDate);
+  const to = startOfLocalDay(toDate);
+  return Math.floor((to - from) / 86400000);
+}
+
+function dispatchTrackAgeBucket(daysInDispatchTrack) {
+  if (daysInDispatchTrack >= 100) return "100+";
+  if (daysInDispatchTrack >= 90) return "90";
+  if (daysInDispatchTrack >= 60) return "60";
+  return null;
+}
+
+async function loadSuiteletData(envUrlKey, envTokenKey, req, label) {
+  const baseUrl = process.env[envUrlKey];
+  const token = process.env[envTokenKey];
+  if (!baseUrl || !token) {
+    throw new Error(`Missing ${envUrlKey} or ${envTokenKey} in environment`);
+  }
+
+  const nsUrl = new URL(String(baseUrl).trim().replace(/^["']|["']$/g, ""));
+  nsUrl.searchParams.set("token", token);
+  nsUrl.searchParams.set("_", String(Date.now()));
+
+  Object.entries(req.query || {}).forEach(([key, value]) => {
+    if (["token", "refresh", "force", "fresh", "_"].includes(String(key).toLowerCase())) return;
+    if (value === undefined || value === null || value === "") return;
+    nsUrl.searchParams.set(key, String(value));
+  });
+
+  console.log(`Fetching ${label} from NetSuite`);
+  const response = await fetch(nsUrl.toString());
+  if (!response.ok) throw new Error(`${label} response ${response.status}`);
+  return response.json();
+}
+
+app.get("/api/sales-tools/dispatch-track-ageing", async (req, res) => {
+  try {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
+    const [orderPayload, notePayload] = await Promise.all([
+      loadSuiteletData("ORDER_MANAGEMENT_URL", "ORDER_MANAGEMENT", req, "order management"),
+      loadSuiteletData("DT_SYSTEM_NOTES_URL", "DT_SYSTEM_NOTES", req, "Dispatch Track system notes"),
+    ]);
+
+    const orders = rowsFromSuiteletPayload(orderPayload);
+    const notes = rowsFromSuiteletPayload(notePayload);
+    const firstNoteByDocument = new Map();
+
+    notes.forEach((note) => {
+      const documentNumber = normalizeDocumentNumber(
+        note["Document Number"] || note.documentNumber || note.tranid || note.TranID
+      );
+      const exportedAt = parseDispatchTrackDate(note.Date || note.date);
+      if (!documentNumber || !exportedAt) return;
+
+      const existing = firstNoteByDocument.get(documentNumber);
+      if (!existing || exportedAt < existing.exportedAt) {
+        firstNoteByDocument.set(documentNumber, {
+          note,
+          exportedAt,
+        });
+      }
+    });
+
+    const today = new Date();
+    const readyOrders = orders.filter((order) =>
+        String(order["Ready For Delivery"] || order.readyForDelivery || "")
+          .trim()
+          .toLowerCase() === "ready for fulfilment"
+      );
+    const matchedReadyOrders = readyOrders
+      .map((order) => {
+        const candidates = orderDispatchTrackDocumentCandidates(order);
+        const dispatchTrackDocumentNumber = candidates.find((candidate) =>
+          firstNoteByDocument.has(candidate)
+        );
+        const match = firstNoteByDocument.get(dispatchTrackDocumentNumber);
+        if (!match) return null;
+
+        const daysInDispatchTrack = daysBetweenDates(match.exportedAt, today);
+        const ageBucket = dispatchTrackAgeBucket(daysInDispatchTrack);
+
+        return {
+          ...order,
+          dispatchTrackDocumentNumber: match.note["Document Number"] || dispatchTrackDocumentNumber,
+          dispatchTrackRecordId: match.note["Record ID"] || match.note.recordId || match.note.id || "",
+          dispatchTrackExportedAt: match.note.Date || match.note.date || "",
+          dispatchTrackExportedAtIso: match.exportedAt.toISOString(),
+          daysInDispatchTrack,
+          ageBucket,
+        };
+      })
+      .filter(Boolean);
+    const results = matchedReadyOrders
+      .filter((row) => row.ageBucket)
+      .sort((a, b) => b.daysInDispatchTrack - a.daysInDispatchTrack);
+
+    res.json({
+      ok: true,
+      generatedAt: today.toISOString(),
+      counts: {
+        orders: orders.length,
+        readyOrders: readyOrders.length,
+        dispatchTrackNotes: notes.length,
+        matchedReadyOrders: matchedReadyOrders.length,
+        matchedAgedOrders: results.length,
+        bucket60: results.filter((row) => row.ageBucket === "60").length,
+        bucket90: results.filter((row) => row.ageBucket === "90").length,
+        bucket100: results.filter((row) => row.ageBucket === "100+").length,
+      },
+      results,
+    });
+  } catch (err) {
+    console.error("Sales tools Dispatch Track ageing error:", err);
+    res.status(500).json({
+      ok: false,
+      error: "Failed to build Dispatch Track ageing data",
+    });
+  }
+});
+
 app.get("/api/netsuite/breathe-rota", async (req, res) => {
   try {
     res.set({
@@ -1075,6 +1277,7 @@ app.get("/news", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public
 app.get("/admin", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "admin.html")));
 app.get("/forgot", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "forgot.html")));
 app.get("/orders", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "orderManagement.html")));
+app.get("/sales-tools", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "salesTools.html")));
 app.get("/reset", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "reset.html")));
 app.get("/sales/new", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "newSalesOrder.html")));
 app.get("/sales/kiosk", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "salesKiosk.html")));
