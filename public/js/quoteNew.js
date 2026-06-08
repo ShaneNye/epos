@@ -11,6 +11,21 @@ window.addEventListener("unhandledrejection", (e) =>
 if (window.location.pathname.includes("/quote/view/")) {
   console.log("🔕 quoteNew.js fully disabled — Quote View mode");
 } else {
+  function normalizeNameFieldValue(value) {
+    const cleaned = String(value || "").trim();
+    if (!cleaned) return "";
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase();
+  }
+
+  function normalizeCustomerNameField(field) {
+    if (!field) return;
+    field.value = normalizeNameFieldValue(field.value);
+  }
+
+  function isValidEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
     let saved = storageGet?.();
     if (!saved || !saved.token) {
@@ -30,6 +45,11 @@ if (window.location.pathname.includes("/quote/view/")) {
     const spinner = document.getElementById("orderSpinner");
     const toast = document.getElementById("orderToast");
     const spinnerText = document.getElementById("orderSpinnerTitle");
+
+    ["firstName", "lastName"].forEach((name) => {
+      const field = document.querySelector(`input[name="${name}"]`);
+      field?.addEventListener("blur", () => normalizeCustomerNameField(field));
+    });
 
     function showToast(message, type = "success") {
       if (!toast) return;
@@ -242,6 +262,18 @@ if (window.location.pathname.includes("/quote/view/")) {
   });
 
   function validateQuoteBeforeSave() {
+    const firstNameField = document.querySelector('input[name="firstName"]');
+    const lastNameField = document.querySelector('input[name="lastName"]');
+    const emailField = document.querySelector('input[name="email"]');
+    normalizeCustomerNameField(firstNameField);
+    normalizeCustomerNameField(lastNameField);
+
+    if (!isValidEmail(emailField?.value || "")) {
+      alert("Please enter a valid email address.");
+      emailField?.focus();
+      return false;
+    }
+
     const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
 
     const itemRows = rows.filter((r) =>
