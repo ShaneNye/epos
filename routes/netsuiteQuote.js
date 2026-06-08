@@ -15,6 +15,7 @@ const {
   getEmailAlertUserIds,
   sendSalesQuoteCreatedEmail,
 } = require("../utils/salesQuoteEmailAlerts");
+const { createNetSuiteCustomer } = require("../utils/netsuiteCustomerCreate");
 
 /* =====================================================
    Helpers
@@ -258,16 +259,6 @@ function netSuiteAppBaseUrl() {
   return getNetSuiteAppBaseUrl();
 }
 
-function assignCustomerTitleIfPresent(body, title) {
-  const titleId = String(title || "").trim();
-  if (titleId) body.custentity_title = titleId;
-}
-
-function normalizeCustomerPhone(value) {
-  const phone = String(value || "").trim();
-  return phone || "00000";
-}
-
 /* =====================================================
    === CREATE NEW QUOTE (Estimate) =====================
 ===================================================== */
@@ -280,50 +271,13 @@ router.post("/create", async (req, res) => {
     console.log("🔐 Authenticated user for quote creation:", userId);
 
     if (!customerId) {
-      const noAddressRequired = customer?.noAddressRequired === true;
-      const custBody = {
-        entityStatus: { id: "13" },
-        companyName: `${customer.firstName} ${customer.lastName}`,
-        firstName: customer.firstName,
-        lastName: customer.lastName,
-        email: customer.email,
-        phone: normalizeCustomerPhone(customer.contactNumber),
-        altPhone: customer.altContactNumber,
-        subsidiary: { id: "1" },
-        isPerson: true,
-      };
-      assignCustomerTitleIfPresent(custBody, customer?.title);
+      const createdCustomer = await createNetSuiteCustomer(customer, userId);
+      customerId = createdCustomer.id;
 
-      if (!noAddressRequired) {
-        custBody.addressbook = {
-          items: [
-            {
-              defaultShipping: true,
-              defaultBilling: true,
-              label: "Main Address",
-              addressbookAddress: {
-                addr1: customer.address1 || "",
-                addr2: customer.address2 || "",
-                city: customer.address3 || "",
-                state: customer.county || "",
-                zip: customer.postcode || "",
-              },
-            },
-          ],
-        };
-      }
-
-      console.log("🧾 Creating new customer for quote:", custBody);
-      const newCust = await nsPost("/customer", custBody, userId, "sb");
-
-      customerId = newCust.id || newCust.internalId;
-      if (!customerId && newCust._location) {
-        const match = newCust._location.match(/customer\/(\d+)/i);
-        if (match) customerId = match[1];
-      }
-
-      if (!customerId) throw new Error("Failed to resolve new customer ID");
-      console.log("✅ Created new customer → ID:", customerId);
+      console.log("Created new customer for quote, resolved ID:", customerId, {
+        via: createdCustomer.via,
+        hasEmail: !!createdCustomer.body?.email,
+      });
     }
 
     console.log("🧩 Using Customer ID for Quote:", customerId);
@@ -444,7 +398,7 @@ router.post("/create", async (req, res) => {
     return res.json({ ok: true, quoteId, response: quoteRes });
   } catch (err) {
     console.error("❌ Quote creation error:", err.message);
-    res.status(500).json({ ok: false, error: err.message });
+    res.status(err.statusCode || 500).json({ ok: false, error: err.message });
   }
 });
 

@@ -24,6 +24,7 @@ const {
   getEmailAlertUserIds,
   sendSalesQuoteCreatedEmail,
 } = require("../utils/salesQuoteEmailAlerts");
+const { createNetSuiteCustomer } = require("../utils/netsuiteCustomerCreate");
 
 // =====================================================
 // ✅ In-memory cache for GET /:id sales order payloads
@@ -1052,16 +1053,6 @@ function netSuiteAppBaseUrl() {
   return getNetSuiteAppBaseUrl();
 }
 
-function assignCustomerTitleIfPresent(body, title) {
-  const titleId = String(title || "").trim();
-  if (titleId) body.custentity_title = titleId;
-}
-
-function normalizeCustomerPhone(value) {
-  const phone = String(value || "").trim();
-  return phone || "00000";
-}
-
 function normalizeCustomerEmail(value) {
   return String(value || "").trim();
 }
@@ -1562,61 +1553,13 @@ router.post("/create", async (req, res) => {
    1️⃣ CREATE CUSTOMER IF NEEDED
 ====================================================== */
     if (!customerId) {
-      const noAddressRequired = customer?.noAddressRequired === true;
+      const createdCustomer = await createNetSuiteCustomer(customer, userId);
+      customerId = createdCustomer.id;
 
-      const custBody = {
-        entityStatus: { id: "13" },
-        companyName: `${customer.firstName || ""} ${customer.lastName || ""}`.trim(),
-        firstName: customer.firstName,
-        lastName: customer.lastName,
-        email: customer.email,
-        phone: normalizeCustomerPhone(customer.contactNumber),
-        altPhone: customer.altContactNumber,
-        subsidiary: { id: "1" },
-        isPerson: true,
-      };
-      assignCustomerTitleIfPresent(custBody, customer?.title);
-
-      if (!noAddressRequired) {
-        custBody.addressbook = {
-          items: [
-            {
-              defaultShipping: true,
-              defaultBilling: true,
-              label: "Main Address",
-              addressbookAddress: {
-                addr1: customer.address1 || "",
-                addr2: customer.address2 || "",
-                city: customer.address3 || "",
-                state: customer.county || "",
-                zip: customer.postcode || "",
-                //country: "United Kingdom",//
-              },
-            },
-          ],
-        };
-      } else {
-        console.log(
-          "🏷 No address required enabled — creating NEW customer without addressbook"
-        );
-      }
-
-      console.log("🧾 Creating new customer:", JSON.stringify(custBody, null, 2));
-      const newCustomer = await nsPost("/customer", custBody, userId, "sb");
-
-      let match;
-      if (
-        newCustomer._location &&
-        (match = newCustomer._location.match(/customer\/(\d+)/))
-      ) {
-        customerId = match[1];
-      } else if (newCustomer.id) {
-        customerId = newCustomer.id;
-      }
-
-      if (!customerId) throw new Error("Failed to resolve new customer ID");
-
-      console.log("✅ Created new customer, resolved ID:", customerId);
+      console.log("Created new customer, resolved ID:", customerId, {
+        via: createdCustomer.via,
+        hasEmail: !!createdCustomer.body?.email,
+      });
     }
 
     /* ======================================================
@@ -2013,7 +1956,7 @@ router.post("/create", async (req, res) => {
   } catch (err) {
     console.error("❌ Sales Order creation error:", err.message);
     if (err.stack) console.error(err.stack);
-    return res.status(500).json({ ok: false, error: err.message });
+    return res.status(err.statusCode || 500).json({ ok: false, error: err.message });
   }
 });
 
@@ -2594,6 +2537,7 @@ router.post("/:id/commit", async (req, res) => {
       lines: normalizedLines,
       headerUpdates,
       deletedLineIds,
+      email: customerEmailCheck.email,
       commit: true,
     };
     const payloadText = JSON.stringify(payload);

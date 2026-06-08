@@ -617,9 +617,20 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
        */
       if (doCommit) {
         soRec.setValue({
-          fieldId: "custbody_sb_epos_approved",
+          fields: ["custbody_sb_epos_approved", "tobeemailed", "email"],
+          hasEmail: !!context.email,
           value: true,
         });
+        soRec.setValue({
+          fieldId: "tobeemailed",
+          value: true,
+        });
+        if (context.email) {
+          soRec.setValue({
+            fieldId: "email",
+            value: String(context.email),
+          });
+        }
 
         log.audit("✅ Approval flag set before Sales Order save", {
           id,
