@@ -33,6 +33,21 @@ if (window.location.pathname.includes("/sales/view/")) {
     if (typeof window.updateOrderSummary === "function") window.updateOrderSummary();
   }
 
+  function normalizeNameFieldValue(value) {
+    const cleaned = String(value || "").trim();
+    if (!cleaned) return "";
+    return cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase();
+  }
+
+  function normalizeCustomerNameField(field) {
+    if (!field) return;
+    field.value = normalizeNameFieldValue(field.value);
+  }
+
+  function isValidEmail(value) {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+  }
+
   document.addEventListener("DOMContentLoaded", async () => {
     const saved = storageGet(); // from main.js
     if (!saved || !saved.token) {
@@ -59,21 +74,6 @@ if (window.location.pathname.includes("/sales/view/")) {
     function isDistributionStoreName(name) {
       const normalised = normaliseStoreName(name);
       return normalised === "distribution ltd" || normalised.includes("distribution ltd");
-    }
-
-    function normalizeNameFieldValue(value) {
-      const cleaned = String(value || "").trim();
-      if (!cleaned) return "";
-      return cleaned.charAt(0).toUpperCase() + cleaned.slice(1).toLowerCase();
-    }
-
-    function normalizeCustomerNameField(field) {
-      if (!field) return;
-      field.value = normalizeNameFieldValue(field.value);
-    }
-
-    function isValidEmail(value) {
-      return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
     }
 
     ["firstName", "lastName"].forEach((name) => {
