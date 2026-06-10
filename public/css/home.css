@@ -453,7 +453,14 @@ select#activeRoleSelect::-internal-list-box {
 #salesByStoreWidget .chart-container {
   position: relative;
   width: 100%;
-  height: 110px;
+  flex: 1;
+  min-height: 0;
+  height: 100%;
+}
+
+#salesByStoreWidget {
+  justify-content: flex-start;
+  align-items: stretch;
 }
 
 /* === Table in Top 3 widget === */
@@ -481,6 +488,239 @@ select#activeRoleSelect::-internal-list-box {
   text-align: right;
   font-weight: 600;
   color: #0081ab;
+}
+
+#outstandingActionsWidget {
+  grid-area: outstandingActions;
+}
+
+#customerFeedbackWidget {
+  grid-area: customerFeedback;
+}
+
+.outstanding-actions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.outstanding-actions-header .widget-header {
+  margin: 0;
+}
+
+.outstanding-actions-header select {
+  min-width: 220px;
+  min-height: 30px;
+  border: 1px solid #cfdde5;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f3444;
+  font: 700 0.84rem "Segoe UI", system-ui, sans-serif;
+  padding: 5px 8px;
+}
+
+.outstanding-actions-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  flex: 1;
+  border-top: 1px solid #e6eef3;
+}
+
+.outstanding-action {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  border: 0;
+  border-right: 1px solid #e6eef3;
+  background: transparent;
+  color: #1f3444;
+  cursor: pointer;
+  padding: 10px 14px;
+  text-align: left;
+  transition: background 0.2s ease;
+}
+
+.outstanding-action:last-child {
+  border-right: 0;
+}
+
+.outstanding-action:hover {
+  background: #f7fbfc;
+}
+
+.outstanding-action span {
+  min-width: 0;
+  color: #005b72;
+  font-size: 0.84rem;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.outstanding-action strong {
+  color: #0081ab;
+  font-size: 1.42rem;
+  line-height: 1;
+}
+
+.outstanding-popup.hidden {
+  display: none;
+}
+
+.outstanding-popup {
+  position: fixed;
+  inset: 0;
+  z-index: 100000;
+}
+
+.outstanding-popup-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 30, 42, 0.44);
+}
+
+.outstanding-popup-panel {
+  position: relative;
+  width: min(1100px, calc(100vw - 48px));
+  max-height: min(760px, calc(100vh - 48px));
+  margin: 24px auto;
+  background: #fff;
+  border: 1px solid #dbe8ee;
+  border-radius: 10px;
+  box-shadow: 0 18px 45px rgba(15, 30, 42, 0.24);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.outstanding-popup-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid #e6eef3;
+}
+
+.outstanding-popup-header h2 {
+  margin: 0;
+  color: #005b72;
+  font-size: 1.05rem;
+}
+
+.outstanding-popup-close {
+  border: 1px solid #cfdde5;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f3444;
+  cursor: pointer;
+  font-size: 1.2rem;
+  line-height: 1;
+  min-height: 30px;
+  width: 32px;
+}
+
+.outstanding-popup-body {
+  overflow: auto;
+  padding: 12px 16px 16px;
+}
+
+.outstanding-popup-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+}
+
+.outstanding-popup-table th,
+.outstanding-popup-table td {
+  border-bottom: 1px solid #edf3f6;
+  padding: 8px 9px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.outstanding-popup-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f4f8fa;
+  color: #005b72;
+  font-weight: 800;
+}
+
+.customer-feedback-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #e6eef3;
+  padding-bottom: 8px;
+}
+
+.customer-feedback-header .widget-header {
+  margin: 0 0 2px;
+}
+
+.customer-feedback-header span {
+  color: #637283;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.customer-feedback-header select {
+  min-width: 220px;
+  min-height: 32px;
+  border: 1px solid #cfdde5;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f3444;
+  font: 700 0.84rem "Segoe UI", system-ui, sans-serif;
+  padding: 5px 8px;
+}
+
+.customer-feedback-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+
+.customer-feedback-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.customer-feedback-table th,
+.customer-feedback-table td {
+  border-bottom: 1px solid #edf3f6;
+  padding: 7px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.customer-feedback-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f4f8fa;
+  color: #005b72;
+  font-weight: 800;
+}
+
+.customer-feedback-table td:nth-child(1),
+.customer-feedback-table td:nth-child(2),
+.customer-feedback-table td:nth-child(3) {
+  white-space: nowrap;
+}
+
+.customer-feedback-table td:nth-child(4) {
+  min-width: 360px;
+  line-height: 1.35;
 }
 
 /* === Equal bottom widget visual lock === */
@@ -512,6 +752,8 @@ select#activeRoleSelect::-internal-list-box {
     grid-template-areas:
       "salesToday"
       "salesByStore"
+      "outstandingActions"
+      "customerFeedback"
       "topThree";
     grid-template-rows: auto;
     gap: 10px;
@@ -792,29 +1034,29 @@ select#activeRoleSelect::-internal-list-box {
   grid-area: rotaWidget;
   min-height: 210px;
   max-height: none;
-  gap: 10px;
+  gap: 5px;
 }
 
 .home-rota-header {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: 8px;
   align-items: center;
   border-bottom: 1px solid #e6eef3;
-  padding-bottom: 8px;
+  padding-bottom: 4px;
 }
 
 .home-rota-header h2 {
   margin: 0;
   color: #0081ab;
-  font-size: 1rem;
+  font-size: 0.78rem;
   font-weight: 700;
 }
 
 .home-rota-header p {
-  margin: 3px 0 0;
+  margin: 1px 0 0;
   color: #637283;
-  font-size: 0.82rem;
+  font-size: 0.68rem;
   font-weight: 600;
 }
 
@@ -825,10 +1067,10 @@ select#activeRoleSelect::-internal-list-box {
   background: #fff;
   color: #005b72;
   cursor: pointer;
-  font-size: 0.84rem;
+  font-size: 0.72rem;
   font-weight: 700;
-  min-height: 32px;
-  padding: 7px 10px;
+  min-height: 24px;
+  padding: 4px 8px;
   text-decoration: none;
 }
 
@@ -843,7 +1085,7 @@ select#activeRoleSelect::-internal-list-box {
   justify-content: center;
   gap: 9px;
   flex: 1 1 auto;
-  min-height: 116px;
+  min-height: 56px;
   color: #637283;
   font-size: 0.9rem;
   font-weight: 700;
@@ -876,34 +1118,52 @@ select#activeRoleSelect::-internal-list-box {
 
 .home-rota-list {
   display: grid;
-  grid-template-columns: repeat(7, minmax(110px, 1fr));
-  gap: 8px;
+  grid-template-columns: repeat(auto-fit, minmax(54px, 1fr));
+  gap: 4px;
   overflow-x: auto;
-  padding-bottom: 2px;
+  overflow-y: hidden;
+  padding: 4px 1px 1px;
 }
 
-.home-rota-shift {
-  min-height: 92px;
+.home-rota-day {
+  min-height: 54px;
   border: 1px solid #dbe8ee;
-  border-radius: 6px;
-  background: #f8fbfc;
-  padding: 9px;
+  border-radius: 5px;
+  background: #fbfdfe;
+  padding: 5px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 3px;
+  min-width: 0;
+}
+
+.home-rota-day.has-shift {
+  background: #f1f9fb;
+  border-color: #bde7f3;
 }
 
 .home-rota-date {
   color: #005b72;
-  font-size: 0.82rem;
+  font-size: 0.68rem;
   font-weight: 800;
+  line-height: 1.05;
+}
+
+.home-rota-off,
+.home-rota-more {
+  color: #8a99a5;
+  font-size: 0.64rem;
+  font-weight: 700;
+  line-height: 1.1;
 }
 
 .home-rota-detail {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 1px;
   min-width: 0;
+  border-left: 2px solid #0081ab;
+  padding-left: 3px;
 }
 
 .home-rota-detail strong,
@@ -913,13 +1173,21 @@ select#activeRoleSelect::-internal-list-box {
 
 .home-rota-detail strong {
   color: #1a1f24;
-  font-size: 0.92rem;
+  font-size: 0.66rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.1;
 }
 
 .home-rota-detail span {
   color: #637283;
-  font-size: 0.82rem;
+  font-size: 0.63rem;
   font-weight: 650;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  line-height: 1.1;
 }
 
 /* === Homepage item options widget === */
@@ -1176,7 +1444,8 @@ select#activeRoleSelect::-internal-list-box {
     "salesToday salesToday"
     "salesMonth salesMonth"
     "rotaWidget rotaWidget"
-    "salesByStore topThree";
+    "salesByStore topThree"
+    "customerFeedback customerFeedback";
 }
 
 #salesThisMonthWidget {
@@ -1189,7 +1458,9 @@ select#activeRoleSelect::-internal-list-box {
       "salesToday"
       "salesMonth"
       "rotaWidget"
+      "outstandingActions"
       "salesByStore"
+      "customerFeedback"
       "topThree";
   }
 
@@ -1353,5 +1624,282 @@ select#activeRoleSelect::-internal-list-box {
 
   .home-item-line-table {
     min-width: 640px;
+  }
+
+  .outstanding-actions-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .outstanding-actions-header select {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .outstanding-actions-row {
+    grid-template-columns: 1fr;
+    border-top: 1px solid #e6eef3;
+  }
+
+  .outstanding-action {
+    border-right: 0;
+    border-bottom: 1px solid #e6eef3;
+  }
+
+  .outstanding-action:last-child {
+    border-bottom: 0;
+  }
+
+  .outstanding-popup-panel {
+    width: calc(100vw - 20px);
+    max-height: calc(100vh - 20px);
+    margin: 10px auto;
+  }
+}
+
+/* === Compact desktop dashboard layout === */
+.dashboard-filter-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+  width: 100%;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  background: #fff;
+  border: 1px solid #e6eef3;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+}
+
+.dashboard-filter-bar > div {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.dashboard-filter-bar label {
+  color: #005b72;
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.dashboard-filter-bar select,
+.dashboard-filter-bar input[type="date"] {
+  min-width: 170px;
+  min-height: 34px;
+  border: 1px solid #cfdde5;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f3444;
+  font: 700 0.9rem "Segoe UI", system-ui, sans-serif;
+  padding: 6px 10px;
+}
+
+.dashboard-filter-bar input[type="date"] {
+  min-width: 145px;
+}
+
+.dashboard-filter-range {
+  color: #637283;
+  font-size: 0.84rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+@media (min-width: 1101px) {
+  .content {
+    padding: 1.35rem 1.45rem;
+  }
+
+  .content h1 {
+    margin-bottom: 0.85rem;
+    font-size: 1.7rem;
+  }
+
+  #dashboardWrapper {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px) minmax(145px, 170px);
+    grid-template-areas:
+      "main forecast surveys"
+      "main forecast announcements";
+    align-items: start;
+    gap: 14px;
+    margin-top: 0;
+  }
+
+  #dashboardGrid {
+    grid-area: main;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(330px, 0.52fr);
+    grid-template-rows: 112px 120px 188px 128px auto 240px;
+    grid-template-areas:
+      "outstandingActions outstandingActions"
+      "salesToday rotaWidget"
+      "salesToday salesByStore"
+      "salesToday topThree"
+      "salesMonth salesMonth"
+      "customerFeedback customerFeedback";
+    gap: 12px;
+    margin-top: 0;
+    min-width: 0;
+  }
+
+  #dashboardGrid section {
+    min-height: 0;
+    margin: 0;
+    padding: 10px 12px;
+  }
+
+  #salesTodayWidget {
+    grid-area: salesToday;
+    height: 460px;
+    min-height: 460px;
+    max-height: 460px;
+  }
+
+  .sales-today-table th,
+  .sales-today-table td {
+    padding: 6px 8px;
+  }
+
+  #homeRotaWidget {
+    grid-area: rotaWidget;
+    height: 120px;
+    min-height: 120px;
+    max-height: 120px;
+  }
+
+  .home-rota-header {
+    padding-bottom: 6px;
+  }
+
+  .home-rota-state {
+    min-height: 0;
+    padding: 6px;
+    font-size: 0.82rem;
+  }
+
+  #salesByStoreWidget,
+  #topThreeWidget {
+    min-height: 0;
+    max-height: none;
+  }
+
+  #salesByStoreWidget {
+    height: 188px;
+    justify-content: flex-start;
+    align-items: stretch;
+  }
+
+  #topThreeWidget {
+    height: 128px !important;
+    min-height: 128px !important;
+    max-height: 128px !important;
+  }
+
+  #topThreeWidget .widget-header {
+    margin-bottom: 6px;
+  }
+
+  #topThreeWidget th,
+  #topThreeWidget td {
+    padding: 3px 6px;
+    font-size: 0.78rem;
+  }
+
+  #salesByStoreWidget .chart-container {
+    flex: 1;
+    min-height: 0;
+    height: 100%;
+  }
+
+  body #salesThisMonthWidget {
+    grid-area: salesMonth;
+    height: 156px;
+    min-height: 156px;
+    max-height: 156px;
+    margin: 0;
+    padding: 10px 12px;
+  }
+
+  #customerFeedbackWidget {
+    height: 240px;
+    min-height: 240px;
+    max-height: 240px;
+  }
+
+  #outstandingActionsWidget {
+    height: 112px;
+    min-height: 112px;
+    max-height: 112px;
+  }
+
+  body #salesForecastWidget {
+    grid-area: forecast;
+    width: auto;
+    height: 460px;
+    margin: 0;
+    min-width: 0;
+    padding: 12px 14px;
+  }
+
+  #surveyContainer {
+    grid-area: surveys;
+    width: 100%;
+    margin-top: 0;
+    min-width: 0;
+  }
+
+  .survey-area .announcement-panel {
+    max-width: none;
+    padding: 12px 14px;
+  }
+
+  .survey-area h3 {
+    margin-bottom: 0;
+    font-size: 0.9rem;
+    white-space: nowrap;
+  }
+
+  .survey-area .announcement-list:empty {
+    display: none;
+  }
+
+  .survey-area .announcement-item {
+    padding: 0.7rem;
+  }
+
+  #announcementContainer {
+    grid-area: announcements;
+    width: 100%;
+    max-height: 240px;
+    margin-top: 0;
+    min-width: 0;
+  }
+}
+
+@media (min-width: 1101px) and (max-width: 1500px) {
+  #dashboardWrapper {
+    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+    grid-template-areas:
+      "main forecast"
+      "main surveys"
+      "main announcements";
+  }
+
+  #dashboardGrid {
+    grid-template-columns: minmax(0, 1fr) minmax(260px, 0.55fr);
+    grid-template-rows: 112px 120px 188px 128px auto 240px;
+    grid-template-areas:
+      "outstandingActions outstandingActions"
+      "salesToday rotaWidget"
+      "salesToday salesByStore"
+      "salesToday topThree"
+      "salesMonth salesMonth"
+      "customerFeedback customerFeedback";
   }
 }

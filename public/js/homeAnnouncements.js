@@ -194,6 +194,11 @@ if (activeRoleId) {
   console.warn("ℹ️ activeRoleId not yet ready — showing all active surveys.");
 }
 
+    if (!surveys.length) {
+      surveyContainer.style.display = "none";
+      surveyContainer.innerHTML = "";
+      return;
+    }
 
     /* -------------------------------
        4) Render filtered surveys

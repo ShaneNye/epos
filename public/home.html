@@ -40,6 +40,26 @@
    <main class="content">
   <h1>Welcome to the EPOS System</h1>
 
+  <section id="dashboardFilterBar" class="dashboard-filter-bar" aria-label="Dashboard filters">
+    <div>
+      <label for="dashboardDateRange">Date range</label>
+      <select id="dashboardDateRange">
+        <option value="today" selected>Today</option>
+        <option value="yesterday">Yesterday</option>
+        <option value="thisWeek">This week</option>
+        <option value="lastWeek">Last week</option>
+        <option value="thisMonth">This Month</option>
+        <option value="lastMonth">Last Month</option>
+        <option value="custom">Custom</option>
+      </select>
+      <label for="dashboardDateFrom">From</label>
+      <input id="dashboardDateFrom" type="date">
+      <label for="dashboardDateTo">To</label>
+      <input id="dashboardDateTo" type="date">
+    </div>
+    <span id="dashboardDateRangeLabel" class="dashboard-filter-range">Today</span>
+  </section>
+
   <div id="dashboardWrapper">
     <div id="dashboardGrid">
       <section id="homeRotaWidget" class="widget-card wide" style="display:none;" hidden>
@@ -62,6 +82,7 @@
       <section id="salesThisMonthWidget" class="widget-card wide"></section>
       <section id="salesByStoreWidget" class="widget-card half"></section>
       <section id="topThreeWidget" class="widget-card half"></section>
+      <section id="outstandingActionsWidget" class="widget-card wide"></section>
     </div>
       <section id="salesForecastWidget" class="widget-card wide"></section>
 
@@ -76,9 +97,11 @@
 
   <!-- scripts -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="/js/widgets/dashboardDateFilter.js"></script>
   <script src="/js/widgets/salesByStore.js"></script>
   <script src="/js/widgets/salestoday.js"></script>
   <script src="/js/widgets/topThree.js"></script>
+  <script src="/js/widgets/outstandingActions.js"></script>
   <script src="/js/widgets/salesThisMonth.js"></script>
   <script src="/js/widgets/salesForcast.js"></script>
   <script src="/js/homeAnnouncements.js"></script>

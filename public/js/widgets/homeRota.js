@@ -82,8 +82,17 @@ document.addEventListener("DOMContentLoaded", () => {
     return new Intl.DateTimeFormat("en-GB", {
       weekday: "short",
       day: "2-digit",
-      month: "short",
     }).format(date);
+  }
+
+  function datesBetween(start, end) {
+    const dates = [];
+    let cursor = localDate(start);
+    while (cursor <= end) {
+      dates.push(localDate(cursor));
+      cursor = addDays(cursor, 1);
+    }
+    return dates;
   }
 
   function getRowDate(row) {
@@ -146,6 +155,18 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function getDashboardRange() {
+    const range = window.DashboardDateFilter?.getRange();
+    if (range?.start && range?.end) return range;
+
+    const today = localDate(new Date());
+    return {
+      label: "Today",
+      start: today,
+      end: today,
+    };
+  }
+
   function renderRows(rows, start, end) {
     els.list.innerHTML = "";
 
@@ -170,27 +191,52 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
 
+    const byDate = new Map();
     uniqueRows.forEach((row) => {
+      if (!byDate.has(row.isoDate)) byDate.set(row.isoDate, []);
+      byDate.get(row.isoDate).push(row);
+    });
+
+    datesBetween(start, end).forEach((dateValue) => {
+      const isoDate = toIsoDate(dateValue);
+      const shifts = byDate.get(isoDate) || [];
       const item = document.createElement("div");
-      item.className = "home-rota-shift";
+      item.className = `home-rota-day${shifts.length ? " has-shift" : ""}`;
 
       const date = document.createElement("div");
       date.className = "home-rota-date";
-      date.textContent = formatDay(row.date);
-
-      const detail = document.createElement("div");
-      detail.className = "home-rota-detail";
-
-      const location = document.createElement("strong");
-      location.textContent = row.location || "Location not listed";
-      detail.appendChild(location);
-
-      const role = document.createElement("span");
-      role.textContent = row.role || "No role listed";
-      detail.appendChild(role);
-
+      date.textContent = formatDay(dateValue);
       item.appendChild(date);
-      item.appendChild(detail);
+
+      if (!shifts.length) {
+        const empty = document.createElement("span");
+        empty.className = "home-rota-off";
+        empty.textContent = "Off";
+        item.appendChild(empty);
+      }
+
+      shifts.slice(0, 2).forEach((row) => {
+        const detail = document.createElement("div");
+        detail.className = "home-rota-detail";
+
+        const location = document.createElement("strong");
+        location.textContent = row.location || "Location not listed";
+        detail.appendChild(location);
+
+        const role = document.createElement("span");
+        role.textContent = row.role || "No role listed";
+        detail.appendChild(role);
+
+        item.appendChild(detail);
+      });
+
+      if (shifts.length > 2) {
+        const more = document.createElement("span");
+        more.className = "home-rota-more";
+        more.textContent = `+${shifts.length - 2} more`;
+        item.appendChild(more);
+      }
+
       els.list.appendChild(item);
     });
 
@@ -212,8 +258,9 @@ document.addEventListener("DOMContentLoaded", () => {
       }
 
       const employee = fullUserName(me.user);
-      const start = startOfWeek(new Date());
-      const end = addDays(start, 6);
+      const selectedRange = getDashboardRange();
+      const start = selectedRange.start;
+      const end = selectedRange.end;
       els.range.textContent = formatRange(start, end);
       setVisible(true);
 
@@ -238,5 +285,6 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  window.addEventListener("dashboard:date-range-change", initHomeRota);
   initHomeRota();
 });

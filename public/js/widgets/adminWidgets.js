@@ -13,6 +13,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     { key: "salesThisMonth", name: "Sales This Month", desc: "Displays all sales created this month." },
     { key: "salesByStore", name: "Sales by Store", desc: "Shows a breakdown of sales by store." },
     { key: "topThree", name: "Top 3 Bed Specialists", desc: "Highlights top-performing sales staff." },
+    { key: "outstandingActions", name: "Outstanding Actions", desc: "Shows transfer orders and cases needing action by store." },
+    { key: "customerFeedback", name: "Customer Feedback", desc: "Displays customer confirmation feedback by store and date range." },
     { key: "salesForcast", name: "Sales Forcast", desc: "allows team to view and edit monthly sales forecast"}
   ];
 

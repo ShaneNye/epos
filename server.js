@@ -1063,6 +1063,92 @@ app.get("/api/netsuite/transfer-order-management", (req, res) =>
   })
 );
 
+// === Transfer Order Widget ===
+app.get("/api/netsuite/transfer-order-widget", async (req, res) => {
+  try {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
+    const baseUrl = getEnvAny("TRANSFER_ORDER_WIDGET_URL", "transfer_order_widget_url");
+    const token = getEnvAny("TRANSFER_ORDER_WIDGET", "transfer_order_widget");
+    if (!baseUrl) {
+      throw new Error("Missing TRANSFER_ORDER_WIDGET_URL/transfer_order_widget_url in environment");
+    }
+
+    const nsUrl = new URL(baseUrl);
+    if (token && !nsUrl.searchParams.has("token")) {
+      nsUrl.searchParams.set("token", token);
+    }
+    nsUrl.searchParams.set("_", String(Date.now()));
+
+    Object.entries(req.query || {}).forEach(([key, value]) => {
+      if (["token", "refresh", "force", "fresh"].includes(String(key).toLowerCase())) return;
+      if (value === undefined || value === null || value === "") return;
+      nsUrl.searchParams.set(key, String(value));
+    });
+
+    console.log("Fetching transfer order widget data from NetSuite");
+    const response = await fetch(nsUrl.toString());
+    if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
+
+    const json = await response.json();
+    res.json({
+      ok: json?.ok !== false,
+      ...json,
+      results: Array.isArray(json?.results) ? json.results : Array.isArray(json) ? json : [],
+    });
+  } catch (err) {
+    console.error("NetSuite transfer order widget proxy error:", err);
+    res.status(500).json({ ok: false, error: "Failed to fetch transfer order widget data" });
+  }
+});
+
+// === Customer Confirmation / Feedback Widget ===
+app.get("/api/netsuite/customer-confirmation", async (req, res) => {
+  try {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
+    const baseUrl = getEnvAny("CUST_CONFIRMATION_URL", "cust_confirmation_url");
+    const token = getEnvAny("CUST_CONFIRMATION", "cust_confirmation");
+    if (!baseUrl) {
+      throw new Error("Missing CUST_CONFIRMATION_URL/cust_confirmation_url in environment");
+    }
+
+    const nsUrl = new URL(baseUrl);
+    if (token && !nsUrl.searchParams.has("token")) {
+      nsUrl.searchParams.set("token", token);
+    }
+    nsUrl.searchParams.set("_", String(Date.now()));
+
+    Object.entries(req.query || {}).forEach(([key, value]) => {
+      if (["token", "refresh", "force", "fresh"].includes(String(key).toLowerCase())) return;
+      if (value === undefined || value === null || value === "") return;
+      nsUrl.searchParams.set(key, String(value));
+    });
+
+    console.log("Fetching customer confirmation feedback from NetSuite");
+    const response = await fetch(nsUrl.toString());
+    if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
+
+    const json = await response.json();
+    res.json({
+      ok: json?.ok !== false,
+      ...json,
+      results: Array.isArray(json?.results) ? json.results : Array.isArray(json) ? json : [],
+    });
+  } catch (err) {
+    console.error("NetSuite customer confirmation proxy error:", err);
+    res.status(500).json({ ok: false, error: "Failed to fetch customer confirmation data" });
+  }
+});
+
 // === Customer Lookup Report ===
 app.get("/api/netsuite/customer-lookup", (req, res) =>
   fetchNetSuiteData("CUSTOMER_LOOKUP_URL", "CUSTOMER_LOOKUP", req, res, "customer lookup report")
