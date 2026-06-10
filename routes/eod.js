@@ -19,6 +19,101 @@ function setNoStore(res) {
   });
 }
 
+function normalizeFieldName(name) {
+  return String(name || "")
+    .replace(/\u00A0/g, " ")
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function normalizeFieldValue(value) {
+  if (value && typeof value === "object") {
+    return value.text ?? value.name ?? value.value ?? value.id ?? "";
+  }
+
+  return value;
+}
+
+function firstRowValue(row, keys) {
+  for (const key of keys) {
+    if (row?.[key] !== undefined && row?.[key] !== null && row?.[key] !== "") {
+      return normalizeFieldValue(row[key]);
+    }
+  }
+
+  const normalizedKeyMap = Object.keys(row || {}).reduce((map, key) => {
+    map[normalizeFieldName(key)] = key;
+    return map;
+  }, {});
+
+  for (const key of keys) {
+    const match = normalizedKeyMap[normalizeFieldName(key)];
+    if (match && row[match] !== undefined && row[match] !== null && row[match] !== "") {
+      return normalizeFieldValue(row[match]);
+    }
+  }
+
+  return "";
+}
+
+function firstMatchingRowValue(row, predicate) {
+  for (const [key, value] of Object.entries(row || {})) {
+    const normalizedKey = normalizeFieldName(key);
+    if (!predicate(normalizedKey, key)) continue;
+    if (value === undefined || value === null || value === "") continue;
+    return normalizeFieldValue(value);
+  }
+
+  return "";
+}
+
+function normalizeDailyBalanceRow(row) {
+  if (!row || typeof row !== "object" || Array.isArray(row)) return row;
+
+  const type =
+    firstRowValue(row, [
+      "Type",
+      "type",
+      "Transaction Type",
+      "transactionType",
+      "Deposit Type",
+      "depositType",
+    ]) ||
+    firstMatchingRowValue(
+      row,
+      (normalizedKey) => normalizedKey === "type" || normalizedKey.endsWith("type")
+    );
+
+  const balanceTakenByWh =
+    firstRowValue(row, [
+      "Balance Taken by WH",
+      "Balance Taken By WH",
+      "Balance Taken by Warehouse",
+      "Balance Taken By Warehouse",
+      "Balance taken by wh",
+      "Balance taken by warehouse",
+      "balanceTakenByWh",
+      "balanceTakenByWarehouse",
+      "balance_taken_by_wh",
+      "balance_taken_by_warehouse",
+      "WH Balance Taken",
+      "Warehouse Balance Taken",
+    ]) ||
+    firstMatchingRowValue(
+      row,
+      (normalizedKey) =>
+        normalizedKey.includes("balance") &&
+        normalizedKey.includes("taken") &&
+        (normalizedKey.includes("wh") || normalizedKey.includes("warehouse"))
+    );
+
+  return {
+    ...row,
+    Type: type || "",
+    "Balance Taken by WH": balanceTakenByWh || null,
+  };
+}
+
 /* ============================================================
    GET FOOTFALL DATA — via NetSuite Scriptlet
    ============================================================ */
@@ -198,9 +293,9 @@ router.get("/daily-balance", async (req, res) => {
         error: "Missing EOD_CUST_DEP_URL or EOD_CUST_DEP in .env",
       });
     }
+    console.log("Fetching Daily Balance (Customer Deposits) from NetSuite using EOD_CUST_DEP_URL");
 
     const url = `${baseUrl}&token=${encodeURIComponent(token)}`;
-    console.log("📡 Fetching Daily Balance (Customer Deposits) from NetSuite:", url);
 
     const nsRes = await fetch(url);
     const text = await nsRes.text();
@@ -311,6 +406,8 @@ router.get("/outstanding-int-pos", async (req, res) => {
     } else if (Array.isArray(json.data)) {
       results = json.data;
     }
+
+    results = results.map(normalizeDailyBalanceRow);
 
     return res.json({
       ok: true,

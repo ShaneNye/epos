@@ -318,6 +318,15 @@ router.post("/create", async (req, res) => {
           const qty = Number(i.quantity) || 1;
           const netLineTotal = +(grossToSave / (isVatFreeTaxCode(i.taxCode) ? 1 : 1.2)).toFixed(2);
           const netUnitRate = qty > 0 ? +(netLineTotal / qty).toFixed(2) : 0;
+          const trial = String(i.trialOption || "").trim().toLowerCase();
+          const trialField =
+            trial === "accepted" || trial === "yes" || trial === "1"
+              ? { id: "1" }
+              : trial === "declined" || trial === "no" || trial === "2"
+                ? { id: "2" }
+                : trial === "n/a" || trial === "na" || trial === "3"
+                  ? { id: "3" }
+                  : null;
 
           return {
             item: { id: String(i.item) },
@@ -326,6 +335,7 @@ router.post("/create", async (req, res) => {
             rate: netUnitRate,
             amount: netLineTotal,
             custcol_sb_itemoptionsdisplay: i.options || "",
+            ...(trialField ? { custcol_sb_30nighttrialoption: trialField } : {}),
             ...(!isServiceItem && i.fulfilmentMethod && {
               custcol_sb_fulfilmentlocation: { id: String(i.fulfilmentMethod) },
             }),

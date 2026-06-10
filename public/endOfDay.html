@@ -72,23 +72,63 @@
                                 <span id="dailyBalanceSummaryText"></span>
                             </div>
 
-                            <div class="daily-balance-table-wrapper">
-                                <table id="dailyBalanceTable" class="daily-balance-table">
-                                    <thead>
-                                        <tr>
-                                            <th>Payment Method</th>
-                                            <th style="width:120px;">Count</th>
-                                            <th style="width:160px; text-align:right;">Total Amount</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="dailyBalanceTableBody">
-                                        <tr>
-                                            <td colspan="3" class="daily-balance-empty">
-                                                Select a store to view customer deposits.
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
+                            <div class="daily-balance-tabs" role="tablist" aria-label="Customer deposit payment type">
+                                <button type="button" class="daily-balance-tab active" id="storePaymentsTab"
+                                    data-deposit-tab="store" role="tab" aria-selected="true"
+                                    aria-controls="storePaymentsPanel">
+                                    Store Payments
+                                </button>
+                                <button type="button" class="daily-balance-tab" id="warehousePaymentsTab"
+                                    data-deposit-tab="warehouse" role="tab" aria-selected="false"
+                                    aria-controls="warehousePaymentsPanel">
+                                    Warehouse Payments
+                                </button>
+                            </div>
+
+                            <div class="daily-balance-tab-panel" id="storePaymentsPanel" role="tabpanel"
+                                aria-labelledby="storePaymentsTab">
+                                <div class="daily-balance-table-wrapper">
+                                    <table id="dailyBalanceTable" class="daily-balance-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Payment Method</th>
+                                                <th style="width:150px;">Type</th>
+                                                <th style="width:120px;">Count</th>
+                                                <th style="width:160px; text-align:right;">Total Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="dailyBalanceTableBody">
+                                            <tr>
+                                                <td colspan="4" class="daily-balance-empty">
+                                                    Select a store to view customer deposits.
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+
+                            <div class="daily-balance-tab-panel hidden" id="warehousePaymentsPanel" role="tabpanel"
+                                aria-labelledby="warehousePaymentsTab">
+                                <div class="daily-balance-table-wrapper">
+                                    <table class="daily-balance-table">
+                                        <thead>
+                                            <tr>
+                                                <th>Payment Method</th>
+                                                <th style="width:150px;">Type</th>
+                                                <th style="width:120px;">Count</th>
+                                                <th style="width:160px; text-align:right;">Total Amount</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="warehouseBalanceTableBody">
+                                            <tr>
+                                                <td colspan="4" class="daily-balance-empty">
+                                                    Select a store to view customer deposits.
+                                                </td>
+                                            </tr>
+                                        </tbody>
+                                    </table>
+                                </div>
                             </div>
 
                         </div>
@@ -216,7 +256,7 @@
         </div> <!-- end #eodPanels -->
     </main>
 
-    <script type="module" src="/js/eodMain.js"></script>
+    <script type="module" src="/js/eodMain.js?v=deposits-wh-type-20260610-2"></script>
 
 </body>
 

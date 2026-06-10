@@ -211,6 +211,14 @@ async function initDailyBalancing() {
 
   const storeSelect = document.getElementById("dailyBalanceStoreSelect");
   const tableBody = document.getElementById("dailyBalanceTableBody");
+  const warehouseTableBody = document.getElementById("warehouseBalanceTableBody");
+  const depositTabs = document.querySelectorAll("[data-deposit-tab]");
+  const storePaymentsTab = document.getElementById("storePaymentsTab");
+  const warehousePaymentsTab = document.getElementById("warehousePaymentsTab");
+  const depositPanels = {
+    store: document.getElementById("storePaymentsPanel"),
+    warehouse: document.getElementById("warehousePaymentsPanel"),
+  };
   const summaryPill = document.getElementById("dailyBalanceSummaryPill");
   const summaryText = document.getElementById("dailyBalanceSummaryText");
   const outstandingIntPosTableBody = document.getElementById("outstandingIntPosTableBody");
@@ -238,7 +246,7 @@ async function initDailyBalancing() {
   let allDeposits = [];
   let allOutstandingIntPos = [];
   let currentOutstandingIntPosRows = [];
-  let expandedMethod = null;
+  let expandedMethodKey = null;
   let selectedLocationId = null;
   let locations = [];
   let currentEodRecordId = null;
@@ -259,6 +267,12 @@ async function initDailyBalancing() {
     return `£${Number(val || 0).toFixed(2)}`;
   }
 
+  function formatSignedMoney(val) {
+    const amount = Number(val || 0);
+    const prefix = amount < 0 ? "-£" : "£";
+    return `${prefix}${Math.abs(amount).toFixed(2)}`;
+  }
+
   function escapeHtml(str) {
     return String(str ?? "")
       .replace(/&/g, "&amp;")
@@ -266,6 +280,119 @@ async function initDailyBalancing() {
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#039;");
+  }
+
+  function normalizeFieldName(name) {
+    return String(name || "")
+      .replace(/\u00A0/g, " ")
+      .toLowerCase()
+      .replace(/[^a-z0-9]/g, "");
+  }
+
+  function normalizeFieldValue(value) {
+    if (value && typeof value === "object") {
+      return value.text ?? value.name ?? value.value ?? value.id ?? "";
+    }
+
+    return value;
+  }
+
+  function firstValue(row, keys) {
+    for (const key of keys) {
+      if (row?.[key] !== undefined && row?.[key] !== null && row?.[key] !== "") {
+        return normalizeFieldValue(row[key]);
+      }
+    }
+
+    const normalisedKeyMap = Object.keys(row || {}).reduce((map, key) => {
+      map[normalizeFieldName(key)] = key;
+      return map;
+    }, {});
+
+    for (const key of keys) {
+      const match = normalisedKeyMap[normalizeFieldName(key)];
+      if (match && row[match] !== undefined && row[match] !== null && row[match] !== "") {
+        return normalizeFieldValue(row[match]);
+      }
+    }
+
+    return "";
+  }
+
+  function firstMatchingFieldValue(row, predicate) {
+    const entries = Object.entries(row || {});
+
+    for (const [key, value] of entries) {
+      const normalisedKey = normalizeFieldName(key);
+      if (!predicate(normalisedKey, key)) continue;
+      if (value === undefined || value === null || value === "") continue;
+      return normalizeFieldValue(value);
+    }
+
+    return "";
+  }
+
+  function depositType(row) {
+    const exactType = firstValue(row, [
+      "Type",
+      "type",
+      "Transaction Type",
+      "transactionType",
+      "Deposit Type",
+      "depositType",
+    ]);
+
+    if (exactType) return String(exactType).trim();
+
+    return String(
+      firstMatchingFieldValue(
+        row,
+        (normalisedKey) => normalisedKey === "type" || normalisedKey.endsWith("type")
+      ) || ""
+    ).trim();
+  }
+
+  function isCustomerRefund(row) {
+    return depositType(row).toLowerCase() === "customer refund";
+  }
+
+  function depositAmount(row) {
+    const raw = Number.parseFloat(firstValue(row, ["Amount", "amount"]) || 0);
+    const amount = Number.isFinite(raw) ? raw : 0;
+    return isCustomerRefund(row) ? -Math.abs(amount) : amount;
+  }
+
+  function balanceTakenByWarehouse(row) {
+    const exactBalanceTaken = firstValue(row, [
+      "Balance Taken by WH",
+      "Balance Taken By WH",
+      "Balance Taken by Warehouse",
+      "Balance Taken By Warehouse",
+      "Balance taken by wh",
+      "Balance taken by warehouse",
+      "balanceTakenByWh",
+      "balanceTakenByWarehouse",
+      "balance_taken_by_wh",
+      "balance_taken_by_warehouse",
+      "WH Balance Taken",
+      "Warehouse Balance Taken",
+    ]);
+
+    const inferredBalanceTaken =
+      exactBalanceTaken ||
+      firstMatchingFieldValue(
+        row,
+        (normalisedKey) =>
+          normalisedKey.includes("balance") &&
+          normalisedKey.includes("taken") &&
+          (normalisedKey.includes("wh") || normalisedKey.includes("warehouse"))
+      );
+
+    const raw = String(inferredBalanceTaken || "")
+      .trim()
+      .toLowerCase();
+
+    return ["yes", "y", "true", "1"].includes(raw);
   }
 
   function buildStoreMatchLocationId(storeName) {
@@ -478,12 +605,13 @@ async function initDailyBalancing() {
                   <td>${escapeHtml(d.doc || "")}</td>
                   <td>${escapeHtml(d.customerName || "")}</td>
                   <td>${escapeHtml(d.paymentMethod || "")}</td>
-                  <td style="text-align:right;">${formatMoney(d.amount)}</td>
+                  <td>${escapeHtml(d.type || "")}</td>
+                  <td style="text-align:right;">${formatSignedMoney(d.amount)}</td>
                 </tr>
               `
             )
             .join("")
-        : `<tr><td colspan="4" class="muted">No deposit data</td></tr>`;
+        : `<tr><td colspan="5" class="muted">No deposit data</td></tr>`;
 
       const cashflowRows = Array.isArray(report.cashflow)
         ? report.cashflow
@@ -612,6 +740,7 @@ async function initDailyBalancing() {
                 <th>Document</th>
                 <th>Customer</th>
                 <th>Payment Method</th>
+                <th>Type</th>
                 <th style="text-align:right;">Amount</th>
               </tr>
             </thead>
@@ -760,90 +889,115 @@ async function initDailyBalancing() {
      RENDER STORE ➝ GROUPED PAYMENT METHODS
   ------------------------------------------------- */
   function renderStore(storeName) {
-    if (!tableBody) return;
+    if (!tableBody || !warehouseTableBody) return;
 
     tableBody.innerHTML = "";
-    expandedMethod = null;
+    warehouseTableBody.innerHTML = "";
+    expandedMethodKey = null;
+    updateDepositTabCounts(0, 0);
 
     if (!storeName) {
       summaryPill?.classList.add("hidden");
       tableBody.innerHTML = `
-        <tr><td colspan="3" class="daily-balance-empty">
+        <tr><td colspan="4" class="daily-balance-empty">
+          Select a store to view customer deposits.
+        </td></tr>`;
+      warehouseTableBody.innerHTML = `
+        <tr><td colspan="4" class="daily-balance-empty">
           Select a store to view customer deposits.
         </td></tr>`;
       return;
     }
 
-    const matching = allDeposits.filter(
-      (r) => cleanStore(r["Store"]).toLowerCase() === storeName.toLowerCase()
+    const allMatching = allDeposits.filter(
+      (r) => cleanStore(firstValue(r, ["Store", "store"])).toLowerCase() === storeName.toLowerCase()
     );
+    const matching = allMatching.filter((row) => !balanceTakenByWarehouse(row));
+    const warehousePayments = allMatching.filter(balanceTakenByWarehouse);
+    updateDepositTabCounts(matching.length, warehousePayments.length);
 
-    if (matching.length === 0) {
+    if (allMatching.length === 0) {
       summaryPill?.classList.add("hidden");
       tableBody.innerHTML = `
-        <tr><td colspan="3" class="daily-balance-empty">
-          No deposits found for this store.
+        <tr><td colspan="4" class="daily-balance-empty">
+          No store payments found for this store.
+        </td></tr>`;
+      warehouseTableBody.innerHTML = `
+        <tr><td colspan="4" class="daily-balance-empty">
+          No warehouse payments found for this store.
         </td></tr>`;
       return;
     }
 
     const grouped = {};
     matching.forEach((row) => {
-      const method = row["Payment Method"] || "Unknown";
-      const amt = parseFloat(row["Amount"] || 0);
+      const method = firstValue(row, ["Payment Method", "paymentMethod"]) || "Unknown";
+      const type = depositType(row);
+      const amt = depositAmount(row);
+      const groupKey = `${method}||${type}`;
 
-      if (!grouped[method]) {
-        grouped[method] = {
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = {
           method,
+          type,
           count: 0,
           total: 0,
           rows: [],
         };
       }
 
-      grouped[method].count++;
-      grouped[method].total += amt;
-      grouped[method].rows.push({
-        doc: row["Document Number"],
-        name: row["Customer Name"],
+      grouped[groupKey].count++;
+      grouped[groupKey].total += amt;
+      grouped[groupKey].rows.push({
+        doc: firstValue(row, ["Document Number", "doc", "documentNumber"]),
+        name: firstValue(row, ["Customer Name", "customerName"]),
+        type,
         amount: amt,
       });
     });
 
     const methods = Object.values(grouped);
-    const totalAmt = methods.reduce((sum, m) => sum + m.total, 0);
-    const totalCount = methods.reduce((sum, m) => sum + m.count, 0);
+    const totalAmt = allMatching.reduce((sum, row) => sum + depositAmount(row), 0);
+    const totalCount = allMatching.length;
 
     summaryPill?.classList.remove("hidden");
     if (summaryText) {
-      summaryText.textContent = `${storeName} — ${totalCount} deposits | £${totalAmt.toFixed(
-        2
-      )}`;
+      summaryText.textContent = `${storeName} - ${totalCount} deposits | ${formatSignedMoney(totalAmt)}`;
+    }
+
+    if (methods.length === 0) {
+      tableBody.innerHTML = `
+        <tr><td colspan="4" class="daily-balance-empty">
+          No store payments found for this store.
+        </td></tr>`;
     }
 
     methods.forEach((m) => {
+      const methodKey = `store-${m.method}-${m.type}`;
       const tr = document.createElement("tr");
       tr.classList.add("method-row");
-      tr.dataset.method = m.method;
+      tr.dataset.methodKey = methodKey;
 
       tr.innerHTML = `
         <td>${escapeHtml(m.method)}</td>
+        <td>${escapeHtml(m.type || "")}</td>
         <td>${m.count}</td>
-        <td style="text-align:right;">£${m.total.toFixed(2)}</td>
+        <td style="text-align:right;">${formatSignedMoney(m.total)}</td>
       `;
 
       const detail = document.createElement("tr");
       detail.classList.add("details-row", "hidden");
-      detail.dataset.method = m.method;
+      detail.dataset.methodKey = methodKey;
 
       detail.innerHTML = `
-        <td colspan="3">
+        <td colspan="4">
           <div class="details-inner">
             <table>
               <thead>
                 <tr>
                   <th>Document</th>
                   <th>Customer</th>
+                  <th>Type</th>
                   <th style="text-align:right;">Amount</th>
                 </tr>
               </thead>
@@ -854,7 +1008,8 @@ async function initDailyBalancing() {
                   <tr>
                     <td>${escapeHtml(r.doc)}</td>
                     <td>${escapeHtml(r.name)}</td>
-                    <td style="text-align:right;">£${r.amount.toFixed(2)}</td>
+                    <td>${escapeHtml(r.type || "")}</td>
+                    <td style="text-align:right;">${formatSignedMoney(r.amount)}</td>
                   </tr>`
                   )
                   .join("")}
@@ -866,6 +1021,113 @@ async function initDailyBalancing() {
 
       tableBody.appendChild(tr);
       tableBody.appendChild(detail);
+    });
+
+    renderDepositGroupTable(
+      warehouseTableBody,
+      warehousePayments,
+      "warehouse",
+      "No warehouse payments found for this store."
+    );
+  }
+
+  function updateDepositTabCounts(storeCount, warehouseCount) {
+    if (storePaymentsTab) {
+      storePaymentsTab.textContent = `Store Payments (${storeCount})`;
+    }
+
+    if (warehousePaymentsTab) {
+      warehousePaymentsTab.textContent = `Warehouse Payments (${warehouseCount})`;
+    }
+  }
+
+  function renderDepositGroupTable(body, rows, keyPrefix, emptyMessage) {
+    body.innerHTML = "";
+
+    if (!rows.length) {
+      body.innerHTML = `
+        <tr><td colspan="4" class="daily-balance-empty">
+          ${escapeHtml(emptyMessage)}
+        </td></tr>`;
+      return;
+    }
+
+    const grouped = {};
+    rows.forEach((row) => {
+      const method = firstValue(row, ["Payment Method", "paymentMethod"]) || "Unknown";
+      const type = depositType(row);
+      const amt = depositAmount(row);
+      const groupKey = `${method}||${type}`;
+
+      if (!grouped[groupKey]) {
+        grouped[groupKey] = {
+          method,
+          type,
+          count: 0,
+          total: 0,
+          rows: [],
+        };
+      }
+
+      grouped[groupKey].count++;
+      grouped[groupKey].total += amt;
+      grouped[groupKey].rows.push({
+        doc: firstValue(row, ["Document Number", "doc", "documentNumber"]),
+        name: firstValue(row, ["Customer Name", "customerName"]),
+        type,
+        amount: amt,
+      });
+    });
+
+    Object.values(grouped).forEach((m) => {
+      const methodKey = `${keyPrefix}-${m.method}-${m.type}`;
+      const tr = document.createElement("tr");
+      tr.classList.add("method-row");
+      tr.dataset.methodKey = methodKey;
+
+      tr.innerHTML = `
+        <td>${escapeHtml(m.method)}</td>
+        <td>${escapeHtml(m.type || "")}</td>
+        <td>${m.count}</td>
+        <td style="text-align:right;">${formatSignedMoney(m.total)}</td>
+      `;
+
+      const detail = document.createElement("tr");
+      detail.classList.add("details-row", "hidden");
+      detail.dataset.methodKey = methodKey;
+
+      detail.innerHTML = `
+        <td colspan="4">
+          <div class="details-inner">
+            <table>
+              <thead>
+                <tr>
+                  <th>Document</th>
+                  <th>Customer</th>
+                  <th>Type</th>
+                  <th style="text-align:right;">Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${m.rows
+                  .map(
+                    (r) => `
+                  <tr>
+                    <td>${escapeHtml(r.doc)}</td>
+                    <td>${escapeHtml(r.name)}</td>
+                    <td>${escapeHtml(r.type || "")}</td>
+                    <td style="text-align:right;">${formatSignedMoney(r.amount)}</td>
+                  </tr>`
+                  )
+                  .join("")}
+              </tbody>
+            </table>
+          </div>
+        </td>
+      `;
+
+      body.appendChild(tr);
+      body.appendChild(detail);
     });
   }
 
@@ -918,34 +1180,55 @@ async function initDailyBalancing() {
   /* -------------------------------------------------
      EXPAND/COLLAPSE
   ------------------------------------------------- */
-  tableBody?.addEventListener("click", (e) => {
+  function handleDepositTableClick(e) {
     if (isEodLocked) return;
 
     const row = e.target.closest(".method-row");
     if (!row) return;
 
-    const method = row.dataset.method;
+    const body = row.closest("tbody");
+    const methodKey = row.dataset.methodKey;
+    if (!body || !methodKey) return;
 
-    tableBody
+    body
       .querySelectorAll(".method-row")
       .forEach((r) => r.classList.remove("method-row--expanded"));
 
-    tableBody
+    body
       .querySelectorAll(".details-row")
       .forEach((r) => r.classList.add("hidden"));
 
-    if (expandedMethod === method) {
-      expandedMethod = null;
+    if (expandedMethodKey === methodKey) {
+      expandedMethodKey = null;
       return;
     }
 
-    expandedMethod = method;
+    expandedMethodKey = methodKey;
     row.classList.add("method-row--expanded");
 
-    const detail = tableBody.querySelector(
-      `.details-row[data-method="${method}"]`
+    const detail = Array.from(body.querySelectorAll(".details-row")).find(
+      (r) => r.dataset.methodKey === methodKey
     );
     if (detail) detail.classList.remove("hidden");
+  }
+
+  tableBody?.addEventListener("click", handleDepositTableClick);
+  warehouseTableBody?.addEventListener("click", handleDepositTableClick);
+
+  depositTabs.forEach((tab) => {
+    tab.addEventListener("click", () => {
+      const selectedTab = tab.dataset.depositTab;
+
+      depositTabs.forEach((btn) => {
+        const isActive = btn === tab;
+        btn.classList.toggle("active", isActive);
+        btn.setAttribute("aria-selected", isActive ? "true" : "false");
+      });
+
+      Object.entries(depositPanels).forEach(([panelName, panel]) => {
+        panel?.classList.toggle("hidden", panelName !== selectedTab);
+      });
+    });
   });
 
   /* -------------------------------------------------
@@ -1029,8 +1312,8 @@ async function initDailyBalancing() {
 
     const cashDeposits = allDeposits.filter(
       (d) =>
-        cleanStore(d["Store"]).toLowerCase() === storeName.toLowerCase() &&
-        (d["Payment Method"] || "").toLowerCase().includes("cash")
+        cleanStore(firstValue(d, ["Store", "store"])).toLowerCase() === storeName.toLowerCase() &&
+        String(firstValue(d, ["Payment Method", "paymentMethod"]) || "").toLowerCase().includes("cash")
     );
 
     if (cashDeposits.length === 0) {
@@ -1043,11 +1326,11 @@ async function initDailyBalancing() {
     }
 
     cashDeposits.forEach((dep) => {
-      const fullAmt = parseFloat(dep["Amount"] || 0);
+      const fullAmt = depositAmount(dep);
       const tr = document.createElement("tr");
 
       tr.innerHTML = `
-        <td>${escapeHtml(dep["Document Number"] || "")}</td>
+        <td>${escapeHtml(firstValue(dep, ["Document Number", "doc", "documentNumber"]) || "")}</td>
         <td>
           <input
             type="number"
@@ -1055,7 +1338,7 @@ async function initDailyBalancing() {
             class="safe-input"
             data-full="${fullAmt}"
             value="${fullAmt.toFixed(2)}"
-            data-doc="${escapeHtml(dep["Document Number"] || "")}"
+            data-doc="${escapeHtml(firstValue(dep, ["Document Number", "doc", "documentNumber"]) || "")}"
           />
         </td>
         <td>
@@ -1065,7 +1348,7 @@ async function initDailyBalancing() {
             class="float-input"
             value="0.00"
             min="0"
-            data-doc="${escapeHtml(dep["Document Number"] || "")}"
+            data-doc="${escapeHtml(firstValue(dep, ["Document Number", "doc", "documentNumber"]) || "")}"
           />
         </td>
       `;
@@ -1089,6 +1372,13 @@ async function initDailyBalancing() {
       const tr = floatInput.closest("tr");
       const safeInput = tr?.querySelector(".safe-input");
       const fullAmt = parseFloat(safeInput?.dataset.full || 0);
+
+      if (fullAmt < 0) {
+        floatInput.value = "0.00";
+        if (safeInput) safeInput.value = fullAmt.toFixed(2);
+        recalcTotals();
+        return;
+      }
 
       let floatVal = parseFloat(floatInput.value || 0);
       if (Number.isNaN(floatVal) || floatVal < 0) floatVal = 0;
@@ -1266,14 +1556,16 @@ async function initDailyBalancing() {
       }
 
       const depositsForStore = allDeposits.filter(
-        (d) => cleanStore(d["Store"]).toLowerCase() === storeName.toLowerCase()
+        (d) => cleanStore(firstValue(d, ["Store", "store"])).toLowerCase() === storeName.toLowerCase()
       );
 
       const depositsPayload = depositsForStore.map((d) => ({
-        doc: d["Document Number"],
-        amount: parseFloat(d["Amount"] || 0),
-        paymentMethod: d["Payment Method"] || "",
-        customerName: d["Customer Name"] || "",
+        doc: firstValue(d, ["Document Number", "doc", "documentNumber"]),
+        amount: depositAmount(d),
+        paymentMethod: firstValue(d, ["Payment Method", "paymentMethod"]) || "",
+        customerName: firstValue(d, ["Customer Name", "customerName"]) || "",
+        type: depositType(d),
+        balanceTakenByWh: balanceTakenByWarehouse(d) ? "Yes" : "No",
       }));
 
       const cashflowRows = [];

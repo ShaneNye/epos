@@ -184,6 +184,42 @@
     display: none;
 }
 
+.daily-balance-tabs {
+    display: flex;
+    gap: 6px;
+    margin: 0 0 10px;
+    border-bottom: 1px solid #d8e2eb;
+}
+
+.daily-balance-tab {
+    appearance: none;
+    border: 1px solid transparent;
+    border-bottom: 0;
+    background: transparent;
+    color: #52606d;
+    padding: 9px 12px;
+    border-radius: 6px 6px 0 0;
+    font-size: 0.92rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.daily-balance-tab:hover {
+    background: #f3f7fb;
+    color: #273036;
+}
+
+.daily-balance-tab.active {
+    background: #fff;
+    border-color: #d8e2eb;
+    color: var(--brand);
+    margin-bottom: -1px;
+}
+
+.daily-balance-tab-panel.hidden {
+    display: none;
+}
+
 /* Daily Balancing Table */
 .daily-balance-table-wrapper {
     margin-top: 10px;
