@@ -5,6 +5,8 @@ document.addEventListener("DOMContentLoaded", () => {
   const widget = document.getElementById("kpiMeterWidget");
   if (!widget) return;
 
+  const GROUP_STORE_KEY = "__group__";
+
   const state = {
     selectedStore: "",
     targetRows: [],
@@ -91,6 +93,11 @@ document.addEventListener("DOMContentLoaded", () => {
   function targetForRange(storeKey, range) {
     if (!storeKey) return 0;
 
+    if (storeKey === GROUP_STORE_KEY) {
+      return Array.from(new Set(state.targetRows.map((row) => normalize(row.Store)).filter(Boolean)))
+        .reduce((sum, key) => sum + targetForRange(key, range), 0);
+    }
+
     if (isFullMonthRange(range)) {
       return getTargetForMonth(storeKey, monthKey(range.start));
     }
@@ -116,8 +123,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function actualRevenueForRange(storeKey, range) {
+    const isGroup = storeKey === GROUP_STORE_KEY;
     return state.salesRows
-      .filter((row) => normalize(row.Store) === storeKey)
+      .filter((row) => isGroup || normalize(row.Store) === storeKey)
       .filter((row) => window.DashboardDateFilter?.isDateInRange(row.Date, range))
       .reduce((sum, row) => sum + (parseFloat(row.Amount || row.Total || row.Gross || 0) || 0), 0);
   }
@@ -151,15 +159,17 @@ document.addEventListener("DOMContentLoaded", () => {
       if (key && !stores.has(key)) stores.set(key, displayStore(row.Store));
     });
 
-    return Array.from(stores.entries())
+    const options = Array.from(stores.entries())
       .map(([key, label]) => ({ key, label }))
       .sort((a, b) => a.label.localeCompare(b.label));
+
+    return [{ key: GROUP_STORE_KEY, label: "Group" }, ...options];
   }
 
   function renderShell() {
     widget.innerHTML = `
       <div class="kpi-meter-header">
-        <div class="widget-header">KPI Meter</div>
+        <div class="widget-header">Sales Target Kpi</div>
         <select id="kpiMeterStore" aria-label="KPI meter store"></select>
       </div>
       <div class="kpi-meter-content">
@@ -181,7 +191,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const select = widget.querySelector("#kpiMeterStore");
     const options = storeOptions();
     select.innerHTML = options
-      .map((store) => `<option value="${store.key}">${store.label}</option>`)
+      .map((store) => {
+        const isGroup = store.key === GROUP_STORE_KEY;
+        return `<option value="${store.key}"${isGroup ? ' class="kpi-group-option" style="font-weight:800;"' : ""}>${store.label}</option>`;
+      })
       .join("");
 
     if (!state.selectedStore) {

@@ -51,7 +51,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       const allWidgets = [
         { key: "salesToday", id: "salesTodayWidget" },
-        { key: "salesThisMonth", id: "salesThisMonthWidget" },
         { key: "salesByStore", id: "salesByStoreWidget" },
         { key: "topThree", id: "topThreeWidget" },
         { key: "outstandingActions", id: "outstandingActionsWidget" },

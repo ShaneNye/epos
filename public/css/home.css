@@ -420,15 +420,6 @@ select#activeRoleSelect::-internal-list-box {
   max-height: 210px;
 }
 
-/* === Widget placement === */
-#salesThisMonthWidget {
-  grid-area: salesToday;
-  min-height: 180px;
-  max-height: 210px;
-}
-
-
-
 #salesByStoreWidget {
   grid-area: salesByStore;
   display: flex;
@@ -685,6 +676,11 @@ select#activeRoleSelect::-internal-list-box {
   color: #1f3444;
   font: 700 0.82rem "Segoe UI", system-ui, sans-serif;
   padding: 5px 8px;
+}
+
+.kpi-meter-header select option.kpi-group-option,
+.kpi-meter-header select option[value="__group__"] {
+  font-weight: 800;
 }
 
 .kpi-meter-content {
@@ -1625,21 +1621,15 @@ select#activeRoleSelect::-internal-list-box {
 #dashboardGrid {
   grid-template-areas:
     "salesToday salesToday"
-    "salesMonth salesMonth"
     "rotaWidget rotaWidget"
     "salesByStore topThree"
     "outstandingActions outstandingActions";
-}
-
-#salesThisMonthWidget {
-  grid-area: salesMonth;
 }
 
 @media (max-width: 900px) {
   #dashboardGrid {
     grid-template-areas:
       "salesToday"
-      "salesMonth"
       "rotaWidget"
       "outstandingActions"
       "salesByStore"
@@ -1780,8 +1770,7 @@ select#activeRoleSelect::-internal-list-box {
     border-radius: 8px;
   }
 
-  #salesTodayWidget,
-  #salesThisMonthWidget {
+  #salesTodayWidget {
     min-height: 170px;
     max-height: 220px;
   }
@@ -1920,13 +1909,12 @@ select#activeRoleSelect::-internal-list-box {
     grid-area: main;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(330px, 0.52fr);
-    grid-template-rows: 112px 120px 188px 128px auto;
+    grid-template-rows: 112px 120px 188px 128px;
     grid-template-areas:
       "outstandingActions outstandingActions"
       "salesToday rotaWidget"
       "salesToday salesByStore"
-      "salesToday topThree"
-      "salesMonth salesMonth";
+      "salesToday topThree";
     gap: 12px;
     margin-top: 0;
     min-width: 0;
@@ -2001,15 +1989,6 @@ select#activeRoleSelect::-internal-list-box {
     height: 100%;
   }
 
-  body #salesThisMonthWidget {
-    grid-area: salesMonth;
-    height: 156px;
-    min-height: 156px;
-    max-height: 156px;
-    margin: 0;
-    padding: 10px 12px;
-  }
-
   #outstandingActionsWidget {
     height: 112px;
     min-height: 112px;
@@ -2079,12 +2058,11 @@ select#activeRoleSelect::-internal-list-box {
 
   #dashboardGrid {
     grid-template-columns: minmax(0, 1fr) minmax(260px, 0.55fr);
-    grid-template-rows: 112px 120px 188px 128px auto;
+    grid-template-rows: 112px 120px 188px 128px;
     grid-template-areas:
       "outstandingActions outstandingActions"
       "salesToday rotaWidget"
       "salesToday salesByStore"
-      "salesToday topThree"
-      "salesMonth salesMonth";
+      "salesToday topThree";
   }
 }
