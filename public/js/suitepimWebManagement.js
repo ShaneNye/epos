@@ -554,48 +554,15 @@
     `;
   }
 
-  function sizeOptions(row) {
-    const raw = row["Standard-Sizes"] || row["Standard Sizes"] || row.Size || "";
-    if (Array.isArray(raw)) return raw.filter(Boolean).map((item) => String(item).trim()).filter(Boolean);
-    return String(raw).split(",").map((item) => item.trim()).filter(Boolean);
-  }
-
-  function formatCurrency(value) {
-    const amount = Number.parseFloat(value);
-    if (!Number.isFinite(amount)) return "";
-    return `\u00A3${Math.round(amount).toLocaleString()}`;
-  }
-
-  function previewDocument(row) {
-    const images = previewImages(row);
-    const hero = images[0] || "";
-    const thumbs = images.slice(0, 4);
+  function webDescriptionHtml(row) {
     const descriptionPreview = String(row["Description Preview"] || "");
     const shortDescription = String(row["New Short Desc"] || row["Short Description"] || "");
     const featureDescription = String(row["New Feature Desc"] || "");
     const featureSummary = featureDescription || shortDescription;
-    const reasons = reasonsList(row);
     const reasonItems = reasonsMeta(row);
     const warrantyReasons = reasonItems.filter((item) => item.isWarrantyPeriod);
     const featureReasons = reasonItems.filter((item) => !item.isWarrantyPeriod);
-    const sizes = sizeOptions(row);
     const title = escapeHtml(row.Name || row["Display Name"] || "Product Preview");
-    const className = escapeHtml(valueText(row.Class));
-    const retailText = formatCurrency(row["Retail Price"]);
-    const purchaseText = formatCurrency(row["Purchase Price"]);
-    const baseText = formatCurrency(row["Base Price"]);
-    const supplier = escapeHtml(valueText(row["Supplier Name"]));
-    const leadTime = escapeHtml(valueText(row["Lead Time"]));
-    const comfort = escapeHtml(valueText(row.Comfort));
-    const springType = escapeHtml(valueText(row["Spring Type"]));
-    const fillings = escapeHtml(valueText(row.Fillings));
-    const warranty = escapeHtml(valueText(row.Warranty));
-    const country = escapeHtml(valueText(row["Country Of Origin"]));
-    const turnable = escapeHtml(valueText(row.Turnable));
-    const builtFlat = escapeHtml(valueText(row["Built/Flat Packed"]));
-    const category = escapeHtml(valueText(row.Category));
-    const tags = escapeHtml(valueText(row.Tags));
-    const descriptionText = descriptionPreview || `<p>${escapeHtml(stripHtml(shortDescription) || "No description preview available yet.")}</p>`;
     const videoUrl = extractVideoUrl(descriptionPreview);
     const videoEmbedUrl = embedVideoUrl(videoUrl);
     const dimensions = [
@@ -605,18 +572,17 @@
       row.Depth ? `${valueText(row.Depth)}D` : "",
     ].filter(Boolean).join(" x ");
     const detailItems = [
-      ["Comfort", comfort],
-      ["Spring Type", springType],
-      ["Fillings", fillings],
+      ["Comfort", escapeHtml(valueText(row.Comfort))],
+      ["Spring Type", escapeHtml(valueText(row["Spring Type"]))],
+      ["Fillings", escapeHtml(valueText(row.Fillings))],
       ["Dimensions", escapeHtml(dimensions)],
-      ["Warranty", warranty],
-      ["Country of Origin", country],
-      ["Turnable", turnable],
-      ["Build", builtFlat],
-      ["Category", category],
-      ["Tags", tags],
+      ["Warranty", escapeHtml(valueText(row.Warranty))],
+      ["Country of Origin", escapeHtml(valueText(row["Country Of Origin"]))],
+      ["Turnable", escapeHtml(valueText(row.Turnable))],
+      ["Build", escapeHtml(valueText(row["Built/Flat Packed"]))],
+      ["Category", escapeHtml(valueText(row.Category))],
+      ["Tags", escapeHtml(valueText(row.Tags))],
     ].filter(([, value]) => value);
-    const summaryReasons = reasonItems.slice(0, 8);
     const productInfoHtml = detailItems.length
       ? `<div class="detail-grid">${detailItems.map(([label, value]) => `<div class="detail-row"><strong>${escapeHtml(label)}</strong><span>${value}</span></div>`).join("")}</div>`
       : `<p class="preview-empty">No product information added yet.</p>`;
@@ -646,6 +612,84 @@
         </div>
       </div>
     `;
+
+    return `
+      <div class="suitepim-web-description">
+        <div class="why-box">
+          <strong>Why you will love this...</strong>
+          <p>${escapeHtml(stripHtml(featureSummary) || "No content added yet.")}</p>
+        </div>
+        ${renderAccordionCard("Video", videoEmbedUrl ? `<iframe class="video-frame" src="${escapeHtml(videoEmbedUrl)}" title="${title} video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>` : (videoUrl ? `<a class="video-link" href="${escapeHtml(videoUrl)}" target="_blank" rel="noreferrer noopener">${escapeHtml(videoUrl)}</a>` : `<p class="preview-empty">No content added yet.</p>`))}
+        ${renderAccordionCard("Features & Benefits", featuresBenefitsHtml, true)}
+        <div class="preview-accordion-grid">
+          <div class="info-card">${renderAccordionCard("Info", productInfoHtml)}</div>
+          <div class="warranty-card">${renderAccordionCard("Warranty Information", warrantyHtml)}</div>
+          <div class="faq-card">${renderAccordionCard("FAQs", faqHtml, true)}</div>
+          <div class="trial-card">${renderAccordionCard("60 night comfort trial +", comfortTrialHtml, true)}</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function affectsWebDescription(fieldName) {
+    return [
+      "Description Preview",
+      "New Feature Desc",
+      "New Short Desc",
+      "Short Description",
+      "reasons to buy",
+      "Comfort",
+      "Spring Type",
+      "Fillings",
+      "Width",
+      "Length",
+      "Height",
+      "Depth",
+      "Warranty",
+      "Country Of Origin",
+      "Turnable",
+      "Built/Flat Packed",
+      "Category",
+      "Tags",
+    ].includes(fieldName);
+  }
+
+  function netSuiteInternalIds(value) {
+    const values = Array.isArray(value)
+      ? value
+      : String(value || "").split(/[\u0005,]/);
+    return values
+      .map((item) => String(item || "").trim())
+      .filter((item) => /^\d+$/.test(item));
+  }
+
+  function sizeOptions(row) {
+    const raw = row["Standard-Sizes"] || row["Standard Sizes"] || row.Size || "";
+    if (Array.isArray(raw)) return raw.filter(Boolean).map((item) => String(item).trim()).filter(Boolean);
+    return String(raw).split(",").map((item) => item.trim()).filter(Boolean);
+  }
+
+  function formatCurrency(value) {
+    const amount = Number.parseFloat(value);
+    if (!Number.isFinite(amount)) return "";
+    return `\u00A3${Math.round(amount).toLocaleString()}`;
+  }
+
+  function previewDocument(row) {
+    const images = previewImages(row);
+    const hero = images[0] || "";
+    const thumbs = images.slice(0, 4);
+    const shortDescription = String(row["New Short Desc"] || row["Short Description"] || "");
+    const reasonItems = reasonsMeta(row);
+    const sizes = sizeOptions(row);
+    const title = escapeHtml(row.Name || row["Display Name"] || "Product Preview");
+    const className = escapeHtml(valueText(row.Class));
+    const retailText = formatCurrency(row["Retail Price"]);
+    const purchaseText = formatCurrency(row["Purchase Price"]);
+    const baseText = formatCurrency(row["Base Price"]);
+    const leadTime = escapeHtml(valueText(row["Lead Time"]));
+    const summaryReasons = reasonItems.slice(0, 8);
+    const productDescriptionHtml = webDescriptionHtml(row);
 
     return `<!doctype html>
 <html lang="en">
@@ -796,18 +840,7 @@
       <div>
         <article class="card">
           <div class="description">
-            <div class="why-box">
-              <strong>Why you will love this...</strong>
-              <p>${escapeHtml(stripHtml(featureSummary) || "No content added yet.")}</p>
-            </div>
-            ${renderAccordionCard("Video", videoEmbedUrl ? `<iframe class="video-frame" src="${escapeHtml(videoEmbedUrl)}" title="${title} video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>` : (videoUrl ? `<a class="video-link" href="${escapeHtml(videoUrl)}" target="_blank" rel="noreferrer noopener">${escapeHtml(videoUrl)}</a>` : `<p class="preview-empty">No content added yet.</p>`))}
-            ${renderAccordionCard("Features & Benefits", featuresBenefitsHtml, true)}
-            <div class="preview-accordion-grid">
-              <div class="info-card">${renderAccordionCard("Info", productInfoHtml)}</div>
-              <div class="warranty-card">${renderAccordionCard("Warranty Information", warrantyHtml)}</div>
-              <div class="faq-card">${renderAccordionCard("FAQs", faqHtml, true)}</div>
-              <div class="trial-card">${renderAccordionCard("60 night comfort trial +", comfortTrialHtml, true)}</div>
-            </div>
+            ${productDescriptionHtml}
           </div>
         </article>
       </div>
@@ -1117,6 +1150,7 @@
       "Record Type": clean["Record Type"],
     };
     const priceUpdates = [];
+    let shouldPushWebDescription = false;
 
     if (JSON.stringify(clean.Name ?? null) !== JSON.stringify(base.Name ?? null)) {
       payload.Name = childItemName(clean.Name);
@@ -1134,6 +1168,7 @@
       if (!valueChanged && !internalIdChanged) return;
 
       if (key === "Discount Percent") return;
+      if (affectsWebDescription(key)) shouldPushWebDescription = true;
 
       if (key === "Base Price") {
         const netBasePrice = parseFloat(clean[key]);
@@ -1145,6 +1180,15 @@
             price: netBasePrice,
           });
         }
+      }
+
+      if (field.fieldType === "multiple-select") {
+        const ids = netSuiteInternalIds(clean[internalIdKey]);
+        if (ids.length) {
+          payload[key] = clean[key];
+          payload[internalIdKey] = ids;
+        }
+        return;
       }
 
       if (field.fieldType === "image") {
@@ -1173,9 +1217,16 @@
       const internalIdKey = `${field.name}_InternalId`;
       if (clean[internalIdKey] === undefined && base[internalIdKey] === undefined) return;
       if (JSON.stringify(clean[internalIdKey] ?? null) === JSON.stringify(base[internalIdKey] ?? null)) return;
+      if (affectsWebDescription(field.name)) shouldPushWebDescription = true;
+      if (field.fieldType === "multiple-select") {
+        const ids = netSuiteInternalIds(clean[internalIdKey]);
+        if (ids.length) payload[internalIdKey] = ids;
+        return;
+      }
       payload[internalIdKey] = clean[internalIdKey];
     });
 
+    if (shouldPushWebDescription) payload["Description Preview"] = webDescriptionHtml(clean).trim();
     if (priceUpdates.length) payload.__priceUpdates = priceUpdates;
 
     return payload;

@@ -308,6 +308,7 @@ router.post("/create", async (req, res) => {
       custbody_sb_primarystore: storeNsId
         ? { id: String(storeNsId) }
         : undefined,
+      memo: order?.memo ? String(order.memo) : "",
       item: {
         items: (items || []).map((i) => {
           const itemClass = String(i.class || "").trim().toLowerCase();
@@ -727,6 +728,19 @@ router.post("/:id/save", async (req, res) => {
     }
 
     console.log(`✅ Quote ${id} saved via RESTlet`);
+    if (Object.prototype.hasOwnProperty.call(headerUpdates || {}, "memo")) {
+      const memoQuoteId =
+        Number.isFinite(Number(id)) && Number(id) > 0
+          ? id
+          : (await nsGet(`/estimate/${encodeURIComponent(id)}`, userId, "sb"))?.id || id;
+
+      await nsPatch(
+        `/estimate/${encodeURIComponent(memoQuoteId)}`,
+        { memo: headerUpdates.memo == null ? "" : String(headerUpdates.memo) },
+        userId
+      );
+    }
+
     let savedCustomFields = [];
     if (Array.isArray(customFields) && customFields.length) {
       const { patch, error } = await buildCustomFieldPatchPayload({

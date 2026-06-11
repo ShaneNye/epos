@@ -836,8 +836,92 @@ function buildQuoteSavePayload() {
       leadSource: document.querySelector('select[name="leadSource"]')?.value || "",
       paymentInfo: document.getElementById("paymentInfo")?.value || "",
       warehouse: document.getElementById("warehouse")?.value || "",
+      memo: document.querySelector('textarea[name="memo"]')?.value?.trim() || "",
     },
   };
+}
+
+function initQuoteMemoPanel(quoteId) {
+  const auth = storageGet?.();
+  const token = auth?.token || null;
+  const normalizedQuoteId = String(quoteId || "").trim();
+
+  const memoPanel = document.getElementById("memoPanel");
+  const memoHeader = document.querySelector(".memo-header");
+  const memoTableBody = document.querySelector("#memoTable tbody");
+  const noMemosMsg = document.getElementById("noMemosMsg");
+
+  if (!memoPanel || !memoHeader || !memoTableBody || !normalizedQuoteId) return;
+  if (memoPanel.dataset.initialized === normalizedQuoteId) return;
+  memoPanel.dataset.initialized = normalizedQuoteId;
+
+  memoHeader.addEventListener("click", (event) => {
+    if (event.target.closest("button")) return;
+    memoPanel.classList.toggle("expanded");
+  });
+
+  document.getElementById("newMemoBtn")?.addEventListener("click", () => {
+    if (!token) return alert("Missing session token");
+    const url = `/memo.html?orderId=${encodeURIComponent(normalizedQuoteId)}&token=${encodeURIComponent(token)}`;
+    const w = window.open(
+      url,
+      "MemoPopup",
+      "width=550,height=600,resizable=yes,scrollbars=yes"
+    );
+    if (!w) alert("Please allow popups.");
+  });
+
+  async function loadMemos() {
+    if (!token) return;
+
+    try {
+      const res = await fetch(`/api/sales/memo/${encodeURIComponent(normalizedQuoteId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const data = await res.json();
+
+      memoTableBody.innerHTML = "";
+      updateQuoteMemoHeader(data.memos?.length || 0);
+
+      if (!data.ok || !data.memos?.length) {
+        if (noMemosMsg) noMemosMsg.style.display = "block";
+        return;
+      }
+
+      if (noMemosMsg) noMemosMsg.style.display = "none";
+
+      const frag = document.createDocumentFragment();
+      data.memos.forEach((m) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td>${escapeHtml(m["Date"] || "")}</td>
+          <td>${escapeHtml(m["Author"] || "")}</td>
+          <td>${escapeHtml(m["Title"] || "")}</td>
+          <td>${escapeHtml(m["Type"] || "")}</td>
+          <td>${escapeHtml(m["Memo"] || "")}</td>
+        `;
+        frag.appendChild(tr);
+      });
+
+      memoTableBody.appendChild(frag);
+    } catch (err) {
+      console.error("Failed to load quote memos:", err.message || err);
+    }
+  }
+
+  window.addEventListener("message", (event) => {
+    if (event.data?.action === "refresh-memos") {
+      loadMemos();
+    }
+  });
+
+  loadMemos();
+}
+
+function updateQuoteMemoHeader(count) {
+  const header = document.getElementById("memoHeaderTitle");
+  if (!header) return;
+  header.textContent = !count ? "Memos" : `Memos (${count})`;
 }
 
 function stableSaveSignature(payload) {
@@ -1434,6 +1518,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (emailEl) emailEl.value = quote.email || "";
     if (contactEl) contactEl.value = quote.custbody4 || quote.phone || "";
     if (altContactEl) altContactEl.value = quote.altPhone || "";
+    const memoEl = document.querySelector('textarea[name="memo"]');
+    if (memoEl) memoEl.value = quote.memo || "";
 
     try {
       const leadSourceEl = document.querySelector('select[name="leadSource"]');
@@ -1456,6 +1542,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       storeEl.disabled = true;
       storeEl.classList.add("locked-input");
     }
+
+    initQuoteMemoPanel(quote.id || quote.internalId || quote.internalid);
 
     const tbody = document.getElementById("orderItemsBody");
     tbody.innerHTML = "";

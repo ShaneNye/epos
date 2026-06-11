@@ -333,9 +333,8 @@ function recalcRow(row, changedField = null) {
 function normalizeOption(item, fieldName = "") {
   const name = String(item.Name || item.name || item.text || item.label || "").trim();
   const rawId = String(item["Internal ID"] || item.internalId || item.id || "").trim();
-  const fallbackId = fieldName === "Reasons To Buy" ? name : "";
   return {
-    id: rawId || fallbackId,
+    id: rawId,
     name,
     raw: item,
   };
@@ -869,6 +868,20 @@ async function fetchItemOptions(cfg, userId) {
 async function fetchReasonsToBuyOptions(fieldName, env, cfg, userId) {
   if (fieldName === "Reasons To Buy Icons") return fetchReasonsToBuyIconOptions(cfg, userId);
   if (fieldName === "Items") return fetchItemOptions(cfg, userId);
+  if (fieldName === "Reasons To Buy" && cfg && userId) {
+    const rows = await fetchReasonsToBuyRows(cfg, userId);
+    return rows
+      .map((row) => ({
+        id: row["Internal ID"],
+        name: row.Name,
+        raw: {
+          ...row,
+          "Icon URL": row.IconUrl,
+          "Is Warranty Period": row["Is Warranty Period"],
+        },
+      }))
+      .filter((option) => option.id && option.name);
+  }
   return fetchOptionFeed(fieldName, env);
 }
 
@@ -942,6 +955,10 @@ function normalizeMultiReferenceIds(value) {
     .split(",")
     .map((item) => item.trim())
     .filter(Boolean);
+}
+
+function netSuiteInternalIds(value) {
+  return normalizeMultiReferenceIds(value).filter((id) => /^\d+$/.test(String(id)));
 }
 
 function normalizeReasonsToBuyRow(row, cfg) {
@@ -1066,7 +1083,7 @@ function buildOptionLookup(options = []) {
   return byName;
 }
 
-async function loadMultipleSelectOptionMap(env) {
+async function loadMultipleSelectOptionMap(env, cfg = null, userId = null) {
   const optionFeedPromises = new Map();
   const optionMap = {};
 
@@ -1074,7 +1091,7 @@ async function loadMultipleSelectOptionMap(env) {
     .filter((field) => field.fieldType === "multiple-select" && field.optionFeed)
     .forEach((field) => {
       if (!optionFeedPromises.has(field.optionFeed)) {
-        optionFeedPromises.set(field.optionFeed, fetchOptionFeed(field.optionFeed, env).catch(() => []));
+        optionFeedPromises.set(field.optionFeed, fetchReasonsToBuyOptions(field.optionFeed, env, cfg, userId).catch(() => []));
       }
     });
 
@@ -1637,7 +1654,7 @@ async function processRow(row, job) {
       }
 
       if (field.fieldType === "multiple-select") {
-        const ids = row[`${field.name}_InternalId`];
+        const ids = netSuiteInternalIds(row[`${field.name}_InternalId`]);
         if (Array.isArray(ids) && ids.length) {
           payload[field.internalid] = { items: ids.map((id) => ({ id: String(id) })) };
         }
@@ -2277,11 +2294,11 @@ async function fetchWebManagementRows(cfg) {
   return Array.isArray(payload) ? payload : payload.results || payload.items || [];
 }
 
-async function buildWebManagementPayload(env, cfg) {
+async function buildWebManagementPayload(env, cfg, userId = null) {
   const startedAt = Date.now();
   const [rawRows, optionMap] = await Promise.all([
     fetchWebManagementRows(cfg),
-    loadMultipleSelectOptionMap(env),
+    loadMultipleSelectOptionMap(env, cfg, userId),
   ]);
   const rows = rawRows.map((row) => recalcRow(normalizeMultipleSelects(normalizeRowAliases(row), optionMap)));
 
@@ -2313,11 +2330,22 @@ function withWebManagementCacheMeta(payload, entry, source) {
   };
 }
 
-function refreshWebManagementCache(key, env, cfg) {
+function webManagementPayloadHasReasonIds(payload) {
+  const rows = Array.isArray(payload?.rows) ? payload.rows : [];
+  return rows.every((row) => {
+    const reasons = Array.isArray(row?.["reasons to buy"])
+      ? row["reasons to buy"].filter(Boolean)
+      : String(row?.["reasons to buy"] || "").split(",").map((item) => item.trim()).filter(Boolean);
+    if (!reasons.length) return true;
+    return netSuiteInternalIds(row?.["reasons to buy_InternalId"]).length === reasons.length;
+  });
+}
+
+function refreshWebManagementCache(key, env, cfg, userId = null) {
   const existing = webManagementCache.get(key);
   if (existing?.inFlight) return existing.inFlight;
 
-  const inFlight = buildWebManagementPayload(env, cfg)
+  const inFlight = buildWebManagementPayload(env, cfg, userId)
     .then((payload) => {
       webManagementCache.set(key, {
         payload,
@@ -2342,23 +2370,24 @@ function refreshWebManagementCache(key, env, cfg) {
   return inFlight;
 }
 
-async function getWebManagementPayload(env, cfg, { forceRefresh = false } = {}) {
+async function getWebManagementPayload(env, cfg, { forceRefresh = false, userId = null } = {}) {
   const key = webManagementCacheKey(env);
   const cached = webManagementCache.get(key);
   const age = cached?.loadedAt ? Date.now() - cached.loadedAt : Infinity;
+  const cachedHasReasonIds = !userId || webManagementPayloadHasReasonIds(cached?.payload);
 
-  if (!forceRefresh && cached?.payload && age < WEB_MANAGEMENT_CACHE_TTL_MS) {
+  if (!forceRefresh && cached?.payload && cachedHasReasonIds && age < WEB_MANAGEMENT_CACHE_TTL_MS) {
     return withWebManagementCacheMeta(cached.payload, cached, "cache");
   }
 
-  if (!forceRefresh && cached?.payload && age < WEB_MANAGEMENT_STALE_MS) {
-    refreshWebManagementCache(key, env, cfg).catch((err) => {
+  if (!forceRefresh && cached?.payload && cachedHasReasonIds && age < WEB_MANAGEMENT_STALE_MS) {
+    refreshWebManagementCache(key, env, cfg, userId).catch((err) => {
       console.error("SuitePim web management background refresh failed:", err);
     });
     return withWebManagementCacheMeta(cached.payload, webManagementCache.get(key), "stale");
   }
 
-  const payload = await refreshWebManagementCache(key, env, cfg);
+  const payload = await refreshWebManagementCache(key, env, cfg, userId);
   return withWebManagementCacheMeta(payload, webManagementCache.get(key), forceRefresh ? "refresh" : "origin");
 }
 
@@ -2571,7 +2600,8 @@ router.get("/products", async (req, res) => {
     if (!response.ok) throw new Error(`Product feed returned ${response.status}`);
 
     const rawRows = Array.isArray(payload) ? payload : payload.results || payload.items || [];
-    const optionMap = await loadMultipleSelectOptionMap(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const optionMap = await loadMultipleSelectOptionMap(env, cfg, userId);
 
     const rows = rawRows.map((row) => recalcRow(normalizeMultipleSelects(normalizeRowAliases(row), optionMap)));
     res.json({ ok: true, rows, count: rows.length, environment: publicEnvironmentName(env) });
@@ -2615,7 +2645,8 @@ router.get("/web-management", async (req, res) => {
     }
 
     const forceRefresh = req.query.refresh === "1" || req.query.force === "1";
-    const payload = await getWebManagementPayload(env, cfg, { forceRefresh });
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const payload = await getWebManagementPayload(env, cfg, { forceRefresh, userId });
     res.json(payload);
   } catch (err) {
     console.error("SuitePim web management load failed:", err);
@@ -2739,10 +2770,12 @@ router.get("/item-performance/diagnostics/:salesOrder", async (req, res) => {
 router.get("/options/:fieldName", async (req, res) => {
   try {
     const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
     const requested = req.params.fieldName;
     const field = fields.find((f) => f.name.toLowerCase() === requested.toLowerCase());
     if (!field?.optionFeed) return res.json({ ok: true, options: [] });
-    const options = await fetchOptionFeed(field.optionFeed, env);
+    const options = await fetchReasonsToBuyOptions(field.optionFeed, env, cfg, userId);
     res.json({ ok: true, options });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });

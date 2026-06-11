@@ -203,10 +203,10 @@
                             </label>
                         </div>
 
-                        <!-- <label class="memo">
-                            Memo / Notes
-                            <textarea name="memo" rows="3" placeholder="Any notes for this order..."></textarea>
-                        </label> -->
+                        <label class="memo">
+                            Dispatch / Delivery Notes
+                            <textarea name="memo" rows="3" placeholder="Any notes for this quote..."></textarea>
+                        </label>
 
                     </section>
                 </div>
@@ -235,6 +235,31 @@
                 </aside>
 
             </div>
+
+            <!-- ===================== MEMOS PANEL ===================== -->
+            <div id="memoPanel" class="memo-panel collapsed">
+                <div class="memo-header">
+                    <h3 id="memoHeaderTitle">Memos</h3>
+                    <button id="newMemoBtn" class="btn-secondary small-btn" type="button">+ New Memo</button>
+                </div>
+
+                <div class="memo-content">
+                    <table id="memoTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 160px;">Date</th>
+                                <th style="width: 160px;">Author</th>
+                                <th style="width: 160px;">Title</th>
+                                <th style="width: 120px;">Type</th>
+                                <th>Memo</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                    <p id="noMemosMsg" class="no-memos">No memos found for this quote.</p>
+                </div>
+            </div>
+            <!-- ===================== END MEMOS PANEL ===================== -->
 
             <!-- === ORDER ITEMS TABLE (FULL WIDTH) === -->
             <section class="form-section order-items-section">

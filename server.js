@@ -197,7 +197,7 @@ app.use((req, res, next) => {
 });
 
 app.use((req, res, next) => {
-  const nestedAsset = req.path.match(/^\/[^/]+\/(css|js|assets|fonts)\/(.+)$/i);
+  const nestedAsset = req.path.match(/^\/(?:[^/]+\/)+(css|js|assets|fonts)\/(.+)$/i);
   if (!nestedAsset) return next();
 
   req.url = `/${nestedAsset[1]}/${nestedAsset[2]}`;

@@ -2,16 +2,17 @@
  * @NApiVersion 2.1
  * @NScriptType Restlet
  */
-define(['N/record', 'N/search', 'N/error'], 
-(record, search, error) => {
+define(['N/record', 'N/query', 'N/error'], (record, query, error) => {
 
-  /* ======================================================
-     CREATE MEMO (POST)
-     Creates a Note record linked to a Sales Order
-  ====================================================== */
+  const typeMap = {
+    "Email": 3,
+    "Phone": 8,
+    "In-Person": 6
+  };
+
   const post = (context) => {
     try {
-      const { orderId, title, memo, type, authorEmail } = context;
+      const { orderId, title, memo, type, authorId } = context;
 
       if (!orderId)
         throw error.create({ name: 'MISSING_ORDER_ID', message: 'orderId is required.' });
@@ -22,99 +23,82 @@ define(['N/record', 'N/search', 'N/error'],
       if (!memo)
         throw error.create({ name: 'MISSING_MEMO', message: 'Memo text is required.' });
 
-      // --- Create Note record ---
-      const noteRec = record.create({ type: 'note' });
+      const nsNoteType = typeMap[type] || 3; // fallback = Email
 
-      noteRec.setValue({ fieldId: 'title', value: title });
-      noteRec.setValue({ fieldId: 'note', value: memo });
-      noteRec.setValue({ fieldId: 'notetype', value: type || 'Email' });
-      noteRec.setValue({ fieldId: 'entity', value: orderId });
+      // Create Note record
+      const note = record.create({
+        type: "note",
+        isDynamic: false
+      });
 
-      // Optional: If you want to store author:
-      if (authorEmail) {
-        const userId = findUserByEmail(authorEmail);
-        if (userId) {
-          noteRec.setValue({ fieldId: 'author', value: userId });
-        }
+      note.setValue({ fieldId: "title", value: title });
+      note.setValue({ fieldId: "note", value: memo });
+      note.setValue({ fieldId: "notetype", value: nsNoteType });
+
+      // Link to the transaction. This supports Sales Orders and Estimates/Quotes.
+      note.setValue({ fieldId: "transaction", value: Number(orderId) });
+
+      // Set Author if provided
+      if (authorId) {
+        note.setValue({ fieldId: "author", value: Number(authorId) });
       }
 
-      const id = noteRec.save();
+      const id = note.save();
       return { ok: true, id };
 
     } catch (e) {
-      log.error('❌ Error creating memo', e);
-      return { ok: false, error: e.message || e };
+      log.error("❌ Memo Creation Error", e);
+      return {
+        ok: false,
+        error: e.message || e
+      };
     }
   };
 
-
-  /* ======================================================
-     GET MEMOS FOR A SALES ORDER (GET)
-  ====================================================== */
   const get = (context) => {
     try {
-      const orderId = context.id;
-      if (!orderId)
-        throw error.create({ name: 'MISSING_ORDER_ID', message: 'id parameter is required.' });
+      const transactionId = context.orderId || context.transactionId || context.id;
 
-      const results = [];
+      if (!transactionId)
+        throw error.create({ name: 'MISSING_TRANSACTION_ID', message: 'orderId, transactionId, or id is required.' });
 
-      const memoSearch = search.create({
-        type: 'note',
-        filters: [
-          ['entity', 'anyof', orderId]
-        ],
-        columns: [
-          'id',
-          'title',
-          'note',
-          'notetype',
-          'notedate',
-          'author'
-        ]
-      });
+      const numericTransactionId = Number(transactionId);
+      if (!numericTransactionId)
+        throw error.create({ name: 'INVALID_TRANSACTION_ID', message: 'transaction ID must be numeric.' });
 
-      memoSearch.run().each(result => {
-        results.push({
-          id: result.getValue('id'),
-          title: result.getValue('title'),
-          memo: result.getValue('note'),
-          type: result.getText('notetype'),
-          author: result.getText('author'),
-          date: result.getValue('notedate')
-        });
-        return true;
-      });
+      const sql = `
+        SELECT
+          TransactionNote.ID AS id,
+          TransactionNote.Transaction AS transactionId,
+          TransactionNote.NoteDate AS date,
+          BUILTIN.DF(TransactionNote.Author) AS author,
+          BUILTIN.DF(TransactionNote.NoteType) AS type,
+          TransactionNote.Title AS title,
+          TransactionNote.Note AS memo
+        FROM
+          TransactionNote
+        WHERE
+          TransactionNote.Transaction = ?
+        ORDER BY
+          TransactionNote.NoteDate DESC
+      `;
+
+      const results = query
+        .runSuiteQL({
+          query: sql,
+          params: [numericTransactionId]
+        })
+        .asMappedResults();
 
       return { ok: true, results };
-
     } catch (e) {
-      log.error('❌ Error fetching memos', e);
-      return { ok: false, error: e.message || e };
+      log.error("Memo Fetch Error", e);
+      return {
+        ok: false,
+        error: e.message || e
+      };
     }
   };
-
-
-  /* ======================================================
-     Helper: find NetSuite user ID by email
-  ====================================================== */
-  function findUserByEmail(email) {
-    if (!email) return null;
-
-    const userSearch = search.create({
-      type: "employee",
-      filters: [['email', 'is', email]],
-      columns: ['internalid']
-    });
-
-    const result = userSearch.run().getRange({ start: 0, end: 1 });
-
-    if (result && result.length > 0) {
-      return result[0].getValue('internalid');
-    }
-
-    return null;
-  }
 
   return { post, get };
 });
