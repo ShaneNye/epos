@@ -1149,6 +1149,49 @@ app.get("/api/netsuite/customer-confirmation", async (req, res) => {
   }
 });
 
+// === Store Targets Widget ===
+app.get("/api/netsuite/store-targets", async (req, res) => {
+  try {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
+    const baseUrl = getEnvAny("STORE_TARGETS_URL", "store_targets_url");
+    const token = getEnvAny("STORE_TARGETS", "store_targets");
+    if (!baseUrl) {
+      throw new Error("Missing STORE_TARGETS_URL/store_targets_url in environment");
+    }
+
+    const nsUrl = new URL(baseUrl);
+    if (token && !nsUrl.searchParams.has("token")) {
+      nsUrl.searchParams.set("token", token);
+    }
+    nsUrl.searchParams.set("_", String(Date.now()));
+
+    Object.entries(req.query || {}).forEach(([key, value]) => {
+      if (["token", "refresh", "force", "fresh"].includes(String(key).toLowerCase())) return;
+      if (value === undefined || value === null || value === "") return;
+      nsUrl.searchParams.set(key, String(value));
+    });
+
+    console.log("Fetching store targets from NetSuite");
+    const response = await fetch(nsUrl.toString());
+    if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
+
+    const json = await response.json();
+    res.json({
+      ok: json?.ok !== false,
+      ...json,
+      results: Array.isArray(json?.results) ? json.results : Array.isArray(json) ? json : [],
+    });
+  } catch (err) {
+    console.error("NetSuite store targets proxy error:", err);
+    res.status(500).json({ ok: false, error: "Failed to fetch store targets data" });
+  }
+});
+
 // === Customer Lookup Report ===
 app.get("/api/netsuite/customer-lookup", (req, res) =>
   fetchNetSuiteData("CUSTOMER_LOOKUP_URL", "CUSTOMER_LOOKUP", req, res, "customer lookup report")

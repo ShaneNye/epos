@@ -38,22 +38,30 @@
   color: #003d4b;
 }
 
+#salesTodayWidget .sales-dashboard-controls {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  min-width: 0;
+}
+
 #salesTodayWidget .widget-tabs {
   display: flex;
   gap: 0;
   margin-bottom: 0;
   border-bottom: 1px solid #d6e6ed;
   background: #f7fbfd;
-  padding: 0 8px;
-  border-radius: 8px 8px 0 0;
+  padding: 0 4px;
+  border-radius: 8px;
+  flex: 0 0 auto;
 }
 
 #salesTodayWidget .widget-tab {
   border: 1px solid transparent;
-  border-bottom: 0;
   background: transparent;
   color: #00738d;
-  padding: 10px 18px;
+  padding: 7px 12px;
   cursor: pointer;
   font-size: 0.88rem;
   font-weight: 600;
@@ -66,10 +74,20 @@
 
 #salesTodayWidget .widget-tab.active {
   background: #ffffff;
-  border-color: #d6e6ed #d6e6ed transparent;
-  border-top-left-radius: 8px;
-  border-top-right-radius: 8px;
+  border-color: #d6e6ed;
+  border-radius: 6px;
   color: #003d4b;
+}
+
+#salesTodayWidget #salesDashboardStoreFilter {
+  min-width: 170px;
+  min-height: 32px;
+  border: 1px solid #cbdfe6;
+  border-radius: 7px;
+  background: #fff;
+  color: #1f3444;
+  font: 700 0.84rem "Segoe UI", system-ui, sans-serif;
+  padding: 5px 8px;
 }
 
 #salesTodayWidget .widget-panel {
@@ -90,22 +108,11 @@
   padding-top: 4px;
 }
 
-#salesTodayWidget .customer-feedback-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-  margin-bottom: 10px;
-}
-
-#salesTodayWidget select#customerFeedbackStore {
-  min-width: 180px;
-  padding: 8px 12px;
-  border: 1px solid #cbdfe6;
-  border-radius: 8px;
-  background: #ffffff;
-  color: #333;
+#salesTodayWidget .sales-panel-meta {
+  color: #637283;
+  font-size: 0.82rem;
+  font-weight: 700;
+  margin: 2px 0 8px;
 }
 
 #salesTodayWidget .customer-feedback-table {

@@ -55,6 +55,7 @@ document.addEventListener("DOMContentLoaded", () => {
         { key: "salesByStore", id: "salesByStoreWidget" },
         { key: "topThree", id: "topThreeWidget" },
         { key: "outstandingActions", id: "outstandingActionsWidget" },
+        { key: "kpiMeter", id: "kpiMeterWidget" },
         { key: "salesForcast", id: "salesForecastWidget" },
         { key: "homeRota", id: "homeRotaWidget", selfManaged: true },
       ];

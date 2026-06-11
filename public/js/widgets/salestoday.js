@@ -84,9 +84,14 @@ document.addEventListener("DOMContentLoaded", () => {
     widgetContainer.innerHTML = `
       <div class="widget-header">
         <div class="widget-title">Sales Dashboard</div>
-        <div class="widget-tabs" role="tablist" aria-label="Sales dashboard tabs">
-          <button type="button" class="widget-tab active" data-tab="sales" role="tab" aria-selected="true">Sales Created</button>
-          <button type="button" class="widget-tab" data-tab="feedback" role="tab" aria-selected="false">Customer Feedback</button>
+        <div class="sales-dashboard-controls">
+          <div class="widget-tabs" role="tablist" aria-label="Sales dashboard tabs">
+            <button type="button" class="widget-tab active" data-tab="sales" role="tab" aria-selected="true">Sales Created</button>
+            <button type="button" class="widget-tab" data-tab="feedback" role="tab" aria-selected="false">Customer Feedback</button>
+          </div>
+          <select id="salesDashboardStoreFilter" aria-label="Sales dashboard store filter">
+            <option value="all">All stores</option>
+          </select>
         </div>
       </div>
       <div class="widget-panel active" id="salesPanel">
@@ -117,6 +122,13 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       });
     });
+
+    const storeFilter = widgetContainer.querySelector("#salesDashboardStoreFilter");
+    storeFilter?.addEventListener("change", (event) => {
+      state.selectedStore = event.target.value;
+      renderSalesPanel();
+      renderFeedbackPanel();
+    });
   }
 
   function renderSalesPanel() {
@@ -129,7 +141,9 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     const range = getRange();
-    const orders = state.salesRows.filter((r) => inSalesRange(r, range));
+    const orders = state.salesRows
+      .filter((r) => inSalesRange(r, range))
+      .filter((r) => state.selectedStore === "all" || normalize(r.Store) === state.selectedStore);
 
     if (!orders.length) {
       content.innerHTML = `<div class="widget-header">Sales Created (0 orders)</div><div class="no-data">No sales found for ${range.label.toLowerCase()}.</div>`;
@@ -202,6 +216,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function storeOptions() {
     const stores = new Map();
+    state.salesRows.forEach((row) => {
+      const key = normalize(row.Store);
+      if (key && !stores.has(key)) stores.set(key, displayStore(row.Store));
+    });
+
     state.feedbackRows.forEach((row) => {
       const key = normalize(row.Store);
       if (key && !stores.has(key)) stores.set(key, displayStore(row.Store));
@@ -221,7 +240,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function renderStoreSelect() {
-    const select = widgetContainer.querySelector("#customerFeedbackStore");
+    const select = widgetContainer.querySelector("#salesDashboardStoreFilter");
     if (!select) return;
 
     const options = storeOptions();
@@ -245,42 +264,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const count = rows.length;
     if (!rows.length) {
       content.innerHTML = `
-        <div class="customer-feedback-header">
-          <div>
-            <div class="widget-header">Customer Feedback</div>
-            <span><strong data-feedback-count>0</strong> responses in selected range</span>
-          </div>
-          <select id="customerFeedbackStore" aria-label="Customer feedback store"></select>
-        </div>
+        <div class="sales-panel-meta"><strong>0</strong> feedback responses in selected range</div>
         <div class="no-data">No customer feedback found for this selection.</div>
       `;
-      renderStoreSelect();
-      const select = widgetContainer.querySelector("#customerFeedbackStore");
-      if (select) {
-        select.addEventListener("change", (event) => {
-          state.selectedStore = event.target.value;
-          renderFeedbackPanel();
-        });
-      }
       return;
     }
 
     content.innerHTML = `
-      <div class="customer-feedback-header">
-        <div>
-          <div class="widget-header">Customer Feedback</div>
-          <span><strong data-feedback-count>${count}</strong> responses in selected range</span>
-        </div>
-        <select id="customerFeedbackStore" aria-label="Customer feedback store"></select>
-      </div>
+      <div class="sales-panel-meta"><strong>${count}</strong> feedback responses in selected range</div>
       <div class="customer-feedback-body"></div>
     `;
-    renderStoreSelect();
-    widgetContainer.querySelector("#customerFeedbackStore").addEventListener("change", (event) => {
-      state.selectedStore = event.target.value;
-      renderFeedbackPanel();
-    });
-
     const body = widgetContainer.querySelector(".customer-feedback-body");
     if (!body) return;
 
@@ -346,6 +339,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
 
     await Promise.all([salesPromise, feedbackPromise]);
+    renderStoreSelect();
     renderSalesPanel();
     renderFeedbackPanel();
   }

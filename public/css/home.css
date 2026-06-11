@@ -494,8 +494,20 @@ select#activeRoleSelect::-internal-list-box {
   grid-area: outstandingActions;
 }
 
-#customerFeedbackWidget {
-  grid-area: customerFeedback;
+#kpiMeterWidget {
+  grid-area: kpiMeter;
+  background: #fff;
+  border: 1px solid #e6eef3;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  box-sizing: border-box;
+  color: #1f3444;
+  display: flex;
+  flex-direction: column;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  overflow: hidden;
+  padding: 10px 12px;
+  position: relative;
 }
 
 .outstanding-actions-header {
@@ -652,6 +664,178 @@ select#activeRoleSelect::-internal-list-box {
   font-weight: 800;
 }
 
+.kpi-meter-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.kpi-meter-header .widget-header {
+  margin: 0;
+}
+
+.kpi-meter-header select {
+  min-width: 155px;
+  min-height: 30px;
+  border: 1px solid #cfdde5;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f3444;
+  font: 700 0.82rem "Segoe UI", system-ui, sans-serif;
+  padding: 5px 8px;
+}
+
+.kpi-meter-content {
+  display: grid;
+  grid-template-columns: 145px minmax(0, 1fr);
+  gap: 16px;
+  align-items: center;
+  min-height: 0;
+}
+
+.kpi-gauge {
+  position: relative;
+  width: 145px;
+  height: 76px;
+  overflow: hidden;
+  border-radius: 145px 145px 0 0;
+  background: conic-gradient(from 270deg at 50% 100%, var(--kpi-color, #0081ab) 0deg var(--kpi-deg), #e6eef3 var(--kpi-deg) 180deg, transparent 180deg 360deg);
+}
+
+.kpi-gauge::after {
+  content: "";
+  position: absolute;
+  left: 18px;
+  right: 18px;
+  bottom: 0;
+  height: 58px;
+  border-radius: 110px 110px 0 0;
+  background: #fff;
+}
+
+.kpi-gauge-inner {
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  bottom: 3px;
+  text-align: center;
+}
+
+.kpi-gauge-inner strong {
+  display: block;
+  color: #005b72;
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+.kpi-gauge.is-over-target {
+  --kpi-color: #16a34a;
+}
+
+.kpi-gauge-inner strong.is-over-target {
+  color: #15803d;
+}
+
+.kpi-gauge-inner span {
+  color: #637283;
+  font-size: 0.68rem;
+  font-weight: 800;
+}
+
+.kpi-meter-stats {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
+}
+
+.kpi-meter-stats div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border-bottom: 1px solid #edf3f6;
+  padding-bottom: 4px;
+}
+
+.kpi-meter-stats div:last-child {
+  border-bottom: 0;
+  padding-bottom: 0;
+}
+
+.kpi-meter-stats span {
+  color: #637283;
+  font-size: 0.74rem;
+  font-weight: 800;
+}
+
+.kpi-meter-stats strong {
+  color: #0081ab;
+  font-size: 0.82rem;
+  white-space: nowrap;
+}
+
+.kpi-meter-stats strong.is-negative {
+  color: #b42318;
+}
+
+.kpi-success-message {
+  color: #15803d;
+  font-size: 0.74rem;
+  font-weight: 800;
+  line-height: 1.2;
+  min-height: 15px;
+  opacity: 0;
+  padding-top: 5px;
+  text-align: center;
+  transform: translateY(3px);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+.kpi-success-message.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.kpi-confetti-layer {
+  height: 1px;
+  left: 0;
+  pointer-events: none;
+  position: absolute;
+  top: 0;
+  width: 1px;
+  z-index: 5;
+}
+
+.kpi-confetti-piece {
+  animation: kpi-confetti-pop 900ms cubic-bezier(0.18, 0.82, 0.22, 1) forwards;
+  background: var(--confetti-color, #16a34a);
+  border-radius: 2px;
+  height: 7px;
+  left: 0;
+  opacity: 0;
+  position: absolute;
+  top: 0;
+  transform: translate(-50%, -50%);
+  width: 4px;
+}
+
+@keyframes kpi-confetti-pop {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.4) rotate(0deg);
+  }
+  14% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+    transform: translate(calc(-50% + var(--confetti-x)), calc(-50% + var(--confetti-y))) scale(1) rotate(var(--confetti-rotate));
+  }
+}
+
 .customer-feedback-header {
   display: flex;
   align-items: center;
@@ -753,7 +937,6 @@ select#activeRoleSelect::-internal-list-box {
       "salesToday"
       "salesByStore"
       "outstandingActions"
-      "customerFeedback"
       "topThree";
     grid-template-rows: auto;
     gap: 10px;
@@ -1445,7 +1628,7 @@ select#activeRoleSelect::-internal-list-box {
     "salesMonth salesMonth"
     "rotaWidget rotaWidget"
     "salesByStore topThree"
-    "customerFeedback customerFeedback";
+    "outstandingActions outstandingActions";
 }
 
 #salesThisMonthWidget {
@@ -1460,7 +1643,6 @@ select#activeRoleSelect::-internal-list-box {
       "rotaWidget"
       "outstandingActions"
       "salesByStore"
-      "customerFeedback"
       "topThree";
   }
 
@@ -1722,11 +1904,14 @@ select#activeRoleSelect::-internal-list-box {
 
   #dashboardWrapper {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px) minmax(145px, 170px);
+    grid-template-columns: minmax(0, 1fr) minmax(360px, 420px);
     grid-template-areas:
-      "main forecast surveys"
-      "main forecast announcements";
+      "main kpiMeter"
+      "main forecast"
+      "main surveys"
+      "main announcements";
     align-items: start;
+    align-content: start;
     gap: 14px;
     margin-top: 0;
   }
@@ -1735,14 +1920,13 @@ select#activeRoleSelect::-internal-list-box {
     grid-area: main;
     display: grid;
     grid-template-columns: minmax(0, 1fr) minmax(330px, 0.52fr);
-    grid-template-rows: 112px 120px 188px 128px auto 240px;
+    grid-template-rows: 112px 120px 188px 128px auto;
     grid-template-areas:
       "outstandingActions outstandingActions"
       "salesToday rotaWidget"
       "salesToday salesByStore"
       "salesToday topThree"
-      "salesMonth salesMonth"
-      "customerFeedback customerFeedback";
+      "salesMonth salesMonth";
     gap: 12px;
     margin-top: 0;
     min-width: 0;
@@ -1826,22 +2010,23 @@ select#activeRoleSelect::-internal-list-box {
     padding: 10px 12px;
   }
 
-  #customerFeedbackWidget {
-    height: 240px;
-    min-height: 240px;
-    max-height: 240px;
-  }
-
   #outstandingActionsWidget {
     height: 112px;
     min-height: 112px;
     max-height: 112px;
   }
 
+  #kpiMeterWidget {
+    height: 156px;
+    min-height: 156px;
+    max-height: 156px;
+    width: 100%;
+  }
+
   body #salesForecastWidget {
     grid-area: forecast;
     width: auto;
-    height: 460px;
+    height: 360px;
     margin: 0;
     min-width: 0;
     padding: 12px 14px;
@@ -1884,8 +2069,9 @@ select#activeRoleSelect::-internal-list-box {
 
 @media (min-width: 1101px) and (max-width: 1500px) {
   #dashboardWrapper {
-    grid-template-columns: minmax(0, 1fr) minmax(280px, 340px);
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 360px);
     grid-template-areas:
+      "main kpiMeter"
       "main forecast"
       "main surveys"
       "main announcements";
@@ -1893,13 +2079,12 @@ select#activeRoleSelect::-internal-list-box {
 
   #dashboardGrid {
     grid-template-columns: minmax(0, 1fr) minmax(260px, 0.55fr);
-    grid-template-rows: 112px 120px 188px 128px auto 240px;
+    grid-template-rows: 112px 120px 188px 128px auto;
     grid-template-areas:
       "outstandingActions outstandingActions"
       "salesToday rotaWidget"
       "salesToday salesByStore"
       "salesToday topThree"
-      "salesMonth salesMonth"
-      "customerFeedback customerFeedback";
+      "salesMonth salesMonth";
   }
 }
