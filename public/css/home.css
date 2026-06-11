@@ -1852,6 +1852,14 @@ select#activeRoleSelect::-internal-list-box {
   gap: 10px;
 }
 
+.dashboard-custom-dates {
+  display: contents;
+}
+
+.dashboard-custom-dates-toggle {
+  display: none;
+}
+
 .dashboard-filter-bar label {
   color: #005b72;
   font-size: 0.86rem;
@@ -2064,5 +2072,421 @@ select#activeRoleSelect::-internal-list-box {
       "salesToday rotaWidget"
       "salesToday salesByStore"
       "salesToday topThree";
+  }
+}
+
+/* === Mobile home dashboard === */
+@media (max-width: 900px) {
+  html,
+  body {
+    overflow-x: hidden;
+  }
+
+  body,
+  body.sidebar-expanded,
+  body:not(.sidebar-expanded) {
+    padding-left: 0 !important;
+    padding-bottom: calc(92px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .content {
+    padding: 12px 10px calc(102px + env(safe-area-inset-bottom, 0px)) !important;
+  }
+
+  .content h1 {
+    font-size: 1.32rem;
+    line-height: 1.15;
+    margin: 0 0 12px;
+  }
+
+  .content h1::after {
+    margin-top: 9px;
+  }
+
+  .dashboard-filter-bar {
+    align-items: stretch;
+    border-radius: 8px;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 10px;
+  }
+
+  .dashboard-filter-bar > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 7px 8px;
+    width: 100%;
+  }
+
+  .dashboard-filter-bar label {
+    align-self: end;
+    font-size: 0.74rem;
+  }
+
+  .dashboard-filter-bar label:first-child {
+    grid-column: 1;
+  }
+
+  .dashboard-filter-bar select {
+    grid-column: 1 / -1;
+  }
+
+  .dashboard-custom-dates-toggle {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    grid-column: 2;
+    grid-row: 1;
+    border: 1px solid #cfdde5;
+    border-radius: 6px;
+    background: #f7fbfd;
+    color: #005b72;
+    font-size: 0.76rem;
+    font-weight: 800;
+    min-height: 30px;
+    padding: 4px 8px;
+  }
+
+  .dashboard-custom-dates-toggle::after {
+    content: "+";
+    margin-left: 6px;
+  }
+
+  .dashboard-filter-bar.is-custom-dates-open .dashboard-custom-dates-toggle::after {
+    content: "-";
+  }
+
+  .dashboard-custom-dates {
+    display: none;
+    grid-column: 1 / -1;
+    grid-template-columns: auto minmax(0, 1fr);
+    gap: 7px 8px;
+    padding-top: 4px;
+  }
+
+  .dashboard-filter-bar.is-custom-dates-open .dashboard-custom-dates,
+  .dashboard-filter-bar.is-custom-range .dashboard-custom-dates {
+    display: grid;
+  }
+
+  .dashboard-custom-dates label {
+    align-self: center;
+  }
+
+  .dashboard-filter-bar select,
+  .dashboard-filter-bar input[type="date"] {
+    min-width: 0;
+    width: 100%;
+    min-height: 38px;
+    font-size: 0.82rem;
+    padding: 6px 8px;
+  }
+
+  .dashboard-filter-range {
+    align-self: flex-end;
+    font-size: 0.76rem;
+    text-align: right;
+    width: 100%;
+  }
+
+  #dashboardWrapper,
+  #dashboardGrid {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+    width: 100% !important;
+    min-width: 0 !important;
+    margin-top: 0 !important;
+  }
+
+  #dashboardGrid {
+    display: contents !important;
+  }
+
+  #dashboardGrid section,
+  #kpiMeterWidget,
+  #salesForecastWidget,
+  #announcementContainer,
+  #surveyContainer {
+    width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
+    margin: 0 !important;
+    border-radius: 8px !important;
+    grid-area: auto !important;
+  }
+
+  #outstandingActionsWidget,
+  #kpiMeterWidget,
+  #homeRotaWidget,
+  #salesByStoreWidget,
+  #topThreeWidget,
+  #salesForecastWidget {
+    height: auto !important;
+    min-height: 0 !important;
+    max-height: none !important;
+  }
+
+  #outstandingActionsWidget {
+    order: 8;
+    padding: 10px !important;
+  }
+
+  #kpiMeterWidget {
+    order: 0;
+    padding: 10px !important;
+  }
+
+  #salesTodayWidget {
+    order: 2;
+    height: 430px !important;
+    min-height: 430px !important;
+    max-height: 430px !important;
+    padding: 10px !important;
+  }
+
+  #homeRotaWidget {
+    order: 4;
+  }
+
+  #salesByStoreWidget {
+    order: 1;
+    min-height: 250px !important;
+  }
+
+  #topThreeWidget {
+    order: 3;
+    min-height: 150px !important;
+  }
+
+  #salesForecastWidget {
+    order: 6;
+    padding: 12px !important;
+  }
+
+  #surveyContainer {
+    order: 9;
+  }
+
+  #announcementContainer {
+    order: 10;
+    max-height: none;
+  }
+
+  .outstanding-actions-header {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+  }
+
+  .outstanding-actions-header select {
+    width: 100%;
+  }
+
+  .outstanding-actions-row {
+    grid-template-columns: 1fr;
+  }
+
+  .outstanding-action {
+    border-right: 0;
+    border-bottom: 1px solid #e6eef3;
+    padding: 9px 10px;
+  }
+
+  .outstanding-action:last-child {
+    border-bottom: 0;
+  }
+
+  .kpi-meter-header {
+    align-items: flex-start;
+    gap: 8px;
+  }
+
+  .kpi-meter-header select {
+    min-width: 150px;
+    max-width: 52%;
+  }
+
+  .kpi-meter-content {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .kpi-gauge {
+    justify-self: center;
+    width: min(190px, 100%);
+    height: 94px;
+    border-radius: 190px 190px 0 0;
+  }
+
+  .kpi-gauge::after {
+    left: 20px;
+    right: 20px;
+    height: 72px;
+  }
+
+  .kpi-gauge-inner strong {
+    font-size: 1.75rem;
+  }
+
+  .kpi-gauge-inner span {
+    font-size: 0.62rem;
+  }
+
+  .kpi-meter-stats span,
+  .kpi-meter-stats strong {
+    font-size: 0.68rem;
+  }
+
+  .kpi-meter-stats div {
+    gap: 5px;
+    padding-bottom: 3px;
+  }
+
+  #homeRotaWidget {
+    padding: 10px !important;
+  }
+
+  .home-rota-list {
+    grid-template-columns: repeat(7, minmax(64px, 1fr));
+    overflow-x: auto;
+    padding-bottom: 3px;
+  }
+
+  .home-rota-day {
+    min-height: 62px;
+  }
+
+  #salesByStoreWidget .chart-container {
+    height: 205px;
+    min-height: 205px;
+  }
+
+  #topThreeWidget table {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #topThreeWidget th,
+  #topThreeWidget td {
+    font-size: 0.76rem;
+    padding: 5px 6px;
+  }
+}
+
+@media (max-width: 600px) {
+  #salesTodayWidget .widget-header {
+    align-items: stretch;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  #salesTodayWidget .sales-dashboard-controls {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    width: 100%;
+  }
+
+  #salesTodayWidget .widget-tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    width: 100%;
+  }
+
+  #salesTodayWidget .widget-tab {
+    padding: 8px 6px;
+    text-align: center;
+  }
+
+  #salesTodayWidget #salesDashboardStoreFilter {
+    min-width: 0;
+    width: 100%;
+  }
+
+  #salesTodayWidget .table-scroll {
+    overflow: auto;
+  }
+
+  .sales-today-table,
+  #salesTodayWidget .customer-feedback-table {
+    min-width: 560px;
+  }
+
+  .sales-today-table thead {
+    display: table-header-group;
+  }
+
+  .sales-today-table,
+  .sales-today-table tbody,
+  .sales-today-table tr,
+  .sales-today-table td {
+    width: auto;
+  }
+
+  .sales-today-table {
+    display: table;
+  }
+
+  .sales-today-table tbody {
+    display: table-row-group;
+  }
+
+  .sales-today-table tr {
+    display: table-row;
+  }
+
+  .sales-today-table td {
+    display: table-cell;
+    width: auto;
+  }
+
+  .sales-today-table tr {
+    margin-bottom: 0;
+    border: 0;
+    border-radius: 0;
+    padding: 0;
+  }
+
+  .sales-today-table td {
+    position: static;
+    text-align: left;
+  }
+
+  .sales-today-table td::before {
+    content: none;
+  }
+
+  .kpi-meter-header {
+    flex-direction: row;
+  }
+
+  .kpi-meter-header select {
+    max-width: 52%;
+    width: auto;
+  }
+
+  .kpi-meter-content {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    justify-items: stretch;
+  }
+
+  .kpi-meter-stats {
+    width: 100%;
+  }
+
+  .kpi-gauge {
+    width: min(165px, 100%);
+    height: 82px;
+  }
+
+  .kpi-gauge::after {
+    left: 18px;
+    right: 18px;
+    height: 62px;
+  }
+
+  #salesForecastWidget .sf-header {
+    align-items: stretch;
   }
 }

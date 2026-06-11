@@ -138,26 +138,45 @@
     const label = document.getElementById("dashboardDateRangeLabel");
     const fromInput = document.getElementById("dashboardDateFrom");
     const toInput = document.getElementById("dashboardDateTo");
+    const filterBar = document.getElementById("dashboardFilterBar");
 
     if (select) select.value = range.key;
     if (label) label.textContent = formatRange(range);
     if (fromInput) fromInput.value = toIsoDate(range.start);
     if (toInput) toInput.value = toIsoDate(range.end);
+    filterBar?.classList.toggle("is-custom-range", range.key === "custom");
+  }
+
+  function setCustomDatesExpanded(expanded) {
+    const filterBar = document.getElementById("dashboardFilterBar");
+    const toggle = document.getElementById("dashboardCustomDatesToggle");
+
+    filterBar?.classList.toggle("is-custom-dates-open", expanded);
+    toggle?.setAttribute("aria-expanded", expanded ? "true" : "false");
   }
 
   function renderFilter() {
     const select = document.getElementById("dashboardDateRange");
     const fromInput = document.getElementById("dashboardDateFrom");
     const toInput = document.getElementById("dashboardDateTo");
+    const toggle = document.getElementById("dashboardCustomDatesToggle");
     if (!select) return;
 
     syncInputs(getRange(currentKey));
+    setCustomDatesExpanded(false);
+
+    toggle?.addEventListener("click", () => {
+      const expanded = toggle.getAttribute("aria-expanded") === "true";
+      setCustomDatesExpanded(!expanded);
+    });
 
     select.addEventListener("change", () => {
       if (select.value === "custom") {
+        setCustomDatesExpanded(true);
         setCustomRange(fromInput?.value, toInput?.value);
         return;
       }
+      setCustomDatesExpanded(false);
       setRange(select.value);
     });
 

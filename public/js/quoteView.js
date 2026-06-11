@@ -92,6 +92,49 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function resolveQuoteCustomerNameParts(quote = {}) {
+  const entity = quote.entity || quote.customer || {};
+  const firstName = String(
+    entity.firstName ??
+      entity.firstname ??
+      entity.first_name ??
+      quote.firstName ??
+      quote.firstname ??
+      ""
+  ).trim();
+  const lastName = String(
+    entity.lastName ??
+      entity.lastname ??
+      entity.last_name ??
+      quote.lastName ??
+      quote.lastname ??
+      ""
+  ).trim();
+
+  if (firstName || lastName) {
+    return { firstName, lastName };
+  }
+
+  const displayName = String(
+    entity.refName ||
+      entity.entityId ||
+      entity.entityid ||
+      entity.altName ||
+      entity.altname ||
+      ""
+  )
+    .replace(/^\d+\s+/, "")
+    .trim();
+
+  if (!displayName) return { firstName: "", lastName: "" };
+
+  const [fallbackFirstName, ...fallbackLastName] = displayName.split(/\s+/);
+  return {
+    firstName: fallbackFirstName || "",
+    lastName: fallbackLastName.join(" "),
+  };
+}
+
 function netSuiteRecordUrl(quote, recordType, id) {
   const base = String(quote?._netSuiteAppBaseUrl || "").replace(/\/$/, "");
   if (!base || !id) return "";
@@ -1301,6 +1344,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderOrderNumberLink("orderNumber", quote.tranId || tranId, quote, "estimate");
 
     try {
+      const customerName = resolveQuoteCustomerNameParts(quote);
       const addressText = quote.billingAddress_text || quote.billaddress || "";
       let addressLines = addressText
         ? String(addressText).split("\n").map((l) => l.trim()).filter(Boolean)
@@ -1308,7 +1352,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const normalizeAddressLine = (value) =>
         String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
-      const entityName = [quote.entity?.firstName, quote.entity?.lastName]
+      const entityName = [customerName.firstName, customerName.lastName]
         .filter(Boolean)
         .join(" ");
       const displayName = String(quote.entity?.refName || quote.customer?.refName || "")
@@ -1366,15 +1410,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         address3 = splitTownCounty(address3).town;
       }
 
-      const fullName = quote.entity?.refName || quote.customer?.refName || "";
-      const nameParts = fullName.split(" ").filter(Boolean);
-
-      const firstName = nameParts[1] || quote.firstName || "";
-      const lastName = nameParts[2] || quote.lastName || "";
-
-      document.querySelector('input[name="firstName"]')?.setAttribute("value", firstName);
-      document.querySelector('input[name="lastName"]')?.setAttribute("value", lastName);
-
       const firstNameEl = document.querySelector('input[name="firstName"]');
       const lastNameEl = document.querySelector('input[name="lastName"]');
       const address1El = document.querySelector('input[name="address1"]');
@@ -1382,8 +1417,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       const address3El = document.querySelector('input[name="address3"]');
       const postcodeEl = document.querySelector('input[name="postcode"]');
 
-      if (firstNameEl) firstNameEl.value = firstName;
-      if (lastNameEl) lastNameEl.value = lastName;
+      if (firstNameEl) firstNameEl.value = customerName.firstName;
+      if (lastNameEl) lastNameEl.value = customerName.lastName;
       if (address1El) address1El.value = address1;
       if (address2El) address2El.value = address2;
       if (address3El) address3El.value = address3;

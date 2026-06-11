@@ -53,7 +53,7 @@ async function getSession(token) {
     );
 
     if (result.rows.length === 0) {
-      console.warn("⚠️ No session found for token:", token);
+      console.debug("No session found for token:", token);
       return null;
     }
 
@@ -84,7 +84,7 @@ async function getSession(token) {
       session.netsuiteid = userRow.rows?.[0]?.netsuiteid || null;
 
       if (!session.netsuiteid) {
-        console.warn(`⚠️ No netsuiteid found for user_id ${session.user_id}`);
+        console.debug(`No netsuiteid found for user_id ${session.user_id}`);
       } else {
         console.log(`🔗 Injected netsuiteid for user ${session.user_id}: ${session.netsuiteid}`);
       }
@@ -99,7 +99,7 @@ async function getSession(token) {
       (1000 * 60 * 60 * 24);
 
     if (ageDays > SESSION_TTL_DAYS) {
-      console.warn("⚠️ Session expired, deleting:", token);
+      console.debug("Session expired, deleting:", token);
       await destroySession(token);
       return null;
     }

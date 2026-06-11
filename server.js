@@ -3,6 +3,8 @@ const isRenderRuntime = Boolean(process.env.RENDER || process.env.RENDER_SERVICE
 require("dotenv").config({
   override: !isRenderRuntime || String(process.env.DOTENV_OVERRIDE || "").toLowerCase() === "true",
 });
+const logger = require("./utils/logging");
+logger.installConsoleFilter();
 
 function normalizeEnvironmentName(value) {
   const env = String(value || "").trim().toUpperCase();
@@ -350,7 +352,7 @@ async function prewarmSalesOrders(
   const hasKey = prewarmHeaders?.["x-prewarm-key"];
   const hasUser = prewarmHeaders?.["x-prewarm-user-id"];
   if (!hasKey || !hasUser) {
-    console.warn("🔥 PREWARM SKIPPED: missing x-prewarm-key or x-prewarm-user-id");
+    console.debug("PREWARM SKIPPED: missing x-prewarm-key or x-prewarm-user-id");
     return;
   }
 
@@ -395,7 +397,7 @@ function startPrewarmScheduler() {
       const key = process.env.PREWARM_KEY;
 
       if (!userId || !key) {
-        console.warn("🔥 Prewarm disabled: missing DEFAULT_PREWARM_USER_ID or PREWARM_KEY");
+        console.debug("Prewarm disabled: missing DEFAULT_PREWARM_USER_ID or PREWARM_KEY");
         return;
       }
 
@@ -472,13 +474,13 @@ async function accessControlMiddleware(req, res, next) {
     }
 
     if (!token) {
-      console.warn("🚫 No token provided for path:", req.path);
+      console.debug("No token provided for path:", req.path);
       return res.status(401).send("Not authenticated");
     }
 
     const session = await getSession(token);
     if (!session) {
-      console.warn("🚫 Invalid session for token");
+      console.debug("Invalid session for token");
       return res.status(401).send("Invalid session");
     }
 
@@ -1492,7 +1494,7 @@ app.use((req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`✅ Server running at http://localhost:${PORT}`);
+  logger.info(`Server running at http://localhost:${PORT}`);
   itemOptionsRoute.startScheduler();
   ensureUserStatusColumn().catch((err) => {
     console.error("Failed to initialize user status columns:", err.message);

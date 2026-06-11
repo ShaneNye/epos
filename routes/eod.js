@@ -8,6 +8,7 @@ const pool = require("../db");
 const db = require("../db");
 const { getBusinessDate } = require("../utils/businessDate");
 const { logCashBalanceChange, money } = require("../utils/cashBalanceAudit");
+const logger = require("../utils/logging");
 
 const router = express.Router();
 
@@ -189,7 +190,7 @@ router.patch("/footfall/update", async (req, res) => {
       });
     }
 
-    console.log("📝 Incoming Footfall PATCH →", { internalId, values });
+    logger.apiPayload("Footfall PATCH request", { internalId, values });
 
     /* ------------------------------------------------------------
        Resolve EPOS session → retrieve DB-stored NetSuite tokens
@@ -251,7 +252,7 @@ router.patch("/footfall/update", async (req, res) => {
       }
     }
 
-    console.log("📦 Final PATCH body to NetSuite:", body);
+    logger.apiPayload("Footfall PATCH NetSuite body", body);
 
     /* ------------------------------------------------------------
        SEND PATCH → NetSuite (per-user TBA)
@@ -262,7 +263,7 @@ router.patch("/footfall/update", async (req, res) => {
 
     const result = await nsClient.nsPatch(endpoint, body, userId, "sb");
 
-    console.log("✅ NetSuite Footfall PATCH result:", result);
+    logger.netSuiteResponse("Footfall PATCH result", result);
 
     return res.json({ ok: true, result });
 

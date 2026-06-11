@@ -1,6 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const { getSession } = require("../sessions");
+const logger = require("../utils/logging");
 
 // Import correct NetSuite client helper
 const { nsRestlet } = require("../netsuiteClient");
@@ -38,7 +39,7 @@ router.post("/memo", async (req, res) => {
 
     const { orderId, title, type, memo } = req.body;
 
-    console.log("📦 Received Payload:", req.body);
+    logger.apiPayload("Sales memo request", req.body);
 
     if (!orderId || !title || !memo) {
       console.log("❌ Missing required fields");
@@ -54,14 +55,14 @@ router.post("/memo", async (req, res) => {
       authorId: session?.netsuiteid || session?.netsuiteId || null,
     };
 
-    console.log("📤 Sending to RESTlet:", payload);
+    logger.apiPayload("Sales memo RESTlet payload", payload);
     console.log("🌐 RESTlet URL:", MEMO_RESTLET_URL);
 
     // ---- Call RESTlet ----
     // IMPORTANT: 4th param is HTTP method now, NOT envType
     const nsResponse = await nsRestlet(MEMO_RESTLET_URL, payload, userId, "POST");
 
-    console.log("📥 RESTlet Response:", nsResponse);
+    logger.netSuiteResponse("Sales memo RESTlet", nsResponse);
 
     return res.json(nsResponse);
   } catch (err) {

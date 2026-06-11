@@ -2,6 +2,7 @@ const OAuth = require("oauth-1.0a");
 const crypto = require("crypto");
 const fetch = require("node-fetch");
 const pool = require("./db");
+const logger = require("./utils/logging");
 
 /* ======================================================
    ===============  Base Config  =========================
@@ -289,7 +290,7 @@ async function nsGet(endpoint, userId = null) {
 
   if (!res.ok) {
     console.error(`❌ NetSuite GET ${endpoint} → ${res.status}`);
-    console.error("🧾 NetSuite response:", text);
+    logger.netSuiteResponse(`GET ${endpoint} error ${res.status}`, text);
     const err = new Error(`NetSuite GET ${endpoint} → ${res.status}`);
     err.responseBody = tryParse(text);
     throw err;
@@ -318,7 +319,7 @@ async function nsPost(endpoint, body, userId = null) {
 
   if (!res.ok) {
     console.error(`❌ NetSuite POST ${endpoint} → ${res.status}`);
-    console.error("🧾 NetSuite error response:", text);
+    logger.netSuiteResponse(`POST ${endpoint} error ${res.status}`, text);
 
     console.error("🔍 Diagnostic →", {
       userId,
@@ -362,7 +363,7 @@ async function nsPatch(endpoint, body, userId = null) {
 
   if (!res.ok) {
     console.error(`❌ NetSuite PATCH ${endpoint} → ${res.status}`);
-    console.error("🧾 NetSuite error response:", text);
+    logger.netSuiteResponse(`PATCH ${endpoint} error ${res.status}`, text);
     const err = new Error(`NetSuite PATCH ${endpoint} → ${res.status}`);
     err.responseBody = tryParse(text);
     throw err;
@@ -393,7 +394,7 @@ async function nsPostRaw(fullUrl, body, userId = null) {
 
   if (!res.ok) {
     console.error(`❌ NetSuite SuiteQL → ${res.status}`);
-    console.error("🧾 NetSuite error response:", text);
+    logger.netSuiteResponse(`SuiteQL error ${res.status}`, text);
     const err = new Error(`NetSuite SuiteQL → ${res.status}`);
     err.responseBody = tryParse(text);
     throw err;
@@ -417,7 +418,7 @@ async function nsRestlet(fullUrl, body = null, userId = null, method = "POST") {
     body: method === "POST" ? JSON.stringify(body || {}) : undefined,
     logLabel: `NetSuite RESTlet ${method}`,
   });
-  console.log("📥 Raw RESTlet response:", text);
+  logger.netSuiteResponse(`RESTlet ${method}`, text);
 
   try {
     return JSON.parse(text);

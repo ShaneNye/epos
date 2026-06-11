@@ -67,6 +67,24 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function resolveCustomerNameParts(entity = {}, displayName = "") {
+  const firstName = String(entity.firstName ?? entity.firstname ?? "").trim();
+  const lastName = String(entity.lastName ?? entity.lastname ?? "").trim();
+
+  if (firstName || lastName) {
+    return { firstName, lastName };
+  }
+
+  const fallbackName = String(displayName || "").trim();
+  if (!fallbackName) return { firstName: "", lastName: "" };
+
+  const [fallbackFirstName, ...fallbackLastName] = fallbackName.split(/\s+/);
+  return {
+    firstName: fallbackFirstName || "",
+    lastName: fallbackLastName.join(" "),
+  };
+}
+
 function isSalesViewLockExemptControl(el) {
   return Boolean(
     el?.closest?.("#menu") ||
@@ -1013,17 +1031,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     try {
-      const fullName = (
-        so.entityFull?.firstName && so.entityFull?.lastName
-          ? `${so.entityFull.firstName} ${so.entityFull.lastName}`
-          : so.entity?.refName || ""
-      ).trim();
+      const fullName = String(so.entity?.refName || "").trim();
+      const customerName = resolveCustomerNameParts(so.entityFull, fullName);
 
       document.querySelector('input[name="firstName"]').value =
-        so.entityFull?.firstName || fullName.split(" ")[0] || "";
+        customerName.firstName;
 
       document.querySelector('input[name="lastName"]').value =
-        so.entityFull?.lastName || fullName.split(" ").slice(1).join(" ") || "";
+        customerName.lastName;
 
       const addressItems = so.entityFull?.addressbook?.items || [];
       const defaultAddress =

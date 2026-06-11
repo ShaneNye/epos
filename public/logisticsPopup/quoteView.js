@@ -1,4 +1,20 @@
 // public/js/quoteView.js
+function resolveQuoteCustomerNameParts(entity = {}) {
+  const firstName = String(entity.firstName ?? entity.firstname ?? "").trim();
+  const lastName = String(entity.lastName ?? entity.lastname ?? "").trim();
+
+  if (firstName || lastName) {
+    return { firstName, lastName };
+  }
+
+  const displayName = String(entity.refName || entity.altName || entity.entityId || "").trim();
+  const [fallbackFirstName, ...fallbackLastName] = displayName.split(/\s+/);
+  return {
+    firstName: fallbackFirstName || "",
+    lastName: fallbackLastName.join(" "),
+  };
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   const overlay = document.getElementById("loadingOverlay");
   if (overlay) overlay.classList.remove("hidden");
@@ -127,10 +143,9 @@ if (nsTitle && titles.includes(nsTitle)) {
         } else cleanedAddress.push(line);
       }
 
-      document.querySelector('input[name="firstName"]').value =
-        quote.entity?.refName?.split(" ")[1] || "";
-      document.querySelector('input[name="lastName"]').value =
-        quote.entity?.refName?.split(" ")[2] || "";
+      const customerName = resolveQuoteCustomerNameParts(quote.entity);
+      document.querySelector('input[name="firstName"]').value = customerName.firstName;
+      document.querySelector('input[name="lastName"]').value = customerName.lastName;
       document.querySelector('input[name="address1"]').value = cleanedAddress[0] || "";
       document.querySelector('input[name="address2"]').value = cleanedAddress[1] || "";
       document.querySelector('input[name="address3"]').value = cleanedAddress[2] || "";

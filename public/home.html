@@ -2,6 +2,7 @@
 <html lang="en">
 
 <head>
+    <script src="/js/browserLogFilter.js"></script>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
@@ -51,10 +52,15 @@
         <option value="lastMonth">Last Month</option>
         <option value="custom">Custom</option>
       </select>
-      <label for="dashboardDateFrom">From</label>
-      <input id="dashboardDateFrom" type="date">
-      <label for="dashboardDateTo">To</label>
-      <input id="dashboardDateTo" type="date">
+      <button id="dashboardCustomDatesToggle" class="dashboard-custom-dates-toggle" type="button" aria-expanded="false" aria-controls="dashboardCustomDates">
+        Specific dates
+      </button>
+      <div id="dashboardCustomDates" class="dashboard-custom-dates">
+        <label for="dashboardDateFrom">From</label>
+        <input id="dashboardDateFrom" type="date">
+        <label for="dashboardDateTo">To</label>
+        <input id="dashboardDateTo" type="date">
+      </div>
     </div>
     <span id="dashboardDateRangeLabel" class="dashboard-filter-range">Today</span>
   </section>

@@ -1,5 +1,4 @@
 // routes/intercompany.js
-console.log("🧩 Intercompany routes active");
 
 const express = require("express");
 const router = express.Router();
@@ -8,6 +7,7 @@ const fetch = require("node-fetch");
 const crypto = require("crypto");
 const OAuth = require("oauth-1.0a");
 const { nsPatch, nsGet } = require("../netsuiteClient");
+const logger = require("../utils/logging");
 
 // Middleware: log all route hits
 router.use((req, res, next) => {
@@ -21,7 +21,7 @@ router.post("/create", async (req, res) => {
 
   try {
     const { salesOrderId, tranId, customerId, storeId } = req.body;
-    console.log("📦 Request Body:", req.body);
+    logger.apiPayload("Intercompany create request", req.body);
 
     if (!salesOrderId || !tranId || !customerId) {
       console.error("❌ Missing required fields");
@@ -148,7 +148,7 @@ const poJson = await poRes.json();
       dataTransform = { ok: false, error: text };
     }
 
-    console.log("🧠 RESTlet Transform Response:", dataTransform);
+    logger.netSuiteResponse("Intercompany transform RESTlet", dataTransform);
 
     if (!resTransform.ok || !dataTransform.ok) {
       throw new Error(dataTransform.error || `RESTlet returned HTTP ${resTransform.status}`);
