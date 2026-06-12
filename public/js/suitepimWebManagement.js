@@ -3,6 +3,7 @@
     "Name",
     "Category",
     "reasons to buy",
+    "Web Faq's",
     "Catalogue Image One",
     "New Feature Desc",
     "Lead Time",
@@ -95,7 +96,7 @@
       },
       {
         name: "Step 5 : Web Description",
-        fields: ["Name", "New Feature Desc", "reasons to buy", "Page Preview"],
+        fields: ["Name", "New Feature Desc", "reasons to buy", "Web Faq's", "Page Preview"],
         filters: [],
       },
     ],
@@ -467,25 +468,69 @@
         .map((item) => item.trim())
         .filter(Boolean);
     }
-    return String(raw || "").split(",").map((item) => item.trim()).filter(Boolean);
+    return String(raw || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
+  }
+
+  function reasonDisplayConfig(row) {
+    const selectedIds = Array.isArray(row["reasons to buy_InternalId"])
+      ? row["reasons to buy_InternalId"].map((item) => String(item).trim()).filter(Boolean)
+      : String(row["reasons to buy_InternalId"] || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
+    const selectedNames = reasonsList(row);
+    const saved = row.__reasonsToBuyConfig && typeof row.__reasonsToBuyConfig === "object"
+      ? row.__reasonsToBuyConfig
+      : {};
+    const config = {};
+    selectedIds.forEach((id, index) => {
+      const existing = saved[id] || {};
+      config[id] = {
+        feature: existing.feature !== false,
+        short: existing.short !== false,
+        order: Number.isFinite(Number(existing.order)) ? Number(existing.order) : index + 1,
+        name: existing.name || selectedNames[index] || "",
+      };
+    });
+    return config;
   }
 
   function reasonsMeta(row) {
+    const reasonIconUrl = (item = {}) => extractImageUrl(
+      item["Icon URL"] ||
+      item.IconUrl ||
+      item.iconUrl ||
+      item.icon_url ||
+      item.Icon ||
+      item.icon ||
+      item.Image ||
+      item.image ||
+      ""
+    );
     const rawSelected = Array.isArray(row["reasons to buy"]) ? row["reasons to buy"] : null;
     if (rawSelected?.length && typeof rawSelected[0] === "object") {
-      return rawSelected.map((item) => ({
-        name: String(item.Name || item.name || item.text || item.label || ""),
-        description: String(item.Description || item.description || item["Item Description"] || ""),
-        iconUrl: extractImageUrl(item["Icon URL"] || item.iconUrl || item.icon || item.Image || ""),
-        isWarrantyPeriod: boolValue(item["Is Warranty Period"]),
-      })).filter((item) => item.name);
+      const displayConfig = reasonDisplayConfig(row);
+      return rawSelected.map((item, index) => {
+        const id = String(item.id || item.ID || item["Internal ID"] || item.internalId || "").trim();
+        return {
+          id,
+          name: String(item.Name || item.name || item.text || item.label || ""),
+          description: String(item.Description || item.description || item["Item Description"] || ""),
+          iconUrl: reasonIconUrl(item),
+          isWarrantyPeriod: boolValue(item["Is Warranty Period"]),
+          feature: displayConfig[id]?.feature !== false,
+          short: displayConfig[id]?.short !== false,
+          order: Number.isFinite(Number(displayConfig[id]?.order)) ? Number(displayConfig[id].order) : index + 1,
+        };
+      }).filter((item) => item.name).sort((left, right) => {
+        const orderDiff = Number(left.order || 0) - Number(right.order || 0);
+        return orderDiff || left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+      });
     }
 
     const selected = reasonsList(row);
     const selectedIds = Array.isArray(row["reasons to buy_InternalId"])
       ? row["reasons to buy_InternalId"].map((item) => String(item).trim()).filter(Boolean)
-      : row["reasons to buy_InternalId"] ? [String(row["reasons to buy_InternalId"]).trim()] : [];
+      : String(row["reasons to buy_InternalId"] || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
     const options = state.options.get("reasons to buy") || [];
+    const displayConfig = reasonDisplayConfig(row);
     return selected.map((name, index) => {
       const selectedId = selectedIds[index] || "";
       const normalizedName = String(name).trim().toLowerCase();
@@ -498,10 +543,17 @@
       return {
         name: String(name),
         description: String(raw.Description || raw.description || raw["Item Description"] || ""),
-        iconUrl: extractImageUrl(raw["Icon URL"] || raw.iconUrl || raw.icon || raw.Image || ""),
+        iconUrl: reasonIconUrl(raw),
         isWarrantyPeriod: boolValue(raw["Is Warranty Period"]),
+        id: selectedId || String(match?.id || ""),
+        feature: displayConfig[selectedId]?.feature !== false,
+        short: displayConfig[selectedId]?.short !== false,
+        order: Number.isFinite(Number(displayConfig[selectedId]?.order)) ? Number(displayConfig[selectedId].order) : index + 1,
       };
-    }).filter((item) => item.name);
+    }).filter((item) => item.name).sort((left, right) => {
+      const orderDiff = Number(left.order || 0) - Number(right.order || 0);
+      return orderDiff || left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+    });
   }
 
   function extractVideoUrl(value) {
@@ -523,20 +575,20 @@
 
   function renderReasonList(items, emptyMessage) {
     if (!items.length) {
-      return `<p class="preview-empty">${escapeHtml(emptyMessage || "No content added yet.")}</p>`;
+      return `<div style="margin:0; color:#64748b; font-size:13px;">${escapeHtml(emptyMessage || "No content added yet.")}</div>`;
     }
     return `
-      <div class="reason-list">
+      <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px 28px;">
         ${items.map((item) => `
-          <article class="reason-card">
-            <div class="reason-card-icon">
-              ${item.iconUrl ? `<img src="${escapeHtml(item.iconUrl)}" alt="${escapeHtml(item.name)} icon">` : `<span>${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span>`}
+          <div style="display:grid; grid-template-columns:84px minmax(0, 1fr); gap:14px; align-items:start; min-width:0;">
+            <div style="width:84px; height:70px; display:block; overflow:hidden; color:#ffffff; font-weight:700;">
+              ${item.iconUrl ? `<img src="${escapeHtml(item.iconUrl)}" alt="${escapeHtml(item.name)} icon" style="width:104px; height:104px; max-width:none; object-fit:contain; object-position:center top; display:block; border:0; background:transparent; margin-left:-10px;">` : `<span style="width:56px; height:56px; border-radius:999px; background:#0b7aa6; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-weight:700;">${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span>`}
             </div>
-            <div class="reason-card-copy">
-              <strong>${escapeHtml(item.name)}</strong>
-              <p>${escapeHtml(item.description || "No description added yet.")}</p>
+            <div style="min-width:0;">
+              <strong style="display:block; color:#16324f; margin:0 0 3px; font-size:14px; line-height:1.25;">${escapeHtml(item.name)}</strong>
+              <div style="margin:0; font-size:13px; line-height:1.4; color:#4a4a4a;">${escapeHtml(item.description || "No description added yet.")}</div>
             </div>
-          </article>
+          </div>
         `).join("")}
       </div>
     `;
@@ -544,13 +596,85 @@
 
   function renderAccordionCard(title, body, open = false) {
     return `
-      <details class="preview-accordion"${open ? " open" : ""}>
-        <summary>
+      <details style="margin:12px 0 0; overflow:hidden;"${open ? " open" : ""}>
+        <summary style="list-style:none; display:flex; align-items:center; justify-content:space-between; padding:9px 12px; background:#efe6d3; font-weight:700; font-size:13px; cursor:pointer; color:#16273d;">
           <span>${escapeHtml(title)}</span>
-          <span class="preview-accordion-plus">+</span>
+          <span style="font-size:18px; font-weight:900; line-height:1;">+</span>
         </summary>
-        <div class="preview-accordion-body">${body}</div>
+        <div style="padding:14px 4px 2px;">${body}</div>
       </details>
+    `;
+  }
+
+  function isFaqFieldName(name) {
+    return /faq/i.test(String(name || ""));
+  }
+
+  function faqDisplayConfig(row, fieldName) {
+    const selectedIds = Array.isArray(row[`${fieldName}_InternalId`])
+      ? row[`${fieldName}_InternalId`].map((item) => String(item).trim()).filter(Boolean)
+      : String(row[`${fieldName}_InternalId`] || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
+    const saved = row.__itemFaqConfig && typeof row.__itemFaqConfig === "object" ? row.__itemFaqConfig : {};
+    const config = {};
+    selectedIds.forEach((id, index) => {
+      const existing = saved[id] || {};
+      config[id] = {
+        order: Number.isFinite(Number(existing.order)) ? Number(existing.order) : index + 1,
+      };
+    });
+    return config;
+  }
+
+  function faqMeta(row) {
+    const faqField = state.fields.find((field) => isFaqFieldName(field.name) && field.fieldType === "multiple-select");
+    if (!faqField) return [];
+    const fieldName = faqField.name;
+    const selectedIds = Array.isArray(row[`${fieldName}_InternalId`])
+      ? row[`${fieldName}_InternalId`].map((item) => String(item).trim()).filter(Boolean)
+      : String(row[`${fieldName}_InternalId`] || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
+    const selectedNames = Array.isArray(row[fieldName])
+      ? row[fieldName].map((item) => String(item).trim()).filter(Boolean)
+      : String(row[fieldName] || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
+    const options = state.options.get(fieldName) || [];
+    const config = faqDisplayConfig(row, fieldName);
+    return selectedIds.map((id, index) => {
+      const option = options.find((item) => String(item.id) === String(id));
+      const raw = option?.raw || {};
+      return {
+        id,
+        question: option?.name || selectedNames[index] || raw.Name || "",
+        answer: String(raw.Description || raw.description || ""),
+        order: Number.isFinite(Number(config[id]?.order)) ? Number(config[id].order) : index + 1,
+      };
+    }).filter((item) => item.question).sort((left, right) => {
+      const orderDiff = Number(left.order || 0) - Number(right.order || 0);
+      return orderDiff || left.question.localeCompare(right.question, undefined, { sensitivity: "base" });
+    });
+  }
+
+  function webShortDescriptionHtml(row) {
+    const shortReasons = reasonsMeta(row).filter((item) => item.short !== false).slice(0, 8);
+    if (!shortReasons.length) return "";
+    const rows = [];
+    for (let index = 0; index < shortReasons.length; index += 4) {
+      rows.push(shortReasons.slice(index, index + 4));
+    }
+    return `
+      <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="width:auto; border-collapse:separate; border-spacing:0 14px; margin:0 auto; text-align:center;">
+        <tbody>
+          ${rows.map((rowItems) => `
+            <tr>
+              ${rowItems.map((reason) => `
+                  <td align="center" style="text-align:center; vertical-align:middle; padding:0 5px;">
+                    ${reason.iconUrl
+                      ? `<img src="${escapeHtml(reason.iconUrl)}" alt="${escapeHtml(reason.name)} icon" style="width:58px; height:auto; max-width:58px; object-fit:contain; display:inline-block; border:0; background:transparent;">`
+                      : `<span style="width:58px; height:58px; border-radius:999px; background:#0b7aa6; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-weight:700;">${escapeHtml(reason.name.slice(0, 1).toUpperCase())}</span>`}
+                  </td>
+              `).join("")}
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
     `;
   }
 
@@ -560,78 +684,68 @@
     const featureDescription = String(row["New Feature Desc"] || "");
     const featureSummary = featureDescription || shortDescription;
     const reasonItems = reasonsMeta(row);
-    const warrantyReasons = reasonItems.filter((item) => item.isWarrantyPeriod);
-    const featureReasons = reasonItems.filter((item) => !item.isWarrantyPeriod);
+    const detailReasonItems = reasonItems.filter((item) => item.feature !== false);
+    const warrantyReasons = detailReasonItems.filter((item) => item.isWarrantyPeriod);
+    const featureReasons = detailReasonItems.filter((item) => !item.isWarrantyPeriod);
     const title = escapeHtml(row.Name || row["Display Name"] || "Product Preview");
     const videoUrl = extractVideoUrl(descriptionPreview);
     const videoEmbedUrl = embedVideoUrl(videoUrl);
-    const dimensions = [
-      row.Width ? `${valueText(row.Width)}W` : "",
-      row.Length ? `${valueText(row.Length)}L` : "",
-      row.Height ? `${valueText(row.Height)}H` : "",
-      row.Depth ? `${valueText(row.Depth)}D` : "",
-    ].filter(Boolean).join(" x ");
     const detailItems = [
-      ["Comfort", escapeHtml(valueText(row.Comfort))],
-      ["Spring Type", escapeHtml(valueText(row["Spring Type"]))],
-      ["Fillings", escapeHtml(valueText(row.Fillings))],
-      ["Dimensions", escapeHtml(dimensions)],
-      ["Warranty", escapeHtml(valueText(row.Warranty))],
-      ["Country of Origin", escapeHtml(valueText(row["Country Of Origin"]))],
-      ["Turnable", escapeHtml(valueText(row.Turnable))],
-      ["Build", escapeHtml(valueText(row["Built/Flat Packed"]))],
-      ["Category", escapeHtml(valueText(row.Category))],
-      ["Tags", escapeHtml(valueText(row.Tags))],
+      ["Width", escapeHtml(valueText(row.Width))],
+      ["Height", escapeHtml(valueText(row.Height))],
+      ["Depth", escapeHtml(valueText(row.Depth))],
     ].filter(([, value]) => value);
     const productInfoHtml = detailItems.length
-      ? `<div class="detail-grid">${detailItems.map(([label, value]) => `<div class="detail-row"><strong>${escapeHtml(label)}</strong><span>${value}</span></div>`).join("")}</div>`
-      : `<p class="preview-empty">No product information added yet.</p>`;
+      ? `<div style="display:grid; gap:7px; max-width:420px;">${detailItems.map(([label, value]) => `<div style="display:grid; grid-template-columns:110px minmax(0, 1fr); gap:10px; align-items:center; padding:8px 10px; background:#f8fafc; border-left:3px solid #0b7aa6; font-size:13px;"><strong style="font-size:12px; color:#4b5563; text-transform:uppercase; letter-spacing:0.02em;">${escapeHtml(label)}</strong><span style="font-weight:700; color:#0f172a;">${value}</span></div>`).join("")}</div>`
+      : `<div style="margin:0; color:#64748b; font-size:13px;">No dimension information added yet.</div>`;
     const featuresBenefitsHtml = renderReasonList(featureReasons, "No content added yet.");
     const warrantyHtml = warrantyReasons.length
       ? `
-        <div class="warranty-panel">
+        <div>
           ${renderReasonList(warrantyReasons, "")}
-          <p class="warranty-note">Full details in our terms and conditions.</p>
+          <div style="margin:10px 0 0 64px; font-size:11px; color:#64748b;">Full details in our terms and conditions.</div>
         </div>
       `
-      : `<p class="preview-empty">No warranty information added yet.</p>`;
-    const faqHtml = `
-      <div class="faq-list">
-        <div class="faq-item">What size mattress do I need?</div>
-        <div class="faq-item">What does 60 night comfort trial mean?</div>
-        <div class="faq-item">How much is delivery?</div>
-        <div class="faq-item">Why do I need a mattress protector?</div>
-      </div>
-    `;
+      : `<div style="margin:0; color:#64748b; font-size:13px;">No warranty information added yet.</div>`;
+    const selectedFaqs = faqMeta(row);
+    const faqHtml = selectedFaqs.length
+      ? `<div style="display:grid; gap:8px;">${selectedFaqs.map((faq) => `<details style="background:#eef7fb; color:#0b7aa6; font-size:12px;"><summary style="cursor:pointer; padding:10px 12px; font-weight:700;">${escapeHtml(faq.question)}</summary><div style="padding:0 12px 10px; color:#4a4a4a; line-height:1.45;">${escapeHtml(faq.answer || "No answer added yet.")}</div></details>`).join("")}</div>`
+      : `<div style="display:grid; gap:8px;">
+          <div style="padding:10px 12px; background:#eef7fb; color:#0b7aa6; font-size:12px; font-weight:700;">What size mattress do I need?</div>
+          <div style="padding:10px 12px; background:#eef7fb; color:#0b7aa6; font-size:12px; font-weight:700;">What does 60 night comfort trial mean?</div>
+          <div style="padding:10px 12px; background:#eef7fb; color:#0b7aa6; font-size:12px; font-weight:700;">How much is delivery?</div>
+          <div style="padding:10px 12px; background:#eef7fb; color:#0b7aa6; font-size:12px; font-weight:700;">Why do I need a mattress protector?</div>
+        </div>`;
     const comfortTrialHtml = `
-      <div class="trial-panel">
-        <div class="trial-badge">60</div>
+      <div style="display:grid; grid-template-columns:54px minmax(0, 1fr); gap:12px; align-items:start;">
+        <div style="width:54px; height:54px; border-radius:999px; background:#0b7aa6; color:#ffffff; display:grid; place-items:center; font-size:24px; font-weight:900;">60</div>
         <div>
-          <strong>Enjoy 60 nights to try your new mattress</strong>
-          <p>If it is not quite right, you can swap it for an alternative comfort. Guaranteed peace of mind for online and in-store purchases.</p>
+          <strong style="font-size:13px; color:#16324f;">Enjoy 60 nights to try your new mattress</strong>
+          <div style="margin:4px 0 0; font-size:12px; line-height:1.45; color:#4a4a4a;">If it is not quite right, you can swap it for an alternative comfort. Guaranteed peace of mind for online and in-store purchases.</div>
         </div>
       </div>
     `;
 
     return `
-      <div class="suitepim-web-description">
-        <div class="why-box">
-          <strong>Why you will love this...</strong>
-          <p>${escapeHtml(stripHtml(featureSummary) || "No content added yet.")}</p>
+      <div style="font-family:Arial, Helvetica, sans-serif; line-height:1.35; color:#16273d;">
+        <div style="background:#f3efe6; padding:14px 16px; margin:0 0 14px; color:#252525;">
+          <strong style="display:block; margin:0 0 8px; font-size:14px;">Why you will love this...</strong>
+          <div style="margin:0; font-size:13px; line-height:1.45; color:#4a4a4a;">${escapeHtml(stripHtml(featureSummary) || "No content added yet.")}</div>
         </div>
-        ${renderAccordionCard("Video", videoEmbedUrl ? `<iframe class="video-frame" src="${escapeHtml(videoEmbedUrl)}" title="${title} video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe>` : (videoUrl ? `<a class="video-link" href="${escapeHtml(videoUrl)}" target="_blank" rel="noreferrer noopener">${escapeHtml(videoUrl)}</a>` : `<p class="preview-empty">No content added yet.</p>`))}
+        ${renderAccordionCard("Video", videoEmbedUrl ? `<iframe src="${escapeHtml(videoEmbedUrl)}" title="${title} video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="width:100%; aspect-ratio:16 / 9; border:0; display:block; background:#f5f5f5;"></iframe>` : (videoUrl ? `<a href="${escapeHtml(videoUrl)}" target="_blank" rel="noreferrer noopener" style="display:inline-flex; align-items:center; gap:8px; color:#0b7aa6; font-weight:700; text-decoration:none;">${escapeHtml(videoUrl)}</a>` : `<div style="margin:0; color:#64748b; font-size:13px;">No content added yet.</div>`))}
         ${renderAccordionCard("Features & Benefits", featuresBenefitsHtml, true)}
-        <div class="preview-accordion-grid">
-          <div class="info-card">${renderAccordionCard("Info", productInfoHtml)}</div>
-          <div class="warranty-card">${renderAccordionCard("Warranty Information", warrantyHtml)}</div>
-          <div class="faq-card">${renderAccordionCard("FAQs", faqHtml, true)}</div>
-          <div class="trial-card">${renderAccordionCard("60 night comfort trial +", comfortTrialHtml, true)}</div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:14px; align-items:start;">
+          <div style="background:#ffffff; padding:0;">${renderAccordionCard("Dimensions", productInfoHtml)}</div>
+          <div style="background:#ffffff; padding:0;">${renderAccordionCard("Warranty Information", warrantyHtml)}</div>
+          <div style="background:#ffffff; padding:0;">${renderAccordionCard("FAQs", faqHtml, true)}</div>
+          <div style="background:#ffffff; padding:0;">${renderAccordionCard("60 night comfort trial +", comfortTrialHtml, true)}</div>
         </div>
       </div>
     `;
   }
 
   function affectsWebDescription(fieldName) {
+    if (isFaqFieldName(fieldName)) return true;
     return [
       "Description Preview",
       "New Feature Desc",
@@ -679,7 +793,6 @@
     const images = previewImages(row);
     const hero = images[0] || "";
     const thumbs = images.slice(0, 4);
-    const shortDescription = String(row["New Short Desc"] || row["Short Description"] || "");
     const reasonItems = reasonsMeta(row);
     const sizes = sizeOptions(row);
     const title = escapeHtml(row.Name || row["Display Name"] || "Product Preview");
@@ -688,7 +801,7 @@
     const purchaseText = formatCurrency(row["Purchase Price"]);
     const baseText = formatCurrency(row["Base Price"]);
     const leadTime = escapeHtml(valueText(row["Lead Time"]));
-    const summaryReasons = reasonItems.slice(0, 8);
+    const summaryReasons = reasonItems.filter((item) => item.short !== false).slice(0, 8);
     const productDescriptionHtml = webDescriptionHtml(row);
 
     return `<!doctype html>
@@ -718,12 +831,11 @@
     .summary { background: #fff; padding: 8px 0 0; }
     .eyebrow { color: #8c7d6a; font-size: 11px; font-weight: 800; text-transform: uppercase; margin-bottom: 6px; }
     h1 { margin: 0 0 10px; font-size: 22px; line-height: 1.1; color: #10253b; }
-    .summary-top { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 14px; align-items: start; }
-    .summary-copy { font-size: 13px; line-height: 1.55; color: #4b5563; margin-bottom: 12px; max-width: 290px; }
-    .summary-icons { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px 8px; }
+    .summary-top { display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; align-items: start; }
+    .summary-icons { display: flex; flex-wrap: wrap; gap: 14px 10px; justify-content: center; align-items: center; width: min(100%, 280px); margin: 0 auto 14px; }
     .summary-icon { text-align: center; }
-    .summary-icon-badge { width: 54px; height: 54px; display: grid; place-items: center; margin: 0 auto 6px; overflow: visible; color: #fff; font-weight: 700; }
-    .summary-icon-badge img { width: 100%; height: 100%; object-fit: contain; background: transparent; }
+    .summary-icon-badge { width: 58px; min-height: 58px; display: grid; place-items: center; margin: 0 auto; overflow: visible; color: #fff; font-weight: 700; text-align: center; }
+    .summary-icon-badge img { width: 58px; height: auto; max-width: 58px; object-fit: contain; background: transparent; display: block; }
     .delivery-note { margin: 8px 0 8px; font-size: 11px; color: #8b7a66; }
     .price-row { display: flex; align-items: baseline; gap: 8px; margin: 8px 0 8px; }
     .was-price { font-size: 14px; color: #7b8794; text-decoration: line-through; }
@@ -781,7 +893,7 @@
     @media (max-width: 640px) {
       .page { padding: 14px; }
       h1 { font-size: 28px; }
-      .summary-icons, .gallery-secondary, .reason-list, .preview-accordion-grid { grid-template-columns: 1fr; }
+      .gallery-secondary, .reason-list, .preview-accordion-grid { grid-template-columns: 1fr; }
       .purchase-panel { grid-template-columns: 42px 28px minmax(0, 1fr); }
       .gallery-main { min-height: 320px; }
     }
@@ -808,9 +920,6 @@
         <div class="eyebrow">${className || "Web preview"}</div>
         <h1>${title}</h1>
         <div class="summary-top">
-          <div>
-            ${shortDescription ? `<div class="summary-copy">${escapeHtml(stripHtml(shortDescription))}</div>` : ""}
-          </div>
           ${summaryReasons.length ? `<div class="summary-icons">${summaryReasons.slice(0, 8).map((reason) => `
             <div class="summary-icon">
               <div class="summary-icon-badge">
@@ -1117,6 +1226,10 @@
     if (reasonsField?.optionFeed) {
       await ensureOptions(reasonsField).catch(() => []);
     }
+    const faqField = state.fields.find((field) => isFaqFieldName(field.name) && field.optionFeed);
+    if (faqField?.optionFeed) {
+      await ensureOptions(faqField).catch(() => []);
+    }
     applyFilters();
     const cache = data.cache || {};
     const cacheSuffix = cache.source === "cache"
@@ -1159,6 +1272,11 @@
     Object.keys(clean).forEach((key) => {
       if (key === "Internal ID" || key === "Item ID" || key === "Name") return;
       if (key.endsWith("_InternalId")) return;
+      if (key.startsWith("__")) {
+        if (key === "__reasonsToBuyConfig") shouldPushWebDescription = true;
+        if (key === "__itemFaqConfig") shouldPushWebDescription = true;
+        return;
+      }
 
       const field = fieldByName(key) || {};
       const internalIdKey = `${key}_InternalId`;
@@ -1184,9 +1302,11 @@
 
       if (field.fieldType === "multiple-select") {
         const ids = netSuiteInternalIds(clean[internalIdKey]);
-        if (ids.length) {
+        if (ids.length || key === "reasons to buy" || isFaqFieldName(key)) {
           payload[key] = clean[key];
           payload[internalIdKey] = ids;
+          if (key === "reasons to buy") payload.__previousReasonsToBuyInternalIds = netSuiteInternalIds(base[internalIdKey]);
+          if (isFaqFieldName(key)) payload.__previousItemFaqInternalIds = netSuiteInternalIds(base[internalIdKey]);
         }
         return;
       }
@@ -1226,7 +1346,10 @@
       payload[internalIdKey] = clean[internalIdKey];
     });
 
-    if (shouldPushWebDescription) payload["Description Preview"] = webDescriptionHtml(clean).trim();
+    if (shouldPushWebDescription) {
+      payload["Description Preview"] = webDescriptionHtml(clean).trim();
+      payload["New Short Desc"] = webShortDescriptionHtml(clean).trim();
+    }
     if (priceUpdates.length) payload.__priceUpdates = priceUpdates;
 
     return payload;
@@ -3252,7 +3375,7 @@
     const idx = state.rows.findIndex((item) => item._suitepimKey === row._suitepimKey);
     if (idx === -1) return;
 
-    let updated = { ...state.rows[idx], [column]: value };
+    let updated = { ...state.rows[idx], [column]: value, ...(options.extraFields || {}) };
     if (internalIds !== null) updated[`${column}_InternalId`] = internalIds;
 
     if (column === "New Feature Desc" && updated["Description Preview"]) {
@@ -3373,10 +3496,10 @@
     showStatus("");
     const currentIds = Array.isArray(row[`${field.name}_InternalId`])
       ? row[`${field.name}_InternalId`].map(String)
-      : row[`${field.name}_InternalId`] ? [String(row[`${field.name}_InternalId`])] : [];
+      : String(row[`${field.name}_InternalId`] || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
     const currentNames = Array.isArray(row[field.name])
       ? row[field.name].map((item) => String(item).trim()).filter(Boolean)
-      : String(row[field.name] || "").split(",").map((item) => item.trim()).filter(Boolean);
+      : String(row[field.name] || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
     const selected = new Set(currentIds);
 
     currentNames.forEach((name) => {
@@ -3386,12 +3509,37 @@
       }
     });
 
+    const config = {};
+    if (field.name === "reasons to buy") {
+      const existing = reasonDisplayConfig(row);
+      Array.from(selected).forEach((id, index) => {
+        const option = options.find((item) => String(item.id) === String(id));
+        const saved = existing[id] || {};
+        config[id] = {
+          feature: saved.feature !== false,
+          short: saved.short !== false,
+          order: Number.isFinite(Number(saved.order)) ? Number(saved.order) : index + 1,
+          name: saved.name || option?.name || currentNames[index] || "",
+        };
+      });
+    }
+    if (isFaqFieldName(field.name)) {
+      const existing = faqDisplayConfig(row, field.name);
+      Array.from(selected).forEach((id, index) => {
+        const saved = existing[id] || {};
+        config[id] = {
+          order: Number.isFinite(Number(saved.order)) ? Number(saved.order) : index + 1,
+        };
+      });
+    }
+
     state.modal = {
       row,
       field,
       multiple,
       options,
       selected,
+      config,
       requiresSearch: field.fieldType === "image",
       minSearchLength: field.fieldType === "image" ? 4 : 0,
     };
@@ -3402,6 +3550,184 @@
       : "Search options...";
     el.suitepimModal.classList.remove("hidden");
     renderModalOptions();
+  }
+
+  function optionMetaText(option) {
+    const raw = option?.raw || {};
+    const description = String(raw.Description || raw.description || raw["Item Description"] || "").trim();
+    return description || String(option?.id || "");
+  }
+
+  function sortedReasonModalOptions(options) {
+    const modal = state.modal;
+    return options.sort((left, right) => {
+      const leftSelected = modal.selected.has(String(left.id));
+      const rightSelected = modal.selected.has(String(right.id));
+      if (leftSelected !== rightSelected) return leftSelected ? -1 : 1;
+      const leftOrder = Number(modal.config?.[String(left.id)]?.order);
+      const rightOrder = Number(modal.config?.[String(right.id)]?.order);
+      if (leftSelected && rightSelected && Number.isFinite(leftOrder) && Number.isFinite(rightOrder) && leftOrder !== rightOrder) {
+        return leftOrder - rightOrder;
+      }
+      return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+    });
+  }
+
+  function ensureReasonModalConfig(option) {
+    const id = String(option?.id || "");
+    if (!id) return null;
+    if (!state.modal.config[id]) {
+      const usedOrders = Object.values(state.modal.config || {}).map((item) => Number(item.order)).filter(Number.isFinite);
+      state.modal.config[id] = {
+        feature: true,
+        short: true,
+        order: usedOrders.length ? Math.max(...usedOrders) + 1 : 1,
+        name: option.name || "",
+      };
+    }
+    return state.modal.config[id];
+  }
+
+  function renderReasonsToBuyModalOptions(filtered) {
+    const modal = state.modal;
+    const table = document.createElement("table");
+    table.className = "suitepim-reasons-selector-table";
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>Select</th>
+          <th>Name of icon</th>
+          <th>Features & Benefits</th>
+          <th>Short description</th>
+          <th>Order</th>
+        </tr>
+      </thead>
+    `;
+    const tbody = document.createElement("tbody");
+
+    sortedReasonModalOptions(filtered).forEach((option) => {
+      const id = String(option.id);
+      const selected = modal.selected.has(id);
+      const config = ensureReasonModalConfig(option);
+      const tr = document.createElement("tr");
+      if (selected) tr.classList.add("is-selected");
+
+      const selectInput = document.createElement("input");
+      selectInput.type = "checkbox";
+      selectInput.checked = selected;
+      selectInput.addEventListener("change", () => {
+        if (selectInput.checked) {
+          modal.selected.add(id);
+          ensureReasonModalConfig(option);
+        } else {
+          modal.selected.delete(id);
+        }
+        renderModalOptions();
+      });
+
+      const featureInput = document.createElement("input");
+      featureInput.type = "checkbox";
+      featureInput.checked = config.feature !== false;
+      featureInput.disabled = !selected;
+      featureInput.addEventListener("change", () => {
+        ensureReasonModalConfig(option).feature = featureInput.checked;
+      });
+
+      const shortInput = document.createElement("input");
+      shortInput.type = "checkbox";
+      shortInput.checked = config.short !== false;
+      shortInput.disabled = !selected;
+      shortInput.addEventListener("change", () => {
+        ensureReasonModalConfig(option).short = shortInput.checked;
+      });
+
+      const orderInput = document.createElement("input");
+      orderInput.type = "number";
+      orderInput.min = "1";
+      orderInput.step = "1";
+      orderInput.value = Number.isFinite(Number(config.order)) ? String(config.order) : "";
+      orderInput.disabled = !selected;
+      orderInput.addEventListener("input", () => {
+        const value = Number(orderInput.value);
+        ensureReasonModalConfig(option).order = Number.isFinite(value) && value > 0 ? value : 999;
+      });
+
+      const selectTd = document.createElement("td");
+      selectTd.appendChild(selectInput);
+      const nameTd = document.createElement("td");
+      nameTd.innerHTML = `<strong>${escapeHtml(option.name)}</strong><small>${escapeHtml(optionMetaText(option))}</small>`;
+      const featureTd = document.createElement("td");
+      featureTd.appendChild(featureInput);
+      const shortTd = document.createElement("td");
+      shortTd.appendChild(shortInput);
+      const orderTd = document.createElement("td");
+      orderTd.appendChild(orderInput);
+      tr.append(selectTd, nameTd, featureTd, shortTd, orderTd);
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    el.suitepimModalOptions.appendChild(table);
+  }
+
+  function renderFaqModalOptions(filtered) {
+    const modal = state.modal;
+    const table = document.createElement("table");
+    table.className = "suitepim-reasons-selector-table";
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>Select</th>
+          <th>FAQ</th>
+          <th>Order</th>
+        </tr>
+      </thead>
+    `;
+    const tbody = document.createElement("tbody");
+
+    sortedReasonModalOptions(filtered).forEach((option) => {
+      const id = String(option.id);
+      const selected = modal.selected.has(id);
+      const config = ensureReasonModalConfig(option);
+      const tr = document.createElement("tr");
+      if (selected) tr.classList.add("is-selected");
+
+      const selectInput = document.createElement("input");
+      selectInput.type = "checkbox";
+      selectInput.checked = selected;
+      selectInput.addEventListener("change", () => {
+        if (selectInput.checked) {
+          modal.selected.add(id);
+          ensureReasonModalConfig(option);
+        } else {
+          modal.selected.delete(id);
+        }
+        renderModalOptions();
+      });
+
+      const orderInput = document.createElement("input");
+      orderInput.type = "number";
+      orderInput.min = "1";
+      orderInput.step = "1";
+      orderInput.value = Number.isFinite(Number(config.order)) ? String(config.order) : "";
+      orderInput.disabled = !selected;
+      orderInput.addEventListener("input", () => {
+        const value = Number(orderInput.value);
+        ensureReasonModalConfig(option).order = Number.isFinite(value) && value > 0 ? value : 999;
+      });
+
+      const selectTd = document.createElement("td");
+      selectTd.appendChild(selectInput);
+      const nameTd = document.createElement("td");
+      nameTd.innerHTML = `<strong>${escapeHtml(option.name)}</strong><small>${escapeHtml(optionMetaText(option))}</small>`;
+      const orderTd = document.createElement("td");
+      orderTd.appendChild(orderInput);
+      tr.append(selectTd, nameTd, orderTd);
+      tbody.appendChild(tr);
+    });
+
+    table.appendChild(tbody);
+    el.suitepimModalOptions.appendChild(table);
   }
 
   function renderModalOptions() {
@@ -3423,6 +3749,21 @@
         return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
       });
     el.suitepimModalOptions.innerHTML = "";
+
+    if (modal.field?.name === "reasons to buy") {
+      renderReasonsToBuyModalOptions(filtered);
+      if (!filtered.length) {
+        el.suitepimModalOptions.innerHTML = `<div class="suitepim-empty-option">No options found</div>`;
+      }
+      return;
+    }
+    if (isFaqFieldName(modal.field?.name)) {
+      renderFaqModalOptions(filtered);
+      if (!filtered.length) {
+        el.suitepimModalOptions.innerHTML = `<div class="suitepim-empty-option">No options found</div>`;
+      }
+      return;
+    }
 
     filtered.forEach((option) => {
       const label = document.createElement("label");
@@ -3462,7 +3803,14 @@
   function saveModalSelection() {
     const modal = state.modal;
     if (!modal) return;
-    const ids = Array.from(modal.selected);
+    const ids = modal.field?.name === "reasons to buy" || isFaqFieldName(modal.field?.name)
+      ? Array.from(modal.selected).sort((left, right) => {
+          const leftOrder = Number(modal.config?.[left]?.order);
+          const rightOrder = Number(modal.config?.[right]?.order);
+          if (Number.isFinite(leftOrder) && Number.isFinite(rightOrder) && leftOrder !== rightOrder) return leftOrder - rightOrder;
+          return String(left).localeCompare(String(right), undefined, { numeric: true });
+        })
+      : Array.from(modal.selected);
     const selectedOptions = ids
       .map((id) => modal.options.find((option) => String(option.id) === String(id)))
       .filter(Boolean);
@@ -3475,6 +3823,38 @@
 
     if (typeof modal.onSave === "function") {
       modal.onSave(ids, values, labels);
+      closeModal();
+      return;
+    }
+
+    if (modal.field?.name === "reasons to buy") {
+      const config = {};
+      selectedOptions.forEach((option, index) => {
+        const id = String(option.id);
+        const saved = modal.config?.[id] || {};
+        config[id] = {
+          feature: saved.feature !== false,
+          short: saved.short !== false,
+          order: Number.isFinite(Number(saved.order)) ? Number(saved.order) : index + 1,
+          name: option.name,
+        };
+      });
+      updateCell(modal.row, modal.field.name, values, ids, { extraFields: { __reasonsToBuyConfig: config }, refreshCell: true });
+      closeModal();
+      return;
+    }
+
+    if (isFaqFieldName(modal.field?.name)) {
+      const config = {};
+      selectedOptions.forEach((option, index) => {
+        const id = String(option.id);
+        const saved = modal.config?.[id] || {};
+        config[id] = {
+          order: Number.isFinite(Number(saved.order)) ? Number(saved.order) : index + 1,
+          name: option.name,
+        };
+      });
+      updateCell(modal.row, modal.field.name, values, ids, { extraFields: { __itemFaqConfig: config }, refreshCell: true });
       closeModal();
       return;
     }

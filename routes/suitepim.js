@@ -11,6 +11,7 @@ const jobs = {};
 const jobQueue = [];
 const optionsCache = new Map();
 const webManagementCache = new Map();
+const suitePimSettingsCache = new Map();
 const MAX_CONCURRENT = Number(process.env.SUITEPIM_PUSH_CONCURRENCY || 1);
 const CAMPAIGN_BATCH_SIZE = Math.max(1, Number(process.env.SUITEPIM_CAMPAIGN_BATCH_SIZE || 25));
 const WEB_MANAGEMENT_CACHE_TTL_MS = Number(process.env.SUITEPIM_WEB_MANAGEMENT_CACHE_TTL_MS || 15 * 60 * 1000);
@@ -21,6 +22,7 @@ const WEB_MANAGEMENT_REFRESH_INTERVAL_MS = Number(
 const REASONS_TO_BUY_RECORD_TYPE = "customrecord_sb_reasons_to_buy";
 const REASONS_TO_BUY_ICON_RECORD_TYPE =
   process.env.SUITEPIM_REASONS_TO_BUY_ICONS_RECORD_TYPE || "customrecord_sb_reasons_to_buy_icons";
+const ITEM_FAQ_RECORD_TYPE = process.env.SUITEPIM_ITEM_FAQ_RECORD_TYPE || "customrecord_sb_web_faq";
 const reasonsToBuyFields = [
   { name: "Internal ID", internalid: "id", fieldType: "Free-Form Text", disableField: true },
   { name: "Name", internalid: "name", fieldType: "Free-Form Text", required: true },
@@ -30,8 +32,15 @@ const reasonsToBuyFields = [
   { name: "Is Warranty Period", internalid: "custrecord_sb_is_warranty", fieldType: "Checkbox" },
   { name: "Items", internalid: "custrecord_sb_rtb_items", fieldType: "multiple-select", optionFeed: "Items" },
 ];
+const itemFaqFields = [
+  { name: "Internal ID", internalid: "id", fieldType: "Free-Form Text", disableField: true },
+  { name: "Name", internalid: "name", fieldType: "Free-Form Text", required: true },
+  { name: "Description", internalid: "custrecord_sb_web_faq_desc", fieldType: "Text Area" },
+  { name: "Items", internalid: "custrecord_sb_web_faq_items", fieldType: "multiple-select", optionFeed: "Items" },
+];
 
 let suitePimCampaignsInitialized = false;
+let suitePimSettingsInitialized = false;
 
 function normalizeEnvironment(value) {
   return String(value || process.env.ENVIRONMENT || "sandbox").toLowerCase() === "production"
@@ -158,6 +167,13 @@ function clearReasonsToBuyCaches() {
   });
 }
 
+function clearItemFaqCaches() {
+  ["production", "sandbox"].forEach((env) => {
+    optionsCache.delete(`${env}:Item Faq's`);
+    optionsCache.delete(`${env}:Items`);
+  });
+}
+
 async function ensureSuitePimCampaignTables() {
   if (suitePimCampaignsInitialized) return;
 
@@ -177,6 +193,179 @@ async function ensureSuitePimCampaignTables() {
   `);
 
   suitePimCampaignsInitialized = true;
+}
+
+async function ensureSuitePimSettingsTables() {
+  if (suitePimSettingsInitialized) return;
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS suitepim_field_mappings (
+      environment TEXT NOT NULL CHECK (environment IN ('sandbox', 'production')),
+      mapping_key TEXT NOT NULL,
+      json_field TEXT NOT NULL,
+      internalid TEXT,
+      field_type TEXT,
+      option_feed TEXT,
+      updated_by TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (environment, mapping_key)
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_suitepim_field_mappings_environment
+      ON suitepim_field_mappings(environment, updated_at DESC);
+  `);
+
+  suitePimSettingsInitialized = true;
+}
+
+function defaultFieldMappings() {
+  return fields.map((field) => ({
+    mappingKey: field.name,
+    defaultJsonField: field.name,
+    jsonField: field.name,
+    internalid: field.internalid || "",
+    fieldType: field.fieldType || "",
+    optionFeed: field.optionFeed || "",
+    disableField: field.disableField === true,
+    hiddenField: field.hiddenField === true,
+    hasOptions: !!field.optionFeed,
+    defaultInternalid: field.internalid || "",
+    defaultFieldType: field.fieldType || "",
+  }));
+}
+
+async function loadSuitePimFieldMappings(env) {
+  await ensureSuitePimSettingsTables();
+  const defaults = defaultFieldMappings();
+  const result = await pool.query(
+    `SELECT mapping_key, json_field, internalid, field_type, option_feed
+       FROM suitepim_field_mappings
+      WHERE environment = $1`,
+    [env]
+  );
+  const overrides = new Map(result.rows.map((row) => [row.mapping_key, row]));
+  const defaultsByKey = new Map(defaults.map((mapping) => [mapping.mappingKey, mapping]));
+
+  const merged = defaults.map((mapping) => {
+    const override = overrides.get(mapping.mappingKey);
+    if (!override) return mapping;
+    return {
+      ...mapping,
+      jsonField: override.json_field || mapping.jsonField,
+      internalid: override.internalid ?? mapping.internalid,
+      fieldType: override.field_type || mapping.fieldType,
+      optionFeed: override.option_feed || mapping.optionFeed,
+      hasOptions: !!(override.option_feed || mapping.optionFeed),
+    };
+  });
+
+  result.rows.forEach((row) => {
+    if (defaultsByKey.has(row.mapping_key)) return;
+    merged.push({
+      mappingKey: row.mapping_key,
+      defaultJsonField: row.json_field || row.mapping_key,
+      jsonField: row.json_field || row.mapping_key,
+      internalid: row.internalid || "",
+      fieldType: row.field_type || "Free-Form Text",
+      optionFeed: row.option_feed || "",
+      disableField: false,
+      hiddenField: false,
+      hasOptions: !!row.option_feed,
+      defaultInternalid: "",
+      defaultFieldType: "Free-Form Text",
+      custom: true,
+    });
+  });
+
+  return merged;
+}
+
+function fieldsFromMappings(mappings) {
+  return mappings.map((mapping) => {
+    const base = fields.find((field) => field.name === mapping.mappingKey) || {};
+    const inferredOptionFeed = /faq/i.test(mapping.jsonField || mapping.mappingKey) ? "Item Faq's" : "";
+    return {
+      ...base,
+      mappingKey: mapping.mappingKey,
+      name: mapping.jsonField || mapping.defaultJsonField || mapping.mappingKey,
+      internalid: mapping.internalid || "",
+      fieldType: inferredOptionFeed ? "multiple-select" : (mapping.fieldType || base.fieldType || ""),
+      optionFeed: mapping.optionFeed || base.optionFeed || inferredOptionFeed,
+      disableField: base.disableField === true,
+      hiddenField: base.hiddenField === true,
+    };
+  });
+}
+
+async function effectiveSuitePimFields(env) {
+  return fieldsFromMappings(await loadSuitePimFieldMappings(env));
+}
+
+function publicFieldConfig(field) {
+  const { optionFeed, ...clean } = field;
+  return {
+    ...clean,
+    hasOptions: !!optionFeed,
+    optionFeed,
+  };
+}
+
+function normalizeJsonFieldList(rows = []) {
+  const names = new Set();
+  rows.slice(0, 100).forEach((row) => {
+    Object.keys(row || {}).forEach((key) => {
+      const clean = String(key || "").trim();
+      if (clean && !clean.startsWith("__")) names.add(clean);
+    });
+  });
+  fields.forEach((field) => names.add(field.name));
+  return Array.from(names).sort((a, b) => a.localeCompare(b));
+}
+
+function settingsCacheKey(env) {
+  return `settings:${env}`;
+}
+
+async function buildSuitePimSettingsPayload(env, cfg, userId) {
+  let rows = [];
+
+  try {
+    const payload = await getWebManagementPayload(env, cfg, { userId });
+    rows = Array.isArray(payload?.rows) ? payload.rows : [];
+  } catch (err) {
+    console.warn("SuitePim settings JSON field sample failed:", err.message);
+  }
+
+  return {
+    ok: true,
+    environment: publicEnvironmentName(env),
+    tabs: ["NetSuite Connector", "WooCommerce Connector"],
+    jsonFields: normalizeJsonFieldList(rows),
+    mappings: await loadSuitePimFieldMappings(env),
+    wooCommerceConfigured: wooConfigured(cfg),
+    loadedAt: new Date().toISOString(),
+  };
+}
+
+async function getSuitePimSettingsPayload(env, cfg, userId, { forceRefresh = false } = {}) {
+  const key = settingsCacheKey(env);
+  if (!forceRefresh && suitePimSettingsCache.has(key)) {
+    return {
+      ...suitePimSettingsCache.get(key),
+      cache: "hit",
+    };
+  }
+
+  const payload = await buildSuitePimSettingsPayload(env, cfg, userId);
+  suitePimSettingsCache.set(key, payload);
+  return {
+    ...payload,
+    cache: forceRefresh ? "refresh" : "miss",
+  };
+}
+
+function invalidateSuitePimSettingsCache(env) {
+  suitePimSettingsCache.delete(settingsCacheKey(env));
 }
 
 function cleanCampaignText(value) {
@@ -868,6 +1057,16 @@ async function fetchItemOptions(cfg, userId) {
 async function fetchReasonsToBuyOptions(fieldName, env, cfg, userId) {
   if (fieldName === "Reasons To Buy Icons") return fetchReasonsToBuyIconOptions(cfg, userId);
   if (fieldName === "Items") return fetchItemOptions(cfg, userId);
+  if (/faq/i.test(fieldName) && cfg && userId) {
+    const rows = await fetchItemFaqRows(cfg, userId);
+    return rows
+      .map((row) => ({
+        id: row["Internal ID"],
+        name: row.Name,
+        raw: row,
+      }))
+      .filter((option) => option.id && option.name);
+  }
   if (fieldName === "Reasons To Buy" && cfg && userId) {
     const rows = await fetchReasonsToBuyRows(cfg, userId);
     return rows
@@ -952,13 +1151,89 @@ function normalizeMultiReferenceIds(value) {
     return value.map((item) => String(item?.id || item || "").trim()).filter(Boolean);
   }
   return String(value || "")
-    .split(",")
+    .split(/[\u0005,]/)
     .map((item) => item.trim())
     .filter(Boolean);
 }
 
 function netSuiteInternalIds(value) {
   return normalizeMultiReferenceIds(value).filter((id) => /^\d+$/.test(String(id)));
+}
+
+function normalizeItemFaqRow(row) {
+  const itemIds = normalizeMultiReferenceIds(row.custrecord_sb_web_faq_items || row.Items_InternalId || row.items_internalid);
+  const itemNames = String(row.custrecord_sb_web_faq_items_text || row.Items || row.items || "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+
+  return {
+    "Internal ID": String(row.id || row.ID || row.internalid || row["Internal ID"] || "").trim(),
+    Name: String(row.name || row.Name || "").trim(),
+    Description: row.custrecord_sb_web_faq_desc || row.Description || "",
+    Items: itemNames,
+    Items_InternalId: itemIds,
+  };
+}
+
+async function fetchItemFaqRows(cfg, userId) {
+  const query = `
+    SELECT
+      id,
+      name,
+      custrecord_sb_web_faq_desc,
+      custrecord_sb_web_faq_items,
+      BUILTIN.DF(custrecord_sb_web_faq_items) AS custrecord_sb_web_faq_items_text
+    FROM ${ITEM_FAQ_RECORD_TYPE}
+    ORDER BY name
+  `;
+  const rows = await fetchSuiteQLRows(cfg, userId, query);
+  return rows.map(normalizeItemFaqRow);
+}
+
+async function saveItemFaqRecord(cfg, userId, row) {
+  const internalId = String(row["Internal ID"] || "").trim();
+  const isCreate = !internalId;
+  const payload = {};
+
+  for (const field of itemFaqFields) {
+    if (field.disableField || !field.internalid) continue;
+    if (field.name !== "Name" && row[field.name] === undefined && row[`${field.name}_InternalId`] === undefined) continue;
+    const value = row[field.name];
+    const internalIds = row[`${field.name}_InternalId`];
+    const payloadValue = reasonsValueForPayload(field, value, internalIds);
+    if (payloadValue === null && !isCreate) continue;
+    payload[field.internalid] = payloadValue;
+  }
+
+  if (!String(payload.name || "").trim()) throw new Error("Name is required");
+
+  const url = isCreate
+    ? `${cfg.restUrl}/${ITEM_FAQ_RECORD_TYPE}`
+    : `${cfg.restUrl}/${ITEM_FAQ_RECORD_TYPE}/${encodeURIComponent(internalId)}`;
+  const method = isCreate ? "POST" : "PATCH";
+  const { res, body } = await fetchNetSuiteWithRetry(url, {
+    method,
+    headers: {
+      ...(await netSuiteHeaders(url, method, userId, cfg)),
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const err = new Error(`Item FAQ save failed (${res.status}): ${JSON.stringify(body)}`);
+    err.diagnostics = { url, method, status: res.status, statusText: res.statusText, payload, response: body };
+    throw err;
+  }
+
+  clearItemFaqCaches();
+  return {
+    id: body?.id || internalId,
+    name: payload.name,
+    status: isCreate ? "Created" : "Updated",
+    response: body || { status: res.status },
+  };
 }
 
 function normalizeReasonsToBuyRow(row, cfg) {
@@ -1071,6 +1346,134 @@ async function saveReasonsToBuyRecord(cfg, userId, row) {
   };
 }
 
+async function patchReasonsToBuyItems(cfg, userId, reasonId, itemIds) {
+  const ids = Array.from(new Set(netSuiteInternalIds(itemIds)));
+  const url = `${cfg.restUrl}/${REASONS_TO_BUY_RECORD_TYPE}/${encodeURIComponent(reasonId)}`;
+  const payload = {
+    custrecord_sb_rtb_items: {
+      items: ids.map((id) => ({ id: String(id) })),
+    },
+  };
+  const { res, body } = await fetchNetSuiteWithRetry(url, {
+    method: "PATCH",
+    headers: {
+      ...(await netSuiteHeaders(url, "PATCH", userId, cfg)),
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = new Error(`Reasons To Buy linked items update failed (${res.status})`);
+    err.diagnostics = { url, method: "PATCH", status: res.status, statusText: res.statusText, payload, response: body };
+    throw err;
+  }
+  return body || { status: res.status };
+}
+
+async function syncReasonsToBuyItemLinks({ cfg, userId, itemId, previousIds = [], nextIds = [] }) {
+  const itemInternalId = String(itemId || "").trim();
+  if (!itemInternalId) return [];
+
+  const previous = new Set(netSuiteInternalIds(previousIds));
+  const next = new Set(netSuiteInternalIds(nextIds));
+  const reasonIds = Array.from(new Set([...previous, ...next]));
+  if (!reasonIds.length) return [];
+
+  const rows = await fetchReasonsToBuyRows(cfg, userId);
+  const byId = new Map(rows.map((row) => [String(row["Internal ID"] || ""), row]));
+  const results = [];
+
+  for (const reasonId of reasonIds) {
+    const row = byId.get(String(reasonId));
+    if (!row) continue;
+    const currentItems = new Set(netSuiteInternalIds(row.Items_InternalId));
+    if (next.has(reasonId)) currentItems.add(itemInternalId);
+    else currentItems.delete(itemInternalId);
+
+    const before = Array.from(new Set(netSuiteInternalIds(row.Items_InternalId))).sort();
+    const after = Array.from(currentItems).sort();
+    if (JSON.stringify(before) === JSON.stringify(after)) {
+      results.push({ reasonId, status: "Unchanged", itemCount: after.length });
+      continue;
+    }
+
+    const response = await patchReasonsToBuyItems(cfg, userId, reasonId, after);
+    results.push({
+      reasonId,
+      status: next.has(reasonId) ? "Added" : "Removed",
+      itemCount: after.length,
+      response,
+    });
+  }
+
+  if (results.length) clearReasonsToBuyCaches();
+  return results;
+}
+
+async function patchItemFaqItems(cfg, userId, faqId, itemIds) {
+  const ids = Array.from(new Set(netSuiteInternalIds(itemIds)));
+  const url = `${cfg.restUrl}/${ITEM_FAQ_RECORD_TYPE}/${encodeURIComponent(faqId)}`;
+  const payload = {
+    custrecord_sb_web_faq_items: {
+      items: ids.map((id) => ({ id: String(id) })),
+    },
+  };
+  const { res, body } = await fetchNetSuiteWithRetry(url, {
+    method: "PATCH",
+    headers: {
+      ...(await netSuiteHeaders(url, "PATCH", userId, cfg)),
+      Prefer: "return=representation",
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = new Error(`Item FAQ linked items update failed (${res.status})`);
+    err.diagnostics = { url, method: "PATCH", status: res.status, statusText: res.statusText, payload, response: body };
+    throw err;
+  }
+  return body || { status: res.status };
+}
+
+async function syncItemFaqLinks({ cfg, userId, itemId, previousIds = [], nextIds = [] }) {
+  const itemInternalId = String(itemId || "").trim();
+  if (!itemInternalId) return [];
+
+  const previous = new Set(netSuiteInternalIds(previousIds));
+  const next = new Set(netSuiteInternalIds(nextIds));
+  const faqIds = Array.from(new Set([...previous, ...next]));
+  if (!faqIds.length) return [];
+
+  const rows = await fetchItemFaqRows(cfg, userId);
+  const byId = new Map(rows.map((row) => [String(row["Internal ID"] || ""), row]));
+  const results = [];
+
+  for (const faqId of faqIds) {
+    const row = byId.get(String(faqId));
+    if (!row) continue;
+    const currentItems = new Set(netSuiteInternalIds(row.Items_InternalId));
+    if (next.has(faqId)) currentItems.add(itemInternalId);
+    else currentItems.delete(itemInternalId);
+
+    const before = Array.from(new Set(netSuiteInternalIds(row.Items_InternalId))).sort();
+    const after = Array.from(currentItems).sort();
+    if (JSON.stringify(before) === JSON.stringify(after)) {
+      results.push({ faqId, status: "Unchanged", itemCount: after.length });
+      continue;
+    }
+
+    const response = await patchItemFaqItems(cfg, userId, faqId, after);
+    results.push({
+      faqId,
+      status: next.has(faqId) ? "Added" : "Removed",
+      itemCount: after.length,
+      response,
+    });
+  }
+
+  if (results.length) clearItemFaqCaches();
+  return results;
+}
+
 function buildOptionLookup(options = []) {
   const byName = new Map();
   options.forEach((option) => {
@@ -1117,7 +1520,7 @@ function normalizeMultipleSelects(row, optionMap) {
     const raw = next[field.name];
     const names = Array.isArray(raw)
       ? raw.map(String).filter(Boolean)
-      : String(raw || "").split(",").map((v) => v.trim()).filter(Boolean);
+      : String(raw || "").split(/[\u0005,]/).map((v) => v.trim()).filter(Boolean);
     next[field.name] = names;
 
     if (!Array.isArray(next[`${field.name}_InternalId`])) {
@@ -1629,17 +2032,18 @@ async function processRow(row, job) {
           .filter((update) => Number.isFinite(update.priceLevelId) && Number.isFinite(update.price))
       : [];
 
-    for (const field of fields) {
-      if (!field.internalid && field.name !== "Base Price" && field.name !== "Preferred Supplier") continue;
-      if (field.disableField && field.name !== "Base Price" && field.name !== "Preferred Supplier") continue;
+    for (const field of job.fields || fields) {
+      const fieldKey = field.mappingKey || field.name;
+      if (!field.internalid && fieldKey !== "Base Price" && fieldKey !== "Preferred Supplier") continue;
+      if (field.disableField && fieldKey !== "Base Price" && fieldKey !== "Preferred Supplier") continue;
 
-      if (field.name === "Base Price") {
+      if (fieldKey === "Base Price") {
         const parsed = parseFloat(row[field.name]);
         if (Number.isFinite(parsed)) basePriceVal = parsed;
         continue;
       }
 
-      if (field.name === "Preferred Supplier") {
+      if (fieldKey === "Preferred Supplier") {
         const vendorId = row[`${field.name}_InternalId`];
         if (vendorId && ["inventoryItem", "lotNumberedInventoryItem"].includes(recordType)) {
           result.response.supplier = await updatePreferredSupplier({
@@ -1695,7 +2099,7 @@ async function processRow(row, job) {
       } else if (field.fieldType === "Checkbox") {
         const v = typeof value === "string" ? value.trim().toLowerCase() : value;
         payload[field.internalid] = v === true || v === 1 || ["true", "t", "1", "y", "yes"].includes(v);
-      } else if (field.name === "Name") {
+      } else if (fieldKey === "Name") {
         payload[field.internalid] = childItemName(value);
       } else {
         payload[field.internalid] = String(value);
@@ -1728,6 +2132,29 @@ async function processRow(row, job) {
         const err = new Error(`NetSuite update failed (${response.status}): ${JSON.stringify(result.response.main)}`);
         err.diagnostics = result.response.diagnostics;
         throw err;
+      }
+    }
+
+    if (row.__previousReasonsToBuyInternalIds !== undefined && row["reasons to buy_InternalId"] !== undefined) {
+      result.response.reasonsToBuyLinks = await syncReasonsToBuyItemLinks({
+        cfg: job.cfg,
+        userId: job.userId,
+        itemId: internalId,
+        previousIds: row.__previousReasonsToBuyInternalIds,
+        nextIds: row["reasons to buy_InternalId"],
+      });
+    }
+
+    if (row.__previousItemFaqInternalIds !== undefined) {
+      const faqInternalIdKey = Object.keys(row).find((key) => /faq/i.test(key) && key.endsWith("_InternalId"));
+      if (faqInternalIdKey) {
+        result.response.itemFaqLinks = await syncItemFaqLinks({
+          cfg: job.cfg,
+          userId: job.userId,
+          itemId: internalId,
+          previousIds: row.__previousItemFaqInternalIds,
+          nextIds: row[faqInternalIdKey],
+        });
       }
     }
 
@@ -1773,7 +2200,7 @@ async function processRow(row, job) {
     }
 
     const hasPriceError = result.response.prices.some((p) => p.success === false);
-    const changed = result.response.main || result.response.prices.length || result.response.images.length || result.response.supplier;
+    const changed = result.response.main || result.response.prices.length || result.response.images.length || result.response.supplier || result.response.reasonsToBuyLinks?.length || result.response.itemFaqLinks?.length;
     result.status = hasPriceError ? "Error" : changed ? "Success" : "Skipped";
     return result;
   } catch (err) {
@@ -2483,21 +2910,21 @@ router.get("/image-proxy", async (req, res) => {
 
 router.use(requireSuitePimSession);
 
-router.get("/config", (req, res) => {
-  const env = normalizeEnvironment(req.query.environment);
-  const cfg = envConfig(env);
-  const cleanFields = fields.map(({ optionFeed, ...field }) => ({
-    ...field,
-    hasOptions: !!optionFeed,
-    optionFeed,
-  }));
-  res.json({
-    ok: true,
-    environment: publicEnvironmentName(env),
-    fields: cleanFields,
-    productFeedConfigured: !!cfg.productDataUrl,
-    priceRestletConfigured: !!cfg.priceRestletUrl,
-  });
+router.get("/config", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const cleanFields = (await effectiveSuitePimFields(env)).map(publicFieldConfig);
+    res.json({
+      ok: true,
+      environment: publicEnvironmentName(env),
+      fields: cleanFields,
+      productFeedConfigured: !!cfg.productDataUrl,
+      priceRestletConfigured: !!cfg.priceRestletUrl,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
 });
 
 router.get("/reasons-to-buy/config", (req, res) => {
@@ -2544,6 +2971,83 @@ router.get("/reasons-to-buy/options/:fieldName", async (req, res) => {
   } catch (err) {
     console.error("SuitePim reasons-to-buy option load failed:", err);
     res.status(500).json({ ok: false, error: err.message, diagnostics: err.diagnostics || null });
+  }
+});
+
+router.get("/item-faqs/config", (req, res) => {
+  const env = normalizeEnvironment(req.query.environment);
+  res.json({
+    ok: true,
+    environment: publicEnvironmentName(env),
+    recordType: ITEM_FAQ_RECORD_TYPE,
+    fields: itemFaqFields.map((field) => ({
+      ...field,
+      hasOptions: !!field.optionFeed,
+    })),
+  });
+});
+
+router.get("/item-faqs", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const rows = await fetchItemFaqRows(cfg, userId);
+    res.json({
+      ok: true,
+      rows,
+      count: rows.length,
+      environment: publicEnvironmentName(env),
+      recordType: ITEM_FAQ_RECORD_TYPE,
+    });
+  } catch (err) {
+    console.error("SuitePim item FAQs load failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get("/item-faqs/options/:fieldName", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const field = itemFaqFields.find((item) => item.name.toLowerCase() === String(req.params.fieldName || "").toLowerCase());
+    const feedName = field?.optionFeed || req.params.fieldName;
+    const options = await fetchReasonsToBuyOptions(feedName, env, cfg, userId);
+    res.json({ ok: true, options, field: req.params.fieldName });
+  } catch (err) {
+    console.error("SuitePim item FAQs option load failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post("/item-faqs/save", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.body.environment || req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const rows = Array.isArray(req.body.rows) ? req.body.rows : [];
+    if (!rows.length) return res.status(400).json({ ok: false, error: "No Item FAQ records to save" });
+
+    const results = [];
+    for (const row of rows) {
+      try {
+        results.push(await saveItemFaqRecord(cfg, userId, row));
+      } catch (err) {
+        results.push({
+          id: row["Internal ID"] || "",
+          name: row.Name || "",
+          status: "Error",
+          error: err.message,
+          diagnostics: err.diagnostics || null,
+        });
+      }
+    }
+
+    res.json({ ok: true, results, environment: publicEnvironmentName(env) });
+  } catch (err) {
+    console.error("SuitePim item FAQs save failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
@@ -2611,26 +3115,102 @@ router.get("/products", async (req, res) => {
   }
 });
 
-router.get("/web-management/config", (req, res) => {
-  const env = normalizeEnvironment(req.query.environment);
-  const cfg = envConfig(env);
-  const openai = openAIConfig();
-  const cleanFields = fields.map(({ optionFeed, ...field }) => ({
-    ...field,
-    hasOptions: !!optionFeed,
-    optionFeed,
-  }));
-  res.json({
-    ok: true,
-    environment: publicEnvironmentName(env),
-    fields: cleanFields,
-    webManagementFeedConfigured: !!cfg.webManagementUrl,
-    priceRestletConfigured: !!cfg.priceRestletUrl,
-    campaignPriceRestletConfigured: !!cfg.campaignPriceRestletUrl,
-    wooCommerceConfigured: wooConfigured(cfg),
-    aiGenerationConfigured: !!openai.apiKey,
-    aiGenerationModel: openai.model,
-  });
+router.get("/web-management/config", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const openai = openAIConfig();
+    const cleanFields = (await effectiveSuitePimFields(env)).map(publicFieldConfig);
+    res.json({
+      ok: true,
+      environment: publicEnvironmentName(env),
+      fields: cleanFields,
+      webManagementFeedConfigured: !!cfg.webManagementUrl,
+      priceRestletConfigured: !!cfg.priceRestletUrl,
+      campaignPriceRestletConfigured: !!cfg.campaignPriceRestletUrl,
+      wooCommerceConfigured: wooConfigured(cfg),
+      aiGenerationConfigured: !!openai.apiKey,
+      aiGenerationModel: openai.model,
+    });
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get("/settings", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const forceRefresh = req.query.refresh === "1" || req.query.force === "1";
+    res.json(await getSuitePimSettingsPayload(env, cfg, userId, { forceRefresh }));
+  } catch (err) {
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post("/settings/netsuite-mappings", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.body.environment || req.query.environment);
+    const cfg = envConfig(env);
+    const submitted = Array.isArray(req.body.mappings) ? req.body.mappings : [];
+    const defaultsByKey = new Map(defaultFieldMappings().map((mapping) => [mapping.mappingKey, mapping]));
+    const user = req.eposSession.email || req.eposSession.username || req.eposSession.user_id || "";
+    const submittedKeys = new Set();
+
+    await ensureSuitePimSettingsTables();
+
+    for (const row of submitted) {
+      const mappingKey = String(row?.mappingKey || "").trim();
+      const isCustom = mappingKey.startsWith("custom:");
+      const base = defaultsByKey.get(mappingKey) || {
+        defaultJsonField: String(row?.jsonField || "").trim(),
+        defaultInternalid: "",
+        defaultFieldType: "Free-Form Text",
+        optionFeed: "",
+      };
+      if (!mappingKey || (!defaultsByKey.has(mappingKey) && !isCustom)) continue;
+
+      const jsonField = String(row?.jsonField || base.defaultJsonField || mappingKey).trim();
+      const internalid = String(row?.internalid ?? base.defaultInternalid ?? "").trim();
+      const fieldType = String(row?.fieldType || base.defaultFieldType || "").trim();
+      const optionFeed = String(row?.optionFeed || base.optionFeed || (/faq/i.test(jsonField) ? "Item Faq's" : "")).trim();
+      if (!jsonField) continue;
+      submittedKeys.add(mappingKey);
+
+      await pool.query(
+        `INSERT INTO suitepim_field_mappings
+          (environment, mapping_key, json_field, internalid, field_type, option_feed, updated_by, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
+         ON CONFLICT (environment, mapping_key)
+         DO UPDATE SET
+           json_field = EXCLUDED.json_field,
+           internalid = EXCLUDED.internalid,
+           field_type = EXCLUDED.field_type,
+           option_feed = EXCLUDED.option_feed,
+           updated_by = EXCLUDED.updated_by,
+           updated_at = NOW()`,
+        [env, mappingKey, jsonField, internalid || null, fieldType || null, optionFeed || null, String(user)]
+      );
+    }
+
+    const customKeys = Array.from(submittedKeys).filter((key) => key.startsWith("custom:"));
+    await pool.query(
+      `DELETE FROM suitepim_field_mappings
+        WHERE environment = $1
+          AND mapping_key LIKE 'custom:%'
+          AND NOT (mapping_key = ANY($2::text[]))`,
+      [env, customKeys]
+    );
+
+    webManagementCache.delete(webManagementCacheKey(env));
+    invalidateSuitePimSettingsCache(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+
+    res.json(await getSuitePimSettingsPayload(env, cfg, userId, { forceRefresh: true }));
+  } catch (err) {
+    res.status(400).json({ ok: false, error: err.message });
+  }
 });
 
 router.get("/web-management", async (req, res) => {
@@ -2773,9 +3353,11 @@ router.get("/options/:fieldName", async (req, res) => {
     const cfg = envConfig(env);
     const userId = req.eposSession.user_id || req.eposSession.id;
     const requested = req.params.fieldName;
-    const field = fields.find((f) => f.name.toLowerCase() === requested.toLowerCase());
-    if (!field?.optionFeed) return res.json({ ok: true, options: [] });
-    const options = await fetchReasonsToBuyOptions(field.optionFeed, env, cfg, userId);
+    const effectiveFields = await effectiveSuitePimFields(env);
+    const field = effectiveFields.find((f) => f.name.toLowerCase() === requested.toLowerCase());
+    const feedName = field?.optionFeed || (/faq/i.test(requested) ? "Item Faq's" : "");
+    if (!feedName) return res.json({ ok: true, options: [] });
+    const options = await fetchReasonsToBuyOptions(feedName, env, cfg, userId);
     res.json({ ok: true, options });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
@@ -2957,6 +3539,7 @@ router.post("/push-updates", async (req, res) => {
     const env = normalizeEnvironment(req.body.environment || req.query.environment);
     const cfg = envConfig(env);
     const userId = req.eposSession.user_id || req.eposSession.id;
+    const mappedFields = await effectiveSuitePimFields(env);
     const jobId = crypto.randomBytes(6).toString("hex");
 
     jobs[jobId] = {
@@ -2966,6 +3549,7 @@ router.post("/push-updates", async (req, res) => {
       processed: 0,
       results: [],
       rows,
+      fields: mappedFields,
       cfg,
       userId,
       environment: publicEnvironmentName(env),

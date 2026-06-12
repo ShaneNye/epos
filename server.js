@@ -34,6 +34,7 @@ const {
 } = require("./utils/accessControlRules");
 const { getNetSuiteHomeUrl } = require("./utils/netsuiteEnvironment");
 const { ensureUserStatusColumn } = require("./utils/userStatus");
+const { ensureUserThemeColumns } = require("./utils/userTheme");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1419,6 +1420,8 @@ app.get("/promotions", (req, res) => sendNoCacheFile(res, path.join(__dirname, "
 app.get("/eod", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "endOfDay.html")))
 app.get("/cashflow", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cashFlow.html")))
 app.get("/logistics", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "logistics.html")))
+app.get("/suitepim/settings", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-settings.html")))
+app.get("/suitepim/settings.html", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-settings.html")))
 app.get("/suitepim", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim.html")))
 app.get("/systems-processes", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "systems-processes.html")))
 app.get("/rota", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "rota.html")))
@@ -1426,6 +1429,9 @@ app.get("/suitepim/product-data", (req, res) => res.redirect(302, "/suitepim/web
 app.get("/suitepim/web-management", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-web-management.html")))
 app.get("/suitepim/product-validation", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-product-validation.html")))
 app.get("/suitepim/campaigns", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-campaigns.html")))
+app.get(["/suitepim/item-faqs", "/suitepim/item-faqs.html"], (req, res) =>
+  sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-item-faqs.html"))
+)
 app.get(["/suitepim/reasons-to-buy", "/suitepim/reasons-to-buy.html"], (req, res) =>
   sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-reasons-to-buy.html"))
 )
@@ -1498,6 +1504,9 @@ app.listen(PORT, () => {
   itemOptionsRoute.startScheduler();
   ensureUserStatusColumn().catch((err) => {
     console.error("Failed to initialize user status columns:", err.message);
+  });
+  ensureUserThemeColumns().catch((err) => {
+    console.error("Failed to initialize user theme columns:", err.message);
   });
 
 });

@@ -16,7 +16,8 @@ const MANAGEMENT_FIELDS = [
   "netsuiteid",
   "invoicelocationid",
   "epos_status",
-  "themehex",  
+  "themehex",
+  "themeaccenthex",
 ];
 
 /* Extra safety: never allow these through the UI */
@@ -105,10 +106,10 @@ router.put("/:roleName", async (req, res) => {
   }
 
   // sanitize + enforce deny list
-  const cleanedFields = fields
+  const cleanedFields = [...new Set(fields
     .map(f => String(f || "").trim())
     .filter(Boolean)
-    .filter(f => !DISALLOWED_FIELDS.has(f));
+    .filter(f => !DISALLOWED_FIELDS.has(f)))];
 
   const client = await pool.connect();
   try {

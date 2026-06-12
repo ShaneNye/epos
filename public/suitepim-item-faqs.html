@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <script src="/js/browserLogFilter.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico" />
+  <title>SuitePim Item Faq's</title>
+
+  <link rel="stylesheet" href="/assistant/assistant.css" />
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/suitepim.css?v=item-faqs-1" />
+
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/js/suitepimPreload.js" defer></script>
+  <script src="/assistant/assistant.js"></script>
+  <script type="module" src="/assistant/assistantHooks.js"></script>
+  <script src="/js/suitepimItemFaqs.js?v=item-faqs-2" defer></script>
+</head>
+
+<body>
+  <div id="menu"></div>
+
+  <main class="content suitepim-page">
+    <header class="suitepim-header">
+      <div>
+        <p class="suitepim-kicker">SuitePim</p>
+        <h1>Item Faq's</h1>
+      </div>
+    </header>
+
+    <nav class="suitepim-subnav" aria-label="SuitePim sections">
+      <a class="suitepim-subnav-link" href="/suitepim"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 19V5"></path><path d="M8 19v-6"></path><path d="M13 19v-9"></path><path d="M18 19V8"></path></svg>Dashboard</a>
+      <a class="suitepim-subnav-link" href="/suitepim/web-management"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h10"></path><path d="M4 18h13"></path><path d="M18 11h2a2 2 0 0 1 2 2v3"></path><path d="M16 14l2-3 2 3"></path></svg>Item Management</a>
+      <a class="suitepim-subnav-link" href="/suitepim/campaigns"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 7h16"></path><path d="M7 4v6"></path><path d="M17 4v6"></path><path d="M6 15h5"></path><path d="M13 15h5"></path><path d="M8 19h8"></path></svg>Campaigns</a>
+      <a class="suitepim-subnav-link" href="/suitepim/product-validation"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M9 12l2 2 4-5"></path><path d="M4 4h16v16H4z"></path></svg>Product Validation</a>
+      <a class="suitepim-subnav-link" href="/suitepim/reasons-to-buy"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3l2.7 5.5 6.1.9-4.4 4.3 1 6.1L12 16.9 6.6 19.8l1-6.1-4.4-4.3 6.1-.9L12 3z"></path></svg>Reasons To Buy</a>
+      <a class="suitepim-subnav-link active" href="/suitepim/item-faqs"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M4 6h16"></path><path d="M4 12h16"></path><path d="M4 18h10"></path></svg>Item Faq's</a>
+      <a class="suitepim-subnav-link" href="/suitepim/settings"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 15.5A3.5 3.5 0 1 0 12 8a3.5 3.5 0 0 0 0 7.5z"></path><path d="M19.4 15a1.8 1.8 0 0 0 .36 1.98l.04.04a2 2 0 1 1-2.83 2.83l-.04-.04A1.8 1.8 0 0 0 15 19.4a1.8 1.8 0 0 0-1 .58V20a2 2 0 1 1-4 0v-.02a1.8 1.8 0 0 0-1-.58 1.8 1.8 0 0 0-1.98.36l-.04.04a2 2 0 1 1-2.83-2.83l.04-.04A1.8 1.8 0 0 0 4.6 15a1.8 1.8 0 0 0-.58-1H4a2 2 0 1 1 0-4h.02a1.8 1.8 0 0 0 .58-1 1.8 1.8 0 0 0-.36-1.98l-.04-.04a2 2 0 1 1 2.83-2.83l.04.04A1.8 1.8 0 0 0 9 4.6a1.8 1.8 0 0 0 1-.58V4a2 2 0 1 1 4 0v.02a1.8 1.8 0 0 0 1 .58 1.8 1.8 0 0 0 1.98-.36l.04-.04a2 2 0 1 1 2.83 2.83l-.04.04A1.8 1.8 0 0 0 19.4 9c.22.36.39.73.58 1H20a2 2 0 1 1 0 4h-.02c-.19.27-.36.64-.58 1z"></path></svg>Settings</a>
+    </nav>
+
+    <section class="suitepim-toolbar suitepim-reasons-toolbar" aria-label="Item Faq controls">
+      <div class="suitepim-search"><svg aria-hidden="true" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"></circle><path d="M16.5 16.5 21 21"></path></svg><input id="suitepimSearch" type="search" placeholder="Search FAQ, description, item..." /></div>
+      <select id="suitepimStateFilter" aria-label="Record state filter"><option value="all">All records</option><option value="changed">Changed records</option><option value="new">New records</option></select>
+      <button id="suitepimAddBtn" class="suitepim-primary-btn" type="button">New FAQ</button>
+      <button id="suitepimRefreshBtn" class="suitepim-icon-btn" type="button" title="Refresh" aria-label="Refresh"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="M20 6v5h-5"></path><path d="M4 18v-5h5"></path><path d="M18.3 9A7 7 0 0 0 6.8 6.7L4 9"></path><path d="M5.7 15a7 7 0 0 0 11.5 2.3L20 15"></path></svg></button>
+      <button id="suitepimSaveBtn" class="suitepim-primary-btn" type="button">Save changes</button>
+    </section>
+
+    <section id="suitepimStatus" class="suitepim-status" aria-live="polite"></section>
+    <section id="suitepimPushReport" class="suitepim-push-report" hidden aria-label="Item FAQ save report"></section>
+    <section id="suitepimMount" class="suitepim-shell" aria-label="Item FAQ workspace">
+      <div class="suitepim-loading"><div class="suitepim-spinner" aria-hidden="true"></div><p>Loading Item Faq's...</p></div>
+    </section>
+  </main>
+
+  <div id="suitepimModal" class="suitepim-modal hidden" role="dialog" aria-modal="true">
+    <div class="suitepim-modal-panel">
+      <div class="suitepim-modal-header">
+        <h2 id="suitepimModalTitle">Select items</h2>
+        <button id="suitepimModalClose" class="suitepim-icon-btn" type="button" title="Close" aria-label="Close">x</button>
+      </div>
+      <input id="suitepimModalSearch" type="search" placeholder="Search options..." />
+      <div id="suitepimModalOptions" class="suitepim-modal-options"></div>
+      <div class="suitepim-modal-actions">
+        <button id="suitepimModalCancel" type="button">Cancel</button>
+        <button id="suitepimModalSave" class="suitepim-primary-btn" type="button">Apply</button>
+      </div>
+    </div>
+  </div>
+</body>
+
+</html>

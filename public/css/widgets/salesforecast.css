@@ -3,6 +3,7 @@
 /* === Widget Container === */
 #salesForecastWidget {
   background: #ffffff;
+  border-top: 3px solid var(--accent, #FFD700);
   border-radius: 12px;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
   padding: 14px 18px;
@@ -18,7 +19,7 @@
 }
 
 #salesForecastWidget:hover {
-  box-shadow: 0 4px 16px rgba(0, 129, 171, 0.2);
+  box-shadow: 0 4px 16px var(--brand-shadow-strong, rgba(0, 129, 171, 0.2));
 }
 
 /* === Header / Tabs Row === */
@@ -33,7 +34,7 @@
 #salesForecastWidget .sf-title {
   font-size: 1rem;
   font-weight: 600;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   display: flex;
   align-items: center;
   white-space: nowrap;
@@ -54,7 +55,7 @@
 #salesForecastWidget .sf-tab {
   border: 1px solid #cfeef5;
   background: #f4fdfd;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   font-weight: 600;
   font-size: 0.82rem;
   padding: 6px 10px;
@@ -69,8 +70,8 @@
 }
 
 #salesForecastWidget .sf-tab.active {
-  background: #0081ab;
-  border-color: #0081ab;
+  background: var(--brand, #0081ab);
+  border-color: var(--brand, #0081ab);
   color: #fff;
 }
 
@@ -152,7 +153,7 @@
 
 #salesForecastWidget .sf-label {
   font-weight: 600;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   font-size: 0.85rem;
   line-height: 1.2;
   flex: 1;
@@ -185,9 +186,9 @@
 #salesForecastWidget .sf-value input[type="number"]:focus,
 #salesForecastWidget input[data-role="count"]:focus,
 #salesForecastWidget input[data-role="aov"]:focus {
-  border-color: #0081ab;
+  border-color: var(--brand, #0081ab);
   background: #ffffff;
-  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.12);
+  box-shadow: 0 0 0 3px var(--brand-shadow, rgba(0, 129, 171, 0.12));
 }
 
 /* === Actions / Reset Button === */
@@ -200,7 +201,7 @@
 #salesForecastWidget .sf-reset {
   border: 1px solid #cfeef5;
   background: #f4fdfd;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   font-weight: 700;
   font-size: 0.82rem;
   padding: 7px 10px;
@@ -302,3 +303,4 @@
     text-align: left;
   }
 }
+

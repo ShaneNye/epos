@@ -1,3 +1,9 @@
+const USER_THEME_CACHE_KEY = "eposUserTheme";
+const MENU_ACCESS_CACHE_KEY = "eposMenuAccess";
+
+ensureThemeStylesheet();
+applyCachedUserTheme();
+
 // Load menu.html and inject into #menu
 async function loadMenu() {
   try {
@@ -45,6 +51,11 @@ function initMenuLogic() {
       const href = normalizePath(link.getAttribute("href"));
       link.classList.toggle("active", href === currentPath);
     });
+
+    const saved = typeof storageGet === "function" ? storageGet() : null;
+    const cachedRole = getActiveRoleName(saved);
+    const cachedAccess = getCachedMenuAccess(cachedRole);
+    if (cachedAccess) applyMenuAccess(cachedAccess);
   }
 
   // Load current user
@@ -73,7 +84,7 @@ if (manageBtn) {
         const popup = window.open(
             "/manage.html",
             "ManageProfile",
-            "width=500,height=650,resizable=yes,scrollbars=yes"
+            "width=760,height=780,resizable=yes,scrollbars=yes"
         );
 
         if (!popup) alert("Please allow pop-ups to use the Manage feature.");
@@ -104,19 +115,197 @@ function normalizeAccessSlug(value) {
   return slug;
 }
 
+function getActiveRoleName(session) {
+  if (typeof session?.activeRole === "string") return session.activeRole;
+  if (session?.activeRole?.name) return session.activeRole.name;
+  if (typeof session?.role === "string") return session.role;
+  if (session?.role?.name) return session.role.name;
+  return "";
+}
+
+function userScopedCacheKey(baseKey, suffix = "") {
+  const saved = typeof storageGet === "function" ? storageGet() : null;
+  const userKey = String(saved?.username || saved?.email || saved?.user?.email || "").trim().toLowerCase();
+  return [baseKey, userKey, suffix].filter(Boolean).join(":");
+}
+
+function menuAccessCacheKey(role) {
+  const roleKey = String(role || "").trim().toLowerCase();
+  return userScopedCacheKey(MENU_ACCESS_CACHE_KEY, roleKey);
+}
+
+function getCachedMenuAccess(role) {
+  if (!role) return null;
+  try {
+    const cached = JSON.parse(localStorage.getItem(menuAccessCacheKey(role)) || "null");
+    return Array.isArray(cached?.allowed) ? cached.allowed : null;
+  } catch {
+    return null;
+  }
+}
+
+function cacheMenuAccess(role, allowed) {
+  if (!role || !Array.isArray(allowed)) return;
+  localStorage.setItem(menuAccessCacheKey(role), JSON.stringify({
+    allowed,
+    savedAt: new Date().toISOString(),
+  }));
+}
+
+function canMenuLinkShow(href, normalizedAllowed) {
+  const canSeeNews =
+    href === "news" &&
+    (normalizedAllowed.includes("news") ||
+      normalizedAllowed.includes("news-post") ||
+      normalizedAllowed.includes("admin"));
+  const canSeeAdminDefault =
+    normalizedAllowed.includes("admin") && ["admin", "rota"].includes(href);
+
+  return canSeeNews || canSeeAdminDefault || normalizedAllowed.includes(href);
+}
+
+function applyMenuAccess(allowed) {
+  const normalizedAllowed = (allowed || []).map(normalizeAccessSlug);
+  document.querySelectorAll(".menu-item").forEach(link => {
+    const href = normalizeAccessSlug(link.getAttribute("href"));
+    link.style.display = canMenuLinkShow(href, normalizedAllowed) ? "" : "none";
+  });
+}
+
 function isHexColor(v) {
   return typeof v === "string" && /^#([0-9A-F]{3}){1,2}$/i.test(v.trim());
 }
 
-function applyUserTheme(themeHex) {
-  const sidebar = document.getElementById("sidebar");
-  if (!sidebar) return;
+function getCachedUserTheme() {
+  try {
+    return JSON.parse(localStorage.getItem(userThemeCacheKey()) || localStorage.getItem(USER_THEME_CACHE_KEY) || "null");
+  } catch {
+    return null;
+  }
+}
 
-  if (isHexColor(themeHex)) {
-    sidebar.style.background = themeHex.trim();
-  } else {
-    // if null/blank/invalid => remove inline style so CSS default applies
-    sidebar.style.removeProperty("background");
+function userThemeCacheKey() {
+  const saved = typeof storageGet === "function" ? storageGet() : null;
+  const userKey = String(saved?.username || saved?.email || saved?.user?.email || "").trim().toLowerCase();
+  return userKey ? `${USER_THEME_CACHE_KEY}:${userKey}` : USER_THEME_CACHE_KEY;
+}
+
+function cacheUserTheme(theme) {
+  const primary = normalizeHexColor(theme?.primary || theme?.themeHex || theme?.themehex);
+  const accent = normalizeHexColor(theme?.accent || theme?.themeAccentHex || theme?.themeaccenthex);
+
+  if (!primary && !accent) {
+    clearCachedUserTheme();
+    return;
+  }
+
+  localStorage.setItem(userThemeCacheKey(), JSON.stringify({ primary, accent }));
+  localStorage.removeItem(USER_THEME_CACHE_KEY);
+}
+
+function clearCachedUserTheme() {
+  localStorage.removeItem(userThemeCacheKey());
+  localStorage.removeItem(USER_THEME_CACHE_KEY);
+}
+
+function applyCachedUserTheme() {
+  const cached = getCachedUserTheme();
+  if (cached) applyUserTheme(cached);
+}
+
+function normalizeHexColor(value) {
+  if (!isHexColor(value)) return "";
+  let hex = value.trim();
+  if (hex.length === 4) {
+    hex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+  }
+  return hex.toUpperCase();
+}
+
+function hexToRgb(hex) {
+  const normalized = normalizeHexColor(hex);
+  if (!normalized) return null;
+  const int = parseInt(normalized.slice(1), 16);
+  return {
+    r: (int >> 16) & 255,
+    g: (int >> 8) & 255,
+    b: int & 255,
+  };
+}
+
+function rgbToHex({ r, g, b }) {
+  return `#${[r, g, b].map(v => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("")}`.toUpperCase();
+}
+
+function mixColors(a, b, weight) {
+  const colorA = hexToRgb(a);
+  const colorB = hexToRgb(b);
+  if (!colorA || !colorB) return normalizeHexColor(a);
+  const w = Math.max(0, Math.min(1, weight));
+  return rgbToHex({
+    r: colorA.r * (1 - w) + colorB.r * w,
+    g: colorA.g * (1 - w) + colorB.g * w,
+    b: colorA.b * (1 - w) + colorB.b * w,
+  });
+}
+
+function applyUserTheme(theme) {
+  const primary = normalizeHexColor(theme?.primary || theme?.themeHex || theme);
+  const accent = normalizeHexColor(theme?.accent || theme?.themeAccentHex || theme?.themeaccenthex);
+  const root = document.documentElement;
+  const themedVars = [
+    "--brand",
+    "--brand-50",
+    "--brand-100",
+    "--brand-600",
+    "--brand-700",
+    "--brand-rgb",
+    "--brand-shadow",
+    "--brand-shadow-strong",
+    "--focus-ring",
+    "--selection-bg",
+    "--row-hover-bg",
+    "--sidebar-bg",
+    "--sidebar-shadow",
+    "--accent",
+    "--accent-600",
+    "--accent-rgb",
+    "--accent-soft",
+  ];
+
+  if (!primary && !accent) {
+    themedVars.forEach(name => root.style.removeProperty(name));
+    return;
+  }
+
+  if (primary) {
+    const rgb = hexToRgb(primary);
+    const rgbText = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
+    root.style.setProperty("--brand", primary);
+    root.style.setProperty("--brand-50", mixColors(primary, "#FFFFFF", 0.92));
+    root.style.setProperty("--brand-100", mixColors(primary, "#FFFFFF", 0.84));
+    root.style.setProperty("--brand-600", mixColors(primary, "#000000", 0.12));
+    root.style.setProperty("--brand-700", mixColors(primary, "#000000", 0.24));
+    root.style.setProperty("--brand-rgb", rgbText);
+    root.style.setProperty("--brand-shadow", `rgba(${rgbText}, 0.18)`);
+    root.style.setProperty("--brand-shadow-strong", `rgba(${rgbText}, 0.25)`);
+    root.style.setProperty("--focus-ring", `0 0 0 3px rgba(${rgbText}, 0.18)`);
+    root.style.setProperty("--selection-bg", `rgba(${rgbText}, 0.18)`);
+    root.style.setProperty("--row-hover-bg", `rgba(${rgbText}, 0.08)`);
+    root.style.setProperty(
+      "--sidebar-bg",
+      `linear-gradient(180deg, ${mixColors(primary, "#000000", 0.18)} 0%, ${primary} 58%, ${mixColors(primary, "#000000", 0.28)} 100%)`
+    );
+    root.style.setProperty("--sidebar-shadow", `10px 0 30px rgba(${rgbText}, 0.18)`);
+  }
+
+  if (accent) {
+    const rgb = hexToRgb(accent);
+    const rgbText = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
+    root.style.setProperty("--accent", accent);
+    root.style.setProperty("--accent-600", mixColors(accent, "#000000", 0.16));
+    root.style.setProperty("--accent-rgb", rgbText);
+    root.style.setProperty("--accent-soft", `rgba(${rgbText}, 0.16)`);
   }
 }
 
@@ -143,7 +332,16 @@ async function loadUser() {
     const user = data.user;
 
     // 🎨 Apply user theme (only if set)
-applyUserTheme(user.themeHex || user.themehex);
+const userTheme = {
+  primary: user.themeHex || user.themehex,
+  accent: user.themeAccentHex || user.themeaccenthex,
+};
+applyUserTheme(userTheme);
+if (normalizeHexColor(userTheme.primary) || normalizeHexColor(userTheme.accent)) {
+  cacheUserTheme(userTheme);
+} else {
+  clearCachedUserTheme();
+}
 
 
     // --- Display user info immediately
@@ -261,21 +459,11 @@ async function applyAccessRestrictions(activeRole, token) {
     );
     const allowed = Array.isArray(roleInfo?.access) ? roleInfo.access : [];
     const normalizedAllowed = allowed.map(normalizeAccessSlug);
+    cacheMenuAccess(activeRole, allowed);
 
     console.log(`🔐 Role '${activeRole}' has access to:`, allowed);
 
-    // Update visible menu items based on access list
-    document.querySelectorAll(".menu-item").forEach(link => {
-      const href = normalizeAccessSlug(link.getAttribute("href"));
-      const canSeeNews =
-        href === "news" &&
-        (normalizedAllowed.includes("news") ||
-          normalizedAllowed.includes("news-post") ||
-          normalizedAllowed.includes("admin"));
-      const canSeeAdminDefault =
-        normalizedAllowed.includes("admin") && ["admin", "rota"].includes(href);
-      link.style.display = canSeeNews || canSeeAdminDefault || normalizedAllowed.includes(href) ? "" : "none";
-    });
+    applyMenuAccess(allowed);
 
     // Normalize paths
     const pathNow = window.location.pathname.toLowerCase();

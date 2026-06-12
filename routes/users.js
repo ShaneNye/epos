@@ -12,6 +12,7 @@ const {
   normalizeUserStatus,
   statusExpirySql,
 } = require("../utils/userStatus");
+const { ensureUserThemeColumns, normalizeHexColor } = require("../utils/userTheme");
 
 
 /* -------------------- Helper -------------------- */
@@ -27,6 +28,8 @@ function maskUser(u) {
     eposStatusEmoji: u.epos_status_emoji || "",
     eposStatusText: u.epos_status_text || "",
     eposStatusExpiresAt: u.epos_status_expires_at || null,
+    themeHex: u.themehex || null,
+    themeAccentHex: u.themeaccenthex || null,
     createdAt: u.createdat,
     roles: u.roles || [],
     location: u.location_id
@@ -42,12 +45,14 @@ function maskUser(u) {
 /* -------------------- GET all users -------------------- */
 router.get("/", async (req, res) => {
   try {
+    await ensureUserThemeColumns();
     await cleanupExpiredUserStatuses();
     res.set("Cache-Control", "no-store");
     const result = await pool.query(`
   SELECT 
     u.id, u.email, u.firstname, u.lastname, u.netsuiteid, u.profileimage,
-    u.epos_status, u.epos_status_emoji, u.epos_status_text, u.epos_status_expires_at, u.createdat,
+    u.epos_status, u.epos_status_emoji, u.epos_status_text, u.epos_status_expires_at,
+    u.themehex, u.themeaccenthex, u.createdat,
     u.location_id, l.name AS location_name, l.netsuite_internal_id,
     STRING_AGG(r.name, ',' ORDER BY r.id) AS role_names,
     STRING_AGG(r.id::text, ',' ORDER BY r.id) AS role_ids,
@@ -173,6 +178,7 @@ router.post("/status", async (req, res) => {
 
 router.put("/self-update", async (req, res) => {
   try {
+    await ensureUserThemeColumns();
     await cleanupExpiredUserStatuses();
     res.set("Cache-Control", "no-store");
     const authHeader = req.headers.authorization || "";
@@ -223,29 +229,44 @@ router.put("/self-update", async (req, res) => {
 
     // Normalize allowed fields (support camelCase or db cols)
     const allowedDb = new Set();
-    for (const f of allowedRaw) {
-      if (f === "firstName") allowedDb.add("firstname");
-      else if (f === "lastName") allowedDb.add("lastname");
-      else if (f === "profileImage") allowedDb.add("profileimage");
-      else if (f === "eposStatus") allowedDb.add("epos_status");
-      else if (f === "primaryStore") allowedDb.add("location_id");
-      else if (f === "locationId") allowedDb.add("location_id");
-      else if (f === "netsuiteId") allowedDb.add("netsuiteid");
-      else if (f === "invoiceLocationId") allowedDb.add("invoicelocationid");
-      else allowedDb.add(f);
+    for (const rawField of allowedRaw) {
+      const f = String(rawField || "").trim();
+      const normalizedField = f.toLowerCase();
+      if (f === "firstName" || normalizedField === "firstname") allowedDb.add("firstname");
+      else if (f === "lastName" || normalizedField === "lastname") allowedDb.add("lastname");
+      else if (f === "profileImage" || normalizedField === "profileimage") allowedDb.add("profileimage");
+      else if (f === "eposStatus" || normalizedField === "epos_status") allowedDb.add("epos_status");
+      else if (f === "primaryStore" || f === "locationId" || normalizedField === "primarystore" || normalizedField === "location_id") allowedDb.add("location_id");
+      else if (f === "netsuiteId" || normalizedField === "netsuiteid") allowedDb.add("netsuiteid");
+      else if (f === "invoiceLocationId" || normalizedField === "invoicelocationid") allowedDb.add("invoicelocationid");
+      else if (f === "themeHex" || normalizedField === "themehex") allowedDb.add("themehex");
+      else if (f === "themeAccentHex" || normalizedField === "themeaccenthex") allowedDb.add("themeaccenthex");
+      else if (f) allowedDb.add(f);
+    }
+
+    if (allowedDb.has("themehex")) {
+      allowedDb.add("themeaccenthex");
     }
 
     const body = req.body || {};
 
+    function bodyValue(...keys) {
+      for (const key of keys) {
+        if (Object.prototype.hasOwnProperty.call(body, key)) return body[key];
+      }
+      return undefined;
+    }
+
     const candidateUpdates = {
       email: body.email,
-      firstname: body.firstname ?? body.firstName,
-      lastname: body.lastname ?? body.lastName,
-      profileimage: body.profileimage ?? body.profileImage,
-      netsuiteid: body.netsuiteid ?? body.netsuiteId,
-      invoicelocationid: body.invoicelocationid ?? body.invoiceLocationId,
-      location_id: body.location_id ?? body.locationId ?? body.primaryStore,
-      themehex: body.themehex,
+      firstname: bodyValue("firstname", "firstName"),
+      lastname: bodyValue("lastname", "lastName"),
+      profileimage: bodyValue("profileimage", "profileImage"),
+      netsuiteid: bodyValue("netsuiteid", "netsuiteId"),
+      invoicelocationid: bodyValue("invoicelocationid", "invoiceLocationId"),
+      location_id: bodyValue("location_id", "locationId", "primaryStore"),
+      themehex: bodyValue("themehex", "themeHex"),
+      themeaccenthex: bodyValue("themeaccenthex", "themeAccentHex"),
     };
 
     if (Object.prototype.hasOwnProperty.call(body, "epos_status") || Object.prototype.hasOwnProperty.call(body, "eposStatus")) {
@@ -263,6 +284,18 @@ router.put("/self-update", async (req, res) => {
       if (!["epos_status", "epos_status_emoji", "epos_status_text"].includes(k) && !allowedDb.has(k)) continue;
       if (v === undefined) continue;
       updates[k] = (v === "" ? null : v);
+    }
+
+    for (const colorField of ["themehex", "themeaccenthex"]) {
+      if (!Object.prototype.hasOwnProperty.call(updates, colorField)) continue;
+      const normalized = normalizeHexColor(updates[colorField]);
+      if (normalized === undefined) {
+        return res.status(400).json({
+          ok: false,
+          error: `${colorField} must be a valid hex colour or blank`,
+        });
+      }
+      updates[colorField] = normalized;
     }
 
     if (
@@ -303,7 +336,7 @@ router.put("/self-update", async (req, res) => {
         WHERE id = $${values.length + 1}
       RETURNING id, email, firstname, lastname, profileimage,
         epos_status, epos_status_emoji, epos_status_text, epos_status_expires_at,
-        location_id, netsuiteid, invoicelocationid`,
+        location_id, netsuiteid, invoicelocationid, themehex, themeaccenthex`,
       [...values, userId]
     );
 
@@ -325,6 +358,8 @@ router.put("/self-update", async (req, res) => {
         primaryStore: u.location_id || null,
         netsuiteId: u.netsuiteid || null,
         invoiceLocationId: u.invoicelocationid || null,
+        themeHex: u.themehex || null,
+        themeAccentHex: u.themeaccenthex || null,
       },
     });
   } catch (err) {

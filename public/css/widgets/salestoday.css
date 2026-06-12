@@ -3,6 +3,7 @@
 /* === Widget Container === */
 #salesTodayWidget {
   background: #ffffff;
+  border-top: 3px solid var(--accent, #FFD700);
   border-radius: 12px;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
   padding: 14px 18px;
@@ -18,14 +19,14 @@
 }
 
 #salesTodayWidget:hover {
-  box-shadow: 0 4px 16px rgba(0, 129, 171, 0.2);
+  box-shadow: 0 4px 16px var(--brand-shadow-strong, rgba(0, 129, 171, 0.2));
 }
 
 /* === Header === */
 #salesTodayWidget .widget-header {
   font-size: 1rem;
   font-weight: 600;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   margin-bottom: 10px;
   display: flex;
   align-items: center;
@@ -129,7 +130,7 @@
 }
 
 #salesTodayWidget .customer-feedback-table thead {
-  background: #0081ab;
+  background: var(--brand, #0081ab);
   color: #fff;
   font-weight: 600;
   position: sticky;
@@ -184,7 +185,7 @@
 }
 
 .sales-today-table thead {
-  background: #0081ab;
+  background: var(--brand, #0081ab);
   color: #fff;
   font-weight: 600;
   position: sticky;
@@ -200,7 +201,7 @@
 }
 
 .sales-today-table td a {
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   font-weight: 600;
   text-decoration: none;
 }
@@ -225,7 +226,7 @@
 .sales-today-table td:last-child {
   text-align: right;
   font-weight: 600;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
 }
 
 /* === Loading, Empty, and Error States === */
@@ -286,7 +287,7 @@
     content: attr(data-label);
     position: absolute;
     left: 10px;
-    color: #0081ab;
+    color: var(--brand, #0081ab);
     font-weight: 600;
     text-align: left;
   }
@@ -308,13 +309,13 @@
 }
 
 #salesByStoreWidget:hover {
-  box-shadow: 0 4px 16px rgba(0, 129, 171, 0.2);
+  box-shadow: 0 4px 16px var(--brand-shadow-strong, rgba(0, 129, 171, 0.2));
 }
 
 #salesByStoreWidget .widget-header {
   font-size: 1rem;
   font-weight: 600;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   margin-bottom: 8px;
   display: flex;
   align-items: center;
@@ -347,3 +348,4 @@
   position: sticky;
   bottom: 0;
 }
+

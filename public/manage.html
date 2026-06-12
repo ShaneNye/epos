@@ -8,6 +8,7 @@
     <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
     <title>Manage My Profile</title>
 
+    <link rel="stylesheet" href="/css/app-theme.css">
     <link rel="stylesheet" href="/css/home.css">
     <link rel="stylesheet" href="/css/admin.css">
 
@@ -17,56 +18,118 @@
 
     <style>
         body {
-            background: #f7fafc;
+            min-height: 100vh;
+            background:
+                linear-gradient(180deg, rgba(255, 255, 255, 0.72), rgba(255, 255, 255, 0) 240px),
+                var(--bg);
             font-family: "Segoe UI", "Inter", sans-serif;
             margin: 0;
-            padding: 0;
+            padding: 20px;
+            color: var(--text);
         }
 
         .popup-wrapper {
             width: 100%;
-            max-width: 520px;
-            margin: 30px auto;
+            max-width: 680px;
+            margin: 0 auto;
         }
 
         .popup-card {
             background: #fff;
             border-radius: 10px;
-            border: 1px solid #e3e7ec;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            border: 1px solid var(--line);
+            box-shadow: var(--shadow-md);
             overflow: hidden;
         }
 
         .popup-header {
-            background: var(--brand);
+            background: var(--sidebar-bg);
             color: #fff;
-            padding: 14px 18px;
-            font-size: 1.1rem;
-            font-weight: 600;
-        }
-
-        .popup-body {
             padding: 18px 22px;
         }
 
+        .popup-body {
+            padding: 18px 22px 22px;
+        }
+
+        .popup-title {
+            margin: 0;
+            font-size: 1.14rem;
+            font-weight: 800;
+            line-height: 1.2;
+        }
+
+        .popup-subtitle {
+            margin: 4px 0 0;
+            color: rgba(255, 255, 255, 0.78);
+            font-size: 0.86rem;
+            font-weight: 600;
+        }
+
+        .settings-intro {
+            margin: 0 0 16px;
+            color: var(--muted);
+            font-size: 0.9rem;
+            line-height: 1.45;
+        }
+
+        .settings-section {
+            margin: 0 0 14px;
+            padding: 14px;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: var(--panel);
+        }
+
+        .settings-section-title {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin: 0 0 12px;
+            color: var(--ink);
+            font-size: 0.95rem;
+            font-weight: 800;
+        }
+
+        .settings-section-title::before {
+            content: "";
+            width: 4px;
+            height: 18px;
+            border-radius: 999px;
+            background: var(--accent);
+        }
+
+        .settings-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 12px;
+        }
+
         .form-field {
-            margin-bottom: 14px;
+            margin-bottom: 0;
         }
 
         .form-field label {
             display: block;
-            font-weight: 600;
+            color: var(--ink);
+            font-size: 0.84rem;
+            font-weight: 800;
             margin-bottom: 6px;
         }
 
         .form-field input,
         .form-field select {
             width: 100%;
+            min-height: 40px;
             padding: 8px 10px;
-            border: 1px solid #d1d8e0;
+            border: 1px solid var(--line);
             border-radius: 6px;
             font-size: 0.95rem;
             box-sizing: border-box;
+        }
+
+        .form-field small {
+            color: var(--muted);
         }
 
         .status-grid {
@@ -81,9 +144,9 @@
 
         .emoji-trigger {
             width: 48px;
-            height: 38px;
+            height: 40px;
             padding: 0;
-            border: 1px solid #d1d8e0;
+            border: 1px solid var(--line);
             border-radius: 6px;
             background: #fff;
             cursor: pointer;
@@ -94,6 +157,7 @@
         .emoji-trigger:hover,
         .emoji-trigger:focus-visible {
             border-color: var(--brand);
+            box-shadow: var(--focus-ring);
             outline: none;
         }
 
@@ -155,21 +219,140 @@
             background: #fff;
         }
 
+        .theme-editor {
+            display: grid;
+            gap: 14px;
+        }
+
+        .theme-picker-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+        }
+
+        .theme-colour-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .theme-colour-row input[type="text"] {
+            flex: 1;
+            min-width: 0;
+            text-transform: uppercase;
+        }
+
+        .theme-preview {
+            display: grid;
+            grid-template-columns: 76px 1fr;
+            min-height: 74px;
+            overflow: hidden;
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            background: #fff;
+        }
+
+        .theme-preview-sidebar {
+            background: linear-gradient(180deg, #085b73 0%, #006f93 58%, #084a61 100%);
+        }
+
+        .theme-preview-content {
+            padding: 12px;
+        }
+
+        .theme-preview-title {
+            width: 60%;
+            height: 10px;
+            margin-bottom: 10px;
+            border-radius: 999px;
+            background: #17212b;
+        }
+
+        .theme-preview-line {
+            width: 82%;
+            height: 8px;
+            margin-bottom: 10px;
+            border-radius: 999px;
+            background: #dce4eb;
+        }
+
+        .theme-preview-button {
+            display: inline-block;
+            min-width: 68px;
+            height: 22px;
+            border-radius: 6px;
+            background: #006f93;
+        }
+
+        .theme-preview-accent {
+            display: inline-block;
+            width: 38px;
+            height: 4px;
+            margin-left: 8px;
+            border-radius: 999px;
+            vertical-align: middle;
+            background: #f4c430;
+        }
+
+        .theme-suggestions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .theme-swatch {
+            width: 32px;
+            height: 32px;
+            padding: 0;
+            border: 2px solid #fff;
+            border-radius: 999px;
+            box-shadow: 0 0 0 1px #cfd8e3;
+            cursor: pointer;
+        }
+
+        .theme-swatch:focus-visible {
+            outline: 3px solid rgba(var(--brand-rgb), 0.18);
+            outline-offset: 2px;
+        }
+
+        .theme-swatch.is-selected {
+            box-shadow: 0 0 0 2px var(--brand), 0 0 0 5px rgba(var(--brand-rgb), 0.14);
+        }
+
         .actions {
             display: flex;
+            align-items: center;
             justify-content: flex-end;
-            padding: 14px 18px;
-            border-top: 1px solid #e6e9ee;
-            background: #fafbfc;
+            padding: 14px 22px;
+            border-top: 1px solid var(--line);
+            background: var(--panel-soft);
             gap: 10px;
         }
 
+        .save-status {
+            flex: 1;
+            min-width: 0;
+            color: var(--muted);
+            font-size: 0.84rem;
+            font-weight: 700;
+        }
+
         @media (max-width: 560px) {
+            body {
+                padding: 0;
+            }
+
             .popup-wrapper {
                 max-width: none;
                 margin: 0;
-                padding: 0.75rem;
+                padding: 0;
                 box-sizing: border-box;
+            }
+
+            .popup-card {
+                min-height: 100vh;
+                border: 0;
+                border-radius: 0;
             }
 
             .popup-body {
@@ -178,11 +361,20 @@
 
             .actions {
                 flex-direction: column;
+                align-items: stretch;
             }
 
             .actions button {
                 width: 100%;
                 min-height: 40px;
+            }
+
+            .theme-picker-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .settings-grid {
+                grid-template-columns: 1fr;
             }
         }
     </style>
@@ -191,16 +383,21 @@
 <body>
     <div class="popup-wrapper">
         <div class="popup-card">
-            <div class="popup-header">Manage My Profile</div>
+            <div class="popup-header">
+                <div>
+                    <h1 class="popup-title">Manage My Profile</h1>
+                    <p class="popup-subtitle">Update your availability, profile details, and theme.</p>
+                </div>
+            </div>
 
             <div class="popup-body">
-                <h3>Edit Allowed Fields</h3>
-                <p>Update only the fields your role permits.</p>
+                <p class="settings-intro">Only fields enabled for your active role are shown here.</p>
 
                 <form id="manageForm"></form>
             </div>
 
             <div class="actions">
+                <span id="saveStatus" class="save-status" aria-live="polite"></span>
                 <button type="button" class="btn-secondary" onclick="window.close()">Close</button>
                 <button type="button" id="saveBtn" class="btn-primary">Save</button>
             </div>
@@ -209,6 +406,8 @@
 
     <script>
         const manageForm = document.getElementById("manageForm");
+        const saveBtn = document.getElementById("saveBtn");
+        const saveStatus = document.getElementById("saveStatus");
 
         /* ---------------------------------------------------------
            Load session & active role
@@ -315,6 +514,156 @@
                 .replace(/>/g, "&gt;");
         }
 
+        const DEFAULT_PRIMARY = "#006F93";
+        const DEFAULT_ACCENT = "#F4C430";
+        const HEX_RE = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
+        const USER_THEME_CACHE_KEY = "eposUserTheme";
+
+        function normalizeHexColor(value) {
+            if (typeof value !== "string" || !HEX_RE.test(value.trim())) return "";
+            let hex = value.trim();
+            if (hex.length === 4) {
+                hex = `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`;
+            }
+            return hex.toUpperCase();
+        }
+
+        function hexToRgb(hex) {
+            const normalized = normalizeHexColor(hex);
+            if (!normalized) return null;
+            const int = parseInt(normalized.slice(1), 16);
+            return {
+                r: (int >> 16) & 255,
+                g: (int >> 8) & 255,
+                b: int & 255
+            };
+        }
+
+        function rgbToHex({ r, g, b }) {
+            return `#${[r, g, b].map(v =>
+                Math.max(0, Math.min(255, Math.round(v)))
+                    .toString(16)
+                    .padStart(2, "0")
+            ).join("")}`.toUpperCase();
+        }
+
+        function rgbToHsl({ r, g, b }) {
+            r /= 255;
+            g /= 255;
+            b /= 255;
+            const max = Math.max(r, g, b);
+            const min = Math.min(r, g, b);
+            let h = 0;
+            let s = 0;
+            const l = (max + min) / 2;
+
+            if (max !== min) {
+                const d = max - min;
+                s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+                switch (max) {
+                    case r: h = (g - b) / d + (g < b ? 6 : 0); break;
+                    case g: h = (b - r) / d + 2; break;
+                    default: h = (r - g) / d + 4;
+                }
+                h *= 60;
+            }
+
+            return { h, s, l };
+        }
+
+        function hslToRgb({ h, s, l }) {
+            const hue = ((h % 360) + 360) % 360;
+            const c = (1 - Math.abs(2 * l - 1)) * s;
+            const x = c * (1 - Math.abs((hue / 60) % 2 - 1));
+            const m = l - c / 2;
+            let r = 0;
+            let g = 0;
+            let b = 0;
+
+            if (hue < 60) [r, g, b] = [c, x, 0];
+            else if (hue < 120) [r, g, b] = [x, c, 0];
+            else if (hue < 180) [r, g, b] = [0, c, x];
+            else if (hue < 240) [r, g, b] = [0, x, c];
+            else if (hue < 300) [r, g, b] = [x, 0, c];
+            else [r, g, b] = [c, 0, x];
+
+            return {
+                r: (r + m) * 255,
+                g: (g + m) * 255,
+                b: (b + m) * 255
+            };
+        }
+
+        function relativeLuminance(hex) {
+            const rgb = hexToRgb(hex);
+            if (!rgb) return 0;
+            const channels = [rgb.r, rgb.g, rgb.b].map(v => {
+                const c = v / 255;
+                return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+            });
+            return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+        }
+
+        function contrastRatio(a, b) {
+            const l1 = relativeLuminance(a);
+            const l2 = relativeLuminance(b);
+            return (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+        }
+
+        function suggestAccentColours(primaryHex) {
+            const primary = normalizeHexColor(primaryHex) || DEFAULT_PRIMARY;
+            const baseRgb = hexToRgb(primary);
+            if (!baseRgb) return [DEFAULT_ACCENT];
+
+            const base = rgbToHsl(baseRgb);
+            const candidates = [
+                { h: base.h + 180, s: 0.72, l: 0.52 },
+                { h: base.h + 150, s: 0.68, l: 0.50 },
+                { h: base.h + 210, s: 0.70, l: 0.54 },
+                { h: base.h + 120, s: 0.64, l: 0.48 },
+                { h: base.h + 300, s: 0.66, l: 0.55 },
+                { h: base.h + 45, s: 0.78, l: 0.54 },
+            ]
+                .map(hsl => rgbToHex(hslToRgb(hsl)))
+                .filter(hex => contrastRatio(primary, hex) >= 1.45);
+
+            const unique = [];
+            for (const hex of candidates.concat([DEFAULT_ACCENT])) {
+                if (!unique.includes(hex)) unique.push(hex);
+                if (unique.length >= 6) break;
+            }
+            return unique;
+        }
+
+        function mixColors(a, b, weight) {
+            const colorA = hexToRgb(a);
+            const colorB = hexToRgb(b);
+            if (!colorA || !colorB) return normalizeHexColor(a);
+            const w = Math.max(0, Math.min(1, weight));
+            return rgbToHex({
+                r: colorA.r * (1 - w) + colorB.r * w,
+                g: colorA.g * (1 - w) + colorB.g * w,
+                b: colorA.b * (1 - w) + colorB.b * w
+            });
+        }
+
+        function cacheSavedTheme(user) {
+            const primary = normalizeHexColor(user?.themeHex || user?.themehex);
+            const accent = normalizeHexColor(user?.themeAccentHex || user?.themeaccenthex);
+            const saved = typeof storageGet === "function" ? storageGet() : null;
+            const userKey = String(saved?.username || saved?.email || user?.email || "").trim().toLowerCase();
+            const cacheKey = userKey ? `${USER_THEME_CACHE_KEY}:${userKey}` : USER_THEME_CACHE_KEY;
+
+            if (!primary && !accent) {
+                localStorage.removeItem(cacheKey);
+                localStorage.removeItem(USER_THEME_CACHE_KEY);
+                return;
+            }
+
+            localStorage.setItem(cacheKey, JSON.stringify({ primary, accent }));
+            localStorage.removeItem(USER_THEME_CACHE_KEY);
+        }
+
         /* ---------------------------------------------------------
            Get user value (handles snake_case vs camelCase)
         --------------------------------------------------------- */
@@ -331,6 +680,7 @@
                 netsuiteid: "netsuiteId",
                 invoicelocationid: "invoiceLocationId",
                 themehex: "themeHex",
+                themeaccenthex: "themeAccentHex",
                 location_id: "primaryStore" // /api/me returns primaryStore
             };
 
@@ -457,6 +807,182 @@
             });
         }
 
+        function createThemeField(user) {
+            const wrapper = document.createElement("div");
+            wrapper.className = "form-field";
+
+            const primary = normalizeHexColor(user.themeHex || user.themehex) || "";
+            const accent = normalizeHexColor(user.themeAccentHex || user.themeaccenthex) || "";
+            const primaryUi = primary || DEFAULT_PRIMARY;
+            const accentUi = accent || DEFAULT_ACCENT;
+
+            wrapper.innerHTML = `
+                <label>User Theme</label>
+                <div class="theme-editor">
+                    <div class="theme-picker-grid">
+                        <div>
+                            <label for="themehex_picker">Primary</label>
+                            <div class="theme-colour-row">
+                                <input type="color" id="themehex_picker" value="${primaryUi}">
+                                <input type="text" id="themehex_text" value="${primary}" placeholder="${DEFAULT_PRIMARY}" maxlength="7">
+                            </div>
+                            <input type="hidden" name="themehex" id="themehex_value" value="${primary}">
+                        </div>
+                        <div>
+                            <label for="themeaccenthex_picker">Accent</label>
+                            <div class="theme-colour-row">
+                                <input type="color" id="themeaccenthex_picker" value="${accentUi}">
+                                <input type="text" id="themeaccenthex_text" value="${accent}" placeholder="${DEFAULT_ACCENT}" maxlength="7">
+                            </div>
+                            <input type="hidden" name="themeaccenthex" id="themeaccenthex_value" value="${accent}">
+                        </div>
+                    </div>
+
+                    <div class="theme-preview" aria-hidden="true">
+                        <div class="theme-preview-sidebar"></div>
+                        <div class="theme-preview-content">
+                            <div class="theme-preview-title"></div>
+                            <div class="theme-preview-line"></div>
+                            <span class="theme-preview-button"></span>
+                            <span class="theme-preview-accent"></span>
+                        </div>
+                    </div>
+
+                    <div>
+                        <small style="display:block; margin-bottom:6px; opacity:.75;">
+                            Suggested accent colours for the selected primary.
+                        </small>
+                        <div class="theme-suggestions" id="theme_suggestions"></div>
+                    </div>
+
+                    <div>
+                        <button type="button" class="btn-secondary" id="themehex_clear" style="padding:8px 10px;">
+                            Clear Theme
+                        </button>
+                    </div>
+                </div>
+                <small style="display:block; margin-top:6px; opacity:.75;">
+                    Clear will revert to the current default colour scheme.
+                </small>
+            `;
+
+            wireThemeEditor(wrapper);
+            return wrapper;
+        }
+
+        function wireThemeEditor(root) {
+            const primaryPicker = root.querySelector("#themehex_picker");
+            const primaryText = root.querySelector("#themehex_text");
+            const primaryHidden = root.querySelector("#themehex_value");
+            const accentPicker = root.querySelector("#themeaccenthex_picker");
+            const accentText = root.querySelector("#themeaccenthex_text");
+            const accentHidden = root.querySelector("#themeaccenthex_value");
+            const clearBtn = root.querySelector("#themehex_clear");
+            const suggestions = root.querySelector("#theme_suggestions");
+            const previewSidebar = root.querySelector(".theme-preview-sidebar");
+            const previewButton = root.querySelector(".theme-preview-button");
+            const previewAccent = root.querySelector(".theme-preview-accent");
+            if (!primaryPicker || !primaryText || !primaryHidden || !accentPicker || !accentText || !accentHidden) return;
+
+            function setPrimary(value, persist = true) {
+                const hex = normalizeHexColor(value);
+                const uiHex = hex || DEFAULT_PRIMARY;
+                primaryPicker.value = uiHex;
+                primaryText.value = persist ? hex : "";
+                primaryHidden.value = persist ? hex : "";
+                renderSuggestions();
+                updatePreview();
+            }
+
+            function setAccent(value, persist = true) {
+                const hex = normalizeHexColor(value);
+                const uiHex = hex || DEFAULT_ACCENT;
+                accentPicker.value = uiHex;
+                accentText.value = persist ? hex : "";
+                accentHidden.value = persist ? hex : "";
+                updateSelectedSuggestion();
+                updatePreview();
+            }
+
+            function updatePreview() {
+                const primary = normalizeHexColor(primaryHidden.value) || DEFAULT_PRIMARY;
+                const accent = normalizeHexColor(accentHidden.value) || DEFAULT_ACCENT;
+                previewSidebar.style.background = `linear-gradient(180deg, ${mixColors(primary, "#000000", 0.18)} 0%, ${primary} 58%, ${mixColors(primary, "#000000", 0.28)} 100%)`;
+                previewButton.style.background = primary;
+                previewAccent.style.background = accent;
+            }
+
+            function renderSuggestions() {
+                if (!suggestions) return;
+                const primary = normalizeHexColor(primaryHidden.value) || normalizeHexColor(primaryPicker.value) || DEFAULT_PRIMARY;
+                suggestions.innerHTML = suggestAccentColours(primary).map(hex => `
+                    <button
+                        type="button"
+                        class="theme-swatch"
+                        data-accent="${hex}"
+                        title="${hex}"
+                        aria-label="Use accent ${hex}"
+                        style="background:${hex}"
+                    ></button>
+                `).join("");
+                updateSelectedSuggestion();
+            }
+
+            function updateSelectedSuggestion() {
+                if (!suggestions) return;
+                const selected = normalizeHexColor(accentHidden.value);
+                suggestions.querySelectorAll("[data-accent]").forEach(button => {
+                    button.classList.toggle("is-selected", selected && normalizeHexColor(button.dataset.accent) === selected);
+                });
+            }
+
+            primaryPicker.addEventListener("input", () => setPrimary(primaryPicker.value));
+            accentPicker.addEventListener("input", () => setAccent(accentPicker.value));
+
+            primaryText.addEventListener("input", () => {
+                const hex = normalizeHexColor(primaryText.value);
+                if (hex) setPrimary(hex);
+                else primaryHidden.value = primaryText.value.trim() ? primaryHidden.value : "";
+            });
+
+            accentText.addEventListener("input", () => {
+                const hex = normalizeHexColor(accentText.value);
+                if (hex) setAccent(hex);
+                else accentHidden.value = accentText.value.trim() ? accentHidden.value : "";
+            });
+
+            suggestions?.addEventListener("click", (event) => {
+                const button = event.target.closest("[data-accent]");
+                if (!button) return;
+                setAccent(button.dataset.accent);
+            });
+
+            clearBtn?.addEventListener("click", () => {
+                setPrimary(DEFAULT_PRIMARY, false);
+                setAccent(DEFAULT_ACCENT, false);
+            });
+
+            renderSuggestions();
+            updatePreview();
+        }
+
+        function createSettingsSection(title, children, grid = false) {
+            const section = document.createElement("section");
+            section.className = "settings-section";
+
+            const heading = document.createElement("h2");
+            heading.className = "settings-section-title";
+            heading.textContent = title;
+            section.appendChild(heading);
+
+            const body = document.createElement("div");
+            if (grid) body.className = "settings-grid";
+            children.filter(Boolean).forEach(child => body.appendChild(child));
+            section.appendChild(body);
+
+            return section;
+        }
+
         /* ---------------------------------------------------------
            Create field element
         --------------------------------------------------------- */
@@ -485,68 +1011,6 @@
         `;
                 return wrapper;
             }
-
-            // ▸ THEME HEX COLOUR (must be BEFORE default return)
-            if (field === "themehex") {
-                const isHex = (v) => typeof v === "string" && /^#([0-9A-F]{3}){1,2}$/i.test(v);
-
-                // UI needs a valid color value; store "real" value in a hidden input that can be blank/null
-                const uiDefault = "#0f766e"; // your base/brand colour for display only
-                const current = isHex(value) ? value : "";
-
-                wrapper.innerHTML += `
-    <div style="display:flex; gap:10px; align-items:center;">
-      <input
-        type="color"
-        id="themehex_picker"
-        value="${isHex(current) ? current : uiDefault}"
-        style="width:60px; padding:0; height:38px; cursor:pointer;"
-      >
-
-      <input
-        type="hidden"
-        name="themehex"
-        id="themehex_value"
-        value="${isHex(current) ? current : ""}"
-      >
-
-      <button
-        type="button"
-        class="btn-secondary"
-        id="themehex_clear"
-        style="padding:8px 10px;"
-      >
-        Clear
-      </button>
-    </div>
-    <small style="display:block; margin-top:6px; opacity:.75;">
-      Clear will revert to the default colour scheme.
-    </small>
-  `;
-
-                // wire up events (after insertion)
-                setTimeout(() => {
-                    const picker = wrapper.querySelector("#themehex_picker");
-                    const hidden = wrapper.querySelector("#themehex_value");
-                    const clearBtn = wrapper.querySelector("#themehex_clear");
-
-                    if (!picker || !hidden || !clearBtn) return;
-
-                    // when user picks a colour, store it
-                    picker.addEventListener("input", () => {
-                        hidden.value = picker.value; // always #RRGGBB
-                    });
-
-                    // clear = send null to backend, but keep UI showing default colour
-                    clearBtn.addEventListener("click", () => {
-                        hidden.value = "";           // will become null in saveProfile()
-                        picker.value = uiDefault;    // keep UI valid
-                    });
-                }, 0);
-
-                return wrapper;
-            }
-
 
             // ▸ EMAIL
             if (field.toLowerCase().includes("email")) {
@@ -580,20 +1044,38 @@
             const locations = await loadLocations();
 
             manageForm.innerHTML = "";
-            manageForm.appendChild(createStatusField(user.eposStatus || "available"));
-            manageForm.appendChild(createCustomStatusField(user));
+            manageForm.appendChild(createSettingsSection("Availability", [
+                createStatusField(user.eposStatus || "available"),
+                createCustomStatusField(user)
+            ], true));
 
-            if (allowed.length === 0) {
+            const normalizedAllowed = allowed.map(field => String(field || "").trim().toLowerCase());
+            const showThemeEditor = normalizedAllowed.includes("themehex") || normalizedAllowed.includes("themeaccenthex");
+            const visibleFields = allowed.filter(field =>
+                !DISALLOWED_FIELDS.includes(field) &&
+                !STATUS_FIELDS.includes(field) &&
+                String(field || "").trim().toLowerCase() !== "themehex" &&
+                String(field || "").trim().toLowerCase() !== "themeaccenthex"
+            );
+
+            if (showThemeEditor) {
+                manageForm.appendChild(createSettingsSection("Theme", [
+                    createThemeField(user)
+                ]));
+            }
+
+            if (!showThemeEditor && visibleFields.length === 0) {
                 const note = document.createElement("p");
                 note.textContent = "No other editable fields are assigned to this role.";
                 manageForm.appendChild(note);
                 return;
             }
 
-            for (const field of allowed) {
-                if (DISALLOWED_FIELDS.includes(field)) continue;
-                if (STATUS_FIELDS.includes(field)) continue;
-                manageForm.appendChild(createField(field, getUserValue(user, field), locations));
+            const profileFields = visibleFields.map(field =>
+                createField(field, getUserValue(user, field), locations)
+            );
+            if (profileFields.length) {
+                manageForm.appendChild(createSettingsSection("Profile Details", profileFields, true));
             }
         }
 
@@ -601,6 +1083,8 @@
            Save profile
         --------------------------------------------------------- */
         async function saveProfile() {
+            saveBtn.disabled = true;
+            saveStatus.textContent = "Saving...";
             const formData = new FormData(manageForm);
 
             // Include UI active role so backend uses same role as the UI (validated server-side)
@@ -623,6 +1107,8 @@
             } catch (err) {
                 console.error("❌ Network error:", err);
                 alert("Network error while saving profile");
+                saveStatus.textContent = "";
+                saveBtn.disabled = false;
                 return;
             }
 
@@ -632,6 +1118,8 @@
             } catch (err) {
                 console.error("❌ Failed to parse JSON:", err);
                 alert("Bad response from server");
+                saveStatus.textContent = "";
+                saveBtn.disabled = false;
                 return;
             }
 
@@ -640,13 +1128,17 @@
             if (!data.ok) {
                 if (data.debug) console.log("SELF UPDATE DEBUG:", data.debug);
                 alert("Failed to save changes: " + (data.error || "Unknown error"));
+                saveStatus.textContent = "";
+                saveBtn.disabled = false;
                 return;
             }
 
+            cacheSavedTheme(data.user);
+            saveStatus.textContent = "Saved";
             window.close();
         }
 
-        document.getElementById("saveBtn").addEventListener("click", saveProfile);
+        saveBtn.addEventListener("click", saveProfile);
 
         // INIT
         renderForm();

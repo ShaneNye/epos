@@ -34,6 +34,11 @@ document.addEventListener("DOMContentLoaded", () => {
       .join(" ");
   }
 
+  function themeColor(name, fallback) {
+    const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return value || fallback;
+  }
+
   async function resolvePrimaryStore(headers) {
     try {
       const meRes = await fetch("/api/me", { headers });
@@ -122,6 +127,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const storeLabels = storeRows.map((row) => row.label);
       const storeSales = storeRows.map((row) => row.revenue);
       const maxRevenue = Math.max(...storeSales, 0);
+      const brand = themeColor("--brand", "#0081ab");
+      const brandDark = themeColor("--brand-700", "#005f73");
+      const accent = themeColor("--accent", "#ffbf00");
 
       widgetContainer.innerHTML = `
         <div class="widget-header">Sales by Store</div>
@@ -140,10 +148,10 @@ document.addEventListener("DOMContentLoaded", () => {
               label: "Sales Total (\u00a3)",
               data: storeSales,
               backgroundColor: storeRows.map((row) =>
-                row.isPrimary ? "#005f73" : "#0081ab"
+                row.isPrimary ? brandDark : brand
               ),
               borderColor: storeRows.map((row) =>
-                row.isPrimary ? "#ffbf00" : "#006f94"
+                row.isPrimary ? accent : brandDark
               ),
               borderWidth: storeRows.map((row) => (row.isPrimary ? 2 : 1)),
               borderRadius: 4,

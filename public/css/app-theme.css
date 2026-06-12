@@ -21,8 +21,13 @@
   --brand-100: #d8eef5;
   --brand-600: #005b78;
   --brand-700: #004a63;
+  --brand-rgb: 0, 111, 147;
+  --brand-shadow: rgba(0, 111, 147, 0.18);
+  --brand-shadow-strong: rgba(0, 91, 120, 0.24);
   --accent: #f4c430;
   --accent-600: #d4a914;
+  --accent-rgb: 244, 196, 48;
+  --accent-soft: rgba(244, 196, 48, 0.16);
   --ink: #17212b;
   --text: #24313d;
   --muted: #697684;
@@ -39,6 +44,10 @@
   --shadow-md: 0 10px 30px rgba(16, 24, 40, 0.08);
   --shadow-lg: 0 18px 48px rgba(16, 24, 40, 0.12);
   --focus-ring: 0 0 0 3px rgba(0, 111, 147, 0.16);
+  --selection-bg: rgba(0, 111, 147, 0.18);
+  --row-hover-bg: var(--brand-50);
+  --sidebar-bg: linear-gradient(180deg, #085b73 0%, #006f93 58%, #084a61 100%);
+  --sidebar-shadow: 10px 0 30px rgba(15, 38, 52, 0.18);
 }
 
 * {
@@ -65,7 +74,7 @@ body {
 }
 
 ::selection {
-  background: rgba(0, 111, 147, 0.18);
+  background: var(--selection-bg);
 }
 
 a {
@@ -114,10 +123,9 @@ main.content > h1::after {
 
 .sidebar {
   width: 76px;
-  background:
-    linear-gradient(180deg, #085b73 0%, #006f93 58%, #084a61 100%) !important;
+  background: var(--sidebar-bg) !important;
   border-right: 1px solid rgba(255, 255, 255, 0.12);
-  box-shadow: 10px 0 30px rgba(15, 38, 52, 0.18);
+  box-shadow: var(--sidebar-shadow);
 }
 
 .sidebar.expanded {
@@ -136,9 +144,14 @@ main.content > h1::after {
 
 .burger:hover,
 .menu-item:hover,
-.menu-item.active,
 .user-action:hover {
   background: rgba(255, 255, 255, 0.12);
+}
+
+.menu-item.active {
+  background: var(--accent-soft) !important;
+  color: var(--accent) !important;
+  border-left: 3px solid var(--accent) !important;
 }
 
 .menu {
@@ -181,6 +194,12 @@ main.content > h1::after {
   color: #fff;
   border-left: 0;
   transform: translateX(2px);
+}
+
+.menu-item.active {
+  color: var(--accent) !important;
+  background: var(--accent-soft) !important;
+  border-left-color: var(--accent) !important;
 }
 
 .sidebar:not(.expanded) .menu-item:hover,
@@ -343,7 +362,7 @@ button.btn-primary,
   background: var(--brand) !important;
   color: #fff !important;
   font-weight: 700 !important;
-  box-shadow: 0 6px 16px rgba(0, 111, 147, 0.18) !important;
+  box-shadow: 0 6px 16px var(--brand-shadow) !important;
   transition: background 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
 }
 
@@ -354,7 +373,7 @@ button.btn-primary:hover,
 #pagination button:hover,
 .goBtn:hover {
   background: var(--brand-700) !important;
-  box-shadow: 0 8px 20px rgba(0, 91, 120, 0.24) !important;
+  box-shadow: 0 8px 20px var(--brand-shadow-strong) !important;
 }
 
 .btn-secondary,
@@ -500,7 +519,7 @@ tr:nth-child(even),
 
 tr:hover td,
 .stock-table tr:hover {
-  background: var(--brand-50) !important;
+  background: var(--row-hover-bg) !important;
 }
 
 .order-summary {
@@ -897,7 +916,7 @@ tr:hover td,
     justify-content: flex-start !important;
     overflow: hidden !important;
     border-right: 0 !important;
-    box-shadow: 0 -8px 22px rgba(0, 72, 96, 0.22) !important;
+    box-shadow: 0 -8px 22px var(--brand-shadow-strong) !important;
   }
 
   .sidebar > div:first-child {
@@ -955,6 +974,7 @@ tr:hover td,
   .menu-item:hover,
   .menu-item.active {
     border-left: 0 !important;
+    border-bottom-color: var(--accent) !important;
     transform: none !important;
   }
 

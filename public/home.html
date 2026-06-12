@@ -6,7 +6,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
-    <title>EPOS Home</title>
+    <title>Welcome to Epos</title>
     <link rel="stylesheet" href="/assistant/assistant.css" />
     <link rel="stylesheet" href="/css/widgets/salestoday.css">
     <link rel="stylesheet" href="/css/home.css">
@@ -38,7 +38,13 @@
 
     <!-- Main content -->
    <main class="content">
-  <h1>Welcome to the EPOS System</h1>
+  <section class="home-welcome" aria-label="Welcome">
+    <div>
+      <span class="home-welcome-kicker">Dashboard</span>
+      <h1 id="homeWelcomeTitle">Welcome to Epos</h1>
+    </div>
+    <p id="homeWelcomeSubtitle">Here is your live view for today.</p>
+  </section>
 
   <section id="dashboardFilterBar" class="dashboard-filter-bar" aria-label="Dashboard filters">
     <div>
@@ -110,6 +116,7 @@
   <script src="/js/widgets/kpiMeter.js"></script>
   <script src="/js/widgets/salesForcast.js"></script>
   <script src="/js/homeAnnouncements.js"></script>
+  <script src="/js/homeGreeting.js"></script>
 </main>
 
 

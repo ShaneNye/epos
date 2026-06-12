@@ -5,6 +5,8 @@
     "/suitepim/web-management",
     "/suitepim/product-validation",
     "/suitepim/reasons-to-buy",
+    "/suitepim/item-faqs",
+    "/suitepim/settings",
   ];
 
   function setupSuitePimSideNav() {

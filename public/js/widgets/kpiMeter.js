@@ -65,6 +65,19 @@ document.addEventListener("DOMContentLoaded", () => {
     return Math.max(0, Math.round((localDate(end) - localDate(start)) / 86400000) + 1);
   }
 
+  function targetPacePercent(range) {
+    const start = localDate(range.start);
+    const end = localDate(range.end);
+    const today = localDate(new Date());
+    const totalDays = daysBetweenInclusive(start, end);
+    if (!totalDays) return 0;
+
+    if (today < start) return 0;
+    if (today > end) return 100;
+
+    return (daysBetweenInclusive(start, today) / totalDays) * 100;
+  }
+
   function getRange() {
     return window.DashboardDateFilter?.getRange() || {
       key: "today",
@@ -173,7 +186,8 @@ document.addEventListener("DOMContentLoaded", () => {
         <select id="kpiMeterStore" aria-label="KPI meter store"></select>
       </div>
       <div class="kpi-meter-content">
-        <div class="kpi-gauge" style="--kpi-deg: 0deg;">
+        <div class="kpi-gauge" style="--kpi-deg: 0deg; --kpi-target-deg: 180deg;">
+          <span class="kpi-target-marker" aria-hidden="true"></span>
           <div class="kpi-gauge-inner">
             <strong data-kpi-percent>0%</strong>
             <span>of target</span>
@@ -216,6 +230,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const percent = target > 0 ? (actual / target) * 100 : 0;
     const capped = Math.max(0, Math.min(percent, 140));
     const deg = Math.min(180, (capped / 100) * 180);
+    const targetPaceDeg = Math.max(0, Math.min(180, (targetPacePercent(range) / 100) * 180));
     const variance = actual - target;
     const finalPercent = Math.round(percent);
     const gauge = widget.querySelector(".kpi-gauge");
@@ -225,6 +240,8 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (state.animationFrame) cancelAnimationFrame(state.animationFrame);
 
+    gauge?.style.setProperty("--kpi-target-deg", `${targetPaceDeg}deg`);
+    gauge?.classList.toggle("has-target-marker", target > 0);
     gauge?.classList.toggle("is-over-target", isTargetMet);
     percentEl?.classList.toggle("is-over-target", isTargetMet);
     messageEl?.classList.toggle("is-visible", isTargetMet);

@@ -7,11 +7,13 @@ const {
   ensureUserStatusColumn,
   normalizeUserStatus,
 } = require("../utils/userStatus");
+const { ensureUserThemeColumns } = require("../utils/userTheme");
 
 const router = express.Router();
 
 router.get("/", async (req, res) => {
   try {
+    await ensureUserThemeColumns();
     await cleanupExpiredUserStatuses();
     res.set("Cache-Control", "no-store");
     const authHeader = req.headers.authorization || "";
@@ -38,6 +40,7 @@ router.get("/", async (req, res) => {
           epos_status_text,
           epos_status_expires_at,
           themehex,
+          themeaccenthex,
           location_id AS "primaryStore"
        FROM users
        WHERE id = $1`,
@@ -77,6 +80,7 @@ router.get("/", async (req, res) => {
         roles,
         primaryStore: u.primaryStore || null,
         themeHex: u.themehex || null,
+        themeAccentHex: u.themeaccenthex || null,
       },
       activeRole: session.activeRole?.name || null,
     });

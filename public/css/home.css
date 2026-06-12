@@ -33,7 +33,7 @@ body {
   padding: 0;
   flex-shrink: 0;
 
-  background: linear-gradient(180deg, #006d8d, #0081ab);
+  background: linear-gradient(180deg, var(--brand-700, #006d8d), var(--brand, #0081ab));
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -126,9 +126,9 @@ body.sidebar-expanded {
   right: 16px;
   width: 10px;
   height: 10px;
-  border: 2px solid #006d8d;
+  border: 2px solid var(--brand-700, #006d8d);
   border-radius: 50%;
-  background: #FFD700;
+  background: var(--accent, #FFD700);
   box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.22);
 }
 
@@ -163,9 +163,9 @@ body.sidebar-expanded {
 
 .menu-item:hover,
 .menu-item.active {
-  background: rgba(255, 215, 0, 0.15);
-  color: #FFD700;
-  border-left: 4px solid #FFD700;
+  background: var(--accent-soft, rgba(255, 215, 0, 0.15));
+  color: var(--accent, #FFD700);
+  border-left: 4px solid var(--accent, #FFD700);
 }
 
 .sidebar:not(.expanded) .menu-item:hover,
@@ -174,7 +174,7 @@ body.sidebar-expanded {
 }
 
 .menu-item.active svg {
-  stroke: #FFD700;
+  stroke: var(--accent, #FFD700);
 }
 
 .menu-label {
@@ -270,7 +270,7 @@ body.sidebar-expanded {
 #activeRoleSelect:focus {
   outline: none;
   background: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 0 0 2px rgba(255,215,0,0.4);
+  box-shadow: 0 0 0 2px rgba(var(--accent-rgb, 255, 215, 0), 0.4);
 }
 
 /* Dropdown options (still themed) */
@@ -282,12 +282,12 @@ body.sidebar-expanded {
   transition: background 0.2s ease, color 0.2s ease;
 }
 #activeRoleSelect option:checked {
-  background: #0081ab linear-gradient(0deg, #0081ab 0%, #0095c2 100%);
+  background: linear-gradient(0deg, var(--brand, #0081ab) 0%, var(--brand-600, #0095c2) 100%), var(--brand, #0081ab);
   color: #fff;
 }
 #activeRoleSelect option:hover {
-  background: #e7f7fb !important;
-  color: #004f64 !important;
+  background: var(--brand-50, #e7f7fb) !important;
+  color: var(--brand-700, #004f64) !important;
 }
 
 /* --- User Actions --- */
@@ -311,8 +311,8 @@ body.sidebar-expanded {
   gap: 0.3rem;
 }
 .user-action:hover {
-  background: rgba(255,215,0,0.25);
-  color: #FFD700;
+  background: var(--accent-soft, rgba(255,215,0,0.25));
+  color: var(--accent, #FFD700);
 }
 
 /* --- Collapsed Sidebar --- */
@@ -335,9 +335,48 @@ body.sidebar-expanded {
 }
 
 
-.content h1 {
-  margin-top: 0;
-  color: #0081ab;
+.home-welcome {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  margin: 0 0 14px;
+  padding: 4px 0 2px;
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid var(--accent, #FFD700);
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.home-welcome-kicker {
+  display: inline-flex;
+  margin: 0 0 4px;
+  color: #637283;
+  font-size: 0.74rem;
+  font-weight: 800;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.home-welcome h1 {
+  margin: 0;
+  color: #10283a;
+  font-size: 1.62rem;
+  line-height: 1.1;
+}
+
+.home-welcome p {
+  flex: 0 0 auto;
+  margin: 0;
+  padding: 0;
+  color: #637283;
+  background: transparent;
+  border: 0;
+  border-radius: 0;
+  font-size: 0.84rem;
+  font-weight: 700;
+  white-space: nowrap;
 }
 /* --- Role Dropdown Option Styling (cross-browser safe) --- */
 #activeRoleSelect option {
@@ -350,14 +389,14 @@ body.sidebar-expanded {
 
 /* selected item color when reopened */
 #activeRoleSelect option:checked {
-  background: #0081ab linear-gradient(0deg, #0081ab 0%, #0095c2 100%);
+  background: linear-gradient(0deg, var(--brand, #0081ab) 0%, var(--brand-600, #0095c2) 100%), var(--brand, #0081ab);
   color: #fff;
 }
 
 /* highlight hovered options (Chromium browsers) */
 #activeRoleSelect option:hover {
-  background: #e7f7fb !important;
-  color: #004f64 !important;
+  background: var(--brand-50, #e7f7fb) !important;
+  color: var(--brand-700, #004f64) !important;
 }
 
 /* Improve dropdown popup (webkit browsers) */
@@ -369,7 +408,7 @@ body.sidebar-expanded {
   border-radius: 4px;
 }
 #activeRoleSelect:focus option:checked {
-  background: #FFD700;
+  background: var(--accent, #FFD700);
   color: #000;
 }
 
@@ -398,6 +437,7 @@ select#activeRoleSelect::-internal-list-box {
   background: #fff;
   border-radius: 6px;
   border: 1px solid #e6eef3;
+  border-top: 3px solid var(--accent, #FFD700);
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   padding: 6px 8px;
   display: flex;
@@ -409,7 +449,7 @@ select#activeRoleSelect::-internal-list-box {
 }
 
 #dashboardGrid section:hover {
-  box-shadow: 0 2px 5px rgba(0, 129, 171, 0.12);
+  box-shadow: 0 2px 5px var(--brand-shadow, rgba(0, 129, 171, 0.12));
   border-color: #d4e6ec;
 }
 
@@ -470,7 +510,7 @@ select#activeRoleSelect::-internal-list-box {
 }
 
 #topThreeWidget th {
-  background: #0081ab;
+  background: var(--brand, #0081ab);
   color: #fff;
   font-weight: 600;
 }
@@ -478,7 +518,7 @@ select#activeRoleSelect::-internal-list-box {
 #topThreeWidget td:last-child {
   text-align: right;
   font-weight: 600;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
 }
 
 #outstandingActionsWidget {
@@ -489,6 +529,7 @@ select#activeRoleSelect::-internal-list-box {
   grid-area: kpiMeter;
   background: #fff;
   border: 1px solid #e6eef3;
+  border-top: 3px solid var(--accent, #FFD700);
   border-radius: 8px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   box-sizing: border-box;
@@ -558,14 +599,14 @@ select#activeRoleSelect::-internal-list-box {
 
 .outstanding-action span {
   min-width: 0;
-  color: #005b72;
+  color: var(--brand-700, #005b72);
   font-size: 0.84rem;
   font-weight: 800;
   line-height: 1.2;
 }
 
 .outstanding-action strong {
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   font-size: 1.42rem;
   line-height: 1;
 }
@@ -611,7 +652,7 @@ select#activeRoleSelect::-internal-list-box {
 
 .outstanding-popup-header h2 {
   margin: 0;
-  color: #005b72;
+  color: var(--brand-700, #005b72);
   font-size: 1.05rem;
 }
 
@@ -651,7 +692,7 @@ select#activeRoleSelect::-internal-list-box {
   top: 0;
   z-index: 1;
   background: #f4f8fa;
-  color: #005b72;
+  color: var(--brand-700, #005b72);
   font-weight: 800;
 }
 
@@ -697,12 +738,13 @@ select#activeRoleSelect::-internal-list-box {
   height: 76px;
   overflow: hidden;
   border-radius: 145px 145px 0 0;
-  background: conic-gradient(from 270deg at 50% 100%, var(--kpi-color, #0081ab) 0deg var(--kpi-deg), #e6eef3 var(--kpi-deg) 180deg, transparent 180deg 360deg);
+  background: conic-gradient(from 270deg at 50% 100%, var(--kpi-color, var(--brand, #0081ab)) 0deg var(--kpi-deg), #e6eef3 var(--kpi-deg) 180deg, transparent 180deg 360deg);
 }
 
 .kpi-gauge::after {
   content: "";
   position: absolute;
+  z-index: 2;
   left: 18px;
   right: 18px;
   bottom: 0;
@@ -711,9 +753,28 @@ select#activeRoleSelect::-internal-list-box {
   background: #fff;
 }
 
-.kpi-gauge-inner {
+.kpi-target-marker {
   position: absolute;
   z-index: 1;
+  left: 50%;
+  bottom: 0;
+  width: 2px;
+  height: 100%;
+  background: #1f3444;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.72);
+  opacity: 0;
+  transform: translateX(-50%) rotate(calc(var(--kpi-target-deg, 180deg) - 90deg));
+  transform-origin: 50% 100%;
+  transition: opacity 0.2s ease, transform 0.25s ease;
+}
+
+.kpi-gauge.has-target-marker .kpi-target-marker {
+  opacity: 0.78;
+}
+
+.kpi-gauge-inner {
+  position: absolute;
+  z-index: 3;
   left: 0;
   right: 0;
   bottom: 3px;
@@ -722,7 +783,7 @@ select#activeRoleSelect::-internal-list-box {
 
 .kpi-gauge-inner strong {
   display: block;
-  color: #005b72;
+  color: var(--brand-700, #005b72);
   font-size: 1.55rem;
   line-height: 1;
 }
@@ -768,7 +829,7 @@ select#activeRoleSelect::-internal-list-box {
 }
 
 .kpi-meter-stats strong {
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   font-size: 0.82rem;
   white-space: nowrap;
 }
@@ -888,7 +949,7 @@ select#activeRoleSelect::-internal-list-box {
   top: 0;
   z-index: 1;
   background: #f4f8fa;
-  color: #005b72;
+  color: var(--brand-700, #005b72);
   font-weight: 800;
 }
 
@@ -982,7 +1043,7 @@ select#activeRoleSelect::-internal-list-box {
   display: block;
   font-size: 0.98rem;
   font-weight: 600;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   border-bottom: 1px solid #e6eef3;
   margin-bottom: 8px;
   padding-bottom: 6px;
@@ -1000,7 +1061,7 @@ select#activeRoleSelect::-internal-list-box {
 .announcement-card {
   background: #fff;
   border: 1px solid #e6eef3;
-  border-left: 4px solid #0081ab;
+  border-left: 4px solid var(--brand, #0081ab);
   border-radius: 8px;                   /* match popup cards */
   padding: 0.9rem 1rem;
   transition: box-shadow 0.25s ease, transform 0.2s ease, border-color 0.25s ease;
@@ -1014,7 +1075,7 @@ select#activeRoleSelect::-internal-list-box {
 
 .announcement-card h3 {
   margin: 0 0 0.45rem;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   font-size: 0.98rem;
   font-weight: 600;
 }
@@ -1039,22 +1100,22 @@ select#activeRoleSelect::-internal-list-box {
   font-weight: 500;
   font-size: 0.85rem;
   margin-top: 0.7rem;
-  color: #005b72;
+  color: var(--brand-700, #005b72);
 }
 
 .ack-label input[type="checkbox"] {
   appearance: none;
   width: 16px;
   height: 16px;
-  border: 2px solid #0081ab;
+  border: 2px solid var(--brand, #0081ab);
   border-radius: 4px;
   cursor: pointer;
   transition: all 0.2s ease;
   position: relative;
 }
 .ack-label input[type="checkbox"]:checked {
-  background-color: #0081ab;
-  border-color: #0081ab;
+  background-color: var(--brand, #0081ab);
+  border-color: var(--brand, #0081ab);
 }
 .ack-label input[type="checkbox"]:checked::after {
   content: "✓";
@@ -1107,7 +1168,7 @@ select#activeRoleSelect::-internal-list-box {
 .survey-area h3 {
   font-size: 1rem;
   font-weight: 600;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   margin: 0 0 0.8rem;
   display: flex;
   align-items: center;
@@ -1118,7 +1179,7 @@ select#activeRoleSelect::-internal-list-box {
 
 .survey-area .announcement-item {
   border: 1px solid #e0e6ed;
-  border-left: 4px solid #0081ab;    /* teal accent like announcements */
+  border-left: 4px solid var(--brand, #0081ab);    /* teal accent like announcements */
   border-radius: 8px;
   padding: 0.9rem 1rem;
   margin-bottom: 0.75rem;
@@ -1162,7 +1223,7 @@ select#activeRoleSelect::-internal-list-box {
 }
 .survey-area .btn-primary:hover {
   background: linear-gradient(90deg, #008cb8, #00a4d6);
-  box-shadow: 0 2px 4px rgba(0, 129, 171, 0.25);
+  box-shadow: 0 2px 4px var(--brand-shadow-strong, rgba(0, 129, 171, 0.25));
 }
 
 .survey-area .muted {
@@ -1201,7 +1262,7 @@ select#activeRoleSelect::-internal-list-box {
 }
 
 #topThreeWidget th {
-  background: #0081ab;
+  background: var(--brand, #0081ab);
   color: #fff;
 }
 #button-container #help-button {
@@ -1227,7 +1288,7 @@ select#activeRoleSelect::-internal-list-box {
 
 .home-rota-header h2 {
   margin: 0;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   font-size: 0.78rem;
   font-weight: 700;
 }
@@ -1244,7 +1305,7 @@ select#activeRoleSelect::-internal-list-box {
   border: 1px solid #cfdde5;
   border-radius: 6px;
   background: #fff;
-  color: #005b72;
+  color: var(--brand-700, #005b72);
   cursor: pointer;
   font-size: 0.72rem;
   font-weight: 700;
@@ -1254,8 +1315,8 @@ select#activeRoleSelect::-internal-list-box {
 }
 
 .home-rota-link:hover {
-  background: #eaf7fb;
-  border-color: #a7d9e7;
+  background: var(--brand-50, #eaf7fb);
+  border-color: var(--brand-100, #a7d9e7);
 }
 
 .home-rota-state {
@@ -1284,7 +1345,7 @@ select#activeRoleSelect::-internal-list-box {
   width: 24px;
   height: 24px;
   border: 3px solid #d7e8ef;
-  border-top-color: #0081ab;
+  border-top-color: var(--brand, #0081ab);
   border-radius: 50%;
   animation: home-rota-spin 0.8s linear infinite;
 }
@@ -1322,7 +1383,7 @@ select#activeRoleSelect::-internal-list-box {
 }
 
 .home-rota-date {
-  color: #005b72;
+  color: var(--brand-700, #005b72);
   font-size: 0.68rem;
   font-weight: 800;
   line-height: 1.05;
@@ -1341,7 +1402,7 @@ select#activeRoleSelect::-internal-list-box {
   flex-direction: column;
   gap: 1px;
   min-width: 0;
-  border-left: 2px solid #0081ab;
+  border-left: 2px solid var(--brand, #0081ab);
   padding-left: 3px;
 }
 
@@ -1402,7 +1463,7 @@ select#activeRoleSelect::-internal-list-box {
 
 .home-item-loading p {
   margin: 0;
-  color: #005b72;
+  color: var(--brand-700, #005b72);
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -1411,7 +1472,7 @@ select#activeRoleSelect::-internal-list-box {
   width: 28px;
   height: 28px;
   border: 3px solid #d7e8ef;
-  border-top-color: #0081ab;
+  border-top-color: var(--brand, #0081ab);
   border-radius: 50%;
   animation: home-item-spin 0.8s linear infinite;
 }
@@ -1433,7 +1494,7 @@ select#activeRoleSelect::-internal-list-box {
 
 .home-item-widget-header h2 {
   margin: 0;
-  color: #0081ab;
+  color: var(--brand, #0081ab);
   font-size: 1rem;
   font-weight: 700;
 }
@@ -1458,7 +1519,7 @@ select#activeRoleSelect::-internal-list-box {
 }
 
 .home-item-price-strip strong {
-  color: #005b72;
+  color: var(--brand-700, #005b72);
   font-size: 0.92rem;
 }
 
@@ -1497,7 +1558,7 @@ select#activeRoleSelect::-internal-list-box {
 }
 
 .home-item-line-table th {
-  background: #0081ab;
+  background: var(--brand, #0081ab);
   color: #fff;
   font-weight: 600;
   text-align: left;
@@ -1534,7 +1595,7 @@ select#activeRoleSelect::-internal-list-box {
   border: 1px solid #cfdde5;
   border-radius: 6px;
   background: #fff;
-  color: #005b72;
+  color: var(--brand-700, #005b72);
   cursor: pointer;
   font: inherit;
   font-weight: 700;
@@ -1548,8 +1609,8 @@ select#activeRoleSelect::-internal-list-box {
 .home-item-options-btn:hover,
 .home-item-icon-btn:hover,
 #homeItemSuggestions button:hover {
-  background: #eaf7fb;
-  border-color: #a7d9e7;
+  background: var(--brand-50, #eaf7fb);
+  border-color: var(--brand-100, #a7d9e7);
 }
 
 .home-item-icon-btn {
@@ -1748,10 +1809,21 @@ select#activeRoleSelect::-internal-list-box {
     padding: 14px 10px calc(128px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
-  .content h1 {
-    margin-bottom: 12px;
+  .home-welcome {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 13px 14px;
+  }
+
+  .home-welcome h1 {
     font-size: 1.35rem;
     line-height: 1.2;
+  }
+
+  .home-welcome p {
+    white-space: normal;
   }
 
   #dashboardWrapper {
@@ -1840,6 +1912,7 @@ select#activeRoleSelect::-internal-list-box {
   padding: 10px 12px;
   background: #fff;
   border: 1px solid #e6eef3;
+  border-left: 3px solid var(--accent, #FFD700);
   border-radius: 8px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
   box-sizing: border-box;
@@ -1861,7 +1934,7 @@ select#activeRoleSelect::-internal-list-box {
 }
 
 .dashboard-filter-bar label {
-  color: #005b72;
+  color: var(--brand-700, #005b72);
   font-size: 0.86rem;
   font-weight: 700;
 }
@@ -1892,11 +1965,6 @@ select#activeRoleSelect::-internal-list-box {
 @media (min-width: 1101px) {
   .content {
     padding: 1.35rem 1.45rem;
-  }
-
-  .content h1 {
-    margin-bottom: 0.85rem;
-    font-size: 1.7rem;
   }
 
   #dashboardWrapper {
@@ -2093,14 +2161,26 @@ select#activeRoleSelect::-internal-list-box {
     padding: 12px 10px calc(102px + env(safe-area-inset-bottom, 0px)) !important;
   }
 
-  .content h1 {
+  .home-welcome h1 {
     font-size: 1.32rem;
     line-height: 1.15;
-    margin: 0 0 12px;
+    margin: 0;
   }
 
-  .content h1::after {
-    margin-top: 9px;
+  .home-welcome {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 10px;
+    padding: 13px 14px;
+    border-radius: 8px;
+  }
+
+  .home-welcome p {
+    padding: 0;
+    background: transparent;
+    border: 0;
+    white-space: normal;
   }
 
   .dashboard-filter-bar {
@@ -2140,7 +2220,7 @@ select#activeRoleSelect::-internal-list-box {
     border: 1px solid #cfdde5;
     border-radius: 6px;
     background: #f7fbfd;
-    color: #005b72;
+    color: var(--brand-700, #005b72);
     font-size: 0.76rem;
     font-weight: 800;
     min-height: 30px;
@@ -2490,3 +2570,4 @@ select#activeRoleSelect::-internal-list-box {
     align-items: stretch;
   }
 }
+
