@@ -440,11 +440,21 @@
     const updates = affectedRows.map((row) => {
       const itemId = rowInternalId(row);
       const faqs = faqRowsForItem(row, itemId, faqRows);
-      return {
+      const faqInternalIdKey = faqFieldInternalIdKey(row);
+      const faqFieldName = faqInternalIdKey.replace(/_InternalId$/, "");
+      const faqIds = faqs.map(rowInternalId).filter(Boolean);
+      const update = {
         "Internal ID": row["Internal ID"],
         "Item ID": row["Item ID"],
         "Record Type": row["Record Type"],
         "Description Preview": patchFaqPanel(row["Description Preview"], renderFaqPanelHtml(faqs)).trim(),
+      };
+      if (faqFieldName && faqInternalIdKey) {
+        update[faqFieldName] = faqs.map((faq) => faq.Name).filter(Boolean);
+        update[faqInternalIdKey] = faqIds;
+      }
+      return {
+        ...update,
       };
     });
     await pushLinkedItemUpdatesSequentially(affectedRows, updates);

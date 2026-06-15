@@ -57,10 +57,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     "Sales Order Matt Pros": "custrecord_ff_salesordermattpros",
     "Average Gross Profit": "custrecord_ff_averagegrossprofit",
     "Average Gross Profit %": "custrecord_ff_averagegrossprofitpercent",
-    "Quote Count": "custrecord_ff_quotecount",
-    "Quote Amount": "custrecord_ff_quoteamount",
-    "Total Quote Count": "custrecord_ff_totalquotecount",
-    "Total Quote Amount": "custrecord_ff_totalquoteamount",
     "Needs to Measure Up": "custrecord_ff_needstomeasureup",
     "Needs to Choose Colour": "custrecord_sb_needstochoosecolour",
     "Needs to Ask Partner": "custrecord_ff_needstoaskpartner",
@@ -91,7 +87,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   ]);
 
   const customerOutcomeFields = [
-    "Quote Count",
     "Needs to Measure Up",
     "Needs to Choose Colour",
     "Needs to Ask Partner",

@@ -148,7 +148,7 @@ const fields = [
   { name: "New Short Desc", internalid: "custitem_sb_wb_short_description", fieldType: "rich-text" },
   { name: "Description Preview", internalid: "custitem_sb_web_desc", fieldType: "rich-text" },
   { name: "reasons to buy", internalid: "custitem_sb_reasons_to_buy", fieldType: "multiple-select", optionFeed: "Reasons To Buy" },
-  { name: "Web Faq's", internalid: process.env.SUITEPIM_ITEM_FAQ_FIELD_ID || "custitem_sb_web_faq", fieldType: "multiple-select", optionFeed: "Item Faq's" },
+  { name: "Web Faq's", internalid: process.env.SUITEPIM_ITEM_FAQ_FIELD_ID || "custitem_sb_web_faqs", fieldType: "multiple-select", optionFeed: "Item Faq's" },
   { name: "New Feature Desc", internalid: "custitem_sb_web_prod_description", fieldType: "rich-text" },
   { name: "EAN/GTIN", internalid: "custitem_sb_ean_no", fieldType: "Free-Form Text", hiddenField: true },
 ];

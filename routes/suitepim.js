@@ -284,11 +284,15 @@ function fieldsFromMappings(mappings) {
   return mappings.map((mapping) => {
     const base = fields.find((field) => field.name === mapping.mappingKey) || {};
     const inferredOptionFeed = /faq/i.test(mapping.jsonField || mapping.mappingKey) ? "Item Faq's" : "";
+    const mappedInternalId = mapping.internalid || "";
+    const internalid = /faq/i.test(mapping.jsonField || mapping.mappingKey) && mappedInternalId === "custitem_sb_web_faq"
+      ? "custitem_sb_web_faqs"
+      : mappedInternalId;
     return {
       ...base,
       mappingKey: mapping.mappingKey,
       name: mapping.jsonField || mapping.defaultJsonField || mapping.mappingKey,
-      internalid: mapping.internalid || "",
+      internalid,
       fieldType: inferredOptionFeed ? "multiple-select" : (mapping.fieldType || base.fieldType || ""),
       optionFeed: mapping.optionFeed || base.optionFeed || inferredOptionFeed,
       disableField: base.disableField === true,
@@ -2059,7 +2063,7 @@ async function processRow(row, job) {
 
       if (field.fieldType === "multiple-select") {
         const ids = netSuiteInternalIds(row[`${field.name}_InternalId`]);
-        if (Array.isArray(ids) && ids.length) {
+        if (Object.prototype.hasOwnProperty.call(row, `${field.name}_InternalId`)) {
           payload[field.internalid] = { items: ids.map((id) => ({ id: String(id) })) };
         }
         continue;

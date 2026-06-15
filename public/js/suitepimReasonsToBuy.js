@@ -650,29 +650,54 @@
 
   function renderReasonListHtml(items, emptyMessage) {
     if (!items.length) return `<div style="margin:0; color:#64748b; font-size:13px;">${escapeHtml(emptyMessage || "No content added yet.")}</div>`;
+    const columns = [[], []];
+    items.forEach((item, index) => columns[index % 2].push(item));
+    const cleanDescription = (item) => {
+      const name = String(item.name || "").trim();
+      const description = String(item.description || "No description added yet.").trim();
+      if (!name) return description;
+      const lines = description.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+      if (lines[0] && lines[0].toLowerCase() === name.toLowerCase()) {
+        return lines.slice(1).join(" ") || "No description added yet.";
+      }
+      if (description.toLowerCase() === name.toLowerCase()) return "No description added yet.";
+      return description;
+    };
+    const itemHtml = (item) => `
+      <table role="presentation" cellpadding="0" cellspacing="0" align="left" dir="ltr" style="width:100%; border-collapse:collapse; margin:0 0 18px; text-align:left; direction:ltr;">
+        <tbody>
+          <tr>
+            <td width="72" align="left" dir="ltr" style="width:72px; vertical-align:top; padding:0 14px 0 0; text-align:left; direction:ltr;">
+              <div align="left" dir="ltr" style="width:72px; height:66px; overflow:hidden; display:block; text-align:left; direction:ltr; color:#ffffff; font-weight:700;">
+                ${item.iconUrl ? `<img src="${escapeHtml(item.iconUrl)}" alt="${escapeHtml(item.name)} icon" style="width:94px; height:94px; max-width:none; object-fit:contain; object-position:center top; display:block; border:0; background:transparent; margin:0 0 0 -11px;">` : `<span style="width:56px; height:56px; border-radius:999px; background:#0b7aa6; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-weight:700;">${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span>`}
+              </div>
+            </td>
+            <td align="left" dir="ltr" style="vertical-align:top; padding:0; min-width:0; text-align:left; direction:ltr;">
+              <strong align="left" dir="ltr" style="display:block; color:#16324f; margin:0 0 5px; font-size:14px; line-height:1.25; text-align:left; direction:ltr;">${escapeHtml(item.name)}</strong>
+              <div align="left" dir="ltr" style="margin:0; font-size:13px; line-height:1.45; color:#4a4a4a; text-align:left; direction:ltr;">${escapeHtml(cleanDescription(item))}</div>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+    `;
     return `
-      <div style="display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:16px 28px;">
-        ${items.map((item) => `
-          <div style="display:grid; grid-template-columns:84px minmax(0, 1fr); gap:14px; align-items:start; min-width:0;">
-            <div style="width:84px; height:70px; display:block; overflow:hidden; color:#ffffff; font-weight:700;">
-              ${item.iconUrl ? `<img src="${escapeHtml(item.iconUrl)}" alt="${escapeHtml(item.name)} icon" style="width:104px; height:104px; max-width:none; object-fit:contain; object-position:center top; display:block; border:0; background:transparent; margin-left:-10px;">` : `<span style="width:56px; height:56px; border-radius:999px; background:#0b7aa6; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-weight:700;">${escapeHtml(item.name.slice(0, 1).toUpperCase())}</span>`}
-            </div>
-            <div style="min-width:0;">
-              <strong style="display:block; color:#16324f; margin:0 0 3px; font-size:14px; line-height:1.25;">${escapeHtml(item.name)}</strong>
-              <div style="margin:0; font-size:13px; line-height:1.4; color:#4a4a4a;">${escapeHtml(item.description || "No description added yet.")}</div>
-            </div>
-          </div>
-        `).join("")}
-      </div>
+      <table role="presentation" cellpadding="0" cellspacing="0" align="left" dir="ltr" style="width:100%; border-collapse:collapse; table-layout:fixed; text-align:left; direction:ltr;">
+        <tbody>
+          <tr>
+            <td align="left" dir="ltr" style="width:50%; vertical-align:top; padding:0 24px 0 0; text-align:left; direction:ltr;">${columns[0].map(itemHtml).join("")}</td>
+            <td align="left" dir="ltr" style="width:50%; vertical-align:top; padding:0 0 0 24px; text-align:left; direction:ltr;">${columns[1].map(itemHtml).join("")}</td>
+          </tr>
+        </tbody>
+      </table>
     `;
   }
 
   function renderAccordionHtml(title, body, open = false) {
     return `
       <details style="margin:12px 0 0; overflow:hidden;"${open ? " open" : ""}>
-        <summary style="list-style:none; display:flex; align-items:center; justify-content:space-between; padding:9px 12px; background:#efe6d3; font-weight:700; font-size:13px; cursor:pointer; color:#16273d;">
-          <span>${escapeHtml(title)}</span>
-          <span style="font-size:18px; font-weight:900; line-height:1;">+</span>
+        <summary style="list-style:none; display:flex; align-items:center; justify-content:space-between; padding:9px 12px; background:#efe6d3; font-weight:700; font-size:13px; cursor:pointer; color:#16273d; text-align:left;">
+          <span style="display:block; flex:1 1 auto; min-width:0; text-align:left;">${escapeHtml(title)}</span>
+          <span style="display:block; flex:0 0 24px; width:24px; min-width:24px; margin-left:12px; text-align:center; font-size:18px; font-weight:900; line-height:18px;">+</span>
         </summary>
         <div style="padding:14px 4px 2px;">${body}</div>
       </details>
@@ -700,23 +725,36 @@
     const reasons = itemReasons(row, reasonLookup).slice(0, 8);
     if (!reasons.length) return "";
     const rows = [];
-    for (let index = 0; index < reasons.length; index += 4) rows.push(reasons.slice(index, index + 4));
+    for (let index = 0; index < reasons.length; index += 5) rows.push(reasons.slice(index, index + 5));
+    const centredSlots = [2, 1, 3, 0, 4];
+    const rowSlots = (rowItems, rowIndex) => {
+      const slots = Array.from({ length: 5 }, () => null);
+      rowItems.forEach((reason, index) => {
+        slots[rowIndex === 0 ? index : centredSlots[index]] = reason;
+      });
+      return slots;
+    };
+    const iconCell = (reason) => reason
+      ? `
+        <td align="center" style="width:64px; text-align:center; vertical-align:top; padding:0 4px;">
+          ${reason.iconUrl
+            ? `<img src="${escapeHtml(reason.iconUrl)}" alt="${escapeHtml(reason.name)} icon" style="width:58px; height:auto; max-width:58px; object-fit:contain; display:inline-block; border:0; background:transparent;">`
+            : `<span style="width:58px; height:58px; border-radius:999px; background:#0b7aa6; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-weight:700;">${escapeHtml(reason.name.slice(0, 1).toUpperCase())}</span>`}
+        </td>
+      `
+      : `<td style="width:64px; padding:0 4px;">&nbsp;</td>`;
     return `
-      <table role="presentation" cellpadding="0" cellspacing="0" align="center" style="width:auto; border-collapse:separate; border-spacing:0 14px; margin:0 auto; text-align:center;">
-        <tbody>
-          ${rows.map((rowItems) => `
-            <tr>
-              ${rowItems.map((reason) => `
-                <td align="center" style="text-align:center; vertical-align:middle; padding:0 5px;">
-                  ${reason.iconUrl
-                    ? `<img src="${escapeHtml(reason.iconUrl)}" alt="${escapeHtml(reason.name)} icon" style="width:58px; height:auto; max-width:58px; object-fit:contain; display:inline-block; border:0; background:transparent;">`
-                    : `<span style="width:58px; height:58px; border-radius:999px; background:#0b7aa6; color:#ffffff; display:inline-flex; align-items:center; justify-content:center; font-weight:700;">${escapeHtml(reason.name.slice(0, 1).toUpperCase())}</span>`}
-                </td>
-              `).join("")}
-            </tr>
-          `).join("")}
-        </tbody>
-      </table>
+      <div style="display:block; clear:both; width:360px; max-width:100%; margin:0 0 14px 0; padding:0; overflow:hidden;">
+        <table role="presentation" cellpadding="0" cellspacing="0" style="width:360px; max-width:360px; border-collapse:separate; border-spacing:0 14px; margin:0; text-align:center;">
+          <tbody>
+            ${rows.map((rowItems, rowIndex) => `
+              <tr>
+                ${rowSlots(rowItems, rowIndex).map(iconCell).join("")}
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
     `;
   }
 
