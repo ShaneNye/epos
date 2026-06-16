@@ -8,12 +8,14 @@ const {
   normalizeUserStatus,
 } = require("../utils/userStatus");
 const { ensureUserThemeColumns } = require("../utils/userTheme");
+const { ensureUserOfficeColumn } = require("../utils/userOffice");
 
 const router = express.Router();
 
 router.get("/", async (req, res) => {
   try {
     await ensureUserThemeColumns();
+    await ensureUserOfficeColumn();
     await cleanupExpiredUserStatuses();
     res.set("Cache-Control", "no-store");
     const authHeader = req.headers.authorization || "";
@@ -41,6 +43,7 @@ router.get("/", async (req, res) => {
           epos_status_expires_at,
           themehex,
           themeaccenthex,
+          office,
           location_id AS "primaryStore"
        FROM users
        WHERE id = $1`,
@@ -79,6 +82,7 @@ router.get("/", async (req, res) => {
         eposStatusExpiresAt: u.epos_status_expires_at || null,
         roles,
         primaryStore: u.primaryStore || null,
+        office: Boolean(u.office),
         themeHex: u.themehex || null,
         themeAccentHex: u.themeaccenthex || null,
       },

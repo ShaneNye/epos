@@ -35,6 +35,7 @@ const {
 const { getNetSuiteHomeUrl } = require("./utils/netsuiteEnvironment");
 const { ensureUserStatusColumn } = require("./utils/userStatus");
 const { ensureUserThemeColumns } = require("./utils/userTheme");
+const { ensureUserOfficeColumn } = require("./utils/userOffice");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -1507,6 +1508,9 @@ app.listen(PORT, () => {
   });
   ensureUserThemeColumns().catch((err) => {
     console.error("Failed to initialize user theme columns:", err.message);
+  });
+  ensureUserOfficeColumn().catch((err) => {
+    console.error("Failed to initialize user office column:", err.message);
   });
 
 });

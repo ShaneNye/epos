@@ -123,6 +123,7 @@ async function openModalForEdit(userId) {
     form.profileImage.value = user.profileImage || "";
     form.password.value = "";
     form.netsuiteId.value = user.netsuiteId || ""; // ✅ new field populated
+    form.office.checked = Boolean(user.office);
 
     const roleSelect = document.querySelector("#userModal:not(.hidden) #roleSelect");
     const locationSelect = document.querySelector("#userModal:not(.hidden) #locationSelect");
@@ -153,6 +154,7 @@ async function openModalForCreate() {
   const form = document.getElementById("userForm");
   form.reset();
   form.netsuiteId.value = ""; // ✅ clear field
+  form.office.checked = false;
   showModal();
   await new Promise(r => setTimeout(r, 50));
   await loadRoleAndLocationOptions();
@@ -207,7 +209,8 @@ document.addEventListener("DOMContentLoaded", () => {
         netsuiteId: form.netsuiteId.value || null, // ✅ include new field
         role_ids: selectedRoleIds,
         location_id: form.locationSelect.value || null,
-        profileImage: form.profileImage.value
+        profileImage: form.profileImage.value,
+        office: form.office.checked
       };
 
       if (form.password.value) body.password = form.password.value;

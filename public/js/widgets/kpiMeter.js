@@ -147,6 +147,7 @@ document.addEventListener("DOMContentLoaded", () => {
     try {
       const meRes = await fetch("/api/me", { headers });
       const meData = await meRes.json();
+      if (meData?.user?.office) return GROUP_STORE_KEY;
       const storeId = meData?.user?.primaryStore;
 
       if (typeof storeId === "string") return normalize(storeId);
@@ -212,7 +213,9 @@ document.addEventListener("DOMContentLoaded", () => {
       .join("");
 
     if (!state.selectedStore) {
-      state.selectedStore = options.find((store) => store.key === state.primaryStore)?.key || options[0]?.key || "";
+      state.selectedStore = state.primaryStore === GROUP_STORE_KEY
+        ? GROUP_STORE_KEY
+        : options.find((store) => store.key === state.primaryStore)?.key || options[0]?.key || "";
     }
     select.value = state.selectedStore;
     select.addEventListener("change", (event) => {

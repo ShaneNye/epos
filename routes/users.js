@@ -13,6 +13,7 @@ const {
   statusExpirySql,
 } = require("../utils/userStatus");
 const { ensureUserThemeColumns, normalizeHexColor } = require("../utils/userTheme");
+const { ensureUserOfficeColumn, normalizeOfficeFlag } = require("../utils/userOffice");
 
 
 /* -------------------- Helper -------------------- */
@@ -30,6 +31,7 @@ function maskUser(u) {
     eposStatusExpiresAt: u.epos_status_expires_at || null,
     themeHex: u.themehex || null,
     themeAccentHex: u.themeaccenthex || null,
+    office: Boolean(u.office),
     createdAt: u.createdat,
     roles: u.roles || [],
     location: u.location_id
@@ -46,6 +48,7 @@ function maskUser(u) {
 router.get("/", async (req, res) => {
   try {
     await ensureUserThemeColumns();
+    await ensureUserOfficeColumn();
     await cleanupExpiredUserStatuses();
     res.set("Cache-Control", "no-store");
     const result = await pool.query(`
@@ -53,6 +56,7 @@ router.get("/", async (req, res) => {
     u.id, u.email, u.firstname, u.lastname, u.netsuiteid, u.profileimage,
     u.epos_status, u.epos_status_emoji, u.epos_status_text, u.epos_status_expires_at,
     u.themehex, u.themeaccenthex, u.createdat,
+    u.office,
     u.location_id, l.name AS location_name, l.netsuite_internal_id,
     STRING_AGG(r.name, ',' ORDER BY r.id) AS role_names,
     STRING_AGG(r.id::text, ',' ORDER BY r.id) AS role_ids,
@@ -179,6 +183,7 @@ router.post("/status", async (req, res) => {
 router.put("/self-update", async (req, res) => {
   try {
     await ensureUserThemeColumns();
+    await ensureUserOfficeColumn();
     await cleanupExpiredUserStatuses();
     res.set("Cache-Control", "no-store");
     const authHeader = req.headers.authorization || "";
@@ -373,6 +378,7 @@ router.put("/self-update", async (req, res) => {
 router.get("/:id", async (req, res) => {
   try {
     await cleanupExpiredUserStatuses();
+    await ensureUserOfficeColumn();
     const userResult = await pool.query(
       `
       SELECT 
@@ -413,6 +419,7 @@ router.get("/:id", async (req, res) => {
 router.post("/", async (req, res) => {
   const client = await pool.connect();
   try {
+    await ensureUserOfficeColumn();
     await client.query("BEGIN");
 
     const {
@@ -428,6 +435,7 @@ router.post("/", async (req, res) => {
       sb_netsuite_token_secret,
       prod_netsuite_token_id,
       prod_netsuite_token_secret,
+      office,
     } = req.body;
 
     if (!email || !password) {
@@ -440,9 +448,10 @@ router.post("/", async (req, res) => {
       `
       INSERT INTO users
       (email, password_hash, firstname, lastname, netsuiteid, location_id, profileimage,
+       office,
        sb_netsuite_token_id, sb_netsuite_token_secret,
        prod_netsuite_token_id, prod_netsuite_token_secret)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
       RETURNING id;
       `,
       [
@@ -453,6 +462,7 @@ router.post("/", async (req, res) => {
         netsuiteId || null,
         location_id || null,
         profileImage || null,
+        normalizeOfficeFlag(office),
         sb_netsuite_token_id || null,
         sb_netsuite_token_secret || null,
         prod_netsuite_token_id || null,
@@ -487,6 +497,7 @@ router.post("/", async (req, res) => {
 router.put("/:id", async (req, res) => {
   const client = await pool.connect();
   try {
+    await ensureUserOfficeColumn();
     await client.query("BEGIN");
 
     const {
@@ -502,6 +513,7 @@ router.put("/:id", async (req, res) => {
       sb_netsuite_token_secret,
       prod_netsuite_token_id,
       prod_netsuite_token_secret,
+      office,
     } = req.body;
 
     const updates = {
@@ -511,6 +523,7 @@ router.put("/:id", async (req, res) => {
       netsuiteid: netsuiteId || null,
       location_id: location_id || null,
       profileimage: profileImage,
+      office: normalizeOfficeFlag(office),
     };
 
     const tokenFields = {

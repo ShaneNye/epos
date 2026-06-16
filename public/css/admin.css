@@ -459,6 +459,19 @@
   box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.15);
 }
 
+.modal-body .admin-checkbox-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1rem;
+  cursor: pointer;
+}
+
+.modal-body .admin-checkbox-row input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
 /* --- Single Select --- */
 .modal-body select:not([multiple]) {
   height: 38px;
