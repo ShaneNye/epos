@@ -27,7 +27,7 @@ const reasonsToBuyFields = [
   { name: "Internal ID", internalid: "id", fieldType: "Free-Form Text", disableField: true },
   { name: "Name", internalid: "name", fieldType: "Free-Form Text", required: true },
   { name: "Description", internalid: "custrecord_sb_rtb_description", fieldType: "Text Area" },
-  { name: "Icon", internalid: "custrecord_sb_rtb_icon", fieldType: "image", optionFeed: "Web Images" },
+  { name: "Icon", internalid: "custrecord_sb_rtb_icon", fieldType: "image", optionFeed: "Web Product Icons" },
   { name: "Icon Selector", internalid: "custrecord_sb_rtb_icon_selector", fieldType: "List/Record", optionFeed: "Reasons To Buy Icons" },
   { name: "Is Warranty Period", internalid: "custrecord_sb_is_warranty", fieldType: "Checkbox" },
   { name: "Items", internalid: "custrecord_sb_rtb_items", fieldType: "multiple-select", optionFeed: "Items" },
@@ -163,6 +163,7 @@ function clearReasonsToBuyCaches() {
   ["production", "sandbox"].forEach((env) => {
     optionsCache.delete(`${env}:Reasons To Buy`);
     optionsCache.delete(`${env}:Reasons To Buy Icons`);
+    optionsCache.delete(`${env}:Web Product Icons`);
     optionsCache.delete(`${env}:Items`);
   });
 }
@@ -523,13 +524,23 @@ function recalcRow(row, changedField = null) {
   return updated;
 }
 
-function normalizeOption(item, fieldName = "") {
-  const name = String(item.Name || item.name || item.text || item.label || "").trim();
+function normalizeOption(item, fieldName = "", cfg = null) {
   const rawId = String(item["Internal ID"] || item.internalId || item.id || "").trim();
+  const raw = { ...item };
+  const rawUrl = item.URL || item.url || item["File URL"] || item.fileUrl || item.ImageUrl || item.imageUrl || "";
+  const fileUrl = normalizeNetSuiteFileUrl(rawUrl, cfg);
+  if (fileUrl) {
+    raw.URL = fileUrl;
+    raw.url = fileUrl;
+  }
+  const nameSource = fieldName === "Web Product Icons"
+    ? item.name || item.Name || item.text || item.label
+    : item.Name || item.name || item.text || item.label;
+  const name = String(nameSource || (rawId ? `File ${rawId}` : "")).trim();
   return {
     id: rawId,
     name,
-    raw: item,
+    raw,
   };
 }
 
@@ -543,6 +554,9 @@ function optionUrlFor(fieldName, env) {
   if (fieldName === "Web Images" && process.env.SUITEPIM_IMAGE_URL) {
     return process.env.SUITEPIM_IMAGE_URL;
   }
+  if (fieldName === "Web Product Icons" && process.env.WEB_PROD_ICONS_URL) {
+    return process.env.WEB_PROD_ICONS_URL;
+  }
   return process.env[feed[env]] || feed[fallbackKey] || "";
 }
 
@@ -552,6 +566,9 @@ function optionTokenFor(fieldName, env) {
   }
   if (fieldName === "Web Images") {
     return process.env.SUITEPIM_IMAGE || "";
+  }
+  if (fieldName === "Web Product Icons") {
+    return process.env.WEB_PROD_ICONS || "";
   }
   return "";
 }
@@ -996,7 +1013,8 @@ async function fetchOptionFeed(fieldName, env) {
 
     const data = parseJson(text);
     const rows = Array.isArray(data) ? data : data.results || data.items || [];
-    const options = rows.map((item) => normalizeOption(item, fieldName)).filter((o) => o.id && o.name);
+    const cfg = envConfig(env);
+    const options = rows.map((item) => normalizeOption(item, fieldName, cfg)).filter((o) => o.id && o.name);
     optionsCache.set(cacheKey, { loadedAt: Date.now(), options, inFlight: null });
     return options;
   })();

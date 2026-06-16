@@ -79,6 +79,12 @@ const optionFeeds = {
     defaultProduction:
       "https://7972741.extforms.netsuite.com/app/site/hosting/scriptlet.nl?script=4363&deploy=1&compid=7972741&ns-at=AAEJ7tMQj7nwNmk-xPekCtRHeFZqWvqHsTMC61_Fm5CUtqC4tJM",
   },
+  "Web Product Icons": {
+    sandbox: "SUITEPIM_SANDBOX_WEB_PROD_ICONS_URL",
+    production: "WEB_PROD_ICONS_URL",
+    defaultSandbox: "",
+    defaultProduction: "",
+  },
   "Reasons To Buy": {
     sandbox: "SUITEPIM_SANDBOX_REASONS_TO_BUY_FEED_URL",
     production: "SUITEPIM_PROD_REASONS_TO_BUY_FEED_URL",
