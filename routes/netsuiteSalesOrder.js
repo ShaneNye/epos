@@ -728,6 +728,45 @@ function publicNetSuiteError(payload, fallback = "NetSuite RESTlet call failed")
   };
 }
 
+function isRecordChangedPayload(payload) {
+  const name = String(payload?.name || payload?.error?.name || payload?.code || payload?.error?.code || "");
+  const message = String(payload?.error?.message || payload?.error || payload?.message || payload?.raw || "");
+  return name === "RCRD_HAS_BEEN_CHANGED" || /record has been changed/i.test(message);
+}
+
+function delay(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function postRestletWithRecordChangedRetry(restletUrl, buildHeaders, payloadText, label) {
+  const maxAttempts = 2;
+  let last = null;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const headers =
+      typeof buildHeaders === "function" ? await buildHeaders(attempt) : buildHeaders;
+    const response = await fetch(restletUrl, {
+      method: "POST",
+      headers,
+      body: payloadText,
+    });
+    const text = await response.text();
+    const data = parseMaybeJson(text);
+    last = { response, text, data, attempt };
+
+    if ((response.ok && data?.ok) || !isRecordChangedPayload(data) || attempt === maxAttempts) {
+      return last;
+    }
+
+    console.warn(
+      `${label} RESTlet hit RCRD_HAS_BEEN_CHANGED; retrying with a fresh NetSuite load`
+    );
+    await delay(1200);
+  }
+
+  return last;
+}
+
 async function loadSalesOrderComsFields(salesOrderId, userId) {
   const fields = [
     "id",
@@ -2456,11 +2495,10 @@ router.post("/:id/commit", async (req, res) => {
     const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
 
     // ✅ Build OAuth headers using per-user tokens
-    const authHeader = await getAuthHeader(restletUrl, "POST", userId, "sb");
-    const headers = {
-      ...authHeader,
+    const buildRestletHeaders = async () => ({
+      ...(await getAuthHeader(restletUrl, "POST", userId, "sb")),
       "Content-Type": "application/json",
-    };
+    });
 
     // 🔁 Prevent rapid double-submit
     if (!global._recentCommits) global._recentCommits = {};
@@ -2496,8 +2534,9 @@ router.post("/:id/commit", async (req, res) => {
       );
       const quantity = Number(line.quantity) || 0;
       const qty = quantity || 1;
+      const divisor = isVatFreeTaxCode(line.taxCode || line.taxcode) ? 1 : 1.2;
       const netAmount = Number.isFinite(grossAmount)
-        ? Number((grossAmount / 1.2).toFixed(2))
+        ? Number((grossAmount / divisor).toFixed(2))
         : 0;
       const rate = Number.isFinite(netAmount)
         ? Number((netAmount / qty).toFixed(2))
@@ -2543,14 +2582,12 @@ router.post("/:id/commit", async (req, res) => {
     const payloadText = JSON.stringify(payload);
     console.log("Calling NetSuite RESTlet with payload bytes:", payloadText.length);
 
-    const response = await fetch(restletUrl, {
-      method: "POST",
-      headers,
-      body: payloadText,
-    });
-
-    const text = await response.text();
-    const data = parseMaybeJson(text);
+    const { response, text, data, attempt } = await postRestletWithRecordChangedRetry(
+      restletUrl,
+      buildRestletHeaders,
+      payloadText,
+      "Commit Sales Order"
+    );
 
     if (!response.ok || !data.ok) {
       console.error("❌ RESTlet returned error:", text);
@@ -2911,11 +2948,10 @@ router.post("/:id/save", async (req, res) => {
     const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
 
     // ✅ Build OAuth headers using per-user tokens
-    const authHeader = await getAuthHeader(restletUrl, "POST", userId, "sb");
-    const headers = {
-      ...authHeader,
+    const buildRestletHeaders = async () => ({
+      ...(await getAuthHeader(restletUrl, "POST", userId, "sb")),
       "Content-Type": "application/json",
-    };
+    });
 
     // 🔁 Prevent rapid double-submit (separate key from commit)
     if (!global._recentSaves) global._recentSaves = {};
@@ -2953,8 +2989,9 @@ router.post("/:id/save", async (req, res) => {
       );
       const quantity = Number(line.quantity) || 0;
       const qty = quantity || 1;
+      const divisor = isVatFreeTaxCode(line.taxCode || line.taxcode) ? 1 : 1.2;
       const netAmount = Number.isFinite(grossAmount)
-        ? Number((grossAmount / 1.2).toFixed(2))
+        ? Number((grossAmount / divisor).toFixed(2))
         : 0;
       const rate = Number.isFinite(netAmount)
         ? Number((netAmount / qty).toFixed(2))
@@ -3001,19 +3038,12 @@ router.post("/:id/save", async (req, res) => {
     const payloadText = JSON.stringify(payload);
     console.log("Calling NetSuite RESTlet (save-only) with payload bytes:", payloadText.length);
 
-    const response = await fetch(restletUrl, {
-      method: "POST",
-      headers,
-      body: payloadText,
-    });
-
-    const text = await response.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = { raw: text };
-    }
+    const { response, text, data, attempt } = await postRestletWithRecordChangedRetry(
+      restletUrl,
+      buildRestletHeaders,
+      payloadText,
+      "Save Sales Order"
+    );
 
     if (!response.ok || !data.ok) {
       console.error("❌ RESTlet returned error (save-only):", text);

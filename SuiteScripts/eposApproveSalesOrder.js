@@ -23,6 +23,15 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     return Object.prototype.hasOwnProperty.call(obj || {}, key);
   }
 
+  function isVatFreeTaxCode(value) {
+    const raw =
+      value && typeof value === "object"
+        ? value.id || value.value || value.refName || ""
+        : value;
+    const code = String(raw || "").trim().toLowerCase();
+    return code === "10" || code.indexOf("vat free") !== -1 || code.indexOf("zero") !== -1;
+  }
+
   function syncPairedSalesOrderMemo(soRec, memo) {
     const pairedSalesOrderId = soRec.getValue({
       fieldId: "custbody_sb_pairedsalesorder",
@@ -242,6 +251,19 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       ) || 0;
 
     const discountPct = toNum(u.discountPct);
+    const payloadTaxCode = u.taxCode != null ? u.taxCode : u.taxcode;
+    let currentTaxCode = "";
+    try {
+      currentTaxCode = soRec.getCurrentSublistValue({
+        sublistId: "item",
+        fieldId: "taxcode",
+      });
+    } catch (taxErr) {
+      log.debug("Could not read current line taxcode", taxErr);
+    }
+    const grossDivisor = isVatFreeTaxCode(payloadTaxCode || currentTaxCode)
+      ? 1
+      : GROSS_DIVISOR;
     const saleGrossInput =
       u.saleGrossPerUnit != null ? u.saleGrossPerUnit : u.saleGrossLine;
     const saleGrossValue = toNum(saleGrossInput);
@@ -254,13 +276,13 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
 
     if (hasSaleGrossInput && Number.isFinite(saleGrossValue) && qty > 0) {
       const saleGrossPerUnit = saleGrossValue / qty;
-      newRateNet = saleGrossPerUnit / GROSS_DIVISOR;
+      newRateNet = saleGrossPerUnit / grossDivisor;
     } else if (discountPct > 0 && currentRateNet > 0) {
       const d = Math.max(0, Math.min(100, discountPct));
       newRateNet = currentRateNet * (1 - d / 100);
     } else if (isNewLine && toNum(u.amountGrossLine) > 0 && qty > 0) {
       const amountGrossPerUnit = toNum(u.amountGrossLine) / qty;
-      newRateNet = amountGrossPerUnit / GROSS_DIVISOR;
+      newRateNet = amountGrossPerUnit / grossDivisor;
     }
 
     if (newRateNet !== null && Number.isFinite(newRateNet)) {
@@ -276,6 +298,8 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
         qty,
         discountPct,
         saleGrossInput,
+        taxCode: payloadTaxCode || currentTaxCode,
+        grossDivisor,
         isNewLine,
       });
     }
@@ -617,8 +641,7 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
        */
       if (doCommit) {
         soRec.setValue({
-          fields: ["custbody_sb_epos_approved", "tobeemailed", "email"],
-          hasEmail: !!context.email,
+          fieldId: "custbody_sb_epos_approved",
           value: true,
         });
         soRec.setValue({
