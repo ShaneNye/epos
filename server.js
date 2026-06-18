@@ -863,6 +863,41 @@ app.get("/api/netsuite/inventorybalance", async (req, res) => {
   }
 });
 
+// === Inventory Snapshot ===
+app.get("/api/netsuite/inventory-snapshot", async (req, res) => {
+  try {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
+    const baseUrl = getEnvAny("INVENTORY_SNAPSHOT_URL", "inventory_snapshot_url");
+    const token = getEnvAny("INVENTORY_SNAPSHOT", "inventory_snapshot");
+    if (!baseUrl || !token) throw new Error("Missing env vars for inventory snapshot");
+
+    const nsUrl = new URL(baseUrl);
+    if (!nsUrl.searchParams.has("token")) {
+      nsUrl.searchParams.set("token", token);
+    }
+    nsUrl.searchParams.set("_", String(Date.now()));
+
+    Object.entries(req.query || {}).forEach(([key, value]) => {
+      if (["token", "refresh", "force", "fresh", "_"].includes(String(key).toLowerCase())) return;
+      nsUrl.searchParams.set(key, String(value));
+    });
+
+    const response = await fetch(nsUrl.toString());
+    if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
+    const json = await response.json();
+    const results = Array.isArray(json.results) ? json.results : Array.isArray(json) ? json : [];
+    res.json({ ...json, ok: json.ok !== false, results });
+  } catch (err) {
+    console.error("âŒ Inventory snapshot proxy error:", err);
+    res.status(500).json({ ok: false, error: "Failed to fetch inventory snapshot" });
+  }
+});
+
 // === Invoice Numbers ===
 app.get("/api/netsuite/invoice-numbers", (req, res) =>
   fetchNetSuiteData("SALES_ORDER_INV_NUMBER_URL", "SALES_ORDER_INV_NUMBER", req, res, "invoice numbers", {

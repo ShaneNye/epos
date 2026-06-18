@@ -18,9 +18,14 @@ document.addEventListener("DOMContentLoaded", () => {
   ];
   const state = {
     rows: [],
+    snapshotRows: [],
     selectedLocation: "",
     selectedStockBin: "__all__",
     selectedStockStatus: "__all__",
+    comparisonEnabled: false,
+    comparisonLoading: false,
+    comparisonError: "",
+    snapshotDate: "",
     focusTimer: null,
   };
 
@@ -56,11 +61,12 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
 
+    const normalizeKey = (key) => String(key || "").replace(/[^a-z0-9]/gi, "").toLowerCase();
     const lookup = new Map(
-      Object.keys(row || {}).map((key) => [key.replace(/\s+/g, "").toLowerCase(), key])
+      Object.keys(row || {}).map((key) => [normalizeKey(key), key])
     );
     for (const key of keys) {
-      const actual = lookup.get(key.replace(/\s+/g, "").toLowerCase());
+      const actual = lookup.get(normalizeKey(key));
       if (actual && row[actual] !== undefined && row[actual] !== null && row[actual] !== "") {
         return row[actual];
       }
@@ -68,10 +74,28 @@ document.addEventListener("DOMContentLoaded", () => {
     return "";
   }
 
-  function numberValue(row, keys) {
-    const raw = String(firstValue(row, keys) || "0").replace(/[£$,]/g, "").trim();
+  function numericValue(row, keys) {
+    const rawValue = firstValue(row, keys);
+    if (rawValue === undefined || rawValue === null || rawValue === "") return null;
+    const raw = String(rawValue).replace(/[£$,]/g, "").trim();
     const value = parseFloat(raw);
-    return Number.isFinite(value) ? value : 0;
+    return Number.isFinite(value) ? value : null;
+  }
+
+  function numberValue(row, keys) {
+    return numericValue(row, keys) ?? 0;
+  }
+
+  function dashboardRange() {
+    if (window.DashboardDateFilter?.getRange) return window.DashboardDateFilter.getRange();
+    const today = new Date();
+    return { start: today, end: today };
+  }
+
+  function isoDate(value) {
+    if (window.DashboardDateFilter?.toIsoDate) return window.DashboardDateFilter.toIsoDate(value);
+    const date = new Date(value);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
   }
 
   function locationValue(row) {
@@ -95,7 +119,18 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function quantityValue(row) {
-    return numberValue(row, ["Available", "On Hand", "OnHand", "Quantity On Hand", "Quantity Available", "Quantity", "qty"]);
+    return numberValue(row, [
+      "On Hand",
+      "OnHand",
+      "Quantity On Hand",
+      "QuantityOnHand",
+      "On Hand Quantity",
+      "OnHandQuantity",
+      "Quantity",
+      "qty",
+      "Available",
+      "Quantity Available",
+    ]);
   }
 
   function purchasePriceValue(row) {
@@ -103,7 +138,27 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function goodsValue(row) {
-    return quantityValue(row) * purchasePriceValue(row);
+    const onHandValue = numericValue(row, [
+      "On Hand Value",
+      "OnHandValue",
+      "On Hand Total Value",
+      "OnHandTotalValue",
+      "Inventory Value",
+      "InventoryValue",
+      "Total Value",
+      "Total : Value",
+      "Total: Value",
+      "Sum of Total : Value",
+      "Sum of total : value",
+      "Good : Value",
+      "Good: Value",
+      "Sum of Good : Value",
+      "Sum of Good: Value",
+      "total value",
+      "Value",
+      "value",
+    ]);
+    return onHandValue ?? purchasePriceValue(row);
   }
 
   function formatMoney(value) {
@@ -190,6 +245,108 @@ document.addEventListener("DOMContentLoaded", () => {
       quantity: state.rows.reduce((sum, row) => sum + quantityValue(row), 0),
       lines: state.rows.length,
     };
+  }
+
+  function snapshotLocationSummaries(rows = state.snapshotRows) {
+    const summaries = new Map();
+
+    rows.forEach((row) => {
+      const label = locationValue(row);
+      const key = normalize(label);
+      if (!key || key.includes("invoicing")) return;
+      if (!summaries.has(key)) {
+        summaries.set(key, { key, label, value: 0, quantity: 0 });
+      }
+      const summary = summaries.get(key);
+      summary.value += numberValue(row, [
+        "Total : Value",
+        "Total: Value",
+        "total : value",
+        "Total Value",
+        "Value",
+      ]);
+      summary.quantity += numberValue(row, [
+        "Total : Count",
+        "Total :  Count",
+        "Total :  count",
+        "Total: Count",
+        "total : count",
+        "total quantity",
+        "Total Quantity",
+        "Total Count",
+        "Count",
+      ]);
+    });
+
+    return Array.from(summaries.values());
+  }
+
+  function snapshotSummaryFor(locationKey) {
+    const summaries = snapshotLocationSummaries();
+    if (locationKey === GROUP_KEY) {
+      return {
+        key: GROUP_KEY,
+        label: "Group",
+        value: summaries.reduce((sum, row) => sum + row.value, 0),
+        quantity: summaries.reduce((sum, row) => sum + row.quantity, 0),
+      };
+    }
+    return summaries.find((summary) => summary.key === locationKey) || null;
+  }
+
+  function comparisonFor(summary) {
+    if (!state.comparisonEnabled || state.comparisonLoading || state.comparisonError) return null;
+    const snapshot = snapshotSummaryFor(summary.key);
+    if (!snapshot) return null;
+
+    const valueDelta = summary.value - snapshot.value;
+    const quantityDelta = summary.quantity - snapshot.quantity;
+    const valuePercent = snapshot.value ? (valueDelta / snapshot.value) * 100 : 0;
+    const quantityPercent = snapshot.quantity ? (quantityDelta / snapshot.quantity) * 100 : 0;
+
+    return {
+      valueDelta,
+      quantityDelta,
+      valuePercent,
+      quantityPercent,
+      valueDirection: valueDelta < 0 ? "down" : valueDelta > 0 ? "up" : "flat",
+      quantityDirection: quantityDelta < 0 ? "down" : quantityDelta > 0 ? "up" : "flat",
+    };
+  }
+
+  function formatDeltaPercent(value) {
+    return `${Math.abs(value).toFixed(1)}%`;
+  }
+
+  function comparisonMarkup(summary) {
+    const comparison = comparisonFor(summary);
+    if (!comparison) return "";
+
+    const valueLabel = comparison.valueDirection === "flat"
+      ? "Value flat"
+      : `Value ${comparison.valueDirection} ${formatMoney(Math.abs(comparison.valueDelta))} (${formatDeltaPercent(comparison.valuePercent)})`;
+    const quantityLabel = comparison.quantityDirection === "flat"
+      ? "Units flat"
+      : `Units ${comparison.quantityDirection} ${formatNumber(Math.abs(comparison.quantityDelta))} (${formatDeltaPercent(comparison.quantityPercent)})`;
+
+    return `
+      <div class="goods-value-comparison">
+        <span class="is-${cell(comparison.valueDirection)}">${cell(valueLabel)}</span>
+        <span class="is-${cell(comparison.quantityDirection)}">${cell(quantityLabel)}</span>
+      </div>
+    `;
+  }
+
+  function comparisonControlsMarkup() {
+    return `
+      <div class="goods-value-comparison-controls">
+        <label class="goods-value-toggle">
+          <input type="checkbox" data-goods-comparison-toggle${state.comparisonEnabled ? " checked" : ""}>
+          <span>Compare</span>
+        </label>
+        <small data-goods-comparison-status hidden></small>
+      </div>
+    `;
   }
 
   function selectedLocationLabel() {
@@ -288,7 +445,9 @@ document.addEventListener("DOMContentLoaded", () => {
           <h3>${cell(summary.label)}</h3>
           <strong data-goods-meter-value>${formatMoney(summary.value)}</strong>
           <small data-goods-meter-quantity>${formatNumber(summary.quantity)} units</small>
+          ${comparisonMarkup(summary)}
         </div>
+        ${isGroup ? comparisonControlsMarkup() : ""}
       </article>
     `;
   }
@@ -465,6 +624,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const groupSlot = widget.querySelector("[data-goods-group-meter]");
     const layout = widget.querySelector(".goods-value-focus-layout");
     const resetButton = widget.querySelector("[data-goods-reset]");
+    const header = widget.querySelector(".goods-value-header");
     if (!grid || !groupSlot) return;
 
     const rows = selectedRows();
@@ -475,6 +635,7 @@ document.addEventListener("DOMContentLoaded", () => {
     grid.classList.toggle("is-focused", focused);
     layout?.classList.toggle("is-focused", focused);
     if (resetButton) resetButton.hidden = !focused;
+    if (header) header.hidden = !focused;
     groupSlot.hidden = focused && state.selectedLocation !== GROUP_KEY;
     groupSlot.innerHTML = !focused || state.selectedLocation === GROUP_KEY ? meterCard(groupSummary(), totalValue) : "";
     grid.innerHTML = rows.length
@@ -483,7 +644,9 @@ document.addEventListener("DOMContentLoaded", () => {
         ? ""
         : `<div class="no-data">No inventory value found for this selection.</div>`;
 
+    updateComparisonStatus();
     attachStatusHover();
+    attachComparisonToggle();
     attachLocationClicks();
     if (focused) {
       renderUnderBreakdown();
@@ -494,10 +657,46 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  function updateComparisonStatus() {
+    const comparisonStatus = widget.querySelector("[data-goods-comparison-status]");
+    if (!comparisonStatus) return;
+
+    comparisonStatus.textContent = state.comparisonLoading
+      ? "Loading..."
+      : state.comparisonError
+        ? state.comparisonError
+        : state.comparisonEnabled && state.snapshotDate
+          ? `Since ${state.snapshotDate}`
+          : "";
+    comparisonStatus.hidden = !comparisonStatus.textContent;
+  }
+
+  function attachComparisonToggle() {
+    const toggle = widget.querySelector("[data-goods-comparison-toggle]");
+    if (!toggle) return;
+
+    toggle.closest(".goods-value-comparison-controls")?.addEventListener("click", (event) => {
+      event.stopPropagation();
+    });
+
+    toggle.addEventListener("change", async (event) => {
+      state.comparisonEnabled = event.target.checked;
+      state.comparisonError = "";
+      if (state.comparisonEnabled) {
+        await loadSnapshotComparison();
+      } else {
+        state.snapshotRows = [];
+        state.snapshotDate = "";
+      }
+      renderMeters();
+    });
+  }
+
   function attachLocationClicks() {
     widget.querySelectorAll(".goods-value-meter-card").forEach((card) => {
       card.addEventListener("click", (event) => {
         if (event.target.closest(".goods-value-status-arc")) return;
+        if (event.target.closest(".goods-value-comparison-controls")) return;
         focusLocation(card);
       });
       card.addEventListener("keydown", (event) => {
@@ -600,6 +799,42 @@ document.addEventListener("DOMContentLoaded", () => {
 
   }
 
+  async function loadSnapshotComparison() {
+    const range = dashboardRange();
+    const date = isoDate(range.start);
+    state.comparisonLoading = true;
+    state.comparisonError = "";
+    state.snapshotDate = date;
+    renderMeters();
+
+    try {
+      const params = new URLSearchParams({
+        date,
+        from: date,
+        snapshotDate: date,
+        refresh: "1",
+        _: String(Date.now()),
+      });
+      const res = await fetch(`/api/netsuite/inventory-snapshot?${params.toString()}`, {
+        headers: getHeaders(),
+        cache: "no-store",
+      });
+      const data = await res.json();
+
+      if (!res.ok || data.ok === false || !Array.isArray(data.results)) {
+        throw new Error(data.error || "Invalid inventory snapshot response");
+      }
+
+      state.snapshotRows = data.results;
+    } catch (err) {
+      console.error("Failed to load inventory snapshot:", err);
+      state.snapshotRows = [];
+      state.comparisonError = "Comparison unavailable";
+    } finally {
+      state.comparisonLoading = false;
+    }
+  }
+
   async function loadGoodsValue() {
     widget.innerHTML = `<div class="loading">Loading goods value...</div>`;
 
@@ -616,7 +851,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
       state.rows = data.results.filter((row) =>
         quantityValue(row) > 0 &&
-        purchasePriceValue(row) > 0 &&
         !normalize(locationValue(row)).includes("invoicing")
       );
 
@@ -636,4 +870,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   loadGoodsValue();
+
+  window.addEventListener("dashboard:date-range-change", async () => {
+    if (!state.comparisonEnabled) return;
+    await loadSnapshotComparison();
+    renderMeters();
+  });
 });

@@ -1752,6 +1752,31 @@
     return valueText(filter.value);
   }
 
+  function splitFilterValues(value) {
+    if (Array.isArray(value)) return value.flatMap(splitFilterValues);
+    if (value && typeof value === "object") {
+      return splitFilterValues(value.id ?? value.value ?? value.refName ?? value.name ?? value.text ?? "");
+    }
+    return String(value || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
+  }
+
+  function normalizedFilterValues(value) {
+    return splitFilterValues(value)
+      .flatMap((item) => {
+        const text = String(item).trim().toLowerCase();
+        const shortText = text.split(" : ").pop().trim();
+        return shortText && shortText !== text ? [text, shortText] : [text];
+      })
+      .filter(Boolean);
+  }
+
+  function filterValuesOverlap(rowValue, filterValue) {
+    const wanted = normalizedFilterValues(filterValue);
+    if (!wanted.length) return true;
+    const rowValues = new Set(normalizedFilterValues(rowValue));
+    return wanted.some((value) => rowValues.has(value));
+  }
+
   function controlPlaceholder(field) {
     if (!field) return "Choose field first";
     if (field.fieldType === "Checkbox") return "";
@@ -2059,11 +2084,9 @@
     }
 
     if (field.fieldType === "multiple-select") {
-      const names = Array.isArray(raw) ? raw.map((item) => String(item).toLowerCase()) : valueText(raw).toLowerCase().split(",");
-      const wanted = Array.isArray(filter.valueLabel)
-        ? filter.valueLabel.map((item) => String(item).toLowerCase())
-        : String(filter.valueLabel || filter.value).toLowerCase().split(",");
-      return wanted.every((value) => names.some((name) => name.trim() === value.trim()));
+      const rawInternalIds = row[`${filter.fieldName}_InternalId`];
+      if (filterValuesOverlap(rawInternalIds, filter.internalId || filter.value)) return true;
+      return filterValuesOverlap(raw, filter.valueLabel || filter.value);
     }
 
     if (field.fieldType === "image") {
