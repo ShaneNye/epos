@@ -599,6 +599,89 @@ app.use("/", dispatchTrackRoutes);
 
 
 
+function parseDashboardRoleList(value) {
+  try {
+    if (Array.isArray(value)) return value;
+    if (typeof value === "object" && value !== null) return Object.values(value);
+    if (typeof value === "string") return JSON.parse(value || "[]");
+  } catch (err) {
+    console.warn("Failed to parse dashboard role list:", value);
+  }
+  return [];
+}
+
+const DASHBOARD_TABS = ["sales", "inventoryOperations"];
+
+async function loadDashboardTabs() {
+  const result = await pool.query("SELECT widget_key, role_ids FROM widget_roles");
+  const rows = result.rows;
+  const rowByKey = new Map(rows.map((row) => [row.widget_key, row]));
+
+  const inheritedRoles = new Set();
+  let hasPublicWidget = rows.length === 0;
+  rows.forEach((row) => {
+    if (DASHBOARD_TABS.includes(row.widget_key)) return;
+    const roles = parseDashboardRoleList(row.role_ids);
+    if (!roles.length) hasPublicWidget = true;
+    roles.forEach((role) => inheritedRoles.add(role));
+  });
+
+  const salesRoles = rowByKey.has("sales")
+    ? parseDashboardRoleList(rowByKey.get("sales").role_ids)
+    : hasPublicWidget ? [] : Array.from(inheritedRoles);
+
+  const inventoryOperationsRoles = rowByKey.has("inventoryOperations")
+    ? parseDashboardRoleList(rowByKey.get("inventoryOperations").role_ids)
+    : [];
+
+  return [
+    {
+      tab: "sales",
+      roles: salesRoles
+    },
+    {
+      tab: "inventoryOperations",
+      roles: inventoryOperationsRoles
+    }
+  ];
+}
+
+app.get("/api/dashboard-tabs", async (req, res) => {
+  try {
+    const tabs = await loadDashboardTabs();
+    res.json({ ok: true, tabs });
+  } catch (err) {
+    console.error("Failed to load dashboard tab visibility:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/api/dashboard-tabs", async (req, res) => {
+  const { tabKey, roles } = req.body;
+  const cleanTabKey = String(tabKey || "").trim();
+  const cleanRoles = Array.isArray(roles) ? roles : [];
+
+  if (!cleanTabKey) {
+    return res.status(400).json({ ok: false, error: "Missing tabKey" });
+  }
+
+  try {
+    await pool.query(
+      `
+      INSERT INTO widget_roles (widget_key, role_ids)
+      VALUES ($1, $2)
+      ON CONFLICT (widget_key)
+      DO UPDATE SET role_ids = EXCLUDED.role_ids;
+      `,
+      [cleanTabKey, JSON.stringify(cleanRoles)]
+    );
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("Failed to save dashboard tab roles:", err.message);
+    res.status(500).json({ ok: false, error: "Database error" });
+  }
+});
+
 /*==============================================================
 ================== widget permissions ==========================
 ===============================================================*/
@@ -1107,6 +1190,49 @@ app.get("/api/netsuite/transfer-order-widget", async (req, res) => {
   } catch (err) {
     console.error("NetSuite transfer order widget proxy error:", err);
     res.status(500).json({ ok: false, error: "Failed to fetch transfer order widget data" });
+  }
+});
+
+// === Bin Transfer Transactions Widget ===
+app.get("/api/netsuite/bin-transfer-transactions", async (req, res) => {
+  try {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
+    const baseUrl = getEnvAny("BIN_TRANSFER_TRANSACTIONS_URL", "bin_transfer_transactions_url");
+    const token = getEnvAny("BIN_TRANSFER_TRANSACTIONS", "bin_transfer_transactions");
+    if (!baseUrl) {
+      throw new Error("Missing BIN_TRANSFER_TRANSACTIONS_URL/bin_transfer_transactions_url in environment");
+    }
+
+    const nsUrl = new URL(baseUrl);
+    if (token && !nsUrl.searchParams.has("token")) {
+      nsUrl.searchParams.set("token", token);
+    }
+    nsUrl.searchParams.set("_", String(Date.now()));
+
+    Object.entries(req.query || {}).forEach(([key, value]) => {
+      if (["token", "refresh", "force", "fresh"].includes(String(key).toLowerCase())) return;
+      if (value === undefined || value === null || value === "") return;
+      nsUrl.searchParams.set(key, String(value));
+    });
+
+    console.log("Fetching bin transfer transaction data from NetSuite");
+    const response = await fetch(nsUrl.toString());
+    if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
+
+    const json = await response.json();
+    res.json({
+      ok: json?.ok !== false,
+      ...json,
+      results: Array.isArray(json?.results) ? json.results : Array.isArray(json) ? json : [],
+    });
+  } catch (err) {
+    console.error("NetSuite bin transfer transactions proxy error:", err);
+    res.status(500).json({ ok: false, error: "Failed to fetch bin transfer transaction data" });
   }
 });
 

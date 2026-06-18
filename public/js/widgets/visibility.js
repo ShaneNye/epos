@@ -1,26 +1,107 @@
 // public/js/widgets/visibility.js
-console.log("Dashboard Widget Visibility loaded");
+console.log("Dashboard tab visibility loaded");
 
 document.addEventListener("DOMContentLoaded", () => {
+  const tabsNav = document.getElementById("dashboardTabs");
+  const tabButtons = Array.from(document.querySelectorAll("[data-tab]"));
+  const tabPanels = Array.from(document.querySelectorAll("[data-tab-panel]"));
+
+  if (!tabsNav || !tabButtons.length || !tabPanels.length) return;
+
   let retries = 0;
 
-  const tryLoadVisibility = async () => {
-    const saved = storageGet();
-    const userRoles = [];
+  function normalizeRole(role) {
+    return String(role || "").trim().toLowerCase();
+  }
 
-    if (Array.isArray(saved?.user?.roles)) {
-      userRoles.push(...saved.user.roles);
-    }
+  function getUserRoles() {
+    const saved = storageGet();
+    const roles = [];
+
+    if (Array.isArray(saved?.user?.roles)) roles.push(...saved.user.roles);
 
     if (typeof saved?.activeRole === "string") {
-      userRoles.push(saved.activeRole);
+      roles.push(saved.activeRole);
     } else if (saved?.activeRole?.name) {
-      userRoles.push(saved.activeRole.name);
+      roles.push(saved.activeRole.name);
     }
 
-    if (saved?.role) {
-      userRoles.push(saved.role);
+    if (saved?.role) roles.push(saved.role);
+
+    return [...new Set(roles.map(normalizeRole).filter(Boolean))];
+  }
+
+  function setActiveTab(tabKey) {
+    tabButtons.forEach((button) => {
+      const active = button.dataset.tab === tabKey;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", active ? "true" : "false");
+    });
+
+    tabPanels.forEach((panel) => {
+      const active = panel.dataset.tabPanel === tabKey;
+      panel.hidden = !active;
+      panel.classList.toggle("hidden", !active);
+      panel.classList.toggle("active", active);
+    });
+  }
+
+  function showNoTabsMessage() {
+    document.querySelector(".dashboard-tab-empty")?.remove();
+    const empty = document.createElement("div");
+    empty.className = "no-data dashboard-tab-empty";
+    empty.textContent = "You don't have permission to view any dashboard tabs.";
+    tabsNav.insertAdjacentElement("afterend", empty);
+  }
+
+  function applyVisibility(config, userRoles) {
+    const configByTab = new Map(
+      (config || []).map((tab) => [tab.tab, (tab.roles || []).map(normalizeRole).filter(Boolean)])
+    );
+
+    const visibleTabs = [];
+
+    tabButtons.forEach((button) => {
+      const roles = configByTab.get(button.dataset.tab) || [];
+      const hasAccess = !roles.length || roles.some((role) => userRoles.includes(role));
+      button.hidden = !hasAccess;
+      button.style.display = hasAccess ? "" : "none";
+      if (hasAccess) visibleTabs.push(button.dataset.tab);
+    });
+
+    tabsNav.hidden = !visibleTabs.length;
+    tabsNav.style.display = visibleTabs.length ? "flex" : "none";
+
+    tabPanels.forEach((panel) => {
+      const hasAccess = visibleTabs.includes(panel.dataset.tabPanel);
+      if (!hasAccess) {
+        panel.hidden = true;
+        panel.classList.add("hidden");
+        panel.classList.remove("active");
+      }
+    });
+
+    document.querySelector(".dashboard-tab-empty")?.remove();
+    if (!visibleTabs.length) {
+      showNoTabsMessage();
+      return;
     }
+
+    const currentActive = tabPanels.find((panel) =>
+      panel.classList.contains("active") && visibleTabs.includes(panel.dataset.tabPanel)
+    );
+
+    setActiveTab(currentActive?.dataset.tabPanel || visibleTabs[0]);
+  }
+
+  tabButtons.forEach((button) => {
+    button.addEventListener("click", () => {
+      if (!button.hidden) setActiveTab(button.dataset.tab);
+    });
+  });
+
+  async function tryLoadVisibility() {
+    const userRoles = getUserRoles();
 
     if (!userRoles.length && retries < 5) {
       retries++;
@@ -29,69 +110,24 @@ document.addEventListener("DOMContentLoaded", () => {
     }
 
     if (!userRoles.length) {
-      console.warn("No role info found after retries; showing all widgets");
+      console.warn("No role info found after retries; showing dashboard tabs");
       return;
     }
 
     try {
-      const res = await fetch("/api/dashboard-widgets");
-      if (!res.ok) throw new Error("Failed to load widget config");
+      const res = await fetch("/api/dashboard-tabs");
+      if (!res.ok) throw new Error("Failed to load dashboard tab config");
+
       const data = await res.json();
-      if (!data.ok || !data.widgets) throw new Error("Invalid config data");
-
-      const allowedWidgets = new Set(
-        data.widgets
-          .filter((w) => {
-            if (!w.roles.length) return true;
-            return w.roles.some((r) => userRoles.includes(r));
-          })
-          .map((w) => w.widget)
-      );
-      const configuredWidgets = new Set(data.widgets.map((w) => w.widget));
-
-      const allWidgets = [
-        { key: "salesToday", id: "salesTodayWidget" },
-        { key: "salesByStore", id: "salesByStoreWidget" },
-        { key: "topThree", id: "topThreeWidget" },
-        { key: "outstandingActions", id: "outstandingActionsWidget" },
-        { key: "kpiMeter", id: "kpiMeterWidget" },
-        { key: "salesForcast", id: "salesForecastWidget" },
-        { key: "homeRota", id: "homeRotaWidget", selfManaged: true },
-      ];
-
-      allWidgets.forEach(({ key, id }) => {
-        const el = document.getElementById(id);
-        if (!el) return;
-        if (id === "homeRotaWidget") return;
-
-        if (!configuredWidgets.has(key) || allowedWidgets.has(key)) {
-          el.style.display = "flex";
-        } else {
-          el.style.display = "none";
-        }
-      });
-
-      const visible = allWidgets.some(({ id }) => {
-        const el = document.getElementById(id);
-        return el && !el.hidden && el.style.display !== "none";
-      });
-      const hasSelfManagedWidget = allWidgets.some(({ id, selfManaged }) =>
-        selfManaged && document.getElementById(id)
-      );
-
-      if (!visible && !hasSelfManagedWidget) {
-        const grid = document.getElementById("dashboardGrid");
-        if (grid) {
-          grid.innerHTML = `
-            <div class="no-data" style="padding:40px;text-align:center;color:#777;">
-              <p>You don't have permission to view any widgets.</p>
-            </div>`;
-        }
+      if (!data.ok || !Array.isArray(data.tabs)) {
+        throw new Error("Invalid dashboard tab config");
       }
+
+      applyVisibility(data.tabs, userRoles);
     } catch (err) {
-      console.error("Widget visibility load failed:", err);
+      console.error("Dashboard tab visibility load failed:", err);
     }
-  };
+  }
 
   tryLoadVisibility();
 });

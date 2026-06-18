@@ -1,66 +1,30 @@
-// public/js/adminWidgets.js
-console.log("⚙️ Admin Dashboard Widgets loaded");
+// public/js/widgets/adminWidgets.js
+console.log("Admin dashboard tabs loaded");
 
 document.addEventListener("DOMContentLoaded", async () => {
   const container = document.getElementById("widgetList");
   if (!container) return;
 
-  /* ============================================================
-     Widget definitions (must match your dashboard keys)
-  ============================================================ */
-  const widgets = [
-    { key: "salesToday", name: "Sales Created Today", desc: "Displays all sales created today." },
-    { key: "salesByStore", name: "Sales by Store", desc: "Shows a breakdown of sales by store." },
-    { key: "topThree", name: "Top 3 Bed Specialists", desc: "Highlights top-performing sales staff." },
-    { key: "outstandingActions", name: "Outstanding Actions", desc: "Shows transfer orders and cases needing action by store." },
-    { key: "kpiMeter", name: "KPI Meter", desc: "Compares store revenue against the selected period target." },
-    { key: "salesForcast", name: "Sales Forcast", desc: "allows team to view and edit monthly sales forecast"}
+  const dashboardTabs = [
+    {
+      key: "sales",
+      name: "Sales",
+      desc: "Contains the current sales dashboard widgets, including sales totals, store performance, specialists, actions, KPI, forecast, and rota."
+    },
+    {
+      key: "inventoryOperations",
+      name: "Inventory (operations)",
+      desc: "Contains operational inventory widgets, starting with bin transfer activity."
+    }
   ];
 
-  /* ============================================================
-     Load existing widget-role configuration
-  ============================================================ */
-  let config = [];
-  try {
-    const res = await fetch("/api/dashboard-widgets");
+  async function loadTabConfig() {
+    const res = await fetch("/api/dashboard-tabs");
     const data = await res.json();
-    if (data.ok) config = data.widgets;
-    console.log("🧩 Loaded widget-role config:", config);
-  } catch (err) {
-    console.error("❌ Failed to load widget roles:", err);
+    if (!data.ok) throw new Error(data.error || "Failed to load dashboard tab roles");
+    return data.tabs || [];
   }
 
-  /* ============================================================
-     Render widget cards
-  ============================================================ */
-  container.innerHTML = widgets.map(w => {
-    const entry = config.find(c => c.widget === w.key);
-    const roles = entry?.roles?.length
-      ? entry.roles.map(r => `<span class="role-badge">${r}</span>`).join(" ")
-      : `<em>No roles assigned</em>`;
-    return `
-      <div class="widget-admin-card">
-        <div>
-          <h3>${w.name}</h3>
-          <p>${w.desc}</p>
-          <small><strong>Visible to:</strong> ${roles}</small>
-        </div>
-        <button class="btn-secondary edit-widget" data-key="${w.key}">
-          Edit Roles
-        </button>
-      </div>
-    `;
-  }).join("");
-
-  /* ============================================================
-     Modal Logic
-  ============================================================ */
-  const modal = document.getElementById("widgetRoleModal");
-  const roleSelect = document.getElementById("widgetRoleSelect");
-  const cancelBtn = document.getElementById("cancelWidgetRoleModal");
-  const form = document.getElementById("widgetRoleForm");
-
-  // --- Fetch roles from backend ---
   async function fetchAllRoles() {
     const res = await fetch("/api/roles");
     if (!res.ok) throw new Error("Failed to load roles");
@@ -68,63 +32,92 @@ document.addEventListener("DOMContentLoaded", async () => {
     return roles.sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // --- Open modal and preselect roles ---
-  container.addEventListener("click", async e => {
-    if (!e.target.classList.contains("edit-widget")) return;
+  let config = [];
+  try {
+    config = await loadTabConfig();
+    console.log("Loaded dashboard tab role config:", config);
+  } catch (err) {
+    console.error("Failed to load dashboard tab roles:", err);
+  }
 
-    const key = e.target.dataset.key;
+  container.innerHTML = dashboardTabs.map((tab) => {
+    const entry = config.find((item) => item.tab === tab.key);
+    const roles = entry?.roles?.length
+      ? entry.roles.map((role) => `<span class="role-badge">${role}</span>`).join(" ")
+      : "<em>Visible to all roles</em>";
+
+    return `
+      <div class="widget-admin-card">
+        <div>
+          <h3>${tab.name}</h3>
+          <p>${tab.desc}</p>
+          <small><strong>Visible to:</strong> ${roles}</small>
+        </div>
+        <button class="btn-secondary edit-widget" data-key="${tab.key}">
+          Edit Roles
+        </button>
+      </div>
+    `;
+  }).join("");
+
+  const modal = document.getElementById("widgetRoleModal");
+  const roleSelect = document.getElementById("widgetRoleSelect");
+  const cancelBtn = document.getElementById("cancelWidgetRoleModal");
+  const form = document.getElementById("widgetRoleForm");
+
+  container.addEventListener("click", async (event) => {
+    if (!event.target.classList.contains("edit-widget")) return;
+
+    const key = event.target.dataset.key;
+    const tab = dashboardTabs.find((item) => item.key === key);
     document.getElementById("widgetKey").value = key;
-    document.getElementById("widgetRoleModalTitle").textContent = `Edit Access for "${key}"`;
+    document.getElementById("widgetRoleModalTitle").textContent = `Edit Access for "${tab?.name || key}"`;
 
     try {
-      const [allRoles, widgetConfigRes] = await Promise.all([
+      const [allRoles, latestConfig] = await Promise.all([
         fetchAllRoles(),
-        fetch("/api/dashboard-widgets")
+        loadTabConfig()
       ]);
 
-      const widgetConfig = await widgetConfigRes.json();
-      const currentWidget = widgetConfig.widgets?.find(w => w.widget === key);
-      const assigned = new Set(currentWidget?.roles || []);
-      console.log(`📋 Widget "${key}" assigned roles:`, Array.from(assigned));
+      const currentTab = latestConfig.find((item) => item.tab === key);
+      const assigned = new Set(currentTab?.roles || []);
+      console.log(`Dashboard tab "${key}" assigned roles:`, Array.from(assigned));
 
-      // Build role list with preselected items
       roleSelect.innerHTML = allRoles
-        .map(r => {
-          const selected = assigned.has(r.name) ? "selected" : "";
-          return `<option value="${r.name}" ${selected}>${r.name}</option>`;
+        .map((role) => {
+          const selected = assigned.has(role.name) ? "selected" : "";
+          return `<option value="${role.name}" ${selected}>${role.name}</option>`;
         })
         .join("");
 
       modal.classList.remove("hidden");
     } catch (err) {
-      console.error("❌ Failed to load roles/config:", err);
+      console.error("Failed to load roles/config:", err);
       alert("Error loading roles");
     }
   });
 
-  // --- Cancel button ---
   cancelBtn.addEventListener("click", () => modal.classList.add("hidden"));
 
-  // --- Save widget role assignments ---
-  form.addEventListener("submit", async e => {
-    e.preventDefault();
-    const widgetKey = document.getElementById("widgetKey").value;
-    const selected = Array.from(roleSelect.selectedOptions).map(o => o.value);
+  form.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const tabKey = document.getElementById("widgetKey").value;
+    const selected = Array.from(roleSelect.selectedOptions).map((option) => option.value);
 
     try {
-      const res = await fetch("/api/dashboard-widgets", {
+      const res = await fetch("/api/dashboard-tabs", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ widgetKey, roles: selected })
+        body: JSON.stringify({ tabKey, roles: selected })
       });
 
       if (!res.ok) throw new Error("Failed to save roles");
 
-      alert(`✅ Roles updated for "${widgetKey}"`);
+      alert(`Roles updated for "${tabKey}"`);
       modal.classList.add("hidden");
       location.reload();
     } catch (err) {
-      console.error("❌ Failed to save widget roles:", err);
+      console.error("Failed to save dashboard tab roles:", err);
       alert("Error saving roles");
     }
   });

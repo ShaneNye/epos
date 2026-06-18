@@ -671,6 +671,19 @@
   margin: 0 0 8px;
 }
 
+.role-badge {
+  display: inline-flex;
+  align-items: center;
+  min-height: 22px;
+  margin: 2px 4px 2px 0;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #e7f7fb;
+  color: var(--brand-600);
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
 .widget-admin-card button {
   align-self: flex-start;
   font-size: 0.85rem;

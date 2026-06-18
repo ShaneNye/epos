@@ -71,7 +71,16 @@
     <span id="dashboardDateRangeLabel" class="dashboard-filter-range">Today</span>
   </section>
 
-  <div id="dashboardWrapper">
+  <nav id="dashboardTabs" class="dashboard-tabs" aria-label="Dashboard sections">
+    <button id="dashboardSalesTab" class="dashboard-tab active" type="button" role="tab" aria-selected="true" aria-controls="dashboardWrapper" data-tab="sales">
+      Sales
+    </button>
+    <button id="dashboardInventoryOperationsTab" class="dashboard-tab" type="button" role="tab" aria-selected="false" aria-controls="inventoryOperationsPanel" data-tab="inventoryOperations">
+      Inventory (operations)
+    </button>
+  </nav>
+
+  <div id="dashboardWrapper" class="dashboard-tab-panel active" role="tabpanel" aria-labelledby="dashboardSalesTab" data-tab-panel="sales">
     <div id="dashboardGrid">
       <section id="homeRotaWidget" class="widget-card wide" style="display:none;" hidden>
         <div class="home-rota-header">
@@ -104,6 +113,11 @@
 
   </div>
 
+  <div id="inventoryOperationsPanel" class="dashboard-tab-panel hidden" role="tabpanel" aria-labelledby="dashboardInventoryOperationsTab" data-tab-panel="inventoryOperations">
+    <section id="goodsValueWidget" class="widget-card wide inventory-widget-card goods-value-widget"></section>
+    <section id="binTransfersWidget" class="widget-card wide inventory-widget-card"></section>
+  </div>
+
 
 
   <!-- scripts -->
@@ -113,6 +127,8 @@
   <script src="/js/widgets/salestoday.js"></script>
   <script src="/js/widgets/topThree.js"></script>
   <script src="/js/widgets/outstandingActions.js"></script>
+  <script src="/js/widgets/goodsValue.js"></script>
+  <script src="/js/widgets/binTransfers.js"></script>
   <script src="/js/widgets/kpiMeter.js"></script>
   <script src="/js/widgets/salesForcast.js"></script>
   <script src="/js/homeAnnouncements.js"></script>
