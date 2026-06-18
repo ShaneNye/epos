@@ -860,7 +860,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const salesOrderQuery = new URLSearchParams({
     lite: "1",
     deposits: "0",
-    refresh: "1",
     _: String(Date.now()),
   });
   window._currentDeposits = [];
@@ -872,12 +871,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ==================================================
     // 1️⃣ Load everything in parallel where possible
     // ==================================================
-    const [_items, _itemOptions, soRes, locJson, userJson, fulfilRes] = await Promise.all([
+    const [_items, soRes, locJson, userJson, fulfilRes] = await Promise.all([
       loadItemCache(),
-      window.itemOptionsCache?.getAll?.().catch((err) => {
-        console.warn("⚠️ Failed to preload item options:", err.message || err);
-        return {};
-      }),
       fetch(`/api/netsuite/salesorder/${tranId}?${salesOrderQuery.toString()}`, {
         headers,
         cache: "no-store",

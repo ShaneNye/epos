@@ -22,6 +22,7 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedLocation: "",
     selectedStockBin: "__all__",
     selectedStockStatus: "__all__",
+    selectedStockClass: "__all__",
     comparisonEnabled: false,
     comparisonLoading: false,
     comparisonError: "",
@@ -103,7 +104,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function itemValue(row) {
-    return clean(firstValue(row, ["Item", "Item Name", "Item ID", "Item Id", "item", "Name"]));
+    return clean(firstValue(row, ["Name", "Item Name", "Item", "item", "Item ID", "Item Id"]));
   }
 
   function binValue(row) {
@@ -116,6 +117,10 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function statusValue(row) {
     return clean(firstValue(row, ["Status", "Inventory Status", "inventoryStatus", "InventoryStatus", "status"])) || "No Status";
+  }
+
+  function classValue(row) {
+    return clean(firstValue(row, ["Class", "Item Class", "class", "itemClass", "ItemClass"])) || "No Class";
   }
 
   function quantityValue(row) {
@@ -460,8 +465,10 @@ document.addEventListener("DOMContentLoaded", () => {
     return baseRows
       .filter((row) => state.selectedStockBin === "__all__" || normalize(binValue(row)) === state.selectedStockBin)
       .filter((row) => state.selectedStockStatus === "__all__" || normalize(statusValue(row)) === state.selectedStockStatus)
+      .filter((row) => state.selectedStockClass === "__all__" || normalize(classValue(row)) === state.selectedStockClass)
       .sort((a, b) =>
         statusValue(a).localeCompare(statusValue(b)) ||
+        classValue(a).localeCompare(classValue(b)) ||
         itemValue(a).localeCompare(itemValue(b)) ||
         binValue(a).localeCompare(binValue(b))
       );
@@ -581,6 +588,12 @@ document.addEventListener("DOMContentLoaded", () => {
               <option value="${cell(option.key)}"${option.key === state.selectedStockStatus ? " selected" : ""}>${cell(option.label)}</option>
             `).join("")}
           </select>
+          <select data-goods-stock-filter="class" aria-label="Filter stock by class">
+            <option value="__all__">All classes</option>
+            ${uniqueStockOptions(classValue).map((option) => `
+              <option value="${cell(option.key)}"${option.key === state.selectedStockClass ? " selected" : ""}>${cell(option.label)}</option>
+            `).join("")}
+          </select>
         </div>
       </div>
       <div class="goods-value-detail-body">
@@ -595,6 +608,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
     panel.querySelector('[data-goods-stock-filter="status"]')?.addEventListener("change", (event) => {
       state.selectedStockStatus = event.target.value;
+      renderDetailPanel();
+    });
+
+    panel.querySelector('[data-goods-stock-filter="class"]')?.addEventListener("change", (event) => {
+      state.selectedStockClass = event.target.value;
       renderDetailPanel();
     });
   }
@@ -722,6 +740,7 @@ document.addEventListener("DOMContentLoaded", () => {
       state.selectedLocation = card.dataset.locationKey;
       state.selectedStockBin = "__all__";
       state.selectedStockStatus = "__all__";
+      state.selectedStockClass = "__all__";
       state.focusTimer = null;
       renderMeters();
     }, 280);
@@ -794,6 +813,7 @@ document.addEventListener("DOMContentLoaded", () => {
       state.selectedLocation = "";
       state.selectedStockBin = "__all__";
       state.selectedStockStatus = "__all__";
+      state.selectedStockClass = "__all__";
       renderMeters();
     });
 

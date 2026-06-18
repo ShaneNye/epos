@@ -1490,29 +1490,33 @@ async function fetchSuiteQlDepositsForSalesOrder(salesOrderId, userId, alternate
   const queries = [
     `
       SELECT
+        DISTINCT
         t.id,
         t.tranid,
         t.trandate,
-        t.createdfrom,
+        tl.createdfrom,
         t.total,
         t.foreigntotal,
         t.paymentmethod,
         BUILTIN.DF(t.paymentmethod) AS paymentmethod_text
       FROM transaction t
+      JOIN transactionline tl ON tl.transaction = t.id
       WHERE t.recordtype = 'customerdeposit'
-        AND t.createdfrom IN (${idList})
+        AND tl.createdfrom IN (${idList})
       ORDER BY t.trandate DESC, t.id DESC
     `,
     `
       SELECT
+        DISTINCT
         t.id,
         t.tranid,
         t.trandate,
-        t.createdfrom,
+        tl.createdfrom,
         t.total
       FROM transaction t
+      JOIN transactionline tl ON tl.transaction = t.id
       WHERE t.recordtype = 'customerdeposit'
-        AND t.createdfrom IN (${idList})
+        AND tl.createdfrom IN (${idList})
       ORDER BY t.trandate DESC, t.id DESC
     `,
   ];
@@ -1538,11 +1542,18 @@ async function loadSalesOrderDeposits(req, salesOrderId, {
   prewarmHeaders = null,
   alternateSalesOrderIds = [],
 } = {}) {
-  let reportDeposits = [];
-  let suiteQlDeposits = [];
+  try {
+    return await fetchSuiteQlDepositsForSalesOrder(
+      salesOrderId,
+      userId,
+      alternateSalesOrderIds
+    );
+  } catch (err) {
+    console.warn(`Could not fetch customer deposits via SuiteQL for SO ${salesOrderId}:`, err.message);
+  }
 
   try {
-    reportDeposits = await fetchReportDepositsForSalesOrder(
+    return await fetchReportDepositsForSalesOrder(
       req,
       salesOrderId,
       {
@@ -1555,17 +1566,7 @@ async function loadSalesOrderDeposits(req, salesOrderId, {
     console.warn(`Could not fetch customer deposit report for SO ${salesOrderId}:`, err.message);
   }
 
-  try {
-    suiteQlDeposits = await fetchSuiteQlDepositsForSalesOrder(
-      salesOrderId,
-      userId,
-      alternateSalesOrderIds
-    );
-  } catch (err) {
-    console.warn(`Could not fetch customer deposits via SuiteQL for SO ${salesOrderId}:`, err.message);
-  }
-
-  return mergeDeposits(reportDeposits, suiteQlDeposits);
+  return [];
 }
 
 /* =====================================================
@@ -2164,7 +2165,19 @@ router.get("/:id", async (req, res) => {
 
     key = cacheKey(id, { lite, includeDeposits });
 
-    soCache.delete(key);
+    const forceRefresh =
+      String(req.query.refresh || "") === "1" ||
+      String(req.query.refresh || "") === "true";
+
+    if (forceRefresh) {
+      soCache.delete(key);
+    } else {
+      const cached = cacheGet(key);
+      if (cached?.data) {
+        console.log(`⚡ Sales Order ${id} served from cache`);
+        return res.json({ ...cached.data, _cache: "HIT" });
+      }
+    }
 
     // 🔐 Resolve user session for per-user NetSuite token
     const auth = req.headers.authorization || "";
@@ -2438,7 +2451,10 @@ router.get("/:id", async (req, res) => {
       _mode: lite ? "LITE" : "FULL",
     };
 
-    return res.json({ ...payload, _cache: "BYPASS" });
+    cacheSet(key, payload);
+    cachePrune();
+
+    return res.json({ ...payload, _cache: forceRefresh ? "BYPASS" : "MISS" });
   } catch (err) {
     console.error("❌ GET /salesorder/:id error:", err.message);
 
