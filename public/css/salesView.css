@@ -307,6 +307,43 @@ textarea:focus {
   font-size: 1rem;
 }
 
+.inventory-cell-allocated {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 42px;
+  min-height: 30px;
+  padding: 4px 8px;
+  border: 1px solid #86efac;
+  border-radius: 6px;
+  background: #dcfce7;
+  color: #14532d;
+  font-weight: 700;
+}
+
+.inventory-cell-allocated .inventory-detail-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 24px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  text-align: center;
+  line-height: 1;
+}
+
+.inventory-cell-allocated .inventory-detail-link:hover {
+  text-decoration: underline;
+}
+
+.inventory-cell-allocated .inv-summary {
+  display: none;
+}
+
 /* === LAYOUT (THREE COLUMN) === */
 .form-row.three-column {
   display: flex;

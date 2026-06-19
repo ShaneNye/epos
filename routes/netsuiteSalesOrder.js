@@ -30,7 +30,7 @@ const { createNetSuiteCustomer } = require("../utils/netsuiteCustomerCreate");
 // ✅ In-memory cache for GET /:id sales order payloads
 // =====================================================
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const SO_CACHE_VERSION = "related-records-v4";
+const SO_CACHE_VERSION = "related-records-v5";
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
 const LOCATION_FEED_TTL_MS = 10 * 60 * 1000;
 const locationFeedCache = { expiresAt: 0, rows: null, inFlight: null };
@@ -1201,6 +1201,487 @@ function relatedRecordList(ids, names) {
   })).filter((record) => record.id || record.refName);
 }
 
+function uniqueRelatedRecords(records = []) {
+  const seen = new Set();
+  return (Array.isArray(records) ? records : [])
+    .map((record) => ({
+      id: String(record?.id || "").trim(),
+      refName: String(record?.refName || record?.tranid || record?.name || record?.id || "").trim(),
+    }))
+    .filter((record) => record.id || record.refName)
+    .filter((record) => {
+      const key = `${record.id}|${record.refName}`.toLowerCase();
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+}
+
+function relatedRecordFromRow(row, idKeys = ["id"], nameKeys = ["tranid", "name", "refname"]) {
+  const pick = (keys) => {
+    for (const key of keys) {
+      const value = row?.[key] ?? row?.[String(key).toUpperCase()];
+      if (value != null && String(value).trim()) return String(value).trim();
+    }
+    return "";
+  };
+
+  return {
+    id: pick(idKeys),
+    refName: pick(nameKeys),
+  };
+}
+
+function relatedPoRecordsFromRows(rows = []) {
+  return uniqueRelatedRecords(
+    rows.map((row) =>
+      relatedRecordFromRow(
+        row,
+        ["id", "transaction", "nextdoc", "next_doc", "nextdocid", "createdpo", "createpo"],
+        ["tranid", "tran_id", "name", "transaction_name", "nextdoc_name", "createdpo_name", "createpo_name"]
+      )
+    )
+  );
+}
+
+function rowValue(row, ...keys) {
+  for (const key of keys) {
+    const value = row?.[key] ?? row?.[String(key).toUpperCase()];
+    if (value != null && String(value).trim()) return String(value).trim();
+  }
+  return "";
+}
+
+function purchaseOrderRows(rows = []) {
+  return (Array.isArray(rows) ? rows : []).filter((row) => {
+    const recordType = rowValue(row, "recordtype", "record_type").toLowerCase();
+    const type = rowValue(row, "type", "dbstrantype").toLowerCase();
+    const tranId = rowValue(row, "tranid", "name", "transaction_name").toLowerCase();
+    return (
+      recordType === "purchaseorder" ||
+      type === "purchord" ||
+      tranId.includes("purchase order") ||
+      /^po/i.test(tranId)
+    );
+  });
+}
+
+function dropShipmentPoRecordsFromRows(rows = []) {
+  const filtered = (Array.isArray(rows) ? rows : []).filter((row) => {
+    const linkType = rowValue(row, "linktype", "link_type").toLowerCase();
+    const recordType = rowValue(row, "recordtype", "type").toLowerCase();
+    const tranId = rowValue(row, "tranid", "name");
+    return (
+      linkType.includes("drop") ||
+      recordType.includes("purchase") ||
+      /^PO/i.test(tranId)
+    );
+  });
+
+  return relatedPoRecordsFromRows(filtered);
+}
+
+async function trySuiteQlItems(query, userId, label) {
+  try {
+    const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId);
+    const items = Array.isArray(result?.items) ? result.items : [];
+    return items;
+  } catch (err) {
+    console.warn(`[intercompany-po] ${label} SuiteQL failed:`, err.message || err);
+    return [];
+  }
+}
+
+async function getIntercompanyPurchaseOrdersForSalesOrder(salesOrderId, userId) {
+  const numericId = Number(salesOrderId);
+  if (!Number.isFinite(numericId) || numericId <= 0) return [];
+  let lastAttemptedSource = "";
+
+  const lineCreatedFromRows = await trySuiteQlItems(`
+    SELECT
+      DISTINCT
+      tl.transaction AS id,
+      BUILTIN.DF(tl.transaction) AS tranid,
+      tl.createdfrom
+    FROM transactionline tl
+    WHERE tl.createdfrom = ${numericId}
+    ORDER BY tl.transaction
+  `, userId, "Transaction lines where createdfrom is sales order");
+  lastAttemptedSource = "transactionline.createdfrom-any";
+
+  const lineCreatedFromRecords = relatedPoRecordsFromRows(purchaseOrderRows(lineCreatedFromRows));
+  if (lineCreatedFromRecords.length) {
+    return {
+      records: lineCreatedFromRecords,
+      source: "transactionline.createdfrom-any",
+    };
+  }
+
+  const createdFromLineRows = await trySuiteQlItems(`
+    SELECT
+      DISTINCT
+      t.id,
+      t.tranid,
+      t.type
+    FROM transaction t
+    JOIN transactionline tl ON tl.transaction = t.id
+    WHERE t.type = 'PurchOrd'
+      AND tl.createdfrom = ${numericId}
+    ORDER BY t.id
+  `, userId, "Purchase order lines created from sales order");
+  lastAttemptedSource = "transactionline.createdfrom";
+
+  const createdFromLineRecords = relatedPoRecordsFromRows(createdFromLineRows);
+  if (createdFromLineRecords.length) {
+    return {
+      records: createdFromLineRecords,
+      source: "transactionline.createdfrom",
+    };
+  }
+
+  const transactionLinkRows = await trySuiteQlItems(`
+    SELECT
+      ntl.nextdoc AS id,
+      BUILTIN.DF(ntl.nextdoc) AS tranid,
+      ntl.linktype
+    FROM NextTransactionLink ntl
+    WHERE ntl.previousdoc = ${numericId}
+  `, userId, "Next transaction linked PO");
+  lastAttemptedSource = "NextTransactionLink";
+
+  const transactionLinkRecords = dropShipmentPoRecordsFromRows(transactionLinkRows);
+  if (transactionLinkRecords.length) {
+    return {
+      records: transactionLinkRecords,
+      source: "NextTransactionLink",
+    };
+  }
+
+  const lineLinkRows = await trySuiteQlItems(`
+    SELECT
+      ntl.nextdoc AS id,
+      BUILTIN.DF(ntl.nextdoc) AS tranid,
+      ntl.linktype
+    FROM NextTransactionLineLink ntl
+    WHERE ntl.previousdoc = ${numericId}
+  `, userId, "Drop shipment linked PO");
+  lastAttemptedSource = "NextTransactionLineLink";
+
+  const linkedRecords = dropShipmentPoRecordsFromRows(lineLinkRows);
+  if (linkedRecords.length) {
+    return {
+      records: linkedRecords,
+      source: "NextTransactionLineLink",
+    };
+  }
+
+  const createdPoRows = await trySuiteQlItems(`
+    SELECT
+      tl.createdpo AS id,
+      BUILTIN.DF(tl.createdpo) AS tranid
+    FROM transactionline tl
+    WHERE tl.transaction = ${numericId}
+      AND tl.mainline = 'F'
+      AND tl.taxline = 'F'
+      AND tl.createdpo IS NOT NULL
+  `, userId, "Line createdpo linked PO");
+  lastAttemptedSource = "transactionline.createdpo";
+
+  const createdPoRecords = relatedPoRecordsFromRows(createdPoRows);
+  if (createdPoRecords.length) {
+    return {
+      records: createdPoRecords,
+      source: "transactionline.createdpo",
+    };
+  }
+
+  return {
+    records: [],
+    source: lastAttemptedSource,
+  };
+}
+
+async function getSalesOrderLineIntercompanyPoMap(salesOrderId, userId) {
+  const numericId = Number(salesOrderId);
+  const map = new Map();
+  if (!Number.isFinite(numericId) || numericId <= 0) return map;
+
+  const rows = await trySuiteQlItems(`
+    SELECT
+      tl.id AS lineid,
+      tl.createdpo AS id,
+      BUILTIN.DF(tl.createdpo) AS tranid
+    FROM transactionline tl
+    WHERE tl.transaction = ${numericId}
+      AND tl.mainline = 'F'
+      AND tl.taxline = 'F'
+      AND tl.createdpo IS NOT NULL
+  `, userId, "Line createdpo map");
+
+  rows.forEach((row) => {
+    const lineId = String(row.lineid || "").trim();
+    if (!lineId) return;
+    map.set(lineId, {
+      id: String(row.id || "").trim(),
+      refName: String(row.tranid || row.name || row.id || "").trim(),
+    });
+  });
+
+  return map;
+}
+
+async function getTransactionItemLines(transactionId, userId) {
+  const numericId = Number(transactionId);
+  if (!Number.isFinite(numericId) || numericId <= 0) return [];
+
+  const rows = await trySuiteQlItems(`
+    SELECT
+      tl.id AS lineid,
+      tl.item,
+      tl.linesequencenumber
+    FROM transactionline tl
+    WHERE tl.transaction = ${numericId}
+      AND tl.mainline = 'F'
+      AND tl.taxline = 'F'
+    ORDER BY tl.linesequencenumber
+  `, userId, "Transaction item lines");
+
+  return rows.map((row, index) => ({
+    lineId: String(row.lineid || "").trim(),
+    itemId: String(row.item || "").trim(),
+    sequence: Number(row.linesequencenumber) || index + 1,
+    index,
+  }));
+}
+
+function restRecordEndpointFromHref(href) {
+  const value = String(href || "").trim();
+  if (!value) return "";
+  const marker = "/services/rest/record/v1";
+  const idx = value.indexOf(marker);
+  if (idx >= 0) return value.slice(idx + marker.length);
+
+  try {
+    const url = new URL(value);
+    const pathIdx = url.pathname.indexOf("/services/rest/record/v1");
+    if (pathIdx >= 0) {
+      return `${url.pathname.slice(pathIdx + marker.length)}${url.search || ""}`;
+    }
+  } catch {}
+
+  return "";
+}
+
+function sublistLineSelfEndpoint(line) {
+  const links = Array.isArray(line?.links) ? line.links : [];
+  const self = links.find((link) => String(link?.rel || "").toLowerCase() === "self") || links[0];
+  return restRecordEndpointFromHref(self?.href);
+}
+
+async function getRestTransactionItemLines(recordType, transactionId, userId) {
+  const cleanRecordType = String(recordType || "").trim();
+  const cleanTransactionId = String(transactionId || "").trim();
+  if (!cleanRecordType || !cleanTransactionId) return [];
+
+  const data = await nsGet(
+    `/${cleanRecordType}/${encodeURIComponent(cleanTransactionId)}/item?limit=1000`,
+    userId
+  );
+  const items = Array.isArray(data?.items) ? data.items : [];
+
+  return items.map((line, index) => ({
+    raw: line,
+    index,
+    endpoint: sublistLineSelfEndpoint(line),
+    itemId: String(
+      line?.item?.id ||
+        line?.item ||
+        line?.itemId ||
+        line?.itemid ||
+        ""
+    ).trim(),
+    lineId: String(line?.id || line?.line || line?.lineuniquekey || "").trim(),
+  }));
+}
+
+function findMatchingPurchaseOrderLine({ salesLines, purchaseOrderLines, salesLineId, itemId, lineIndex }) {
+  const wantedLineId = String(salesLineId || "").trim();
+  const wantedItemId = String(itemId || "").trim();
+  const selectedIndex = Number(lineIndex);
+
+  const salesLine =
+    salesLines.find((line) => line.lineId === wantedLineId) ||
+    (Number.isFinite(selectedIndex) ? salesLines[selectedIndex] : null);
+
+  const matchItemId = wantedItemId || salesLine?.itemId || "";
+  if (!matchItemId) return null;
+
+  const occurrence = salesLines
+    .filter((line) => line.itemId === matchItemId)
+    .findIndex((line) => line.lineId === (salesLine?.lineId || wantedLineId));
+
+  const sameItemPurchaseLines = purchaseOrderLines.filter((line) => line.itemId === matchItemId);
+  return sameItemPurchaseLines[Math.max(0, occurrence)] || sameItemPurchaseLines[0] || null;
+}
+
+async function patchTransactionItemLineOptions(recordType, transactionId, targetLine, optionsDisplay, userId) {
+  const cleanRecordType = String(recordType || "").trim();
+  const cleanTransactionId = String(transactionId || "").trim();
+  const line = targetLine && typeof targetLine === "object"
+    ? targetLine
+    : { lineId: String(targetLine || "").trim() };
+
+  if (!cleanRecordType || !cleanTransactionId || !String(line.lineId || "").trim()) {
+    throw new Error("Missing NetSuite transaction line details.");
+  }
+
+  const restLines = await getRestTransactionItemLines(cleanRecordType, cleanTransactionId, userId);
+  const restLine =
+    restLines.find((candidate) => candidate.lineId && candidate.lineId === String(line.lineId || "")) ||
+    restLines.find((candidate) => Number(candidate.index) === Number(line.index)) ||
+    restLines.find((candidate) => candidate.itemId && candidate.itemId === String(line.itemId || ""));
+
+  if (!restLine?.endpoint) {
+    throw new Error(`Could not resolve the NetSuite ${cleanRecordType} item line endpoint.`);
+  }
+
+  const body = { custcol_sb_itemoptionsdisplay: String(optionsDisplay || "") };
+  const result = await nsPatch(restLine.endpoint, body, userId);
+  return {
+    result,
+    endpoint: restLine.endpoint,
+    matchedRestLine: {
+      index: restLine?.index,
+      itemId: restLine?.itemId,
+      lineId: restLine?.lineId,
+    },
+  };
+}
+
+async function saveSalesOrderLineOptionsViaRestlet(salesOrderId, targetLine, optionsDisplay, userId) {
+  const cleanSalesOrderId = String(salesOrderId || "").trim();
+  const line = targetLine && typeof targetLine === "object"
+    ? targetLine
+    : { lineId: String(targetLine || "").trim() };
+
+  if (!cleanSalesOrderId || !String(line.lineId || "").trim()) {
+    throw new Error("Missing Sales Order line details for RESTlet save.");
+  }
+
+  const restLines = await getRestTransactionItemLines("salesOrder", cleanSalesOrderId, userId);
+  const restLine =
+    restLines.find((candidate) => candidate.lineId && candidate.lineId === String(line.lineId || "")) ||
+    restLines.find((candidate) => Number(candidate.index) === Number(line.index)) ||
+    restLines.find((candidate) => candidate.itemId && candidate.itemId === String(line.itemId || ""));
+  const restletLineId = String(restLine?.lineId || line.lineId || "").trim();
+
+  console.log("[line-options] Preparing Sales Order options-only RESTlet update", {
+    salesOrderId: cleanSalesOrderId,
+    suiteQlLineId: String(line.lineId || "").trim(),
+    requestedItemId: String(line.itemId || "").trim(),
+    requestedIndex: Number.isFinite(Number(line.index)) ? Number(line.index) : null,
+    restletLineId,
+    matchedRestLine: restLine
+      ? {
+          index: restLine.index,
+          itemId: restLine.itemId,
+          lineId: restLine.lineId,
+          endpoint: restLine.endpoint,
+        }
+      : null,
+    restLineSample: restLines.slice(0, 5).map((candidate) => ({
+      index: candidate.index,
+      itemId: candidate.itemId,
+      lineId: candidate.lineId,
+      endpoint: candidate.endpoint,
+    })),
+  });
+
+  const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
+  const buildRestletHeaders = async () => ({
+    ...(await getAuthHeader(restletUrl, "POST", userId, "sb")),
+    "Content-Type": "application/json",
+  });
+
+  const payload = {
+    id: cleanSalesOrderId,
+    lines: [
+      {
+        lineId: restletLineId,
+        suiteQlLineId: String(line.lineId || "").trim(),
+        itemId: String(line.itemId || "").trim(),
+        lineIndex: Number.isFinite(Number(line.index)) ? Number(line.index) : null,
+        options: String(optionsDisplay || ""),
+        optionsSummary: String(optionsDisplay || ""),
+      },
+    ],
+    headerUpdates: {},
+    deletedLineIds: [],
+    commit: false,
+    optionsOnly: true,
+  };
+  console.log("[line-options] RESTlet options-only payload", {
+    ...payload,
+    lines: payload.lines.map((payloadLine) => ({
+      ...payloadLine,
+      optionsLength: String(payloadLine.options || "").length,
+    })),
+  });
+
+  const { response, text, data } = await postRestletWithRecordChangedRetry(
+    restletUrl,
+    buildRestletHeaders,
+    JSON.stringify(payload),
+    "Save Sales Order line options"
+  );
+  console.log("[line-options] RESTlet options-only response", {
+    status: response.status,
+    ok: response.ok,
+    data,
+    rawText: text,
+  });
+
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || text || "NetSuite RESTlet failed to update Sales Order line options.");
+  }
+
+  const verifyRows = await trySuiteQlItems(`
+    SELECT
+      custcol_sb_itemoptionsdisplay AS options
+    FROM transactionline
+    WHERE transaction = ${Number(cleanSalesOrderId)}
+      AND id = ${Number(line.lineId)}
+  `, userId, "Verify Sales Order line options");
+  const verifiedOptions = String(verifyRows?.[0]?.options || "").trim();
+  const expectedOptions = String(optionsDisplay || "").trim();
+  console.log("[line-options] Sales Order options verification", {
+    salesOrderId: cleanSalesOrderId,
+    suiteQlLineId: String(line.lineId || "").trim(),
+    expectedOptions,
+    verifiedOptions,
+    matched: verifiedOptions === expectedOptions,
+    verifyRows,
+  });
+  if (expectedOptions && verifiedOptions !== expectedOptions) {
+    throw new Error("NetSuite accepted the item options update request, but the Sales Order line field did not change.");
+  }
+
+  return {
+    result: data,
+    lineId: restletLineId,
+    suiteQlLineId: String(line.lineId || "").trim(),
+    itemId: String(line.itemId || "").trim(),
+    matchedRestLine: restLine
+      ? {
+          index: restLine.index,
+          itemId: restLine.itemId,
+          lineId: restLine.lineId,
+          endpoint: restLine.endpoint,
+        }
+      : null,
+  };
+}
+
 async function getSalesOrderRelatedRecords(salesOrderId, userId) {
   const numericId = Number(salesOrderId);
   if (!Number.isFinite(numericId) || numericId <= 0) return {};
@@ -1229,10 +1710,15 @@ async function getSalesOrderRelatedRecords(salesOrderId, userId) {
     row.related_purchase_order_ids,
     row.related_purchase_order_names
   );
+  const isDistributionOrder = false;
+  const intercompanyPurchaseOrderResult = await getIntercompanyPurchaseOrdersForSalesOrder(numericId, userId);
 
   return {
     custbody_sb_pairedsalesorder: pairedSalesOrder,
     custbody_sb_relatedpurchaseorders: relatedPurchaseOrders,
+    intercompanyPurchaseOrders: intercompanyPurchaseOrderResult.records || [],
+    intercompanyPurchaseOrderSource: intercompanyPurchaseOrderResult.source || "",
+    intercompanyPurchaseOrdersNotApplicable: isDistributionOrder,
     custbody_exported_to_dispatchtrack:
       row.exported_to_dispatchtrack === true ||
       String(row.exported_to_dispatchtrack || "").trim().toUpperCase() === "T",
@@ -2035,6 +2521,127 @@ router.get("/:id/related-records", async (req, res) => {
 });
 
 /* =====================================================
+   === PATCH COMMITTED LINE OPTIONS ====================
+   ===================================================== */
+async function handleCommittedLineOptionsUpdate(req, res) {
+  try {
+    const { id } = req.params;
+    const {
+      lineId = "",
+      lineIndex = null,
+      itemId = "",
+      optionsDisplay = "",
+    } = req.body || {};
+
+    console.log("[line-options] Request received", {
+      salesOrderId: id,
+      lineId,
+      lineIndex,
+      itemId,
+      optionsDisplay,
+      optionsLength: String(optionsDisplay || "").length,
+    });
+
+    const userId = await resolveUserIdFromRequest(req);
+    const relatedRecords = await getSalesOrderRelatedRecords(id, userId);
+    const pairedSalesOrder = relatedRecords.custbody_sb_pairedsalesorder;
+    if (pairedSalesOrder?.id) {
+      return res.status(400).json({
+        ok: false,
+        error: "Options can only be edited here before the paired intercompany Sales Order exists.",
+      });
+    }
+
+    const intercompanyPo = uniqueRelatedRecords(
+      relatedRecords.intercompanyPurchaseOrders
+    )[0];
+    if (!intercompanyPo?.id) {
+      return res.status(400).json({
+        ok: false,
+        error: "No intercompany Purchase Order was found for this Sales Order.",
+      });
+    }
+
+    const [salesLines, purchaseOrderLines] = await Promise.all([
+      getTransactionItemLines(id, userId),
+      getTransactionItemLines(intercompanyPo.id, userId),
+    ]);
+
+    const salesLine =
+      salesLines.find((line) => line.lineId === String(lineId || "").trim()) ||
+      (Number.isFinite(Number(lineIndex)) ? salesLines[Number(lineIndex)] : null);
+    if (!salesLine?.lineId) {
+      return res.status(404).json({
+        ok: false,
+        error: "Could not find the Sales Order line to update.",
+      });
+    }
+
+    const purchaseOrderLine = findMatchingPurchaseOrderLine({
+      salesLines,
+      purchaseOrderLines,
+      salesLineId: salesLine.lineId,
+      itemId: itemId || salesLine.itemId,
+      lineIndex,
+    });
+    if (!purchaseOrderLine?.lineId) {
+      return res.status(404).json({
+        ok: false,
+        error: "Could not find the matching Purchase Order line to update.",
+      });
+    }
+
+    const salesOrderPatch = await saveSalesOrderLineOptionsViaRestlet(
+      id,
+      salesLine,
+      optionsDisplay,
+      userId
+    );
+    const purchaseOrderPatch = await patchTransactionItemLineOptions(
+      "purchaseOrder",
+      intercompanyPo.id,
+      purchaseOrderLine,
+      optionsDisplay,
+      userId
+    );
+
+    cacheDeleteSalesOrder(id);
+
+    return res.json({
+      ok: true,
+      salesOrderId: String(id),
+      salesOrderLineId: salesLine.lineId,
+      purchaseOrderId: intercompanyPo.id,
+      purchaseOrderLineId: purchaseOrderLine.lineId,
+      salesOrderPatch: {
+        method: "RESTlet save-only",
+        lineId: salesOrderPatch.lineId,
+        itemId: salesOrderPatch.itemId,
+        result: salesOrderPatch.result,
+      },
+      purchaseOrderPatch: {
+        endpoint: purchaseOrderPatch.endpoint,
+        matchedRestLine: purchaseOrderPatch.matchedRestLine,
+      },
+      message: "Item options updated on Sales Order and Intercompany Purchase Order.",
+    });
+  } catch (err) {
+    console.error("Line option update failed:", err.message || err);
+    return res.status(err.statusCode || 500).json({
+      ok: false,
+      error:
+        err.responseBody?.["o:errorDetails"]?.[0]?.detail ||
+        err.message ||
+        "Failed to update item options.",
+    });
+  }
+}
+
+router.post("/:id/line-options", handleCommittedLineOptionsUpdate);
+router.patch("/:id/line-options", handleCommittedLineOptionsUpdate);
+console.log("[line-options] Registered POST/PATCH /:id/line-options route");
+
+/* =====================================================
    === SAVE SALES ORDER CUSTOM FIELDS ===================
    ===================================================== */
 router.post("/:id/custom-fields", async (req, res) => {
@@ -2237,13 +2844,12 @@ router.get("/:id", async (req, res) => {
       console.warn("Could not enrich sales order Sales Executive:", err.message);
     }
 
-    if (!lite) {
-      try {
-        const relatedRecords = await getSalesOrderRelatedRecords(id, userId);
-        Object.assign(so, relatedRecords);
-      } catch (err) {
-        console.warn("⚠️ Could not enrich sales order related records:", err.message);
-      }
+    try {
+      const relatedRecords = await getSalesOrderRelatedRecords(id, userId);
+      so.relatedRecords = relatedRecords;
+      Object.assign(so, relatedRecords);
+    } catch (err) {
+      console.warn("Could not enrich sales order related records:", err.message);
     }
 
     // 🔎 Fetch *minimal* entity/customer record
@@ -2298,6 +2904,7 @@ router.get("/:id", async (req, res) => {
       );
 
       if (suiteql && Array.isArray(suiteql.items)) {
+        const lineIntercompanyPoMap = await getSalesOrderLineIntercompanyPoMap(id, userId);
         const items = suiteql.items.map((r) => {
           const itemId = String(r.item);
           const lineId = String(r.lineid || "");
@@ -2354,6 +2961,24 @@ router.get("/:id", async (req, res) => {
             r.custcol_sb_lotnumber ||
             r.CUSTCOL_SB_LOTNUMBER ||
             "";
+          const lineCreatedPoId =
+            r.createdpo ||
+            r.CREATEDPO ||
+            r.createpo ||
+            r.CREATEPO ||
+            "";
+          const lineCreatedPoName =
+            r.createdpo_name ||
+            r.CREATEDPO_NAME ||
+            r.createpo_name ||
+            r.CREATEPO_NAME ||
+            "";
+          const intercompanyPurchaseOrder = lineCreatedPoId || lineCreatedPoName
+            ? {
+                id: String(lineCreatedPoId || "").trim(),
+                refName: String(lineCreatedPoName || lineCreatedPoId || "").trim(),
+              }
+            : lineIntercompanyPoMap.get(lineId) || null;
 
           const trialOptionId =
             r.custcol_sb_30nighttrialoption ||
@@ -2401,6 +3026,11 @@ router.get("/:id", async (req, res) => {
             inventoryDetail,
             custcol_sb_epos_inventory_meta: inventoryMeta || "",
             custcol_sb_lotnumber: lotNumber || "",
+            createdpoId: intercompanyPurchaseOrder?.id || "",
+            createdpoName: intercompanyPurchaseOrder?.refName || "",
+            createpo: intercompanyPurchaseOrder,
+            createdpo: intercompanyPurchaseOrder,
+            intercompanyPurchaseOrder,
             custcol_sb_30nighttrialoption: trialOption,
             custcol_sb_itemoptionsdisplay: r.options || "",
             custcol_sb_fulfilmentlocation: {

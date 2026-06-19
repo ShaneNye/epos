@@ -76,6 +76,17 @@
       box-sizing: border-box;
     }
 
+    .inventory-number-cell {
+      min-width: 360px;
+      width: 44%;
+    }
+
+    .inventory-number-cell .invNumSel {
+      min-width: 360px;
+      font-size: 0.78rem;
+      line-height: 1.15;
+    }
+
     select:focus,
     input[type=number]:focus {
       outline: none;
@@ -189,6 +200,33 @@
       display: none !important;
     }
 
+    body.readonly-inventory #addRow,
+    body.readonly-inventory #saveBtn {
+      display: none;
+    }
+
+    body.readonly-inventory select,
+    body.readonly-inventory input {
+      background: #f3f4f6;
+      color: #374151;
+      pointer-events: none;
+    }
+
+    .readonly-banner {
+      display: none;
+      margin: 0 0 12px;
+      padding: 9px 12px;
+      border: 1px solid #bbf7d0;
+      border-radius: 6px;
+      background: #ecfdf5;
+      color: #166534;
+      font-weight: 700;
+    }
+
+    body.readonly-inventory .readonly-banner {
+      display: block;
+    }
+
     @keyframes spin {
       to {
         transform: rotate(360deg);
@@ -231,7 +269,8 @@
     </div>
   </div>
 
-  <h2>Allocate Inventory</h2>
+  <h2 id="inventoryPopupTitle">Allocate Inventory</h2>
+  <div class="readonly-banner">Inventory has already been allocated for this line. This view is read only.</div>
 
   <table id="invTable">
     <thead>
@@ -433,6 +472,7 @@
 
     const itemId = params.itemId || "";
     const detail = params.detail || "";
+    const readOnly = ["1", "true", "yes"].includes(clean(params.readonly));
     let lineQty = safeInt(params.qty || "0");
     const lineIndex = params.line || "0";
     const qtyCache = window.opener?.document.querySelector(
@@ -444,6 +484,12 @@
     const addRowBtn = document.getElementById("addRow");
     const saveBtn = document.getElementById("saveBtn");
     const noStockBackOrderMessage = document.getElementById("noStockBackOrderMessage");
+    const inventoryPopupTitle = document.getElementById("inventoryPopupTitle");
+
+    if (readOnly) {
+      document.body.classList.add("readonly-inventory");
+      if (inventoryPopupTitle) inventoryPopupTitle.textContent = "Inventory Detail";
+    }
 
     const selectedWarehouseName = window.opener?.selectedWarehouseName || "";
 
@@ -524,7 +570,21 @@
       function updateAddRowState() {
         const alloc = getAllocatedTotal();
         const hasAnyStock = stock.some((s) => safeInt(s.qty) > 0);
+        if (readOnly) {
+          if (addRowBtn) addRowBtn.disabled = true;
+          return;
+        }
         if (addRowBtn) addRowBtn.disabled = alloc >= lineQty || !hasAnyStock;
+      }
+
+      function applyReadOnlyState() {
+        if (!readOnly) return;
+        tbody.querySelectorAll("select, input").forEach((el) => {
+          el.disabled = true;
+          el.classList.add("locked-input");
+        });
+        if (addRowBtn) addRowBtn.disabled = true;
+        if (saveBtn) saveBtn.disabled = true;
       }
 
       function addRow(location = "", status = "", invNum = "", quantity = "") {
@@ -556,14 +616,25 @@
 
         function populate(select, records, placeholder, selectedVal) {
           select.innerHTML = `<option value="">${placeholder}</option>`;
+          let hasSelectedValue = false;
           records.forEach((r) => {
             const opt = document.createElement("option");
             opt.value = r.value || r.name || r;
             opt.textContent = r.name || r;
             if (r.id) opt.dataset.internalid = r.id;
-            if (selectedVal && (r.name === selectedVal || r.value === selectedVal || r === selectedVal)) opt.selected = true;
+            if (selectedVal && (r.name === selectedVal || r.value === selectedVal || r === selectedVal)) {
+              opt.selected = true;
+              hasSelectedValue = true;
+            }
             select.appendChild(opt);
           });
+          if (readOnly && selectedVal && !hasSelectedValue) {
+            const opt = document.createElement("option");
+            opt.value = selectedVal;
+            opt.textContent = selectedVal;
+            opt.selected = true;
+            select.appendChild(opt);
+          }
         }
 
         function populateLocations() {
@@ -774,7 +845,9 @@
           updateAvailable();
         });
 
-        invNumSel.addEventListener("change", updateAvailable);
+        invNumSel.addEventListener("change", () => {
+          updateAvailable();
+        });
 
         qtyInput.addEventListener("input", () => {
           const max = safeInt(qtyInput.max || "0");
@@ -790,6 +863,7 @@
         tdStatus.appendChild(statusSel);
 
         const tdInv = document.createElement("td");
+        tdInv.className = "inventory-number-cell";
         tdInv.appendChild(invNumSel);
 
         const tdQty = document.createElement("td");
@@ -809,8 +883,9 @@
         populateInventoryNumbers();
         updateAvailable();
         updateNotice();
+        applyReadOnlyState();
 
-        if (tbody.querySelectorAll("tr").length === 1) locSel.focus();
+        if (!readOnly && tbody.querySelectorAll("tr").length === 1) locSel.focus();
       }
 
       if (detail) {
@@ -829,12 +904,14 @@
       }
 
       addRowBtn.addEventListener("click", () => {
+        if (readOnly) return;
         if (remainingToAllocate() <= 0) return;
         addRow();
         updateAddRowState();
       });
 
       saveBtn.addEventListener("click", () => {
+        if (readOnly) return;
         const parts = [];
 
         tbody.querySelectorAll("tr").forEach((tr) => {
@@ -893,6 +970,7 @@
       });
 
       updateAddRowState();
+      applyReadOnlyState();
     }
   </script>
 

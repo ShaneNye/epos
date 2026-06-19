@@ -205,11 +205,27 @@
     const itemId = row.querySelector(".item-internal-id")?.value;
     if (!itemId) return alert("⚠️ Please select an item first.");
 
+    const win = window.open(
+      "about:blank",
+      "ItemOptions",
+      "width=600,height=500,resizable=yes,scrollbars=yes"
+    );
+    if (!win) {
+      alert("Please allow popups for this site to edit item options.");
+      return;
+    }
+
     window.optionsCache = window.optionsCache || {};
 
     const dbSchema = await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
     if (Object.keys(dbSchema).length) {
       window.optionsCache[itemId] = dbSchema;
+      const optionsButton = row.querySelector(".open-options");
+      if (optionsButton) {
+        optionsButton.dataset.optionsOptional = "";
+        optionsButton.disabled = false;
+        optionsButton.classList.remove("locked-input");
+      }
     } else if (!window.optionsCache[itemId]) {
       window.optionsCache[itemId] = {};
     }
@@ -217,15 +233,12 @@
     const existingSelections =
       row.querySelector(".item-options-json")?.value || "{}";
 
+    const lineIndex = row?.dataset?.line || "";
     const url = `/options.html?itemId=${encodeURIComponent(
       itemId
-    )}&selections=${encodeURIComponent(existingSelections)}`;
+    )}&selections=${encodeURIComponent(existingSelections)}&lineIndex=${encodeURIComponent(lineIndex)}`;
 
-    const win = window.open(
-      url,
-      "ItemOptions",
-      "width=600,height=500,resizable=yes,scrollbars=yes"
-    );
+    win.location.href = url;
     win?.focus();
   }
 

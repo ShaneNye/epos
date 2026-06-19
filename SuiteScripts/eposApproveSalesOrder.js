@@ -105,6 +105,123 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     return -1;
   }
 
+  function safeGetSublistValue(rec, fieldId, line) {
+    try {
+      return rec.getSublistValue({
+        sublistId: "item",
+        fieldId,
+        line,
+      });
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function findLineIndexForOptionsUpdate(soRec, update, updates) {
+    const wantedLineIds = [
+      update.lineId,
+      update.line,
+      update.lineUniqueKey,
+      update.lineuniquekey,
+      update.suiteQlLineId,
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean);
+    const updateItem = update.item && typeof update.item === "object" ? update.item.id : update.item;
+    const wantedItemId = String(update.itemId || updateItem || "").trim();
+    const wantedIndex =
+      update.lineIndex !== undefined && update.lineIndex !== null
+        ? Number(update.lineIndex)
+        : null;
+
+    const lineCount = getItemLineCount(soRec);
+    for (let i = 0; i < lineCount; i++) {
+      const currentIds = [
+        safeGetSublistValue(soRec, "line", i),
+        safeGetSublistValue(soRec, "lineuniquekey", i),
+      ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean);
+
+      if (currentIds.some((id) => wantedLineIds.indexOf(id) >= 0)) {
+        return i;
+      }
+    }
+
+    if (wantedIndex !== null && Number.isFinite(wantedIndex) && wantedIndex >= 0 && wantedIndex < lineCount) {
+      const currentItemId = String(safeGetSublistValue(soRec, "item", wantedIndex) || "").trim();
+      if (!wantedItemId || currentItemId === wantedItemId) return wantedIndex;
+    }
+
+    if (wantedItemId) {
+      const sameItemUpdates = (Array.isArray(updates) ? updates : []).filter((candidate) => {
+        const candidateItemId = String(candidate.itemId || candidate.item?.id || candidate.item || "").trim();
+        return candidateItemId === wantedItemId;
+      });
+      const wantedOccurrence = Math.max(0, sameItemUpdates.indexOf(update));
+      let seen = 0;
+
+      for (let i = 0; i < lineCount; i++) {
+        const currentItemId = String(safeGetSublistValue(soRec, "item", i) || "").trim();
+        if (currentItemId !== wantedItemId) continue;
+        if (seen === wantedOccurrence) return i;
+        seen += 1;
+      }
+    }
+
+    return -1;
+  }
+
+  function updateOptionsOnly(soRec, updates) {
+    const results = [];
+    const failures = [];
+
+    (Array.isArray(updates) ? updates : []).forEach((u) => {
+      const targetLine = findLineIndexForOptionsUpdate(soRec, u, updates);
+      const optionsValue = u.options !== undefined ? u.options : u.optionsSummary;
+
+      if (targetLine < 0) {
+        const updateItem = u.item && typeof u.item === "object" ? u.item.id : u.item;
+        failures.push({
+          lineId: String(u.lineId || u.suiteQlLineId || ""),
+          itemId: String(u.itemId || updateItem || ""),
+          error: "Line not found",
+        });
+        return;
+      }
+
+      try {
+        soRec.selectLine({
+          sublistId: "item",
+          line: targetLine,
+        });
+        setCurrentIfDefined(
+          soRec,
+          "custcol_sb_itemoptionsdisplay",
+          String(optionsValue || "")
+        );
+        soRec.commitLine({ sublistId: "item" });
+
+        results.push({
+          line: targetLine,
+          lineId: String(safeGetSublistValue(soRec, "line", targetLine) || ""),
+          lineUniqueKey: String(safeGetSublistValue(soRec, "lineuniquekey", targetLine) || ""),
+          itemId: String(safeGetSublistValue(soRec, "item", targetLine) || ""),
+        });
+      } catch (lineErr) {
+        const updateItem = u.item && typeof u.item === "object" ? u.item.id : u.item;
+        failures.push({
+          line: targetLine,
+          lineId: String(u.lineId || u.suiteQlLineId || ""),
+          itemId: String(u.itemId || updateItem || ""),
+          error: lineErr.message || String(lineErr),
+        });
+      }
+    });
+
+    return { results, failures };
+  }
+
   function removeDeletedLines(soRec, deletedLineIds) {
     if (!Array.isArray(deletedLineIds) || !deletedLineIds.length) return [];
 
@@ -542,6 +659,41 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       }
 
       const warehouseTextNorm = norm(warehouseText);
+
+      if (context.optionsOnly === true) {
+        const optionsUpdate = updateOptionsOnly(soRec, updates);
+        if (optionsUpdate.failures.length) {
+          log.error("Item options-only update failed", optionsUpdate.failures);
+          return {
+            ok: false,
+            id,
+            committed: false,
+            optionsOnly: true,
+            updatedLines: optionsUpdate.results,
+            failures: optionsUpdate.failures,
+            error: "One or more item option lines could not be updated.",
+          };
+        }
+
+        const savedId = soRec.save({
+          enableSourcing: false,
+          ignoreMandatoryFields: true,
+        });
+
+        log.audit("Item options-only update saved", {
+          id: savedId,
+          updatedLines: optionsUpdate.results,
+        });
+
+        return {
+          ok: true,
+          id: savedId,
+          committed: false,
+          optionsOnly: true,
+          updatedLines: optionsUpdate.results,
+          message: "Item options updated",
+        };
+      }
 
       const removedLineIds = removeDeletedLines(soRec, deletedLineIds);
 

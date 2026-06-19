@@ -436,6 +436,24 @@ function parseSalesViewInventoryDetailPart(part) {
   };
 }
 
+function salesViewInventoryDetailSummary(detailString) {
+  const parts = String(detailString || "")
+    .split(";")
+    .map((part) => parseSalesViewInventoryDetailPart(part))
+    .filter((detail) => detail.qty || detail.inventoryNumberName || detail.locationName);
+
+  if (!parts.length) return "";
+
+  return parts
+    .map((detail) => {
+      const qty = detail.qty ? `${detail.qty}x ` : "";
+      const lot = detail.inventoryNumberName || "Inventory detail";
+      const location = detail.locationName ? ` @ ${detail.locationName}` : "";
+      return `${qty}${lot}${location}`;
+    })
+    .join("; ");
+}
+
 function formatSalesViewInventoryDetailPart(detail) {
   return [
     detail.qty,
@@ -473,6 +491,166 @@ function buildOptionSchemaForItem(itemId) {
   return Object.keys(fromDb).length ? fromDb : {};
 }
 
+async function reconcileOptionalOptionsButton(row) {
+  const button = row?.querySelector(".open-options[data-options-optional='1']");
+  if (!button) return;
+
+  const itemId = String(row.querySelector(".item-internal-id")?.value || "").trim();
+  if (!itemId) {
+    button.remove();
+    return;
+  }
+
+  const schema = await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
+  const hasSelectableOptions = Object.keys(schema || {}).length > 0;
+
+  if (hasSelectableOptions) {
+    window.optionsCache = window.optionsCache || {};
+    window.optionsCache[itemId] = schema;
+    button.dataset.optionsOptional = "";
+    button.disabled = false;
+    button.classList.remove("locked-input");
+    return;
+  }
+
+  button.remove();
+}
+
+function ensureSalesViewOptionsDelegation() {
+  const tbody = document.getElementById("orderItemsBody");
+  if (!tbody || tbody.dataset.optionsDelegated === "1") return;
+  tbody.dataset.optionsDelegated = "1";
+
+  tbody.addEventListener("click", (event) => {
+    const button = event.target?.closest?.(".open-options");
+    if (!button || !tbody.contains(button)) return;
+    if (button.dataset.optionsBound === "1") return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (button.disabled) return;
+
+    const row = button.closest("tr.order-line");
+    if (row) window.SalesLineUI?.openOptionsWindow(row);
+  });
+}
+
+function salesViewRecordList(value) {
+  if (!value) return [];
+  if (Array.isArray(value)) return value;
+  if (value.items && Array.isArray(value.items)) return value.items;
+  return [value];
+}
+
+function salesViewHasRelatedRecord(value) {
+  return salesViewRecordList(value).some((record) =>
+    String(record?.id || record?.internalId || record?.internalid || record?.refName || "").trim()
+  );
+}
+
+function salesViewIsDistributionOrder(so = window._currentSalesOrder || {}) {
+  const candidates = [
+    so?.custbody_sb_primarystore?.refName,
+    so?.custbody_sb_primarystore?.name,
+    so?.subsidiary?.refName,
+    so?.subsidiary?.name,
+    so?.location?.refName,
+    so?.location?.name,
+    document.getElementById("store")?.selectedOptions?.[0]?.textContent,
+  ];
+  return candidates.some((value) => /distribution\s*ltd/i.test(String(value || "")));
+}
+
+function salesViewIsPendingApproval(so = window._currentSalesOrder || {}) {
+  const statusId = String(so.orderStatus?.id || so.orderstatus?.id || so.orderstatus || so.status || "")
+    .trim()
+    .toUpperCase();
+  const statusName = String(
+    so.orderStatus?.refName ||
+      so.orderstatus?.refName ||
+      so.statusRef ||
+      (typeof so.status === "object" ? so.status.refName : so.status) ||
+      ""
+  )
+    .trim()
+    .toUpperCase();
+  return statusId === "A" || `${statusId} ${statusName}`.replace(/[^A-Z]/g, "").includes("PENDINGAPPROVAL");
+}
+
+function canPatchCommittedSalesViewOptions(so = window._currentSalesOrder || {}) {
+  const related = so.relatedRecords || {};
+  const pairedSalesOrder =
+    related.custbody_sb_pairedsalesorder || so.custbody_sb_pairedsalesorder;
+  const intercompanyPurchaseOrders =
+    related.intercompanyPurchaseOrders || so.intercompanyPurchaseOrders;
+
+  return (
+    !salesViewIsPendingApproval(so) &&
+    !salesViewIsDistributionOrder(so) &&
+    !salesViewHasRelatedRecord(pairedSalesOrder) &&
+    salesViewHasRelatedRecord(intercompanyPurchaseOrders)
+  );
+}
+
+function salesViewAuthHeaders() {
+  let token = "";
+  try {
+    token = storageGet?.()?.token || "";
+  } catch {}
+  if (!token) {
+    try {
+      token = JSON.parse(localStorage.getItem("auth") || "{}")?.token || "";
+    } catch {}
+  }
+  return {
+    "Content-Type": "application/json",
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+}
+
+function selectionsToOptionsText(selections = {}) {
+  return Object.entries(selections || {})
+    .map(([field, value]) => {
+      if (Array.isArray(value) && value.length > 0) return `${field} : ${value.join(", ")}`;
+      if (value) return `${field} : ${value}`;
+      return "";
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function patchCommittedSalesViewLineOptions(row, selections) {
+  const so = window._currentSalesOrder || {};
+  const salesOrderId = so.id || so.internalId || so.internalid || window.location.pathname.split("/").pop();
+  const lineId = String(row?.dataset?.lineid || "").trim();
+  const itemId = String(row?.querySelector(".item-internal-id")?.value || "").trim();
+  const lineIndex = Number(row?.dataset?.line || 0);
+  const optionsDisplay = selectionsToOptionsText(selections);
+
+  if (!salesOrderId || !lineId || !itemId) {
+    throw new Error("Missing sales order line details for option update.");
+  }
+
+  const res = await fetch(`/api/netsuite/salesorder/${encodeURIComponent(salesOrderId)}/line-options`, {
+    method: "POST",
+    headers: salesViewAuthHeaders(),
+    body: JSON.stringify({
+      lineId,
+      lineIndex,
+      itemId,
+      optionsDisplay,
+      selections,
+    }),
+  });
+
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || data.ok === false) {
+    throw new Error(data.error || `Option update failed (${res.status})`);
+  }
+
+  return data;
+}
+
 function setInventoryButtonState(row) {
   const btn = row.querySelector(".open-inventory");
   const detailField = row.querySelector(".item-inv-detail");
@@ -507,6 +685,39 @@ function setInventoryButtonState(row) {
   } else {
     btn.textContent = "✅";
   }
+}
+
+function enhanceReadOnlyInventoryCell(row, inventoryDetail, lineIndex) {
+  const wrapper = row?.querySelector(".inventory-cell-wrapper");
+  if (!wrapper || !String(inventoryDetail || "").trim()) return;
+
+  const summary = salesViewInventoryDetailSummary(inventoryDetail) || "Allocated inventory";
+  const cell = document.createElement("div");
+  cell.className = "inventory-cell inventory-cell-allocated";
+  cell.dataset.readonlyInventory = "1";
+  cell.title = summary;
+
+  const button = document.createElement("button");
+  button.type = "button";
+  button.className = "open-inventory inventory-detail-link";
+  button.dataset.line = String(lineIndex);
+  button.textContent = "✅";
+  button.title = summary;
+  button.setAttribute("aria-label", `View allocated inventory detail: ${summary}`);
+
+  const detailField = document.createElement("input");
+  detailField.type = "hidden";
+  detailField.className = "item-inv-detail";
+  detailField.value = String(inventoryDetail || "").trim();
+
+  const summarySpan = document.createElement("span");
+  summarySpan.className = "inv-summary";
+  summarySpan.textContent = summary;
+
+  cell.append(button, detailField, summarySpan);
+  wrapper.textContent = "";
+  wrapper.appendChild(cell);
+  row.dataset.inventoryReadonly = "1";
 }
 
 function applyItemToSalesViewRow(row, item, config = {}) {
@@ -641,9 +852,15 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
   });
 
   const optionsBtn = row.querySelector(".open-options");
-  optionsBtn?.addEventListener("click", () =>
-    window.SalesLineUI?.openOptionsWindow(row)
-  );
+  if (optionsBtn && optionsBtn.dataset.optionsBound !== "1") {
+    optionsBtn.dataset.optionsBound = "1";
+    optionsBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      if (optionsBtn.disabled) return;
+      window.SalesLineUI?.openOptionsWindow(row);
+    });
+  }
 
   const deleteBtn = row.querySelector(".delete-row");
   deleteBtn?.addEventListener("click", () => {
@@ -873,12 +1090,19 @@ function applyBackOrderToSalesViewRow(row) {
 /* =========================================================
    Callbacks from popups
 ========================================================= */
-window.onOptionsSaved = function onOptionsSaved(itemId, selections) {
+window.onOptionsSaved = async function onOptionsSaved(itemId, selections, lineIndex) {
   let row = null;
 
-  row = document
-    .querySelector(`.order-line .item-internal-id[value="${itemId}"]`)
-    ?.closest(".order-line");
+  if (lineIndex != null && String(lineIndex) !== "") {
+    row = [...document.querySelectorAll("#orderItemsBody tr.order-line")]
+      .find((candidate) => String(candidate.dataset.line || "") === String(lineIndex));
+  }
+
+  if (!row) {
+    row = document
+      .querySelector(`.order-line .item-internal-id[value="${itemId}"]`)
+      ?.closest(".order-line");
+  }
 
   if (!row) {
     console.warn("⚠️ onOptionsSaved could not find target row for item:", itemId);
@@ -913,6 +1137,27 @@ window.onOptionsSaved = function onOptionsSaved(itemId, selections) {
 
   if (jsonEl) jsonEl.value = JSON.stringify(selections || {});
   if (sumEl) sumEl.innerHTML = parts.join("<br>");
+
+  if (row.dataset.patchCommittedOptions === "1") {
+    const button = row.querySelector(".open-options");
+    const originalText = button?.textContent || "Options";
+    try {
+      if (button) {
+        button.disabled = true;
+        button.textContent = "Saving...";
+      }
+      await patchCommittedSalesViewLineOptions(row, selections);
+      if (button) button.textContent = "Saved";
+      setTimeout(() => {
+        if (button) button.textContent = originalText;
+      }, 1200);
+    } catch (err) {
+      alert(err.message || "Failed to update item options.");
+      if (button) button.textContent = originalText;
+    } finally {
+      if (button) button.disabled = false;
+    }
+  }
 
   if (typeof updateOrderSummaryFromTable === "function") {
     updateOrderSummaryFromTable();
@@ -1042,6 +1287,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
   if (!tbody) return;
 
   tbody.innerHTML = "";
+  ensureSalesViewOptionsDelegation();
 
   const statusId = String(
     so?.orderStatus?.id || so?.orderstatus?.id || so?.orderstatus || so?.status || ""
@@ -1061,6 +1307,9 @@ window.renderSalesViewLines = function renderSalesViewLines({
     .toUpperCase();
   const isPending =
     statusId === "A" || `${statusId} ${statusName}`.replace(/[^A-Z]/g, "").includes("PENDINGAPPROVAL");
+  const compactStatus = `${statusId} ${statusName}`.replace(/[^A-Z]/g, "");
+  const isPendingFulfillment =
+    statusId === "B" || compactStatus.includes("PENDINGFULFILLMENT") || compactStatus.includes("PENDINGFULFILMENT");
   const lines = so?.item?.items || [];
 
   if (!lines.length) {
@@ -1171,6 +1420,11 @@ window.renderSalesViewLines = function renderSalesViewLines({
     tr.dataset.itemCategory = itemCategory;
 
     const hasEditableOptions = Object.keys(optionSchema).length > 0;
+    const canPatchCommittedOptions =
+      !isPending && canPatchCommittedSalesViewOptions(so);
+    const showOptionsEditor = (isPending && !isServiceLine) || canPatchCommittedOptions;
+    const showOptionsButton = showOptionsEditor;
+    tr.dataset.patchCommittedOptions = canPatchCommittedOptions ? "1" : "";
 
     const discountCell = isPending
       ? `<input type="number" class="item-discount" value="${discountPct.toFixed(1)}" min="0" max="100" step="0.1" />`
@@ -1248,10 +1502,10 @@ window.renderSalesViewLines = function renderSalesViewLines({
 
       <td class="options-cell">
         ${
-          isPending
-            ? hasEditableOptions
+          showOptionsEditor
+            ? showOptionsButton
               ? `
-                <button type="button" class="open-options btn-secondary small-btn">Options</button>
+                <button type="button" class="open-options btn-secondary small-btn" data-options-optional="${hasEditableOptions ? "" : "1"}">Options</button>
                 <input type="hidden" class="item-options-json" value='${JSON.stringify(existingSelections).replace(/'/g, "&apos;")}' />
                 <div class="options-summary">${optsHtml}</div>
               `
@@ -1320,6 +1574,10 @@ window.renderSalesViewLines = function renderSalesViewLines({
     tr.dataset.lotnumber = tr.dataset.inventoryMeta
       ? ""
       : String(existingLotNumber || "").trim();
+    tr.dataset.inventoryReadonly = isPendingFulfillment && inventoryDetail ? "1" : "";
+    if (isPendingFulfillment && inventoryDetail) {
+      enhanceReadOnlyInventoryCell(tr, inventoryDetail, idx);
+    }
 
     const existingTrialValue =
       line.custcol_sb_30nighttrialoption?.refName ||
@@ -1356,6 +1614,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
       const lineIdx = Number(row.dataset.line || 0);
       const line = lines[lineIdx];
       wireSalesViewRow(row, { fulfilmentMethods, existingLine: line });
+      reconcileOptionalOptionsButton(row);
     });
 
     update60NightTrialColumnVisibility();

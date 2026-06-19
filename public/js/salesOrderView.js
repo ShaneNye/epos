@@ -450,6 +450,20 @@ function renderRelatedRecords(so, orderManagementRow = null) {
     "salesorder",
     "-"
   );
+
+  if (related.intercompanyPurchaseOrdersNotApplicable) {
+    const container = document.getElementById("relatedIntercompanyPurchaseOrder");
+    if (container) container.textContent = "N/A";
+  } else {
+    renderRecordLinks(
+      "relatedIntercompanyPurchaseOrder",
+      related.intercompanyPurchaseOrders || so?.intercompanyPurchaseOrders,
+      so,
+      "purchaseorder",
+      "-"
+    );
+  }
+
   renderRecordLinks(
     "relatedSupplierPurchaseOrders",
     related.custbody_sb_relatedpurchaseorders || so?.custbody_sb_relatedpurchaseorders,
@@ -530,6 +544,7 @@ async function loadRelatedRecords(headers, so, tranId) {
 
     so._netSuiteAppBaseUrl = data.netSuiteAppBaseUrl || so._netSuiteAppBaseUrl;
     so.relatedRecords = data.relatedRecords || {};
+    Object.assign(so, so.relatedRecords);
     so.customFields = data.customFields || [];
     renderRelatedRecords(so);
     return so.relatedRecords;
@@ -894,10 +909,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     const salesOrderInternalIdForCustomFields =
       so?.id || so?.internalId || so?.internalid || tranId;
     renderRelatedRecords(so);
-    loadRelatedRecords(headers, so, salesOrderInternalIdForCustomFields).then(() => {
-      loadOrderManagementRow(headers, so, salesOrderInternalIdForCustomFields).then((orderManagementRow) => {
-        if (orderManagementRow) renderRelatedRecords(so, orderManagementRow);
-      });
+
+    await loadRelatedRecords(headers, so, salesOrderInternalIdForCustomFields);
+    loadOrderManagementRow(headers, so, salesOrderInternalIdForCustomFields).then((orderManagementRow) => {
+      if (orderManagementRow) renderRelatedRecords(so, orderManagementRow);
+    }).catch((err) => {
+      console.warn("Could not refresh related records with order-management data:", err.message || err);
     });
 
     const locations = locJson.locations || locJson.data || [];
@@ -1239,7 +1256,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       .toUpperCase();
     const compactStatusId = `${statusId} ${statusNameForEdit}`.replace(/[^A-Z]/g, "");
     const isPendingApproval = statusId === "A" || compactStatusId.includes("PENDINGAPPROVAL");
-    const isPendingFulfillment = statusId === "B" || compactStatusId.includes("PENDINGFULFILLMENT");
+    const isPendingFulfillment =
+      statusId === "B" ||
+      compactStatusId.includes("PENDINGFULFILLMENT") ||
+      compactStatusId.includes("PENDINGFULFILMENT");
 
     if (isPendingApproval) {
       window.orderPromotionsEnabled = true;
@@ -1317,6 +1337,8 @@ document.addEventListener("DOMContentLoaded", async () => {
           el.id === "newMemoBtn" ||
           el.id === "printBtn" ||
           el.id === "manageIntercompanyBtn" ||
+          el.classList.contains("open-inventory") ||
+          el.classList.contains("open-options") ||
           el.classList.contains("sales-view-tab")
         ) {
           el.disabled = false;

@@ -1230,6 +1230,25 @@ async function saveItemFaqRecord(cfg, userId, row) {
 
   if (!String(payload.name || "").trim()) throw new Error("Name is required");
 
+  // If the payload doesn't include an Icon Selector but the client provided an Icon name,
+  // try to resolve a matching Reasons To Buy Icon record and set the selector so NetSuite
+  // will reference the correct icon record instead of relying on file attach via suitelet.
+  try {
+    if (!payload.custrecord_sb_rtb_icon_selector && String(row.Icon || "").trim()) {
+      const iconName = String(row.Icon || "").trim().toLowerCase();
+      const options = await fetchReasonsToBuyIconOptions(cfg, userId).catch((err) => {
+        console.warn("Failed to load Reasons To Buy Icons for selector resolution:", err && err.message ? err.message : err);
+        return [];
+      });
+      const match = (options || []).find((opt) => String(opt.name || "").trim().toLowerCase() === iconName);
+      if (match && match.id) {
+        payload.custrecord_sb_rtb_icon_selector = { id: String(match.id) };
+      }
+    }
+  } catch (err) {
+    console.warn("Icon selector resolution failed:", err && err.message ? err.message : err);
+  }
+
   const url = isCreate
     ? `${cfg.restUrl}/${ITEM_FAQ_RECORD_TYPE}`
     : `${cfg.restUrl}/${ITEM_FAQ_RECORD_TYPE}/${encodeURIComponent(internalId)}`;
@@ -1313,7 +1332,12 @@ function reasonsValueForPayload(field, value, internalIds) {
   if (field.fieldType === "Checkbox") return value === true || String(value || "").toLowerCase() === "true";
   if (field.fieldType === "List/Record" || field.fieldType === "image") {
     const id = String(internalIds || value || "").trim();
-    return id ? { id } : null;
+    if (!id) return null;
+    // For the Reasons To Buy image field, send a plain id value instead of an object
+    if (field.fieldType === "image" && field.internalid === "custrecord_sb_rtb_icon") {
+      return id;
+    }
+    return { id };
   }
   if (field.fieldType === "multiple-select") {
     const ids = Array.isArray(internalIds) ? internalIds : normalizeMultiReferenceIds(internalIds || value);
@@ -1328,7 +1352,7 @@ async function saveReasonsToBuyRecord(cfg, userId, row) {
   const payload = {};
 
   for (const field of reasonsToBuyFields) {
-    if (field.disableField || !field.internalid) continue;
+    if (field.disableField || !field.internalid || field.skipFromPayload) continue;
     if (field.name !== "Name" && row[field.name] === undefined && row[`${field.name}_InternalId`] === undefined) continue;
     const value = row[field.name];
     const internalIds = row[`${field.name}_InternalId`];
@@ -1358,13 +1382,36 @@ async function saveReasonsToBuyRecord(cfg, userId, row) {
     throw err;
   }
 
+  // If an image file id was selected for the Icon field, apply it via the image suitelet
+  const resultResponse = body || { status: res.status };
+  const targetId = internalId || String(body?.id || body?.internalId || "");
+    try {
+    // If payload already includes the image field, no suitelet attach required.
+    const fileId = row["Icon_InternalId"];
+    if (!payload.custrecord_sb_rtb_icon && fileId && String(fileId).trim() !== "" && cfg.imageEndpoint && targetId) {
+      const suiteletUrl = cfg.imageToken ? withSuiteletToken(cfg.imageEndpoint, cfg.imageToken) : cfg.imageEndpoint;
+      const imageUrl = `${suiteletUrl}&itemid=${encodeURIComponent(targetId)}&fileid=${encodeURIComponent(String(fileId))}&fieldid=${encodeURIComponent("custrecord_sb_rtb_icon")}&rectype=${encodeURIComponent(REASONS_TO_BUY_RECORD_TYPE)}`;
+      const imgRes = await fetch(imageUrl, { method: "GET" });
+      try {
+        const imgBody = parseJson(await imgRes.text());
+        resultResponse.images = resultResponse.images || [];
+        resultResponse.images.push({ field: "Icon", fileId: String(fileId), mode: "suitelet", result: imgBody });
+      } catch (e) {
+        resultResponse.images = resultResponse.images || [];
+        resultResponse.images.push({ field: "Icon", fileId: String(fileId), mode: "suitelet", result: await imgRes.text() });
+      }
+    }
+  } catch (err) {
+    console.warn("Applying Reasons To Buy icon via suitelet failed:", err && err.message ? err.message : err);
+  }
+
   clearReasonsToBuyCaches();
   return {
     status: "Success",
-    internalId: internalId || String(body?.id || body?.internalId || ""),
+    internalId: targetId,
     name: row.Name,
     action: isCreate ? "Created" : "Updated",
-    response: body || { status: res.status },
+    response: resultResponse,
   };
 }
 

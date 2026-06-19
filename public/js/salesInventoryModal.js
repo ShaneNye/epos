@@ -139,8 +139,13 @@ document.addEventListener("click", (e) => {
     }
 
     const itemId = row.querySelector(".item-internal-id")?.value?.trim();
-    const qty = row.querySelector(".item-qty")?.value?.trim() || "0";
+    const qty =
+      row.querySelector(".item-qty")?.value?.trim() ||
+      row.querySelector(".qty")?.textContent?.trim() ||
+      row.querySelector(".item-qty-cache")?.value?.trim() ||
+      "0";
     const detail = row.dataset.invdetail || "";
+    const readOnly = row.dataset.inventoryReadonly === "1" || e.target.closest("[data-readonly-inventory]");
 
     if (!itemId) {
       alert("Please select an item before allocating inventory.");
@@ -152,7 +157,7 @@ document.addEventListener("click", (e) => {
       itemId
     )}&qty=${encodeURIComponent(qty)}&detail=${encodeURIComponent(
       detail
-    )}&line=${lineIndex}${storeFilter}`;
+    )}&line=${lineIndex}${readOnly ? "&readonly=1" : ""}${storeFilter}`;
 
     console.log("📦 Opening Inventory Detail popup:", url);
 
