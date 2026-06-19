@@ -738,8 +738,13 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function postRestletWithRecordChangedRetry(restletUrl, buildHeaders, payloadText, label) {
-  const maxAttempts = 2;
+async function postRestletWithRecordChangedRetry(
+  restletUrl,
+  buildHeaders,
+  payloadText,
+  label,
+  { maxAttempts = 2, baseDelayMs = 1200 } = {}
+) {
   let last = null;
 
   for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
@@ -759,9 +764,9 @@ async function postRestletWithRecordChangedRetry(restletUrl, buildHeaders, paylo
     }
 
     console.warn(
-      `${label} RESTlet hit RCRD_HAS_BEEN_CHANGED; retrying with a fresh NetSuite load`
+      `${label} RESTlet hit RCRD_HAS_BEEN_CHANGED; retrying with a fresh NetSuite load (${attempt}/${maxAttempts})`
     );
-    await delay(1200);
+    await delay(baseDelayMs * attempt);
   }
 
   return last;
@@ -1484,7 +1489,7 @@ async function getRestTransactionItemLines(recordType, transactionId, userId) {
   if (!cleanRecordType || !cleanTransactionId) return [];
 
   const data = await nsGet(
-    `/${cleanRecordType}/${encodeURIComponent(cleanTransactionId)}/item?limit=1000`,
+    `/${cleanRecordType}/${encodeURIComponent(cleanTransactionId)}/item`,
     userId
   );
   const items = Array.isArray(data?.items) ? data.items : [];
@@ -1522,6 +1527,104 @@ function findMatchingPurchaseOrderLine({ salesLines, purchaseOrderLines, salesLi
 
   const sameItemPurchaseLines = purchaseOrderLines.filter((line) => line.itemId === matchItemId);
   return sameItemPurchaseLines[Math.max(0, occurrence)] || sameItemPurchaseLines[0] || null;
+}
+
+function relatedRecordDocumentNumber(record) {
+  const value = String(record?.tranid || record?.refName || record?.name || record?.id || "").trim();
+  return value
+    .replace(/^Purchase\s+Order\s*#?/i, "")
+    .replace(/^Sales\s+Order\s*#?/i, "")
+    .trim();
+}
+
+function prefixedPurchaseOrderOptions(poNumber, optionsDisplay) {
+  const cleanPoNumber = String(poNumber || "").trim();
+  const cleanOptions = String(optionsDisplay || "").trim();
+  if (!cleanPoNumber) return cleanOptions;
+  if (!cleanOptions) return cleanPoNumber;
+  if (cleanOptions.toLowerCase().startsWith(cleanPoNumber.toLowerCase())) return cleanOptions;
+  return `${cleanPoNumber}\n${cleanOptions}`;
+}
+
+async function getTransactionMemo(transactionId, userId) {
+  const numericId = Number(transactionId);
+  if (!Number.isFinite(numericId) || numericId <= 0) {
+    throw new Error("Invalid transaction ID for memo lookup.");
+  }
+
+  const rows = await trySuiteQlItems(`
+    SELECT memo
+    FROM transaction
+    WHERE id = ${numericId}
+  `, userId, "Purchase Order memo lookup");
+
+  if (!rows.length) {
+    throw new Error("Could not read the Purchase Order before triggering its item-copy User Event.");
+  }
+  return String(rows[0]?.memo || "");
+}
+
+function findMatchingRestPurchaseOrderLine({ salesLines, purchaseOrderRestLines, salesLine, itemId, lineIndex }) {
+  const matchItemId = String(itemId || salesLine?.itemId || "").trim();
+  if (!matchItemId) return null;
+
+  const wantedLineId = String(salesLine?.lineId || "").trim();
+  const sameItemSalesLines = salesLines.filter((line) => line.itemId === matchItemId);
+  const occurrence = Math.max(
+    0,
+    sameItemSalesLines.findIndex((line) => line.lineId === wantedLineId)
+  );
+
+  const sameItemPurchaseLines = purchaseOrderRestLines.filter((line) => line.itemId === matchItemId);
+  if (sameItemPurchaseLines.length) {
+    return sameItemPurchaseLines[occurrence] || sameItemPurchaseLines[0] || null;
+  }
+
+  const selectedIndex = Number(lineIndex);
+  if (Number.isFinite(selectedIndex)) return purchaseOrderRestLines[selectedIndex] || null;
+  return null;
+}
+
+async function patchPurchaseOrderLineOptions({ purchaseOrder, salesLines, salesLine, itemId, lineIndex, optionsDisplay, userId }) {
+  const purchaseOrderId = String(purchaseOrder?.id || "").trim();
+  if (!purchaseOrderId) throw new Error("Missing intercompany Purchase Order ID.");
+
+  const poNumber = relatedRecordDocumentNumber(purchaseOrder);
+  const prefixedOptions = prefixedPurchaseOrderOptions(poNumber, optionsDisplay);
+  const memo = await getTransactionMemo(purchaseOrderId, userId);
+  const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
+  const buildRestletHeaders = async () => ({
+    ...(await getAuthHeader(restletUrl, "POST", userId, "sb")),
+    "Content-Type": "application/json",
+  });
+  const payload = {
+    id: purchaseOrderId,
+    recordType: "purchaseOrder",
+    triggerPoItemSet: true,
+    memo,
+  };
+
+  const { response, text, data } = await postRestletWithRecordChangedRetry(
+    restletUrl,
+    buildRestletHeaders,
+    JSON.stringify(payload),
+    "Trigger Purchase Order item-copy User Event",
+    { maxAttempts: 5, baseDelayMs: 750 }
+  );
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || text || "NetSuite RESTlet failed to update Purchase Order line options.");
+  }
+
+  return {
+    result: data,
+    endpoint: "RESTlet XEDIT trigger",
+    matchedRestLine: {
+      index: Number.isFinite(Number(lineIndex)) ? Number(lineIndex) : salesLine?.index ?? null,
+      itemId: String(itemId || salesLine?.itemId || "").trim(),
+      lineId: "",
+    },
+    value: prefixedOptions,
+  };
 }
 
 async function patchTransactionItemLineOptions(recordType, transactionId, targetLine, optionsDisplay, userId) {
@@ -1568,11 +1671,17 @@ async function saveSalesOrderLineOptionsViaRestlet(salesOrderId, targetLine, opt
     throw new Error("Missing Sales Order line details for RESTlet save.");
   }
 
-  const restLines = await getRestTransactionItemLines("salesOrder", cleanSalesOrderId, userId);
-  const restLine =
-    restLines.find((candidate) => candidate.lineId && candidate.lineId === String(line.lineId || "")) ||
-    restLines.find((candidate) => Number(candidate.index) === Number(line.index)) ||
-    restLines.find((candidate) => candidate.itemId && candidate.itemId === String(line.itemId || ""));
+  let restLines = [];
+  let restLine = null;
+  try {
+    restLines = await getRestTransactionItemLines("salesOrder", cleanSalesOrderId, userId);
+    restLine =
+      restLines.find((candidate) => candidate.lineId && candidate.lineId === String(line.lineId || "")) ||
+      restLines.find((candidate) => Number(candidate.index) === Number(line.index)) ||
+      restLines.find((candidate) => candidate.itemId && candidate.itemId === String(line.itemId || ""));
+  } catch (err) {
+    console.warn("[line-options] Could not inspect Sales Order REST item sublist; using SuiteQL line details for RESTlet update:", err.message || err);
+  }
   const restletLineId = String(restLine?.lineId || line.lineId || "").trim();
 
   console.log("[line-options] Preparing Sales Order options-only RESTlet update", {
@@ -1632,7 +1741,8 @@ async function saveSalesOrderLineOptionsViaRestlet(salesOrderId, targetLine, opt
     restletUrl,
     buildRestletHeaders,
     JSON.stringify(payload),
-    "Save Sales Order line options"
+    "Save Sales Order line options",
+    { maxAttempts: 5, baseDelayMs: 750 }
   );
   console.log("[line-options] RESTlet options-only response", {
     status: response.status,
@@ -2562,10 +2672,7 @@ async function handleCommittedLineOptionsUpdate(req, res) {
       });
     }
 
-    const [salesLines, purchaseOrderLines] = await Promise.all([
-      getTransactionItemLines(id, userId),
-      getTransactionItemLines(intercompanyPo.id, userId),
-    ]);
+    const salesLines = await getTransactionItemLines(id, userId);
 
     const salesLine =
       salesLines.find((line) => line.lineId === String(lineId || "").trim()) ||
@@ -2577,33 +2684,32 @@ async function handleCommittedLineOptionsUpdate(req, res) {
       });
     }
 
-    const purchaseOrderLine = findMatchingPurchaseOrderLine({
-      salesLines,
-      purchaseOrderLines,
-      salesLineId: salesLine.lineId,
-      itemId: itemId || salesLine.itemId,
-      lineIndex,
-    });
-    if (!purchaseOrderLine?.lineId) {
-      return res.status(404).json({
-        ok: false,
-        error: "Could not find the matching Purchase Order line to update.",
-      });
-    }
-
     const salesOrderPatch = await saveSalesOrderLineOptionsViaRestlet(
       id,
       salesLine,
       optionsDisplay,
       userId
     );
-    const purchaseOrderPatch = await patchTransactionItemLineOptions(
-      "purchaseOrder",
-      intercompanyPo.id,
-      purchaseOrderLine,
-      optionsDisplay,
-      userId
-    );
+
+    const warnings = [];
+    let purchaseOrderPatch = null;
+    try {
+      purchaseOrderPatch = await patchPurchaseOrderLineOptions({
+        purchaseOrder: intercompanyPo,
+        salesLines,
+        salesLine,
+        itemId: itemId || salesLine.itemId,
+        lineIndex,
+        optionsDisplay,
+        userId,
+      });
+    } catch (poErr) {
+      console.warn("[line-options] Purchase Order line options update failed:", poErr.message || poErr);
+      warnings.push(
+        poErr.message ||
+          "Sales Order options were updated, but the matching Purchase Order line could not be updated."
+      );
+    }
 
     cacheDeleteSalesOrder(id);
 
@@ -2612,17 +2718,21 @@ async function handleCommittedLineOptionsUpdate(req, res) {
       salesOrderId: String(id),
       salesOrderLineId: salesLine.lineId,
       purchaseOrderId: intercompanyPo.id,
-      purchaseOrderLineId: purchaseOrderLine.lineId,
+      purchaseOrderLineId: purchaseOrderPatch?.matchedRestLine?.lineId || "",
       salesOrderPatch: {
         method: "RESTlet save-only",
         lineId: salesOrderPatch.lineId,
         itemId: salesOrderPatch.itemId,
         result: salesOrderPatch.result,
       },
-      purchaseOrderPatch: {
-        endpoint: purchaseOrderPatch.endpoint,
-        matchedRestLine: purchaseOrderPatch.matchedRestLine,
-      },
+      purchaseOrderPatch: purchaseOrderPatch
+        ? {
+            endpoint: purchaseOrderPatch.endpoint,
+            matchedRestLine: purchaseOrderPatch.matchedRestLine,
+            value: purchaseOrderPatch.value,
+          }
+        : null,
+      warnings,
       message: "Item options updated on Sales Order and Intercompany Purchase Order.",
     });
   } catch (err) {

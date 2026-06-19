@@ -217,18 +217,8 @@
 
     window.optionsCache = window.optionsCache || {};
 
-    const dbSchema = await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
-    if (Object.keys(dbSchema).length) {
-      window.optionsCache[itemId] = dbSchema;
-      const optionsButton = row.querySelector(".open-options");
-      if (optionsButton) {
-        optionsButton.dataset.optionsOptional = "";
-        optionsButton.disabled = false;
-        optionsButton.classList.remove("locked-input");
-      }
-    } else if (!window.optionsCache[itemId]) {
-      window.optionsCache[itemId] = {};
-    }
+    const initialSchema = getOptionSchemaForItem(itemId, window.itemDataCache?.[itemId] || {});
+    if (!window.optionsCache[itemId]) window.optionsCache[itemId] = initialSchema || {};
 
     const existingSelections =
       row.querySelector(".item-options-json")?.value || "{}";
@@ -240,6 +230,21 @@
 
     win.location.href = url;
     win?.focus();
+
+    window.itemOptionsCache?.getOptionsForItem?.(itemId)
+      .then((dbSchema) => {
+        if (!dbSchema || !Object.keys(dbSchema).length) return;
+        window.optionsCache[itemId] = dbSchema;
+        const optionsButton = row.querySelector(".open-options");
+        if (optionsButton) {
+          optionsButton.dataset.optionsOptional = "";
+          optionsButton.disabled = false;
+          optionsButton.classList.remove("locked-input");
+        }
+      })
+      .catch((err) => {
+        console.warn("Failed to refresh item options before popup open:", err);
+      });
   }
 
   function setupPriceSync(row) {

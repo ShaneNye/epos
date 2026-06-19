@@ -8,6 +8,7 @@
   let memoryCache = null;
   let inFlight = null;
   const itemInFlight = new Map();
+  let localStorageQuotaExceeded = false;
 
   function now() {
     return Date.now();
@@ -103,10 +104,16 @@
 
     memoryCache = payload;
 
-    try {
-      localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
-    } catch (err) {
-      console.warn("Failed to write item options cache:", err);
+    if (!localStorageQuotaExceeded) {
+      try {
+        localStorage.setItem(CACHE_KEY, JSON.stringify(payload));
+      } catch (err) {
+        localStorageQuotaExceeded = true;
+        try {
+          localStorage.removeItem(CACHE_KEY);
+        } catch {}
+        console.warn("Item options cache is too large for localStorage; using in-memory cache for this session.");
+      }
     }
 
     return payload;

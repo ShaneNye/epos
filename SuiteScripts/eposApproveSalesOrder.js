@@ -222,6 +222,51 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     return { results, failures };
   }
 
+  function updateOptionsOnlyStatic(transactionRec, updates) {
+    const results = [];
+    const failures = [];
+
+    (Array.isArray(updates) ? updates : []).forEach((u) => {
+      const targetLine = findLineIndexForOptionsUpdate(transactionRec, u, updates);
+      const optionsValue = u.options !== undefined ? u.options : u.optionsSummary;
+      const updateItem = u.item && typeof u.item === "object" ? u.item.id : u.item;
+
+      if (targetLine < 0) {
+        failures.push({
+          lineId: String(u.lineId || u.suiteQlLineId || ""),
+          itemId: String(u.itemId || updateItem || ""),
+          error: "Line not found",
+        });
+        return;
+      }
+
+      try {
+        transactionRec.setSublistValue({
+          sublistId: "item",
+          fieldId: "custcol_sb_itemoptionsdisplay",
+          line: targetLine,
+          value: String(optionsValue || ""),
+        });
+
+        results.push({
+          line: targetLine,
+          lineId: String(safeGetSublistValue(transactionRec, "line", targetLine) || ""),
+          lineUniqueKey: String(safeGetSublistValue(transactionRec, "lineuniquekey", targetLine) || ""),
+          itemId: String(safeGetSublistValue(transactionRec, "item", targetLine) || ""),
+        });
+      } catch (lineErr) {
+        failures.push({
+          line: targetLine,
+          lineId: String(u.lineId || u.suiteQlLineId || ""),
+          itemId: String(u.itemId || updateItem || ""),
+          error: lineErr.message || String(lineErr),
+        });
+      }
+    });
+
+    return { results, failures };
+  }
+
   function removeDeletedLines(soRec, deletedLineIds) {
     if (!Array.isArray(deletedLineIds) || !deletedLineIds.length) return [];
 
@@ -491,12 +536,17 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       if (!context.id) {
         throw error.create({
           name: "MISSING_ID",
-          message: "Sales Order ID (context.id) is required.",
+          message: "Transaction ID (context.id) is required.",
         });
       }
 
       const id = Number(context.id);
       const doCommit = context.commit !== false;
+      const requestedRecordType = norm(context.recordType).replace(/[^a-z]/g, "");
+      const isPurchaseOrder = requestedRecordType === "purchaseorder";
+      const transactionRecordType = isPurchaseOrder
+        ? record.Type.PURCHASE_ORDER
+        : record.Type.SALES_ORDER;
 
       const lines = Array.isArray(context.lines) ? context.lines : [];
       const deletedLineIds = Array.isArray(context.deletedLineIds)
@@ -504,6 +554,29 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
         : [];
 
       const updates = Array.isArray(context.updates) ? context.updates : lines;
+
+      if (context.triggerPoItemSet === true && isPurchaseOrder) {
+        record.submitFields({
+          type: record.Type.PURCHASE_ORDER,
+          id,
+          values: {
+            memo: String(context.memo == null ? "" : context.memo),
+          },
+          options: {
+            enableSourcing: false,
+            ignoreMandatoryFields: true,
+          },
+        });
+
+        return {
+          ok: true,
+          id,
+          recordType: "purchaseOrder",
+          triggered: true,
+          triggerType: "XEDIT",
+          message: "Purchase Order item-copy User Event triggered",
+        };
+      }
 
       log.audit("📦 Loading Sales Order (dynamic mode)", {
         id,
@@ -513,10 +586,42 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       });
 
       const soRec = record.load({
-        type: record.Type.SALES_ORDER,
+        type: transactionRecordType,
         id,
-        isDynamic: true,
+        isDynamic: !isPurchaseOrder,
       });
+
+      if (context.optionsOnly === true && isPurchaseOrder) {
+        const optionsUpdate = updateOptionsOnlyStatic(soRec, updates);
+        if (optionsUpdate.failures.length) {
+          log.error("Purchase Order item options-only update failed", optionsUpdate.failures);
+          return {
+            ok: false,
+            id,
+            recordType: "purchaseOrder",
+            committed: false,
+            optionsOnly: true,
+            updatedLines: optionsUpdate.results,
+            failures: optionsUpdate.failures,
+            error: "The Purchase Order item options line could not be updated.",
+          };
+        }
+
+        const savedId = soRec.save({
+          enableSourcing: false,
+          ignoreMandatoryFields: true,
+        });
+
+        return {
+          ok: true,
+          id: savedId,
+          recordType: "purchaseOrder",
+          committed: false,
+          optionsOnly: true,
+          updatedLines: optionsUpdate.results,
+          message: "Purchase Order item options updated",
+        };
+      }
 
       const orderStatusValue = soRec.getValue({ fieldId: "orderstatus" });
       const orderStatusText = soRec.getText({ fieldId: "orderstatus" });
