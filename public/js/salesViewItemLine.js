@@ -486,9 +486,27 @@ function getSalesViewLineIndex(row, fallback) {
   return idx >= 0 ? idx : fallback;
 }
 
+function optionSchemaHasSelectableValues(schema) {
+  return Object.values(schema || {}).some((entry) => {
+    const values = Array.isArray(entry)
+      ? entry
+      : Array.isArray(entry?.values)
+        ? entry.values
+        : Array.isArray(entry?.options)
+          ? entry.options
+          : [];
+    return values.some((value) => {
+      const candidate = value && typeof value === "object"
+        ? value.label ?? value.name ?? value.text ?? value.value ?? value.id
+        : value;
+      return candidate !== undefined && candidate !== null && String(candidate).trim() !== "";
+    });
+  });
+}
+
 function buildOptionSchemaForItem(itemId) {
   const fromDb = window.itemOptionsCache?.getOptionsForItemSync?.(itemId) || {};
-  return Object.keys(fromDb).length ? fromDb : {};
+  return optionSchemaHasSelectableValues(fromDb) ? fromDb : {};
 }
 
 async function reconcileOptionalOptionsButton(row) {
@@ -502,12 +520,14 @@ async function reconcileOptionalOptionsButton(row) {
   }
 
   const schema = await window.itemOptionsCache?.getOptionsForItem?.(itemId).catch(() => ({})) || {};
-  const hasSelectableOptions = Object.keys(schema || {}).length > 0;
+  const hasSelectableOptions = optionSchemaHasSelectableValues(schema);
 
   if (hasSelectableOptions) {
     window.optionsCache = window.optionsCache || {};
     window.optionsCache[itemId] = schema;
     button.dataset.optionsOptional = "";
+    button.hidden = false;
+    button.removeAttribute("aria-hidden");
     button.disabled = false;
     button.classList.remove("locked-input");
     return;
@@ -579,17 +599,163 @@ function salesViewIsPendingApproval(so = window._currentSalesOrder || {}) {
 
 function canPatchCommittedSalesViewOptions(so = window._currentSalesOrder || {}) {
   const related = so.relatedRecords || {};
-  const pairedSalesOrder =
-    related.custbody_sb_pairedsalesorder || so.custbody_sb_pairedsalesorder;
   const intercompanyPurchaseOrders =
     related.intercompanyPurchaseOrders || so.intercompanyPurchaseOrders;
 
   return (
     !salesViewIsPendingApproval(so) &&
     !salesViewIsDistributionOrder(so) &&
-    !salesViewHasRelatedRecord(pairedSalesOrder) &&
     salesViewHasRelatedRecord(intercompanyPurchaseOrders)
   );
+}
+
+function salesViewPairedSalesOrder(so = window._currentSalesOrder || {}) {
+  const related = so.relatedRecords || {};
+  return related.custbody_sb_pairedsalesorder || so.custbody_sb_pairedsalesorder || null;
+}
+
+function salesViewPreferredSupplier(item = {}) {
+  const keys = [
+    "Preferred Supplier",
+    "Preferred Supplier Name",
+    "preferredSupplier",
+    "preferredsupplier",
+    "Preferred Vendor",
+    "preferredVendor",
+    "preferredvendor",
+    "preferred_vendor",
+    "Supplier Name",
+    "supplierName",
+    "Vendor Name",
+    "vendorname",
+    "vendor",
+  ];
+  for (const key of keys) {
+    const value = item?.[key];
+    if (value && typeof value === "object") {
+      const display = value.refName ?? value.name ?? value.text ?? value.displayValue ?? value.value ?? value.id;
+      if (display !== undefined && display !== null && String(display).trim()) return String(display).trim();
+    } else if (value !== undefined && value !== null && String(value).trim()) {
+      return String(value).trim();
+    }
+  }
+  return "the preferred supplier";
+}
+
+let salesViewVsaSupplierMapPromise = null;
+
+async function salesViewVsaPreferredSupplier(itemId, fallbackItem = {}) {
+  const id = String(itemId || "").trim();
+  if (!id) return salesViewPreferredSupplier(fallbackItem);
+
+  if (!salesViewVsaSupplierMapPromise) {
+    salesViewVsaSupplierMapPromise = fetch("/api/netsuite/vsa-item-data", {
+      headers: salesViewAuthHeaders(),
+      cache: "no-store",
+    })
+      .then(async (response) => {
+        if (!response.ok) throw new Error(`VSA item data returned ${response.status}`);
+        const data = await response.json();
+        const rows = Array.isArray(data?.results)
+          ? data.results
+          : Array.isArray(data?.items)
+            ? data.items
+            : Array.isArray(data)
+              ? data
+              : [];
+        const suppliers = new Map();
+        rows.forEach((row) => {
+          const rowId = String(
+            row?.["Internal ID"] ?? row?.internalId ?? row?.internalid ?? row?.id ?? ""
+          ).trim();
+          const supplier = String(
+            row?.["Preferred Supplier"] ?? row?.preferredSupplier ?? row?.preferredsupplier ?? ""
+          ).trim();
+          if (rowId && supplier) suppliers.set(rowId, supplier);
+        });
+        return suppliers;
+      })
+      .catch((err) => {
+        console.warn("Could not load preferred suppliers from VSA item data:", err.message || err);
+        return new Map();
+      });
+  }
+
+  const supplierMap = await salesViewVsaSupplierMapPromise;
+  return supplierMap.get(id) || salesViewPreferredSupplier(fallbackItem);
+}
+
+function confirmPairedOrderFabricChange(supplierName) {
+  return new Promise((resolve) => {
+    const dialog = document.createElement("dialog");
+    dialog.className = "paired-options-confirmation";
+    dialog.innerHTML = `
+      <form method="dialog" class="paired-options-confirmation__form">
+        <h3>Confirm fabric change</h3>
+        <p>An Intercompany sales order has already been generated on this sale - Any External Supplier purchase order has already been sent.</p>
+        <p class="paired-options-confirmation__prompt"></p>
+        <label for="pairedOptionsNotes">Additional notes</label>
+        <textarea id="pairedOptionsNotes" rows="4" placeholder="any other notes...."></textarea>
+        <div class="paired-options-confirmation__actions">
+          <button type="button" class="btn-secondary" data-action="cancel">Cancel</button>
+          <button type="submit" class="btn-primary" value="confirm">Confirm change</button>
+        </div>
+      </form>
+    `;
+    dialog.querySelector(".paired-options-confirmation__prompt").textContent =
+      `Please confirm you have contacted ${supplierName} and agreed the fabric can be changed.`;
+
+    const finish = (result) => {
+      if (dialog.open) dialog.close();
+      dialog.remove();
+      resolve(result);
+    };
+
+    dialog.querySelector('[data-action="cancel"]')?.addEventListener("click", () => finish(null));
+    dialog.addEventListener("cancel", (event) => {
+      event.preventDefault();
+      finish(null);
+    });
+    dialog.querySelector("form")?.addEventListener("submit", (event) => {
+      event.preventDefault();
+      finish({
+        confirmed: true,
+        supplierName,
+        notes: String(dialog.querySelector("textarea")?.value || "").trim(),
+      });
+    });
+
+    document.body.appendChild(dialog);
+    dialog.showModal();
+    dialog.querySelector("textarea")?.focus();
+  });
+}
+
+function showPairedOptionsSaveProgress() {
+  const dialog = document.createElement("dialog");
+  dialog.className = "paired-options-progress";
+  dialog.innerHTML = `
+    <div class="paired-options-progress__content" role="status" aria-live="polite">
+      <span class="paired-options-progress__spinner" aria-hidden="true"></span>
+      <div>
+        <h3>Updating item options</h3>
+        <p>Preparing...</p>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(dialog);
+  dialog.showModal();
+
+  return {
+    setStage(stage) {
+      const text = dialog.querySelector("p");
+      if (text) text.textContent = stage || "Saving...";
+    },
+    close() {
+      if (dialog.open) dialog.close();
+      dialog.remove();
+    },
+  };
 }
 
 function salesViewAuthHeaders() {
@@ -619,29 +785,59 @@ function selectionsToOptionsText(selections = {}) {
     .join("\n");
 }
 
-async function patchCommittedSalesViewLineOptions(row, selections) {
+async function patchCommittedSalesViewLineOptions(row, selections, pairedConfirmation = null, onProgress = null) {
   const so = window._currentSalesOrder || {};
   const salesOrderId = so.id || so.internalId || so.internalid || window.location.pathname.split("/").pop();
   const lineId = String(row?.dataset?.lineid || "").trim();
   const itemId = String(row?.querySelector(".item-internal-id")?.value || "").trim();
   const lineIndex = Number(row?.dataset?.line || 0);
   const optionsDisplay = selectionsToOptionsText(selections);
+  const requestId = pairedConfirmation
+    ? (window.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(16).slice(2)}`)
+    : "";
 
   if (!salesOrderId || !lineId || !itemId) {
     throw new Error("Missing sales order line details for option update.");
   }
 
-  const res = await fetch(`/api/netsuite/salesorder/${encodeURIComponent(salesOrderId)}/line-options`, {
-    method: "POST",
-    headers: salesViewAuthHeaders(),
-    body: JSON.stringify({
-      lineId,
-      lineIndex,
-      itemId,
-      optionsDisplay,
-      selections,
-    }),
-  });
+  let progressTimer = null;
+  let progressBusy = false;
+  if (requestId && typeof onProgress === "function") {
+    onProgress("Saving... Sales Order");
+    progressTimer = window.setInterval(async () => {
+      if (progressBusy) return;
+      progressBusy = true;
+      try {
+        const progressRes = await fetch(
+          `/api/netsuite/salesorder/line-options-progress/${encodeURIComponent(requestId)}`,
+          { headers: salesViewAuthHeaders(), cache: "no-store" }
+        );
+        const progress = await progressRes.json().catch(() => ({}));
+        if (progress?.stage) onProgress(progress.stage);
+      } catch {} finally {
+        progressBusy = false;
+      }
+    }, 300);
+  }
+
+  let res;
+  try {
+    res = await fetch(`/api/netsuite/salesorder/${encodeURIComponent(salesOrderId)}/line-options`, {
+      method: "POST",
+      headers: salesViewAuthHeaders(),
+      body: JSON.stringify({
+        lineId,
+        lineIndex,
+        itemId,
+        optionsDisplay,
+        selections,
+        pairedConfirmation,
+        requestId,
+      }),
+    });
+  } finally {
+    if (progressTimer) window.clearInterval(progressTimer);
+  }
 
   const data = await res.json().catch(() => ({}));
   if (!res.ok || data.ok === false) {
@@ -1109,6 +1305,15 @@ window.onOptionsSaved = async function onOptionsSaved(itemId, selections, lineIn
     return;
   }
 
+  let pairedConfirmation = null;
+  const pairedSalesOrder = salesViewPairedSalesOrder();
+  if (row.dataset.patchCommittedOptions === "1" && salesViewHasRelatedRecord(pairedSalesOrder)) {
+    const itemData = (window.items || []).find((item) => getItemInternalId(item) === String(itemId));
+    const supplierName = await salesViewVsaPreferredSupplier(itemId, itemData || {});
+    pairedConfirmation = await confirmPairedOrderFabricChange(supplierName);
+    if (!pairedConfirmation) return;
+  }
+
   let jsonEl = row.querySelector(".item-options-json");
   let sumEl = row.querySelector(".options-summary");
   const optCell = row.querySelector(".options-cell");
@@ -1141,20 +1346,35 @@ window.onOptionsSaved = async function onOptionsSaved(itemId, selections, lineIn
   if (row.dataset.patchCommittedOptions === "1") {
     const button = row.querySelector(".open-options");
     const originalText = button?.textContent || "Options";
+    const progressDialog = pairedConfirmation ? showPairedOptionsSaveProgress() : null;
     try {
       if (button) {
         button.disabled = true;
         button.textContent = "Saving...";
       }
-      await patchCommittedSalesViewLineOptions(row, selections);
+      const result = await patchCommittedSalesViewLineOptions(
+        row,
+        selections,
+        pairedConfirmation,
+        (stage) => progressDialog?.setStage(stage)
+      );
+      progressDialog?.setStage("Saved");
+      if (pairedConfirmation && Array.isArray(result?.warnings) && result.warnings.length) {
+        console.warn("Paired option update warnings:", result.warnings);
+      }
+      if (pairedConfirmation) {
+        window.postMessage({ action: "refresh-memos" }, "*");
+      }
       if (button) button.textContent = "Saved";
       setTimeout(() => {
         if (button) button.textContent = originalText;
       }, 1200);
     } catch (err) {
+      progressDialog?.setStage("Save failed");
       alert(err.message || "Failed to update item options.");
       if (button) button.textContent = originalText;
     } finally {
+      window.setTimeout(() => progressDialog?.close(), 500);
       if (button) button.disabled = false;
     }
   }
@@ -1419,7 +1639,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
     tr.dataset.itemClass = itemClass;
     tr.dataset.itemCategory = itemCategory;
 
-    const hasEditableOptions = Object.keys(optionSchema).length > 0;
+    const hasEditableOptions = optionSchemaHasSelectableValues(optionSchema);
     const canPatchCommittedOptions =
       !isPending && canPatchCommittedSalesViewOptions(so);
     const showOptionsEditor = (isPending && !isServiceLine) || canPatchCommittedOptions;
@@ -1505,7 +1725,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
           showOptionsEditor
             ? showOptionsButton
               ? `
-                <button type="button" class="open-options btn-secondary small-btn" data-options-optional="${hasEditableOptions ? "" : "1"}">Options</button>
+                <button type="button" class="open-options btn-secondary small-btn" data-options-optional="${hasEditableOptions ? "" : "1"}" ${hasEditableOptions ? "" : "hidden aria-hidden=\"true\""}>Options</button>
                 <input type="hidden" class="item-options-json" value='${JSON.stringify(existingSelections).replace(/'/g, "&apos;")}' />
                 <div class="options-summary">${optsHtml}</div>
               `
@@ -1614,7 +1834,6 @@ window.renderSalesViewLines = function renderSalesViewLines({
       const lineIdx = Number(row.dataset.line || 0);
       const line = lines[lineIdx];
       wireSalesViewRow(row, { fulfilmentMethods, existingLine: line });
-      reconcileOptionalOptionsButton(row);
     });
 
     update60NightTrialColumnVisibility();
@@ -1626,6 +1845,10 @@ window.renderSalesViewLines = function renderSalesViewLines({
     updateVatFreeColumnVisibility();
     update60NightTrialColumnVisibility();
   }
+
+  tbody.querySelectorAll("tr.order-line").forEach((row) => {
+    reconcileOptionalOptionsButton(row);
+  });
 };
 
 /* =========================================================

@@ -1385,3 +1385,99 @@ body.sidebar-expanded .order-upsell-panel {
 .suggestion-add-btn:hover {
   background: #eef6ff;
 }
+
+.paired-options-confirmation {
+  width: min(560px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.22);
+  color: #102a43;
+}
+
+.paired-options-confirmation::backdrop {
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.paired-options-confirmation__form {
+  display: grid;
+  gap: 14px;
+  padding: 22px;
+}
+
+.paired-options-confirmation h3,
+.paired-options-confirmation p {
+  margin: 0;
+}
+
+.paired-options-confirmation__prompt {
+  font-weight: 700;
+}
+
+.paired-options-confirmation label {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.paired-options-confirmation textarea {
+  width: 100%;
+  min-height: 96px;
+  resize: vertical;
+  box-sizing: border-box;
+  padding: 10px;
+  border: 1px solid #cfd8e3;
+  border-radius: 6px;
+  font: inherit;
+}
+
+.paired-options-confirmation textarea:focus {
+  outline: 2px solid rgba(0, 129, 171, 0.2);
+  border-color: #0081ab;
+}
+
+.paired-options-confirmation__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.paired-options-progress {
+  width: min(430px, calc(100vw - 32px));
+  padding: 0;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(15, 23, 42, 0.22);
+  color: #102a43;
+}
+
+.paired-options-progress::backdrop {
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.paired-options-progress__content {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 24px;
+}
+
+.paired-options-progress h3,
+.paired-options-progress p {
+  margin: 0;
+}
+
+.paired-options-progress p {
+  margin-top: 5px;
+  color: #52667a;
+  font-weight: 700;
+}
+
+.paired-options-progress__spinner {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  border: 3px solid #d9e2ec;
+  border-top-color: #0081ab;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}

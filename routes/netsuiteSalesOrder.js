@@ -9,6 +9,7 @@ const {
   nsGet,
   nsPostRaw,
   nsPatch,
+  nsRestlet,
   getAuthHeader,
 } = require("../netsuiteClient");
 const {
@@ -35,9 +36,20 @@ const soCache = new Map(); // key -> { expiresAt, data, inFlight }
 const LOCATION_FEED_TTL_MS = 10 * 60 * 1000;
 const locationFeedCache = { expiresAt: 0, rows: null, inFlight: null };
 const inventoryNumberCache = new Map();
+const lineOptionsProgress = new Map();
 const SALES_ORDER_PENDING_APPROVAL_STATUS = { id: "A" };
 const TRANSFER_ORDER_APPROVED_STATUS = { id: "B" };
 const SALES_ORDER_PENDING_APPROVAL_LEGACY_STATUS = "A";
+
+function setLineOptionsProgress(requestId, stage, error = "") {
+  const key = String(requestId || "").trim();
+  if (!key) return;
+  lineOptionsProgress.set(key, { stage, error, updatedAt: Date.now() });
+  setTimeout(() => {
+    const current = lineOptionsProgress.get(key);
+    if (current && Date.now() - current.updatedAt >= 60_000) lineOptionsProgress.delete(key);
+  }, 61_000);
+}
 
 function sendNoStore(res) {
   res.set({
@@ -1627,6 +1639,34 @@ async function patchPurchaseOrderLineOptions({ purchaseOrder, salesLines, salesL
   };
 }
 
+async function createPairedFabricChangeMemo({ salesOrderId, notes, session, userId }) {
+  const memoRestletUrl = process.env.MEMO_RESTLET_URL;
+  if (!memoRestletUrl) throw new Error("MEMO_RESTLET_URL is not configured.");
+
+  const cleanNotes = String(notes || "").trim();
+  const memo = [
+    "I confirm I have contacted the supplier before changing the fabric option",
+    `Additional notes: ${cleanNotes || "None"}`,
+  ].join("\n\n");
+  const result = await nsRestlet(
+    memoRestletUrl,
+    {
+      orderId: String(salesOrderId),
+      title: "Fabric option change confirmation",
+      type: "Phone",
+      memo,
+      authorId: session?.netsuiteid || session?.netsuiteId || null,
+    },
+    userId,
+    "POST"
+  );
+
+  if (!result?.ok) {
+    throw new Error(result?.error || "Could not create the fabric change confirmation memo.");
+  }
+  return result;
+}
+
 async function patchTransactionItemLineOptions(recordType, transactionId, targetLine, optionsDisplay, userId) {
   const cleanRecordType = String(recordType || "").trim();
   const cleanTransactionId = String(transactionId || "").trim();
@@ -1671,40 +1711,7 @@ async function saveSalesOrderLineOptionsViaRestlet(salesOrderId, targetLine, opt
     throw new Error("Missing Sales Order line details for RESTlet save.");
   }
 
-  let restLines = [];
-  let restLine = null;
-  try {
-    restLines = await getRestTransactionItemLines("salesOrder", cleanSalesOrderId, userId);
-    restLine =
-      restLines.find((candidate) => candidate.lineId && candidate.lineId === String(line.lineId || "")) ||
-      restLines.find((candidate) => Number(candidate.index) === Number(line.index)) ||
-      restLines.find((candidate) => candidate.itemId && candidate.itemId === String(line.itemId || ""));
-  } catch (err) {
-    console.warn("[line-options] Could not inspect Sales Order REST item sublist; using SuiteQL line details for RESTlet update:", err.message || err);
-  }
-  const restletLineId = String(restLine?.lineId || line.lineId || "").trim();
-
-  console.log("[line-options] Preparing Sales Order options-only RESTlet update", {
-    salesOrderId: cleanSalesOrderId,
-    suiteQlLineId: String(line.lineId || "").trim(),
-    requestedItemId: String(line.itemId || "").trim(),
-    requestedIndex: Number.isFinite(Number(line.index)) ? Number(line.index) : null,
-    restletLineId,
-    matchedRestLine: restLine
-      ? {
-          index: restLine.index,
-          itemId: restLine.itemId,
-          lineId: restLine.lineId,
-          endpoint: restLine.endpoint,
-        }
-      : null,
-    restLineSample: restLines.slice(0, 5).map((candidate) => ({
-      index: candidate.index,
-      itemId: candidate.itemId,
-      lineId: candidate.lineId,
-      endpoint: candidate.endpoint,
-    })),
-  });
+  const restletLineId = String(line.lineId || "").trim();
 
   const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
   const buildRestletHeaders = async () => ({
@@ -1755,25 +1762,9 @@ async function saveSalesOrderLineOptionsViaRestlet(salesOrderId, targetLine, opt
     throw new Error(data?.error || text || "NetSuite RESTlet failed to update Sales Order line options.");
   }
 
-  const verifyRows = await trySuiteQlItems(`
-    SELECT
-      custcol_sb_itemoptionsdisplay AS options
-    FROM transactionline
-    WHERE transaction = ${Number(cleanSalesOrderId)}
-      AND id = ${Number(line.lineId)}
-  `, userId, "Verify Sales Order line options");
-  const verifiedOptions = String(verifyRows?.[0]?.options || "").trim();
-  const expectedOptions = String(optionsDisplay || "").trim();
-  console.log("[line-options] Sales Order options verification", {
-    salesOrderId: cleanSalesOrderId,
-    suiteQlLineId: String(line.lineId || "").trim(),
-    expectedOptions,
-    verifiedOptions,
-    matched: verifiedOptions === expectedOptions,
-    verifyRows,
-  });
-  if (expectedOptions && verifiedOptions !== expectedOptions) {
-    throw new Error("NetSuite accepted the item options update request, but the Sales Order line field did not change.");
+  const updatedLine = Array.isArray(data.updatedLines) ? data.updatedLines[0] : null;
+  if (!updatedLine) {
+    throw new Error("NetSuite did not confirm which Sales Order line was updated.");
   }
 
   return {
@@ -1781,14 +1772,7 @@ async function saveSalesOrderLineOptionsViaRestlet(salesOrderId, targetLine, opt
     lineId: restletLineId,
     suiteQlLineId: String(line.lineId || "").trim(),
     itemId: String(line.itemId || "").trim(),
-    matchedRestLine: restLine
-      ? {
-          index: restLine.index,
-          itemId: restLine.itemId,
-          lineId: restLine.lineId,
-          endpoint: restLine.endpoint,
-        }
-      : null,
+    matchedRestLine: updatedLine,
   };
 }
 
@@ -1894,6 +1878,18 @@ async function resolveUserIdFromRequest(req) {
     return session?.id || null;
   } catch (err) {
     console.warn("⚠️ Could not resolve session:", err.message);
+    return null;
+  }
+}
+
+async function resolveSessionFromRequest(req) {
+  const auth = req.headers.authorization || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+  if (!token) return null;
+  try {
+    return await getSession(token);
+  } catch (err) {
+    console.warn("Could not resolve session:", err.message);
     return null;
   }
 }
@@ -2633,6 +2629,15 @@ router.get("/:id/related-records", async (req, res) => {
 /* =====================================================
    === PATCH COMMITTED LINE OPTIONS ====================
    ===================================================== */
+router.get("/line-options-progress/:requestId", (req, res) => {
+  const progress = lineOptionsProgress.get(String(req.params.requestId || "").trim());
+  return res.json({
+    ok: true,
+    stage: progress?.stage || "Preparing...",
+    error: progress?.error || "",
+  });
+});
+
 async function handleCommittedLineOptionsUpdate(req, res) {
   try {
     const { id } = req.params;
@@ -2641,6 +2646,8 @@ async function handleCommittedLineOptionsUpdate(req, res) {
       lineIndex = null,
       itemId = "",
       optionsDisplay = "",
+      pairedConfirmation = null,
+      requestId = "",
     } = req.body || {};
 
     console.log("[line-options] Request received", {
@@ -2652,13 +2659,18 @@ async function handleCommittedLineOptionsUpdate(req, res) {
       optionsLength: String(optionsDisplay || "").length,
     });
 
-    const userId = await resolveUserIdFromRequest(req);
-    const relatedRecords = await getSalesOrderRelatedRecords(id, userId);
+    const session = await resolveSessionFromRequest(req);
+    const userId = session?.id || null;
+    const [relatedRecords, salesLines] = await Promise.all([
+      getSalesOrderRelatedRecords(id, userId),
+      getTransactionItemLines(id, userId),
+    ]);
     const pairedSalesOrder = relatedRecords.custbody_sb_pairedsalesorder;
-    if (pairedSalesOrder?.id) {
+    const hasPairedSalesOrder = !!pairedSalesOrder?.id;
+    if (hasPairedSalesOrder && pairedConfirmation?.confirmed !== true) {
       return res.status(400).json({
         ok: false,
-        error: "Options can only be edited here before the paired intercompany Sales Order exists.",
+        error: "Supplier confirmation is required because an intercompany Sales Order already exists.",
       });
     }
 
@@ -2672,8 +2684,6 @@ async function handleCommittedLineOptionsUpdate(req, res) {
       });
     }
 
-    const salesLines = await getTransactionItemLines(id, userId);
-
     const salesLine =
       salesLines.find((line) => line.lineId === String(lineId || "").trim()) ||
       (Number.isFinite(Number(lineIndex)) ? salesLines[Number(lineIndex)] : null);
@@ -2684,6 +2694,11 @@ async function handleCommittedLineOptionsUpdate(req, res) {
       });
     }
 
+    const pairedLinesPromise = hasPairedSalesOrder
+      ? getTransactionItemLines(pairedSalesOrder.id, userId)
+      : Promise.resolve([]);
+
+    setLineOptionsProgress(requestId, "Saving... Sales Order");
     const salesOrderPatch = await saveSalesOrderLineOptionsViaRestlet(
       id,
       salesLine,
@@ -2691,9 +2706,34 @@ async function handleCommittedLineOptionsUpdate(req, res) {
       userId
     );
 
+    let pairedSalesOrderPatch = null;
+    if (hasPairedSalesOrder) {
+      setLineOptionsProgress(requestId, "Saving... Intercompany Sales Order");
+      const pairedLines = await pairedLinesPromise;
+      const pairedLine = findMatchingPurchaseOrderLine({
+        salesLines,
+        purchaseOrderLines: pairedLines,
+        salesLineId: salesLine.lineId,
+        itemId: itemId || salesLine.itemId,
+        lineIndex,
+      });
+      if (!pairedLine?.lineId) {
+        throw new Error("Could not find the corresponding line on the paired intercompany Sales Order.");
+      }
+
+      pairedSalesOrderPatch = await saveSalesOrderLineOptionsViaRestlet(
+        pairedSalesOrder.id,
+        pairedLine,
+        optionsDisplay,
+        userId
+      );
+      cacheDeleteSalesOrder(pairedSalesOrder.id);
+    }
+
     const warnings = [];
     let purchaseOrderPatch = null;
     try {
+      setLineOptionsProgress(requestId, "Saving... Intercompany Purchase Order");
       purchaseOrderPatch = await patchPurchaseOrderLineOptions({
         purchaseOrder: intercompanyPo,
         salesLines,
@@ -2705,13 +2745,26 @@ async function handleCommittedLineOptionsUpdate(req, res) {
       });
     } catch (poErr) {
       console.warn("[line-options] Purchase Order line options update failed:", poErr.message || poErr);
+      if (hasPairedSalesOrder) throw poErr;
       warnings.push(
         poErr.message ||
           "Sales Order options were updated, but the matching Purchase Order line could not be updated."
       );
     }
 
+    let memoResult = null;
+    if (hasPairedSalesOrder) {
+      setLineOptionsProgress(requestId, "Saving... Adding memo");
+      memoResult = await createPairedFabricChangeMemo({
+        salesOrderId: id,
+        notes: pairedConfirmation?.notes || "",
+        session,
+        userId,
+      });
+    }
+
     cacheDeleteSalesOrder(id);
+    setLineOptionsProgress(requestId, "Saved");
 
     return res.json({
       ok: true,
@@ -2719,6 +2772,7 @@ async function handleCommittedLineOptionsUpdate(req, res) {
       salesOrderLineId: salesLine.lineId,
       purchaseOrderId: intercompanyPo.id,
       purchaseOrderLineId: purchaseOrderPatch?.matchedRestLine?.lineId || "",
+      pairedSalesOrderId: pairedSalesOrder?.id || "",
       salesOrderPatch: {
         method: "RESTlet save-only",
         lineId: salesOrderPatch.lineId,
@@ -2732,10 +2786,22 @@ async function handleCommittedLineOptionsUpdate(req, res) {
             value: purchaseOrderPatch.value,
           }
         : null,
+      pairedSalesOrderPatch: pairedSalesOrderPatch
+        ? {
+            method: "RESTlet save-only",
+            lineId: pairedSalesOrderPatch.lineId,
+            itemId: pairedSalesOrderPatch.itemId,
+            result: pairedSalesOrderPatch.result,
+          }
+        : null,
+      memoResult,
       warnings,
-      message: "Item options updated on Sales Order and Intercompany Purchase Order.",
+      message: hasPairedSalesOrder
+        ? "Item options updated on the Sales Order, Purchase Order, and paired Sales Order."
+        : "Item options updated on Sales Order and Intercompany Purchase Order.",
     });
   } catch (err) {
+    setLineOptionsProgress(req.body?.requestId, "Save failed", err.message || String(err));
     console.error("Line option update failed:", err.message || err);
     return res.status(err.statusCode || 500).json({
       ok: false,
