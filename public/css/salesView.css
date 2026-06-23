@@ -556,6 +556,15 @@ textarea:focus {
   opacity: 0.6;
   user-select: none;
 }
+
+.locked .auto-fulfilment-column,
+.locked .auto-fulfilment-alert,
+.locked #autoFulfilmentInfoModal,
+.locked #autoFulfilmentInfoModal *,
+.locked #takenFromStoreModal,
+.locked #takenFromStoreModal * {
+  pointer-events: auto;
+}
 /* === Spinner Section === */
 .order-spinner {
   display: flex;
@@ -591,6 +600,15 @@ textarea:focus {
   pointer-events: none;
   opacity: 0.6;
   user-select: none;
+}
+
+.locked .auto-fulfilment-column,
+.locked .auto-fulfilment-alert,
+.locked #autoFulfilmentInfoModal,
+.locked #autoFulfilmentInfoModal *,
+.locked #takenFromStoreModal,
+.locked #takenFromStoreModal * {
+  pointer-events: auto;
 }
 
 /* === Toast Notifications === */

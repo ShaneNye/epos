@@ -791,7 +791,13 @@ body.sidebar-expanded .order-upsell-panel {
 .locked #orderSpinner,
 .locked #salesOrderExperienceRating,
 .locked .sales-order-rating,
-.locked .sales-order-rating * {
+.locked .sales-order-rating *,
+.locked .auto-fulfilment-column,
+.locked .auto-fulfilment-alert,
+.locked #autoFulfilmentInfoModal,
+.locked #autoFulfilmentInfoModal *,
+.locked #takenFromStoreModal,
+.locked #takenFromStoreModal * {
   pointer-events: auto;
 }
 /* === Spinner Section === */
@@ -830,7 +836,13 @@ body.sidebar-expanded .order-upsell-panel {
 .locked #orderSpinner,
 .locked #salesOrderExperienceRating,
 .locked .sales-order-rating,
-.locked .sales-order-rating * {
+.locked .sales-order-rating *,
+.locked .auto-fulfilment-column,
+.locked .auto-fulfilment-alert,
+.locked #autoFulfilmentInfoModal,
+.locked #autoFulfilmentInfoModal *,
+.locked #takenFromStoreModal,
+.locked #takenFromStoreModal * {
   pointer-events: auto;
 }
 
