@@ -31,7 +31,7 @@ const { createNetSuiteCustomer } = require("../utils/netsuiteCustomerCreate");
 // ✅ In-memory cache for GET /:id sales order payloads
 // =====================================================
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const SO_CACHE_VERSION = "inventory-detail-display-v3";
+const SO_CACHE_VERSION = "inventory-detail-display-v4";
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
 const LOCATION_FEED_TTL_MS = 10 * 60 * 1000;
 const locationFeedCache = { expiresAt: 0, rows: null, inFlight: null };

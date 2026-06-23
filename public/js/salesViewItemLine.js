@@ -970,6 +970,30 @@ function enhanceReadOnlyInventoryCell(row, inventoryDetail, lineIndex, displaySu
   row.dataset.inventoryReadonly = "1";
 }
 
+function renderPendingFulfilmentInventoryText(row, inventoryDetail, displaySummary = "") {
+  const wrapper = row?.querySelector(".inventory-cell-wrapper");
+  if (!wrapper || !String(inventoryDetail || "").trim()) return;
+
+  const summary =
+    String(displaySummary || "").trim() ||
+    salesViewInventoryDetailSummary(inventoryDetail) ||
+    "Allocated inventory";
+
+  const detailField = document.createElement("input");
+  detailField.type = "hidden";
+  detailField.className = "item-inv-detail";
+  detailField.value = String(inventoryDetail || "").trim();
+
+  const summarySpan = document.createElement("span");
+  summarySpan.className = "inv-summary inventory-detail-readonly-text";
+  summarySpan.textContent = summary;
+  summarySpan.title = summary;
+
+  wrapper.textContent = "";
+  wrapper.append(detailField, summarySpan);
+  row.dataset.inventoryReadonly = "1";
+}
+
 function applyItemToSalesViewRow(row, item, config = {}) {
   if (!row || !item) return;
 
@@ -1918,7 +1942,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
       : String(existingLotNumber || "").trim();
     tr.dataset.inventoryReadonly = isPendingFulfillment && inventoryDetail ? "1" : "";
     if (isPendingFulfillment && inventoryDetail) {
-      enhanceReadOnlyInventoryCell(tr, inventoryDetail, idx, inventorySummary);
+      renderPendingFulfilmentInventoryText(tr, inventoryDetail, inventorySummary);
     }
 
     const existingTrialValue =

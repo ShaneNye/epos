@@ -347,6 +347,12 @@ textarea:focus {
   white-space: nowrap;
 }
 
+.inventory-detail-readonly-text {
+  display: inline-block;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 /* === LAYOUT (THREE COLUMN) === */
 .form-row.three-column {
   display: flex;
