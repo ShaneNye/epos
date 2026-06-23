@@ -1641,6 +1641,7 @@
       input.type = "checkbox";
       input.checked = state.visibleColumns.includes(field.name);
       input.addEventListener("change", () => {
+        preserveVisibleDrafts();
         if (input.checked && !state.visibleColumns.includes(field.name)) state.visibleColumns.push(field.name);
         if (!input.checked) state.visibleColumns = state.visibleColumns.filter((name) => name !== field.name);
         saveCustomPreset();
@@ -2163,6 +2164,70 @@
     if (el.suitepimChangedCount) el.suitepimChangedCount.textContent = state.dirty.size.toLocaleString();
   }
 
+  function renderedRowCheckbox(rowKeyValue) {
+    return el.suitepimMount.querySelector(`tr[data-key="${CSS.escape(rowKeyValue)}"] .suitepim-select-col input[type="checkbox"]`);
+  }
+
+  function syncRenderedRowSelection(rowKeyValue) {
+    const checkbox = renderedRowCheckbox(rowKeyValue);
+    if (checkbox) checkbox.checked = state.selected.has(rowKeyValue);
+    syncRenderedPageSelection();
+  }
+
+  function setRowSelection(rowKeyValue, selected) {
+    if (selected) state.selected.add(rowKeyValue);
+    else state.selected.delete(rowKeyValue);
+    syncRenderedRowSelection(rowKeyValue);
+  }
+
+  function syncRenderedPageSelection(rows = pageRows()) {
+    const pageSelector = el.suitepimMount.querySelector("#suitepimSelectPage");
+    if (!pageSelector) return;
+    const selectedCount = rows.filter((row) => state.selected.has(row._suitepimKey)).length;
+    pageSelector.checked = rows.length > 0 && selectedCount === rows.length;
+    pageSelector.indeterminate = selectedCount > 0 && selectedCount < rows.length;
+  }
+
+  function visibleDraftUpdates() {
+    return Array.from(el.suitepimMount.querySelectorAll("tr[data-key]")).flatMap((tr) => {
+      const row = state.rows.find((item) => item._suitepimKey === tr.dataset.key);
+      if (!row) return [];
+
+      return state.visibleColumns.flatMap((column) => {
+        const field = fieldByName(column) || {};
+        if (field.disableField || field.toolColumn || ["List/Record", "multiple-select", "image", "Link", "Generate", "Preview", "Stock"].includes(field.fieldType)) return [];
+
+        const cell = tr.querySelector(`[data-column="${CSS.escape(column)}"]`);
+        if (!cell) return [];
+
+        let nextValue;
+        if (field.fieldType === "Checkbox") {
+          const input = cell.querySelector("input[type='checkbox']");
+          if (!input) return [];
+          nextValue = input.checked;
+          if (boolValue(row[column]) === nextValue) return [];
+        } else {
+          const input = cell.matches("[contenteditable='true'], [contenteditable='plaintext-only']")
+            ? cell
+            : cell.querySelector("input, textarea, [contenteditable='true'], [contenteditable='plaintext-only']");
+          if (!input || input.disabled) return [];
+          nextValue = input.matches("[contenteditable='true'], [contenteditable='plaintext-only']")
+            ? input.textContent
+            : input.value;
+          if (valueText(row[column]) === String(nextValue ?? "")) return [];
+        }
+
+        return [{ row, column, nextValue, recalc: isCalculatedPriceField(column) }];
+      });
+    });
+  }
+
+  function preserveVisibleDrafts() {
+    visibleDraftUpdates().forEach(({ row, column, nextValue, recalc }) => {
+      updateCell(row, column, nextValue, null, { recalc });
+    });
+  }
+
   function pageRows() {
     if (!filteredResultsArePaginated()) return state.filteredRows;
     const start = (state.page - 1) * state.pageSize;
@@ -2247,8 +2312,8 @@
       checkbox.type = "checkbox";
       checkbox.checked = state.selected.has(row._suitepimKey);
       checkbox.addEventListener("change", () => {
-        if (checkbox.checked) state.selected.add(row._suitepimKey);
-        else state.selected.delete(row._suitepimKey);
+        preserveVisibleDrafts();
+        setRowSelection(row._suitepimKey, checkbox.checked);
         updateSummary();
       });
       selectTd.appendChild(checkbox);
@@ -2281,18 +2346,20 @@
     setupTableScrollSliders(el.suitepimMount, columns, topScroller, bottomScroller);
 
     const pageSelector = table.querySelector("#suitepimSelectPage");
-    pageSelector.checked = rows.length > 0 && rows.every((row) => state.selected.has(row._suitepimKey));
+    syncRenderedPageSelection(rows);
     pageSelector.addEventListener("change", () => {
+      const shouldSelect = pageSelector.checked;
+      preserveVisibleDrafts();
       rows.forEach((row) => {
-        if (pageSelector.checked) state.selected.add(row._suitepimKey);
-        else state.selected.delete(row._suitepimKey);
+        setRowSelection(row._suitepimKey, shouldSelect);
       });
       updateSummary();
-      renderTable();
+      syncRenderedPageSelection(rows);
     });
 
     table.querySelectorAll(".suitepim-sort-select").forEach((select) => {
       select.addEventListener("change", () => {
+        preserveVisibleDrafts();
         state.sort = {
           fieldName: select.value ? select.dataset.sortField || "" : "",
           direction: select.value,
@@ -3451,7 +3518,7 @@
     const clean = JSON.stringify(stripInternal(updated));
     if (clean === state.baseline.get(updated._suitepimKey)) state.dirty.delete(updated._suitepimKey);
     else state.dirty.set(updated._suitepimKey, updated);
-    state.selected.add(updated._suitepimKey);
+    setRowSelection(updated._suitepimKey, true);
     if (state.previewPopup && !state.previewPopup.closed && state.previewRowKey === updated._suitepimKey) {
       openPreviewModal(updated);
     }
@@ -4082,14 +4149,17 @@
 
   function bindEvents() {
     el.suitepimSearch.addEventListener("input", () => {
+      preserveVisibleDrafts();
       state.page = 1;
       applyFilters();
     });
     el.suitepimStateFilter.addEventListener("change", () => {
+      preserveVisibleDrafts();
       state.page = 1;
       applyFilters();
     });
     el.suitepimShowChildren?.addEventListener("change", () => {
+      preserveVisibleDrafts();
       state.page = 1;
       applyFilters();
     });
@@ -4107,7 +4177,10 @@
     el.suitepimToggleBulkBtn.addEventListener("click", () => togglePanel(el.suitepimToggleBulkBtn));
     el.suitepimRefreshBtn.addEventListener("click", () => loadProducts(true).catch((err) => showStatus(err.message, "error")));
     el.suitepimPushBtn.addEventListener("click", pushSelected);
-    el.suitepimPresetSelect?.addEventListener("change", applyPreset);
+    el.suitepimPresetSelect?.addEventListener("change", () => {
+      preserveVisibleDrafts();
+      applyPreset();
+    });
     document.addEventListener("click", (event) => {
       const dropdown = document.getElementById("suitepimPresetDropdown");
       if (dropdown && !dropdown.contains(event.target)) closePresetDropdown();
@@ -4116,10 +4189,12 @@
       if (event.key === "Escape") closePresetDropdown();
     });
     el.suitepimPrevPage.addEventListener("click", () => {
+      preserveVisibleDrafts();
       state.page = Math.max(1, state.page - 1);
       renderTable();
     });
     el.suitepimNextPage.addEventListener("click", () => {
+      preserveVisibleDrafts();
       state.page = Math.min(maxPage(), state.page + 1);
       renderTable();
     });
