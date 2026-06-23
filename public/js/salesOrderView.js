@@ -89,6 +89,8 @@ function isSalesViewLockExemptControl(el) {
   return Boolean(
     el?.closest?.("#menu") ||
       el?.id === "assistantToggle" ||
+      el?.classList?.contains("auto-fulfilment-alert") ||
+      el?.closest?.("#takenFromStoreModal, #autoFulfilmentInfoModal") ||
       el?.closest?.("#salesAssistant")
   );
 }
@@ -875,6 +877,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const salesOrderQuery = new URLSearchParams({
     lite: "1",
     deposits: "0",
+    refresh: "1",
     _: String(Date.now()),
   });
   window._currentDeposits = [];
@@ -1849,25 +1852,25 @@ function buildSalesReceiptPayloadFromDom(tranId) {
   const items = [...document.querySelectorAll("#orderItemsBody tr.order-line")]
     .map((row) => {
       const itemId = row.querySelector(".item-internal-id")?.value?.trim() || row.dataset.itemId || "";
-      const name = receiptCellText(row, ".item-search", 0);
+      const name = receiptCellText(row, ".item-search", 1);
       if (!itemId && !name) return null;
 
       const quantity = receiptMoneyValue(receiptCellText(row, ".item-qty", 2)) || 1;
       const saleGrossLine = receiptMoneyValue(
         row.querySelector(".item-saleprice")?.value ||
           row.querySelector(".saleprice")?.innerText ||
-          row.children?.[6]?.innerText
+          row.children?.[7]?.innerText
       );
       const retailGrossLine =
         receiptMoneyValue(
           row.querySelector(".item-amount")?.value ||
             row.querySelector(".amount")?.innerText ||
-            row.children?.[3]?.innerText
+            row.children?.[4]?.innerText
         ) || saleGrossLine;
 
       return {
         name: name || "Item",
-        options: receiptCellText(row, ".options-summary", 1),
+        options: receiptCellText(row, ".options-summary", 2),
         quantity,
         retailGrossLine,
         saleGrossLine,
@@ -2219,6 +2222,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
             .replace(/<br\s*\/?>/gi, "\n") || "";
         const vatFree = !!row.querySelector(".vat-free-checkbox")?.checked;
         const trialOption = row.querySelector(".sixty-night-select")?.value?.trim() || "";
+        const takenFromStore = row.dataset.takenFromStore === "1";
 
         const netAmount = Number.isFinite(amountGrossLine)
           ? Number((amountGrossLine / 1.2).toFixed(2))
@@ -2248,6 +2252,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
           saleprice: saleGrossLine,
           optionsSummary: optionsText || null,
           trialOption: trialOption || null,
+          takenFromStore,
           taxCode: vatFree ? "10" : "",
           isNew: !row.dataset.lineid,
         };

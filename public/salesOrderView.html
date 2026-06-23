@@ -11,6 +11,7 @@
     <!-- Styles -->
     <link rel="stylesheet" href="/css/home.css">
     <link rel="stylesheet" href="/css/salesView.css">
+    <link rel="stylesheet" href="/css/salesAutoFulfilmentNotice.css">
     <script src="/js/storage.js"></script>
 
     <!-- Scripts -->
@@ -24,6 +25,7 @@
     <script src="/js/salesNewFetchify.js" defer></script>
     <script src="/js/salesCustomerLock.js" defer></script>
     <script src="/js/salesInventoryModal.js" defer></script>
+    <script src="/js/salesAutoFulfilmentNotice.js" defer></script>
     <script src="/js/salesOrderView.js" defer></script>
     <script src="/js/salesItemLineCommon.js" defer></script>
     <script src="/js/salesViewItemLine.js" defer></script>
@@ -261,6 +263,7 @@
                     <table class="order-table" id="orderItemsTable">
                         <thead>
                             <tr>
+                                <th class="auto-fulfilment-column" aria-label="Auto fulfilment"></th>
                                 <th>Item</th>
                                 <th>Options</th>
                                 <th>Quantity</th>
@@ -277,6 +280,9 @@
                         </thead>
                         <tbody id="orderItemsBody">
                             <tr class="order-line" data-line="0">
+                                <td class="auto-fulfilment-column">
+                                    <button type="button" class="auto-fulfilment-alert" title="Auto fulfilment information" aria-label="Auto fulfilment information" hidden>!</button>
+                                </td>
                                 <td>
                                     <div class="autocomplete">
                                         <input type="text" id="itemSearch-0" class="item-search" placeholder="Product name"
@@ -395,6 +401,14 @@
             <p>Committing Sales Order...</p>
         </div>
     </div>
+
+    <dialog id="takenFromStoreModal" class="auto-fulfilment-modal" aria-labelledby="takenFromStoreMessage">
+        <p id="takenFromStoreMessage"></p>
+        <div class="auto-fulfilment-modal-actions">
+            <button id="takenFromStoreNo" type="button" class="btn-secondary">No</button>
+            <button id="takenFromStoreYes" type="button" class="btn-primary">Yes</button>
+        </div>
+    </dialog>
 
 </body>
 

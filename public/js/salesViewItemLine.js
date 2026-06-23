@@ -919,6 +919,11 @@ function enhanceReadOnlyInventoryCell(row, inventoryDetail, lineIndex) {
 function applyItemToSalesViewRow(row, item, config = {}) {
   if (!row || !item) return;
 
+  row.dataset.takenFromStore = "";
+  row.dataset.autoFulfilmentComplete = "";
+  row.dataset.autoFulfilmentStatus = "";
+  window.updateAutoFulfilmentNotice?.(row);
+
   const input = row.querySelector(".item-search");
   const hiddenId = row.querySelector(".item-internal-id");
   const hiddenBase = row.querySelector(".item-baseprice");
@@ -1142,6 +1147,9 @@ function addSalesViewRow({ fulfilmentMethods = [] } = {}) {
   tr.dataset.itemCategory = "";
 
   tr.innerHTML = `
+    <td class="auto-fulfilment-column">
+      <button type="button" class="auto-fulfilment-alert" title="Auto fulfilment information" aria-label="Auto fulfilment information" hidden>!</button>
+    </td>
     <td>
       <div class="autocomplete">
         <input
@@ -1550,7 +1558,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
     }
 
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="11" style="text-align:center; color:#888;">No item lines found.</td>`;
+    tr.innerHTML = `<td colspan="13" style="text-align:center; color:#888;">No item lines found.</td>`;
     tbody.appendChild(tr);
     return;
   }
@@ -1676,6 +1684,47 @@ window.renderSalesViewLines = function renderSalesViewLines({
       "lotNumber",
     ]);
     const inventoryDetail = existingInventoryDetail(line);
+    const takenFromStore = ["t", "true", "1", "yes"].includes(
+      salesViewRecordValue(line, [
+        "custcol_sb_taken_from_store",
+        "CUSTCOL_SB_TAKEN_FROM_STORE",
+        "takenFromStore",
+      ]).toLowerCase()
+    );
+    const autoFulfilmentComplete = ["t", "true", "1", "yes"].includes(
+      salesViewRecordValue(line, [
+        "autoFulfilmentComplete",
+        "AUTO_FULFILMENT_COMPLETE",
+      ]).toLowerCase()
+    );
+    const autoFulfilmentStatus =
+      salesViewRecordValue(line, [
+        "autoFulfilmentStatus",
+        "AUTO_FULFILMENT_STATUS",
+      ]) || (autoFulfilmentComplete ? "fulfilled" : takenFromStore ? "auto-fulfilment-pending" : "");
+    const autoFulfilmentClass =
+      autoFulfilmentStatus === "fulfilled"
+        ? " auto-fulfilment-alert--complete"
+        : autoFulfilmentStatus === "backordered"
+          ? " auto-fulfilment-alert--backordered"
+          : autoFulfilmentStatus === "pending-fulfilment"
+            ? " auto-fulfilment-alert--pending-fulfilment"
+            : "";
+    const autoFulfilmentIcon =
+      autoFulfilmentStatus === "fulfilled" || autoFulfilmentStatus === "pending-fulfilment"
+        ? "&#10003;"
+        : "!";
+    const autoFulfilmentTitle =
+      autoFulfilmentStatus === "fulfilled"
+        ? "Fulfilled"
+        : autoFulfilmentStatus === "backordered"
+          ? "Back order"
+          : autoFulfilmentStatus === "pending-fulfilment"
+            ? "In and pending fulfilment"
+            : "Auto fulfilment information";
+    tr.dataset.takenFromStore = takenFromStore ? "1" : "";
+    tr.dataset.autoFulfilmentComplete = autoFulfilmentComplete ? "1" : "";
+    tr.dataset.autoFulfilmentStatus = autoFulfilmentStatus;
 
     const invCell = isServiceLine
       ? ""
@@ -1693,6 +1742,9 @@ window.renderSalesViewLines = function renderSalesViewLines({
         : "";
 
     tr.innerHTML = `
+      <td class="auto-fulfilment-column">
+        <button type="button" class="auto-fulfilment-alert${autoFulfilmentClass}" title="${autoFulfilmentTitle}" aria-label="${autoFulfilmentTitle}" ${autoFulfilmentStatus ? "" : "hidden"}>${autoFulfilmentIcon}</button>
+      </td>
       <td>
         ${
           isPending

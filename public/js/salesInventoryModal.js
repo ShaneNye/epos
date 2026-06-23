@@ -58,6 +58,93 @@ function formatInventoryDetailPart(detail) {
   ].join("|");
 }
 
+function inventoryDetailMatchesSelectedStore(detailString) {
+  const storeSelect = document.getElementById("store");
+  const selectedStore = storeSelect?.selectedOptions?.[0];
+  const storeName =
+    selectedStore?.dataset?.storeName || selectedStore?.textContent?.trim() || "";
+  const storeIds = new Set(
+    [
+      storeSelect?.value,
+      selectedStore?.dataset?.netsuiteInternalId,
+      selectedStore?.dataset?.invoiceLocationId,
+      selectedStore?.dataset?.distributionLocationId,
+    ]
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+  );
+  const normalizeName = (value) =>
+    String(value || "")
+      .replace(/\b(store|warehouse)\b/gi, "")
+      .replace(/[^a-z0-9]+/gi, " ")
+      .trim()
+      .toLowerCase();
+  const normalizedStoreName = normalizeName(storeName);
+  const details = String(detailString || "")
+    .split(";")
+    .map((part) => parseInventoryDetailPart(part))
+    .filter((detail) => detail.locationId || detail.locationName);
+
+  return (
+    details.length > 0 &&
+    details.every((detail) => {
+      const locationId = String(detail.locationId || "").trim();
+      if (locationId && storeIds.has(locationId)) return true;
+
+      const locationName = normalizeName(detail.locationName);
+      return (
+        !!locationName &&
+        !!normalizedStoreName &&
+        (locationName === normalizedStoreName ||
+          locationName.includes(normalizedStoreName) ||
+          normalizedStoreName.includes(locationName))
+      );
+    })
+  );
+}
+
+function promptForAutomaticStoreFulfilment(row) {
+  const quantity = row.querySelector(".item-qty")?.value?.trim() || "0";
+  const itemName = row.querySelector(".item-search")?.value?.trim() || "item(s)";
+  const modal = document.getElementById("takenFromStoreModal");
+  const message = document.getElementById("takenFromStoreMessage");
+  const yesButton = document.getElementById("takenFromStoreYes");
+  const noButton = document.getElementById("takenFromStoreNo");
+
+  if (!modal || !message || !yesButton || !noButton || typeof modal.showModal !== "function") {
+    row.dataset.autoFulfilmentComplete = "";
+    row.dataset.autoFulfilmentStatus = "";
+    row.dataset.takenFromStore = window.confirm(
+      `Is the customer taking ${quantity} ${itemName} away today? - Would you like these items to automatically Fulfill?`
+    )
+      ? "1"
+      : "";
+    window.updateAutoFulfilmentNotice?.(row);
+    return Promise.resolve(row.dataset.takenFromStore === "1");
+  }
+
+  message.textContent =
+    `Is the customer taking ${quantity} ${itemName} away today? - Would you like these items to automatically Fulfill?`;
+  modal.showModal();
+
+  return new Promise((resolve) => {
+    const finish = (accepted) => {
+      row.dataset.autoFulfilmentComplete = "";
+      row.dataset.autoFulfilmentStatus = "";
+      row.dataset.takenFromStore = accepted ? "1" : "";
+      window.updateAutoFulfilmentNotice?.(row);
+      modal.close();
+      resolve(accepted);
+    };
+    yesButton.onclick = () => finish(true);
+    noButton.onclick = () => finish(false);
+    modal.oncancel = (event) => {
+      event.preventDefault();
+      finish(false);
+    };
+  });
+}
+
 function setInventoryCellContent(row, html, detailString) {
   const cell = row?.querySelector(".inventory-cell");
   if (!cell) return;
@@ -98,6 +185,10 @@ function applyBackOrderToLine(row) {
 
   setLineFulfilmentToWarehouse(row);
   row.dataset.backorder = "1";
+  row.dataset.takenFromStore = "";
+  row.dataset.autoFulfilmentComplete = "";
+  row.dataset.autoFulfilmentStatus = "";
+  window.updateAutoFulfilmentNotice?.(row);
   row.dataset.lotnumber = "";
   row.dataset.inventoryMeta = "";
   row.dataset.inventoryMetaJson = "";
@@ -171,7 +262,7 @@ document.addEventListener("click", (e) => {
 });
 
 // 🧩 Called by popup after Save
-window.onInventorySaved = function (itemId, detailString, lineIndex) {
+window.onInventorySaved = async function (itemId, detailString, lineIndex) {
   console.log("──────────────────────────────────────────────");
   console.log(`💾 onInventorySaved() called for item ${itemId}, line ${lineIndex}`);
   console.log("📦 Raw detail string received:", detailString);
@@ -200,6 +291,10 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
   }
 
   targetRow.dataset.backorder = "";
+  targetRow.dataset.takenFromStore = "";
+  targetRow.dataset.autoFulfilmentComplete = "";
+  targetRow.dataset.autoFulfilmentStatus = "";
+  window.updateAutoFulfilmentNotice?.(targetRow);
 
   const firstPart = detailString?.split(";")[0]?.trim() || "";
   const firstDetail = parseInventoryDetailPart(firstPart);
@@ -214,6 +309,8 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
   // ✅ Get fulfilment method for this line
   const fulfilSelect = targetRow.querySelector(".item-fulfilment");
   const fulfilMethod = (fulfilSelect?.value || "").trim(); // "1" = In Store, "2" = Warehouse
+  const fulfilmentText =
+    fulfilSelect?.options?.[fulfilSelect.selectedIndex]?.textContent?.trim().toLowerCase() || "";
   console.log("🚚 Line fulfilment method:", fulfilMethod);
 
   // ✅ Get the main Sales Order warehouse details
@@ -248,19 +345,14 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
 
   let sameSource = false;
 
-  if (fulfilMethod === "1") {
+  if (fulfilmentText === "in store") {
     // In-Store fulfilment → source matches STORE
-    sameSource =
-      !!locName &&
-      (locLower === storeLower ||
-        locLower.includes(storeLower) ||
-        storeLower.includes(locLower) ||
-        (locId && storeId && String(locId) === String(storeId)));
+    sameSource = inventoryDetailMatchesSelectedStore(detailString);
 
     console.log(
       `🎯 In-Store fulfilment → sameSource = ${sameSource ? "✅ TRUE" : "❌ FALSE"}`
     );
-  } else if (fulfilMethod === "2") {
+  } else if (fulfilmentText === "warehouse" || fulfilMethod === "2") {
     // Warehouse fulfilment → source matches WAREHOUSE
     sameSource =
       !!locName &&
@@ -294,6 +386,9 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
       setTimeout(() => cell.classList.remove("flash-success"), 800);
     }
 
+    if (fulfilmentText === "in store") {
+      await promptForAutomaticStoreFulfilment(targetRow);
+    }
     return;
   }
 

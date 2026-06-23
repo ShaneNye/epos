@@ -681,6 +681,11 @@ async function selectItem(item) {
 function applyItemToRow(line, item, config = {}) {
   if (!line || !item) return;
 
+  line.dataset.takenFromStore = "";
+  line.dataset.autoFulfilmentComplete = "";
+  line.dataset.autoFulfilmentStatus = "";
+  window.updateAutoFulfilmentNotice?.(line);
+
   const quantity = Math.max(1, parseInt(config.quantity || 1, 10) || 1);
   const hiddenId = line.querySelector(".item-internal-id");
   const hiddenBase = line.querySelector(".item-baseprice");
@@ -1050,6 +1055,9 @@ function addNewRow() {
 
   // ✅ IMPORTANT: 60NT td is now in the template, in the RIGHT position
   tr.innerHTML = `
+<td class="auto-fulfilment-column">
+  <button type="button" class="auto-fulfilment-alert" title="Auto fulfilment information" aria-label="Auto fulfilment information" hidden>!</button>
+</td>
 <td>
   <div class="autocomplete">
     <input type="text" id="itemSearch-${newLine}" class="item-search" placeholder="Product name"
@@ -1158,7 +1166,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     const invCell =
       firstRow.querySelector(".inventory-cell") ||
-      firstRow.querySelector("td:nth-child(9)");
+      firstRow.querySelector("td:nth-child(11)");
 
     if (invCell && !invCell.querySelector(".open-inventory")) {
       invCell.innerHTML = `

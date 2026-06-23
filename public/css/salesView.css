@@ -187,8 +187,8 @@ textarea:focus {
 }
 
 /* Make the item column wider */
-.order-table th:first-child,
-.order-table td:first-child {
+.order-table th:nth-child(2),
+.order-table td:nth-child(2) {
   min-width: 280px;
   width: 35%;
 }

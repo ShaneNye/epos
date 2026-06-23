@@ -31,7 +31,7 @@ const { createNetSuiteCustomer } = require("../utils/netsuiteCustomerCreate");
 // ✅ In-memory cache for GET /:id sales order payloads
 // =====================================================
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const SO_CACHE_VERSION = "related-records-v5";
+const SO_CACHE_VERSION = "auto-fulfilment-status-v2";
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
 const LOCATION_FEED_TTL_MS = 10 * 60 * 1000;
 const locationFeedCache = { expiresAt: 0, rows: null, inFlight: null };
@@ -1541,6 +1541,38 @@ function findMatchingPurchaseOrderLine({ salesLines, purchaseOrderLines, salesLi
   return sameItemPurchaseLines[Math.max(0, occurrence)] || sameItemPurchaseLines[0] || null;
 }
 
+async function getTransactionItemLineFulfilmentQuantities(transactionId, userId) {
+  const numericId = Number(transactionId);
+  if (!Number.isFinite(numericId) || numericId <= 0) return [];
+
+  const rows = await trySuiteQlItems(`
+    SELECT
+      tl.id AS lineid,
+      tl.item,
+      tl.quantity,
+      tl.quantityshiprecv AS quantityfulfilled,
+      tl.quantitybackordered,
+      tl.quantitycommitted,
+      tl.linesequencenumber
+    FROM transactionline tl
+    WHERE tl.transaction = ${numericId}
+      AND tl.mainline = 'F'
+      AND tl.taxline = 'F'
+    ORDER BY tl.linesequencenumber
+  `, userId, "Transaction fulfilment quantities");
+
+  return rows.map((row, index) => ({
+    lineId: String(row.lineid || "").trim(),
+    itemId: String(row.item || "").trim(),
+    quantity: Math.abs(Number(row.quantity) || 0),
+    fulfilledQuantity: Math.abs(Number(row.quantityfulfilled ?? row.QUANTITYFULFILLED) || 0),
+    backorderedQuantity: Math.abs(Number(row.quantitybackordered ?? row.QUANTITYBACKORDERED) || 0),
+    committedQuantity: Math.abs(Number(row.quantitycommitted ?? row.QUANTITYCOMMITTED) || 0),
+    sequence: Number(row.linesequencenumber) || index + 1,
+    index,
+  }));
+}
+
 function relatedRecordDocumentNumber(record) {
   const value = String(record?.tranid || record?.refName || record?.name || record?.id || "").trim();
   return value
@@ -2288,6 +2320,10 @@ router.post("/create", async (req, res) => {
           // Fulfilment Method → custcol_sb_fulfilmentlocation
           if (i.fulfilmentMethod && !isServiceItem) {
             line.custcol_sb_fulfilmentlocation = { id: i.fulfilmentMethod };
+          }
+
+          if (i.takenFromStore === true && !isServiceItem) {
+            line.custcol_sb_taken_from_store = true;
           }
 
           if (i.taxCode) {
@@ -3064,6 +3100,7 @@ router.get("/:id", async (req, res) => {
           custcol_sb_fulfilmentlocation,
           custcol_sb_epos_inventory_meta,
           custcol_sb_lotnumber,
+          custcol_sb_taken_from_store,
           custcol_sb_30nighttrialoption
         FROM transactionline
         WHERE transaction = ${id}
@@ -3161,6 +3198,16 @@ router.get("/:id", async (req, res) => {
             r.CUSTCOL_SB_30NIGHTTRIALOPTION ||
             "";
 
+          const takenFromStoreValue =
+            r.custcol_sb_taken_from_store ??
+            r.CUSTCOL_SB_TAKEN_FROM_STORE ??
+            false;
+          const takenFromStore =
+            takenFromStoreValue === true ||
+            ["t", "true", "1", "yes"].includes(
+              String(takenFromStoreValue || "").trim().toLowerCase()
+            );
+
           let trialOption = { id: null, refName: "" };
           if (String(trialOptionId) === "1") {
             trialOption = { id: "1", refName: "Accepted" };
@@ -3209,6 +3256,8 @@ router.get("/:id", async (req, res) => {
             intercompanyPurchaseOrder,
             custcol_sb_30nighttrialoption: trialOption,
             custcol_sb_itemoptionsdisplay: r.options || "",
+            custcol_sb_taken_from_store: takenFromStore,
+            takenFromStore,
             custcol_sb_fulfilmentlocation: {
               id: fulfilId || null,
               refName: fulfilId
@@ -3217,6 +3266,72 @@ router.get("/:id", async (req, res) => {
             },
           };
         });
+
+        const pairedSalesOrderId = String(
+          so.relatedRecords?.custbody_sb_pairedsalesorder?.id ||
+            so.custbody_sb_pairedsalesorder?.id ||
+            ""
+        ).trim();
+
+        if (pairedSalesOrderId) {
+          const pairedLines = await getTransactionItemLineFulfilmentQuantities(
+            pairedSalesOrderId,
+            userId
+          );
+          const salesLines = items.map((line, index) => ({
+            lineId: String(line.lineId || "").trim(),
+            itemId: String(line.item?.id || "").trim(),
+            quantity: Math.abs(Number(line.quantity) || 0),
+            index,
+          }));
+
+          items.forEach((line, index) => {
+            const pairedLine = findMatchingPurchaseOrderLine({
+              salesLines,
+              purchaseOrderLines: pairedLines,
+              salesLineId: line.lineId,
+              itemId: line.item?.id,
+              lineIndex: index,
+            });
+
+            const pairedFulfilledQuantity = Math.abs(
+              Number(pairedLine?.fulfilledQuantity) || 0
+            );
+            const pairedBackorderedQuantity = Math.abs(
+              Number(pairedLine?.backorderedQuantity) || 0
+            );
+            const pairedCommittedQuantity = Math.abs(
+              Number(pairedLine?.committedQuantity) || 0
+            );
+            const lineQuantity = Math.abs(Number(line.quantity) || 0);
+            const autoFulfilmentComplete =
+              lineQuantity > 0 && pairedFulfilledQuantity >= lineQuantity;
+            const autoFulfilmentBackordered =
+              lineQuantity > 0 && pairedBackorderedQuantity >= lineQuantity;
+            const autoFulfilmentCommitted =
+              lineQuantity > 0 && pairedCommittedQuantity >= lineQuantity;
+            let autoFulfilmentStatus = "";
+
+            if (autoFulfilmentComplete) {
+              autoFulfilmentStatus = "fulfilled";
+            } else if (autoFulfilmentBackordered) {
+              autoFulfilmentStatus = "backordered";
+            } else if (autoFulfilmentCommitted && !line.takenFromStore) {
+              autoFulfilmentStatus = "pending-fulfilment";
+            } else if (line.takenFromStore) {
+              autoFulfilmentStatus = "auto-fulfilment-pending";
+            }
+
+            line.pairedSalesOrderLineId = pairedLine?.lineId || "";
+            line.pairedFulfilledQuantity = pairedFulfilledQuantity;
+            line.pairedBackorderedQuantity = pairedBackorderedQuantity;
+            line.pairedCommittedQuantity = pairedCommittedQuantity;
+            line.autoFulfilmentComplete = autoFulfilmentComplete;
+            line.autoFulfilmentBackordered = autoFulfilmentBackordered;
+            line.autoFulfilmentCommitted = autoFulfilmentCommitted;
+            line.autoFulfilmentStatus = autoFulfilmentStatus;
+          });
+        }
 
         so.item = { items };
         console.log(`✅ Loaded ${items.length} item lines`);
@@ -3387,6 +3502,7 @@ router.post("/:id/commit", async (req, res) => {
         inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta) || null,
         trialOption: line.trialOption || null,
         ...(trialField ? { custcol_sb_30nighttrialoption: trialField } : {}),
+        custcol_sb_taken_from_store: line.takenFromStore === true,
         grossAmount,
         grossSaleprice,
       };
@@ -3842,6 +3958,7 @@ router.post("/:id/save", async (req, res) => {
         inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta) || null,
         trialOption: line.trialOption || null,
         ...(trialField ? { custcol_sb_30nighttrialoption: trialField } : {}),
+        custcol_sb_taken_from_store: line.takenFromStore === true,
         grossAmount,
         grossSaleprice,
       };

@@ -11,6 +11,7 @@
     <!-- Styles -->
     <link rel="stylesheet" href="/css/home.css">
     <link rel="stylesheet" href="/css/sales.css">
+    <link rel="stylesheet" href="/css/salesAutoFulfilmentNotice.css">
     <script src="/js/storage.js"></script>
     <script src="/js/transactionAutoStatus.js" defer></script>
 
@@ -30,6 +31,7 @@
     <script src="/js/salesKioskDraft.js" defer></script>
     <!-- <script src="/js/salesNew60Night.js"></script> -->
     <script src="/js/salesInventoryModal.js" defer></script>
+    <script src="/js/salesAutoFulfilmentNotice.js" defer></script>
     <script src="/js/logisticsPostcodeLookup.js" defer></script>
 
     <!-- Virtual Sales Assistant -->
@@ -254,6 +256,7 @@
             <table class="order-table" id="orderItemsTable">
                 <thead>
                     <tr>
+                        <th class="auto-fulfilment-column" aria-label="Auto fulfilment"></th>
                         <th>Item</th>
                         <th>Options</th>
                         <th>Quantity</th>
@@ -270,6 +273,9 @@
 
                 <tbody id="orderItemsBody">
                     <tr class="order-line" data-line="0">
+                        <td class="auto-fulfilment-column">
+                            <button type="button" class="auto-fulfilment-alert" title="Auto fulfilment information" aria-label="Auto fulfilment information" hidden>!</button>
+                        </td>
                         <td>
                             <div class="autocomplete">
                                 <input type="text" id="itemSearch-0" class="item-search" placeholder="Product name"
@@ -349,6 +355,14 @@
         </section>
 
     </main>
+
+    <dialog id="takenFromStoreModal" class="sales-confirm-modal" aria-labelledby="takenFromStoreMessage">
+        <p id="takenFromStoreMessage"></p>
+        <div class="sales-confirm-modal-actions">
+            <button id="takenFromStoreNo" type="button" class="btn-secondary">No</button>
+            <button id="takenFromStoreYes" type="button" class="btn-primary">Yes</button>
+        </div>
+    </dialog>
 </body>
 
 </html>

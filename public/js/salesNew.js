@@ -428,6 +428,15 @@ document.getElementById("orderItemsBody")?.addEventListener("input", (e) => {
     e.target.classList.contains("item-saleprice") ||
     e.target.classList.contains("item-amount")
   ) {
+    if (e.target.classList.contains("item-qty")) {
+      const row = e.target.closest(".order-line");
+      if (row) {
+        row.dataset.takenFromStore = "";
+        row.dataset.autoFulfilmentComplete = "";
+        row.dataset.autoFulfilmentStatus = "";
+        window.updateAutoFulfilmentNotice?.(row);
+      }
+    }
     window.updateOrderSummary();
   }
 });
@@ -436,6 +445,24 @@ document.getElementById("orderItemsBody")?.addEventListener("change", (e) => {
   if (e.target.classList.contains("vat-free-checkbox")) {
     window.updateOrderSummary();
   }
+  if (e.target.classList.contains("item-fulfilment")) {
+    const row = e.target.closest(".order-line");
+    if (row) {
+      row.dataset.takenFromStore = "";
+      row.dataset.autoFulfilmentComplete = "";
+      row.dataset.autoFulfilmentStatus = "";
+      window.updateAutoFulfilmentNotice?.(row);
+    }
+  }
+});
+
+document.getElementById("store")?.addEventListener("change", () => {
+  document.querySelectorAll("#orderItemsBody .order-line").forEach((row) => {
+    row.dataset.takenFromStore = "";
+    row.dataset.autoFulfilmentComplete = "";
+    row.dataset.autoFulfilmentStatus = "";
+    window.updateAutoFulfilmentNotice?.(row);
+  });
 });
 
     const orderBody = document.getElementById("orderItemsBody");
@@ -852,6 +879,7 @@ function validateOrderBeforeSave() {
           const trialSel = tr.querySelector(".sixty-night-select");
           const trialOption = (trialSel?.value || "").trim() || null;
           const vatFree = !!tr.querySelector(".vat-free-checkbox")?.checked;
+          const takenFromStore = tr.dataset.takenFromStore === "1";
 
           return {
             item,
@@ -864,6 +892,7 @@ function validateOrderBeforeSave() {
             inventoryDetail,
             trialOption,
             taxCode: vatFree ? "10" : "",
+            takenFromStore,
           };
         })
         .filter((line) => line !== null);
