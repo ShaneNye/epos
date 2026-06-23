@@ -2087,6 +2087,67 @@ function validateSalesViewItemsBeforeSave() {
   return true;
 }
 
+function ensureSalesViewClientLineKey(row) {
+  if (!row) return "";
+  if (!row.dataset.clientLineKey) {
+    const lineHint = row.dataset.line || "row";
+    row.dataset.clientLineKey = `sv-${lineHint}-${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2, 8)}`;
+  }
+  return row.dataset.clientLineKey;
+}
+
+function applySavedSalesLineIdentity(restletResult) {
+  const updatedLines = Array.isArray(restletResult?.updatedLines)
+    ? restletResult.updatedLines
+    : [];
+  if (!updatedLines.length) return false;
+
+  let applied = false;
+
+  updatedLines.forEach((line) => {
+    const clientLineKey = String(line?.clientLineKey || "").trim();
+    const savedLineId = String(line?.lineId || line?.line || "").trim();
+    const savedLineIndex = Number(line?.lineIndex ?? line?.line);
+    let row = null;
+
+    if (clientLineKey) {
+      row = [...document.querySelectorAll("#orderItemsBody tr.order-line")].find(
+        (candidate) => candidate.dataset.clientLineKey === clientLineKey
+      );
+    }
+
+    if (!row && Number.isFinite(savedLineIndex)) {
+      row = [...document.querySelectorAll("#orderItemsBody tr.order-line")].find(
+        (candidate) => Number(candidate.dataset.line) === savedLineIndex
+      );
+    }
+
+    if (!row || !savedLineId) return;
+
+    row.dataset.lineid = savedLineId;
+    row.dataset.isnew = "";
+
+    const currentLines = window._currentSalesOrder?.item?.items;
+    if (Array.isArray(currentLines)) {
+      const existing = currentLines.find(
+        (currentLine) => String(currentLine?.lineId || "").trim() === savedLineId
+      );
+      if (!existing) {
+        currentLines.push({
+          lineId: savedLineId,
+          item: { id: row.querySelector(".item-internal-id")?.value?.trim() || "" },
+        });
+      }
+    }
+
+    applied = true;
+  });
+
+  return applied;
+}
+
 function updateActionButton(orderStatusObj, tranId, so) {
   const wrapper = document.getElementById("orderActionWrapper");
   if (!wrapper) return;
@@ -2223,6 +2284,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
         const vatFree = !!row.querySelector(".vat-free-checkbox")?.checked;
         const trialOption = row.querySelector(".sixty-night-select")?.value?.trim() || "";
         const takenFromStore = row.dataset.takenFromStore === "1";
+        const clientLineKey = ensureSalesViewClientLineKey(row);
 
         const netAmount = Number.isFinite(amountGrossLine)
           ? Number((amountGrossLine / 1.2).toFixed(2))
@@ -2230,6 +2292,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
 
         return {
           lineId: row.dataset.lineid || "",
+          clientLineKey,
           lineIndex: Number.isFinite(Number(row.dataset.line))
             ? Number(row.dataset.line)
             : rowIndex,
@@ -2418,9 +2481,13 @@ function updateActionButton(orderStatusObj, tranId, so) {
         }
 
         showToast?.("✅ Saved (not committed)", "success");
-        window._lastSalesOrderSaveSignature = signature;
+        applySavedSalesLineIdentity(data.restletResult);
+        window._lastSalesOrderSaveSignature = stableSalesSaveSignature(buildPayloadFromUI());
         showCommitInlineLocal("Saved ✅");
-        setTimeout(() => hideCommitInlineLocal(), 800);
+        setTimeout(() => {
+          hideCommitInlineLocal();
+          window.location.reload();
+        }, 800);
       } catch (err) {
         console.error("❌ Save error:", err.message || err);
         showToast?.(`❌ ${err.message || err}`, "error");

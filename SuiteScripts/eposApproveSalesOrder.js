@@ -117,6 +117,35 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     }
   }
 
+  function snapshotUpdatedLineIdentities(transactionRec, processedLines) {
+    if (!Array.isArray(processedLines) || !processedLines.length) return [];
+
+    return processedLines.map((processed) => {
+      const lineIndex = Number(processed.lineIndex);
+      const hasLineIndex =
+        Number.isFinite(lineIndex) && lineIndex >= 0 && lineIndex < getItemLineCount(transactionRec);
+
+      return {
+        clientLineKey: String(processed.clientLineKey || ""),
+        lineIndex: hasLineIndex ? lineIndex : null,
+        lineId: hasLineIndex
+          ? String(safeGetSublistValue(transactionRec, "line", lineIndex) || processed.lineId || "")
+          : String(processed.lineId || ""),
+        lineUniqueKey: hasLineIndex
+          ? String(
+              safeGetSublistValue(transactionRec, "lineuniquekey", lineIndex) ||
+                processed.lineUniqueKey ||
+                ""
+            )
+          : String(processed.lineUniqueKey || ""),
+        itemId: hasLineIndex
+          ? String(safeGetSublistValue(transactionRec, "item", lineIndex) || processed.itemId || "")
+          : String(processed.itemId || ""),
+        isNew: processed.isNew === true,
+      };
+    });
+  }
+
   function findLineIndexForOptionsUpdate(soRec, update, updates) {
     const wantedLineIds = [
       update.lineId,
@@ -801,6 +830,7 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       }
 
       const removedLineIds = removeDeletedLines(soRec, deletedLineIds);
+      const processedLines = [];
 
       if (Array.isArray(updates) && updates.length) {
         log.audit(
@@ -823,6 +853,17 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
               applyLineValues(soRec, u, warehouseId, warehouseTextNorm, true);
 
               soRec.commitLine({ sublistId: "item" });
+              const insertedLineIndex = getItemLineCount(soRec) - 1;
+              processedLines.push({
+                clientLineKey: u.clientLineKey,
+                lineIndex: insertedLineIndex,
+                lineId: String(safeGetSublistValue(soRec, "line", insertedLineIndex) || ""),
+                lineUniqueKey: String(
+                  safeGetSublistValue(soRec, "lineuniquekey", insertedLineIndex) || ""
+                ),
+                itemId: String(u.itemId || ""),
+                isNew: true,
+              });
 
               log.audit("✅ New line inserted", {
                 itemId: u.itemId,
@@ -872,6 +913,14 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
             applyLineValues(soRec, u, warehouseId, warehouseTextNorm, false);
 
             soRec.commitLine({ sublistId: "item" });
+            processedLines.push({
+              clientLineKey: u.clientLineKey,
+              lineIndex: targetLine,
+              lineId: String(safeGetSublistValue(soRec, "line", targetLine) || u.lineId || ""),
+              lineUniqueKey: String(safeGetSublistValue(soRec, "lineuniquekey", targetLine) || ""),
+              itemId: String(u.itemId || ""),
+              isNew: false,
+            });
 
             log.debug(`✅ After update [Line ${targetLine}]`, {
               internalLineId: u.lineId,
@@ -924,6 +973,18 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
         enableSourcing: true,
         ignoreMandatoryFields: true,
       });
+      let updatedLines = snapshotUpdatedLineIdentities(soRec, processedLines);
+
+      try {
+        const savedRec = record.load({
+          type: transactionRecordType,
+          id: savedId,
+          isDynamic: false,
+        });
+        updatedLines = snapshotUpdatedLineIdentities(savedRec, processedLines);
+      } catch (identityErr) {
+        log.error("⚠️ Could not reload transaction for saved line identities", identityErr);
+      }
 
       let pairedMemoSync = {
         ok: true,
@@ -949,6 +1010,7 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
         doCommit,
         removedLineIds,
         updatesApplied: updates.length || 0,
+        updatedLines,
         pairedMemoSync,
       });
 
@@ -959,6 +1021,7 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
           ? "✅ Sales Order updated & flagged for approval"
           : "✅ Sales Order updated (save-only, not committed)",
         updatesApplied: updates.length || 0,
+        updatedLines,
         deletedLineIds,
         removedLineIds,
         committed: doCommit,

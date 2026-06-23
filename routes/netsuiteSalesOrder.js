@@ -31,7 +31,7 @@ const { createNetSuiteCustomer } = require("../utils/netsuiteCustomerCreate");
 // ✅ In-memory cache for GET /:id sales order payloads
 // =====================================================
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const SO_CACHE_VERSION = "auto-fulfilment-status-v2";
+const SO_CACHE_VERSION = "inventory-detail-display-v3";
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
 const LOCATION_FEED_TTL_MS = 10 * 60 * 1000;
 const locationFeedCache = { expiresAt: 0, rows: null, inFlight: null };
@@ -3100,6 +3100,7 @@ router.get("/:id", async (req, res) => {
           custcol_sb_fulfilmentlocation,
           custcol_sb_epos_inventory_meta,
           custcol_sb_lotnumber,
+          BUILTIN.DF(custcol_sb_lotnumber) AS lotnumber_name,
           custcol_sb_taken_from_store,
           custcol_sb_30nighttrialoption
         FROM transactionline
@@ -3118,6 +3119,27 @@ router.get("/:id", async (req, res) => {
 
       if (suiteql && Array.isArray(suiteql.items)) {
         const lineIntercompanyPoMap = await getSalesOrderLineIntercompanyPoMap(id, userId);
+        const lotNumberIds = [
+          ...new Set(
+            suiteql.items
+              .map((row) =>
+                String(row.custcol_sb_lotnumber || row.CUSTCOL_SB_LOTNUMBER || "").trim()
+              )
+              .filter(Boolean)
+          ),
+        ];
+        const lotNumberInfoEntries = await Promise.all(
+          lotNumberIds.map(async (lotId) => [
+            lotId,
+            await getInventoryNumberInfo(lotId, userId).catch(() => null),
+          ])
+        );
+        const lotNumberNameById = Object.fromEntries(
+          lotNumberInfoEntries
+            .map(([lotId, info]) => [lotId, String(info?.number || "").trim()])
+            .filter(([, lotName]) => lotName)
+        );
+
         const items = suiteql.items.map((r) => {
           const itemId = String(r.item);
           const lineId = String(r.lineid || "");
@@ -3174,6 +3196,17 @@ router.get("/:id", async (req, res) => {
             r.custcol_sb_lotnumber ||
             r.CUSTCOL_SB_LOTNUMBER ||
             "";
+          const suiteQlLotNumberName =
+            r.lotnumber_name ||
+            r.LOTNUMBER_NAME ||
+            "";
+          const lotNumberName =
+            lotNumberNameById[String(lotNumber || "").trim()] ||
+            (String(suiteQlLotNumberName || "").trim() !== String(lotNumber || "").trim()
+              ? suiteQlLotNumberName
+              : "") ||
+            lotNumber ||
+            "";
           const lineCreatedPoId =
             r.createdpo ||
             r.CREATEDPO ||
@@ -3218,22 +3251,53 @@ router.get("/:id", async (req, res) => {
           }
 
           let inventoryDetail = "";
+          let inventoryDetailDisplay = "";
 
           if (inventoryMeta) {
             inventoryDetail = String(inventoryMeta).trim();
+            inventoryDetailDisplay = inventoryDetail;
           } else if (lotNumber) {
-            const warehouseId =
-              so?.custbody_sb_warehouse?.id ||
-              so?.location?.id ||
-              "";
+            const fulfilmentName = fulfilId
+              ? String(fulfilmentMap[fulfilId] || "").trim()
+              : "";
+            const isInStoreLotLine =
+              takenFromStore ||
+              fulfilmentName.toLowerCase() === "in store" ||
+              String(fulfilId || "") === "1";
 
-            const warehouseName =
+            const storeDisplayName =
+              so?.custbody_sb_primarystore?.refName ||
+              so?.custbody_sb_primarystore?.name ||
+              so?.custbody_sb_primarystore?.text ||
+              "";
+            const storeDisplayId =
+              so?.location?.id ||
+              so?.custbody_sb_primarystore?.id ||
+              "";
+            const warehouseDisplayName =
               so?.custbody_sb_warehouse?.refName ||
               so?.custbody_sb_warehouse?.name ||
               so?.location?.refName ||
               "";
+            const warehouseDisplayId =
+              so?.custbody_sb_warehouse?.id ||
+              so?.location?.id ||
+              "";
 
-            inventoryDetail = `${qty || 1}|${warehouseName}|${warehouseId}|||LOT|${lotNumber}`;
+            const displayLocationName =
+              isInStoreLotLine && storeDisplayName
+                ? storeDisplayName
+                : warehouseDisplayName;
+            const displayLocationId =
+              isInStoreLotLine && storeDisplayName
+                ? storeDisplayId
+                : warehouseDisplayId;
+
+            inventoryDetail = `${qty || 1}|${displayLocationName}|${displayLocationId}|||LOT|${lotNumber}`;
+            inventoryDetailDisplay = [displayLocationName, lotNumberName]
+              .map((part) => String(part || "").trim())
+              .filter(Boolean)
+              .join(" | ");
           }
 
           return {
@@ -3247,8 +3311,11 @@ router.get("/:id", async (req, res) => {
             taxCode,
             discount: 0,
             inventoryDetail,
+            inventoryDetailDisplay,
             custcol_sb_epos_inventory_meta: inventoryMeta || "",
             custcol_sb_lotnumber: lotNumber || "",
+            custcol_sb_lotnumber_name: lotNumberName || "",
+            lotNumberName: lotNumberName || "",
             createdpoId: intercompanyPurchaseOrder?.id || "",
             createdpoName: intercompanyPurchaseOrder?.refName || "",
             createpo: intercompanyPurchaseOrder,

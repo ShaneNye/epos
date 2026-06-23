@@ -310,7 +310,8 @@ textarea:focus {
 .inventory-cell-allocated {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
+  gap: 6px;
   min-width: 42px;
   min-height: 30px;
   padding: 4px 8px;
@@ -341,7 +342,9 @@ textarea:focus {
 }
 
 .inventory-cell-allocated .inv-summary {
-  display: none;
+  display: inline;
+  font-weight: 600;
+  white-space: nowrap;
 }
 
 /* === LAYOUT (THREE COLUMN) === */

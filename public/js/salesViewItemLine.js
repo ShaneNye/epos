@@ -423,6 +423,58 @@ function existingInventoryDetail(line) {
   ]);
 }
 
+function existingInventoryDetailDisplay(line) {
+  return salesViewRecordValue(line, [
+    "inventoryDetailDisplay",
+    "inventory_detail_display",
+    "INVENTORY_DETAIL_DISPLAY",
+  ]);
+}
+
+function selectedSalesViewLocationText(selectId) {
+  const select = document.getElementById(selectId);
+  return select?.selectedOptions?.[0]?.textContent?.trim() || "";
+}
+
+function salesViewLotDisplayValue(line, fallback = "") {
+  return salesViewRecordValue(line, [
+    "custcol_sb_lotnumber_name",
+    "CUSTCOL_SB_LOTNUMBER_NAME",
+    "lotNumberName",
+    "lotnumberName",
+    "lotNumberText",
+    "lotnumberText",
+  ]) || fallback;
+}
+
+function salesViewInventoryDisplayForLine({
+  line,
+  fulfilmentName,
+  inventoryMeta,
+  lotNumber,
+  inventoryDetail,
+  inventoryDisplay,
+}) {
+  const meta = String(inventoryMeta || "").trim();
+  if (meta) return meta;
+
+  const lot = String(salesViewLotDisplayValue(line, lotNumber) || "").trim();
+  if (!lot) return inventoryDisplay || salesViewInventoryDetailSummary(inventoryDetail);
+
+  const fulfilment = String(fulfilmentName || "").trim().toLowerCase();
+  const locationName =
+    fulfilment === "in store"
+      ? selectedSalesViewLocationText("store")
+      : fulfilment === "warehouse"
+        ? selectedSalesViewLocationText("warehouse")
+        : "";
+
+  return [locationName, lot]
+    .map((part) => String(part || "").trim())
+    .filter(Boolean)
+    .join(" | ") || inventoryDisplay || salesViewInventoryDetailSummary(inventoryDetail);
+}
+
 function parseSalesViewInventoryDetailPart(part) {
   const tokens = String(part || "").trim().split("|");
   return {
@@ -448,8 +500,7 @@ function salesViewInventoryDetailSummary(detailString) {
     .map((detail) => {
       const qty = detail.qty ? `${detail.qty}x ` : "";
       const lot = detail.inventoryNumberName || "Inventory detail";
-      const location = detail.locationName ? ` @ ${detail.locationName}` : "";
-      return `${qty}${lot}${location}`;
+      return `${qty}${lot}`;
     })
     .join("; ");
 }
@@ -883,11 +934,14 @@ function setInventoryButtonState(row) {
   }
 }
 
-function enhanceReadOnlyInventoryCell(row, inventoryDetail, lineIndex) {
+function enhanceReadOnlyInventoryCell(row, inventoryDetail, lineIndex, displaySummary = "") {
   const wrapper = row?.querySelector(".inventory-cell-wrapper");
   if (!wrapper || !String(inventoryDetail || "").trim()) return;
 
-  const summary = salesViewInventoryDetailSummary(inventoryDetail) || "Allocated inventory";
+  const summary =
+    String(displaySummary || "").trim() ||
+    salesViewInventoryDetailSummary(inventoryDetail) ||
+    "Allocated inventory";
   const cell = document.createElement("div");
   cell.className = "inventory-cell inventory-cell-allocated";
   cell.dataset.readonlyInventory = "1";
@@ -968,6 +1022,9 @@ function applyItemToSalesViewRow(row, item, config = {}) {
 
   if (saleField && Number.isFinite(Number(config.salePrice))) {
     saleField.value = Number(config.salePrice).toFixed(2);
+    saleField.dispatchEvent(new Event("input", { bubbles: true }));
+  } else if (saleField) {
+    saleField.value = (retailPerUnitGross * quantity).toFixed(2);
     saleField.dispatchEvent(new Event("input", { bubbles: true }));
   }
 
@@ -1671,6 +1728,10 @@ window.renderSalesViewLines = function renderSalesViewLines({
       : isPending
         ? `<select class="item-fulfilment fulfilmentSelect" data-line="${idx}"></select>`
         : line.custcol_sb_fulfilmentlocation?.refName || "";
+    const fulfilmentDisplayName =
+      typeof fulfilCell === "string" && !fulfilCell.includes("<select")
+        ? fulfilCell
+        : line.custcol_sb_fulfilmentlocation?.refName || "";
 
     const existingInventoryMeta = salesViewRecordValue(line, [
       "custcol_sb_epos_inventory_meta",
@@ -1684,6 +1745,15 @@ window.renderSalesViewLines = function renderSalesViewLines({
       "lotNumber",
     ]);
     const inventoryDetail = existingInventoryDetail(line);
+    const inventoryDisplay = existingInventoryDetailDisplay(line);
+    const inventorySummary = salesViewInventoryDisplayForLine({
+      line,
+      fulfilmentName: fulfilmentDisplayName,
+      inventoryMeta: existingInventoryMeta,
+      lotNumber: existingLotNumber,
+      inventoryDetail,
+      inventoryDisplay,
+    });
     const takenFromStore = ["t", "true", "1", "yes"].includes(
       salesViewRecordValue(line, [
         "custcol_sb_taken_from_store",
@@ -1735,7 +1805,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
             inventoryDetail ? "✅" : "📦"
           }</button>
           <input type="hidden" class="item-inv-detail" value="${String(inventoryDetail).replace(/"/g, "&quot;")}" />
-          <span class="inv-summary">${inventoryDetail || ""}</span>
+          <span class="inv-summary">${inventorySummary || ""}</span>
         </div>`
       : inventoryDetail
         ? "✅"
@@ -1848,7 +1918,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
       : String(existingLotNumber || "").trim();
     tr.dataset.inventoryReadonly = isPendingFulfillment && inventoryDetail ? "1" : "";
     if (isPendingFulfillment && inventoryDetail) {
-      enhanceReadOnlyInventoryCell(tr, inventoryDetail, idx);
+      enhanceReadOnlyInventoryCell(tr, inventoryDetail, idx, inventorySummary);
     }
 
     const existingTrialValue =
