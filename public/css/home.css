@@ -696,6 +696,16 @@ select#activeRoleSelect::-internal-list-box {
   font-weight: 800;
 }
 
+.outstanding-doc-link {
+  color: var(--brand, #0081ab);
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.outstanding-doc-link:hover {
+  text-decoration: underline;
+}
+
 .kpi-meter-header {
   display: flex;
   align-items: center;

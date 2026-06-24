@@ -8,6 +8,8 @@ document.addEventListener("DOMContentLoaded", () => {
   let transferOrders = [];
   let cases = [];
   let selectedLocation = "";
+  const NETSUITE_TRANSFER_ORDER_BASE =
+    "https://7972741.app.netsuite.com/app/accounting/transactions/trnfrord.nl";
 
   function normalize(value) {
     return String(value || "")
@@ -36,6 +38,35 @@ document.addEventListener("DOMContentLoaded", () => {
       return status === "pending fulfillment" || status === "pending fulfilment";
     }
     return status === "pending receipt";
+  }
+
+  function firstValue(row, keys) {
+    for (const key of keys) {
+      const value = row?.[key];
+      if (value !== undefined && value !== null && String(value).trim() !== "") {
+        return value;
+      }
+    }
+    return "";
+  }
+
+  function transferOrderInternalId(row) {
+    return String(firstValue(row, ["Internal ID", "Internal Id", "internalid", "id"])).trim();
+  }
+
+  function transferOrderDocumentNumber(row) {
+    return String(firstValue(row, ["Document Number", "Document No", "Document", "Tran ID", "tranid"])).trim();
+  }
+
+  function transferOrderNeededBy(row) {
+    return firstValue(row, ["Needed By", "Due Date/Receive By", "Receive By", "Due Date"]);
+  }
+
+  function transferOrderUrl(internalId) {
+    const url = new URL(NETSUITE_TRANSFER_ORDER_BASE);
+    url.searchParams.set("id", internalId);
+    url.searchParams.set("whence", "");
+    return url.toString();
   }
 
   function getHeaders() {
@@ -218,26 +249,42 @@ document.addEventListener("DOMContentLoaded", () => {
       .replace(/'/g, "&#39;");
   }
 
+  function documentLink(row) {
+    const internalId = transferOrderInternalId(row);
+    const documentNumber = transferOrderDocumentNumber(row) || internalId;
+    if (!internalId) return cell(documentNumber);
+
+    return `
+      <a href="${cell(transferOrderUrl(internalId))}"
+         class="outstanding-doc-link"
+         data-transfer-order-id="${cell(internalId)}">
+        ${cell(documentNumber)}
+      </a>
+    `;
+  }
+
   function transferTable(rows) {
     return `
       <table class="outstanding-popup-table">
         <thead>
           <tr>
+            <th>Document Number</th>
             <th>Date</th>
             <th>From</th>
             <th>To</th>
             <th>Status</th>
-            <th>Due Date/Receive By</th>
+            <th>Needed By</th>
           </tr>
         </thead>
         <tbody>
           ${rows.map((row) => `
             <tr>
+              <td>${documentLink(row)}</td>
               <td>${cell(row.Date)}</td>
               <td>${cell(row.Location)}</td>
               <td>${cell(row["To Location"])}</td>
               <td>${cell(row.Status)}</td>
-              <td>${cell(row["Due Date/Receive By"])}</td>
+              <td>${cell(transferOrderNeededBy(row))}</td>
             </tr>
           `).join("")}
         </tbody>
@@ -291,6 +338,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
     popup.classList.remove("hidden");
   }
+
+  document.addEventListener("click", (event) => {
+    if (!(event.target instanceof Element)) return;
+
+    const link = event.target.closest(".outstanding-doc-link");
+    if (!link) return;
+
+    event.preventDefault();
+    const internalId = link.dataset.transferOrderId;
+    if (!internalId) return;
+
+    window.open(
+      transferOrderUrl(internalId),
+      `transferOrder_${internalId}`,
+      "popup=yes,width=1200,height=850,menubar=no,toolbar=no,location=yes,resizable=yes,scrollbars=yes"
+    );
+  });
 
   async function loadData() {
     widget.innerHTML = `<div class="loading">Loading outstanding actions...</div>`;

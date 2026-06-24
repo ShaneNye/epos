@@ -332,6 +332,37 @@ async function resolveNetSuiteLocationIdByName(name) {
   return String(broad?.["Internal ID"] || broad?.id || broad?.internalid || "").trim();
 }
 
+async function resolveDistributionLocationIdByName(name) {
+  const cleanName = String(name || "").trim();
+  if (!cleanName) return "";
+
+  try {
+    const broadName = normalizeBroadLocationLookupName(cleanName);
+    const searchTerm = broadName || normalizeLocationLookupName(cleanName);
+    const result = await pool.query(
+      `SELECT name, distribution_location_id, netsuite_internal_id, invoice_location_id
+       FROM locations
+       WHERE name ILIKE $1
+       LIMIT 25`,
+      [`%${searchTerm}%`]
+    );
+    const match =
+      result.rows.find((row) => locationNamesMatch(row.name, cleanName)) ||
+      result.rows[0] ||
+      null;
+
+    return String(
+      match?.distribution_location_id ||
+        match?.netsuite_internal_id ||
+        match?.invoice_location_id ||
+        ""
+    ).trim();
+  } catch (err) {
+    console.warn(`Could not resolve distribution location by name "${cleanName}":`, err.message);
+    return "";
+  }
+}
+
 async function getInventoryNumberInfo(inventoryNumberId, userId) {
   const id = String(inventoryNumberId || "").trim();
   if (!id) return null;
@@ -451,22 +482,34 @@ async function createLinkedTransferOrdersForSalesOrder({
   const salesOrderInternalId = await resolveSalesOrderInternalId(salesOrderId, userId);
   const createdTransfers = [];
   const failed = [];
+  const warnings = [];
+  const skippedLines = [];
 
   if (skipIfExisting) {
-    const existingTransfers = await getLinkedTransferOrders(salesOrderInternalId, userId);
-    if (existingTransfers.length) {
-      console.log(
-        `Linked Transfer Orders already exist for Sales Order ${salesOrderInternalId}; skipping creation`
+    try {
+      const existingTransfers = await getLinkedTransferOrders(salesOrderInternalId, userId);
+      if (existingTransfers.length) {
+        console.log(
+          `Linked Transfer Orders already exist for Sales Order ${salesOrderInternalId}; skipping creation`
+        );
+        return {
+          ok: true,
+          salesOrderId: salesOrderInternalId,
+          skipped: true,
+          reason: "existing-linked-transfers",
+          created: [],
+          existing: existingTransfers,
+          failed: [],
+          warnings,
+        };
+      }
+    } catch (err) {
+      const message = err.message || "Could not check existing linked Transfer Orders.";
+      console.warn(
+        `Could not check existing linked Transfer Orders for Sales Order ${salesOrderInternalId}; continuing with creation:`,
+        message
       );
-      return {
-        ok: true,
-        salesOrderId: salesOrderInternalId,
-        skipped: true,
-        reason: "existing-linked-transfers",
-        created: [],
-        existing: existingTransfers,
-        failed: [],
-      };
+      warnings.push(message);
     }
   }
 
@@ -474,33 +517,64 @@ async function createLinkedTransferOrdersForSalesOrder({
     const storeContext = await resolveStoreLocationContext(order, storeName);
 
     for (const [idx, line] of items.entries()) {
-      const fulfilMethod = String(line.fulfilmentMethod || "").trim();
+      const hasInventoryMeta = !!String(line.inventoryMeta || "").trim();
+      const fulfilMethod = String(
+        line.fulfilmentMethod || (line.takenFromStore === true && hasInventoryMeta ? "1" : "")
+      ).trim();
       let skipTransfer = false;
+      const skipReasons = [];
 
-      if (!line.inventoryMeta) skipTransfer = true;
+      if (!hasInventoryMeta) {
+        skipTransfer = true;
+        skipReasons.push("missing-inventory-meta");
+      }
 
       const metaParts = (line.inventoryMeta || "")
         .split(";")
         .map((p) => p.trim())
         .filter(Boolean);
 
-      if (metaParts.length === 0) skipTransfer = true;
+      if (metaParts.length === 0) {
+        skipTransfer = true;
+        skipReasons.push("no-inventory-meta-parts");
+      }
 
       if (fulfilMethod === "1") {
         const allInventoryAlreadyInStore = metaParts.every((part) =>
           inventoryDetailIsAtStore(part, storeContext)
         );
-        if (allInventoryAlreadyInStore) skipTransfer = true;
+        if (allInventoryAlreadyInStore) {
+          skipTransfer = true;
+          skipReasons.push("inventory-already-at-order-store");
+        }
       }
 
       if (fulfilMethod === "2") {
         try {
           const [, , locIdRaw] = metaParts[0].split("|");
-          if (String(locIdRaw || "") === String(order.warehouse)) skipTransfer = true;
+          if (String(locIdRaw || "") === String(order.warehouse)) {
+            skipTransfer = true;
+            skipReasons.push("inventory-already-at-warehouse");
+          }
         } catch {}
       }
 
-      if (skipTransfer) continue;
+      if (!fulfilMethod) {
+        skipTransfer = true;
+        skipReasons.push("missing-fulfilment-method");
+      }
+
+      if (skipTransfer) {
+        skippedLines.push({
+          line: idx + 1,
+          itemId: resolveLineItemId(line),
+          fulfilmentMethod: fulfilMethod || null,
+          takenFromStore: line.takenFromStore === true,
+          reasons: skipReasons,
+          inventoryMeta: line.inventoryMeta || "",
+        });
+        continue;
+      }
 
       for (const part of metaParts) {
         if (fulfilMethod === "1" && inventoryDetailIsAtStore(part, storeContext)) {
@@ -540,6 +614,10 @@ async function createLinkedTransferOrdersForSalesOrder({
             sourceLocId = await resolveNetSuiteLocationIdByName(locName);
           }
 
+          if (!sourceLocId && locName) {
+            sourceLocId = await resolveDistributionLocationIdByName(locName);
+          }
+
           if (!sourceLocId && locId) {
             sourceLocId = locId;
           }
@@ -558,13 +636,27 @@ async function createLinkedTransferOrdersForSalesOrder({
           if (!sourceLocId && locName) {
             sourceLocId = await resolveNetSuiteLocationIdByName(locName);
           }
+
+          if (!sourceLocId && locName) {
+            sourceLocId = await resolveDistributionLocationIdByName(locName);
+          }
         } catch (err) {
           console.error("Source lookup failed:", err.message);
         }
 
         if (!sourceLocId) {
           if (locId) sourceLocId = locId;
-          else continue;
+          else {
+            skippedLines.push({
+              line: idx + 1,
+              itemId: transferItemId,
+              fulfilmentMethod: fulfilMethod || null,
+              takenFromStore: line.takenFromStore === true,
+              reasons: ["missing-source-location"],
+              inventoryMeta: part,
+            });
+            continue;
+          }
         }
 
         let destinationLocId = "";
@@ -585,8 +677,35 @@ async function createLinkedTransferOrdersForSalesOrder({
           }
         }
 
-        if (!destinationLocId || !transferItemId) continue;
-        if (String(sourceLocId) === String(destinationLocId)) continue;
+        if (!destinationLocId || !transferItemId) {
+          skippedLines.push({
+            line: idx + 1,
+            itemId: transferItemId,
+            fulfilmentMethod: fulfilMethod || null,
+            takenFromStore: line.takenFromStore === true,
+            sourceLocation: sourceLocId,
+            destinationWarehouse: destinationLocId,
+            reasons: [
+              ...(!destinationLocId ? ["missing-destination-location"] : []),
+              ...(!transferItemId ? ["missing-transfer-item"] : []),
+            ],
+            inventoryMeta: part,
+          });
+          continue;
+        }
+        if (String(sourceLocId) === String(destinationLocId)) {
+          skippedLines.push({
+            line: idx + 1,
+            itemId: transferItemId,
+            fulfilmentMethod: fulfilMethod || null,
+            takenFromStore: line.takenFromStore === true,
+            sourceLocation: sourceLocId,
+            destinationWarehouse: destinationLocId,
+            reasons: ["source-and-destination-match"],
+            inventoryMeta: part,
+          });
+          continue;
+        }
 
         const inventoryAssignment = {
           issueInventoryNumber: { id: invId },
@@ -661,6 +780,8 @@ async function createLinkedTransferOrdersForSalesOrder({
     skipped: false,
     created: createdTransfers,
     failed,
+    warnings,
+    skippedLines,
   };
 }
 
@@ -744,6 +865,16 @@ function isRecordChangedPayload(payload) {
   const name = String(payload?.name || payload?.error?.name || payload?.code || payload?.error?.code || "");
   const message = String(payload?.error?.message || payload?.error || payload?.message || payload?.raw || "");
   return name === "RCRD_HAS_BEEN_CHANGED" || /record has been changed/i.test(message);
+}
+
+function isProcessedSalesOrderPermissionPayload(payload) {
+  const name = String(payload?.name || payload?.error?.name || payload?.code || payload?.error?.code || "");
+  const message = String(payload?.error?.message || payload?.error || payload?.message || payload?.raw || "");
+  return (
+    name === "INSUFFICIENT_PERMISSION" &&
+    /partially or fully processed/i.test(message) &&
+    /may not be edited/i.test(message)
+  );
 }
 
 function delay(ms) {
@@ -3594,16 +3725,32 @@ router.post("/:id/commit", async (req, res) => {
       "Commit Sales Order"
     );
 
+    const processedPermissionBypass =
+      (!response.ok || !data.ok) && isProcessedSalesOrderPermissionPayload(data);
+    const restletWarning = processedPermissionBypass
+      ? publicNetSuiteError(data)
+      : null;
+
     if (!response.ok || !data.ok) {
       console.error("❌ RESTlet returned error:", text);
-      const safeError = publicNetSuiteError(data);
-      return res.status(500).json({
-        ok: false,
-        ...safeError,
-      });
+      if (processedPermissionBypass) {
+        console.warn(
+          `Sales Order ${id} appears already approved/processed; continuing with transfer-order automation.`
+        );
+      } else {
+        const safeError = publicNetSuiteError(data);
+        return res.status(500).json({
+          ok: false,
+          ...safeError,
+        });
+      }
     }
 
-    console.log(`✅ Sales Order ${id} approved via RESTlet`);
+    console.log(
+      processedPermissionBypass
+        ? `Sales Order ${id} treated as already approved after RESTlet permission response`
+        : `Sales Order ${id} approved via RESTlet`
+    );
     cacheDeleteSalesOrder(id);
     const pairedMemoSync = restletPairedMemoSyncResult(data);
 
@@ -3650,9 +3797,17 @@ router.post("/:id/commit", async (req, res) => {
     ]);
     return res.json({
       ok: true,
-      message: data.message || "Sales Order approved",
+      message: processedPermissionBypass
+        ? "Sales Order already processed/approved; transfer automation continued"
+        : data.message || "Sales Order approved",
       restletResult: data,
+      restletBypassed: processedPermissionBypass,
       warnings: [
+        ...(restletWarning
+          ? [
+              `Sales Order was already processed/approved in NetSuite; continuing with transfer automation (${restletWarning.error}).`,
+            ]
+          : []),
         ...(linkedTransferOrders.ok
           ? []
           : [
@@ -3667,6 +3822,14 @@ router.post("/:id/commit", async (req, res) => {
                 transferCreation.failed?.length || 1
               } order(s).`,
             ]),
+        ...(transferCreation.created?.length === 0 && transferCreation.skippedLines?.length
+          ? [
+              `No linked Transfer Orders were created; ${transferCreation.skippedLines.length} line(s) were skipped.`,
+            ]
+          : []),
+        ...((transferCreation.warnings || []).map(
+          (warning) => `Linked Transfer Order pre-check warning: ${warning}`
+        )),
         ...(comsSalesValue.ok ? [] : [comsSalesValue.error]),
         ...(pairedMemoSync.ok
           ? []
