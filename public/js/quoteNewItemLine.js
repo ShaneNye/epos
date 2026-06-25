@@ -71,7 +71,7 @@ function rowHasAdjustableCategory(row) {
 /* =========================================================
    Load items from shared cache / proxy
 ========================================================= */
-async function loadItems(forceRefresh = false) {
+async function loadItems(forceRefresh = true) {
   try {
     if (window.nsItemFeedCache?.getItems) {
       items = await window.nsItemFeedCache.getItems({ forceRefresh });
@@ -82,7 +82,13 @@ async function loadItems(forceRefresh = false) {
 
     console.warn("⚠️ nsItemFeedCache not found - falling back to direct fetch");
 
-    const res = await fetch("/api/netsuite/items");
+    const url = forceRefresh
+      ? `/api/netsuite/items?refresh=1&_=${Date.now()}`
+      : "/api/netsuite/items";
+    const res = await fetch(url, {
+      cache: forceRefresh ? "no-store" : "default",
+      credentials: "same-origin",
+    });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const data = await res.json();
@@ -770,7 +776,7 @@ function getFilteredMatches(query) {
   return itemPool
     .filter((it) => {
       const name = (it["Name"] || "").toLowerCase();
-      if (!name.includes(query)) return false;
+      const nameMatch = name.includes(query);
 
       const sizeMatch = (() => {
         if (selectedSize === "") return true;
@@ -796,29 +802,81 @@ function getFilteredMatches(query) {
           );
         }
 
-        return name.includes(selectedSize);
+        const pattern = new RegExp(`\\b${selectedSize}\\b`, "i");
+        return pattern.test(name);
       })();
 
-      if (!sizeMatch) return false;
+      const baseMatch = (() => {
+        if (selectedBaseOption === "") return true;
+        const cleanName = name.replace(/[^a-z0-9 ]/g, "");
+        return cleanName.includes(selectedBaseOption);
+      })();
 
-      if (selectedBaseOption) {
-        const baseOpt = (it["Base Option"] || it["Base Options"] || it["base options"] || "")
-          .toString()
-          .toLowerCase();
-        const baseOk = baseOpt.includes(selectedBaseOption) || name.includes(selectedBaseOption);
-        if (!baseOk) return false;
-      }
+      const typeMatch = (() => {
+        const cls = (it["Class"] || "").toLowerCase();
+        if (selectedType === "") return true;
+        if (selectedType === "services") return cls === "service";
+        if (selectedType === "items") return cls !== "service";
+        return true;
+      })();
 
-      if (selectedType) {
-        const cls = (it["Class"] || "").toString().toLowerCase();
-        const typ = (it["Type"] || "").toString().toLowerCase();
-        const ok = cls.includes(selectedType) || typ.includes(selectedType) || name.includes(selectedType);
-        if (!ok) return false;
-      }
-
-      return true;
+      return nameMatch && sizeMatch && baseMatch && typeMatch;
     })
     .slice(0, 50);
+}
+
+function normalizeItemSearchText(value) {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[×]/g, "x")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function findExactTypedItem(value) {
+  const typed = normalizeItemSearchText(value);
+  if (!typed) return null;
+
+  const itemPool = Array.isArray(items) && items.length ? items : (window.items || []);
+  return itemPool.find((it) => normalizeItemSearchText(it["Name"]) === typed) || null;
+}
+
+function debugQuoteItemSearch(value) {
+  const query = normalizeItemSearchText(value);
+  const itemPool = Array.isArray(items) && items.length ? items : (window.items || []);
+  const matches = itemPool
+    .filter((it) => normalizeItemSearchText(it["Name"]).includes(query))
+    .slice(0, 20)
+    .map((it) => ({
+      id: it["Internal ID"] || it.internalId || it.id || "",
+      name: it["Name"] || it.name || "",
+      class: it["Class"] || it.class || "",
+    }));
+
+  return {
+    query,
+    itemCount: itemPool.length,
+    matchCount: matches.length,
+    matches,
+  };
+}
+
+async function resolveTypedItemForRow(row) {
+  if (!row || row.dataset.hasItem === "1") return false;
+
+  const input = row.querySelector(".item-search");
+  const typed = input?.value || "";
+  if (!typed.trim()) return false;
+
+  if ((!items || !items.length) && (!window.items || !window.items.length)) {
+    await loadItems();
+  }
+
+  const exact = findExactTypedItem(typed);
+  if (!exact) return false;
+
+  selectItemForRow(row, input, exact);
+  return true;
 }
 
 function setupAutocompleteForRow(row) {
@@ -850,10 +908,15 @@ function setupAutocompleteForRow(row) {
 
   input.addEventListener("blur", () => {
     setTimeout(() => {
+      resolveTypedItemForRow(row);
       if (!interactingWithSuggestions && !globalSuggestions?.matches(":hover")) {
         hideSuggestions();
       }
     }, 150);
+  });
+
+  input.addEventListener("change", () => {
+    resolveTypedItemForRow(row);
   });
 }
 
@@ -1089,6 +1152,7 @@ window.updateVatFreeColumnVisibility = updateVatFreeColumnVisibility;
 window.ensureNextEmptyRowAndFocus = ensureNextEmptyRowAndFocus;
 window.addNewRow = addNewRow;
 window.openOptionsWindow = openOptionsWindow;
+window.debugQuoteItemSearch = debugQuoteItemSearch;
 window.quoteNewItemEditor = {
   addNewRow: (...args) => addNewRow(...args),
   applyItemToRow: (...args) => applyItemToRow(...args),

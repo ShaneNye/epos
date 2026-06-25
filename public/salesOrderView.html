@@ -11,6 +11,7 @@
     <!-- Styles -->
     <link rel="stylesheet" href="/css/home.css">
     <link rel="stylesheet" href="/css/salesView.css?v=inventory-detail-display-v4">
+    <link rel="stylesheet" href="/css/what3wordsNotes.css">
     <link rel="stylesheet" href="/css/salesAutoFulfilmentNotice.css?v=auto-fulfilment-status-v3">
     <script src="/js/storage.js"></script>
 
@@ -26,6 +27,7 @@
     <script src="/js/salesCustomerLock.js" defer></script>
     <script src="/js/salesInventoryModal.js" defer></script>
     <script src="/js/salesAutoFulfilmentNotice.js?v=auto-fulfilment-status-v3" defer></script>
+    <script src="/js/what3wordsNotes.js" defer></script>
     <script src="/js/salesOrderView.js" defer></script>
     <script src="/js/salesItemLineCommon.js" defer></script>
     <script src="/js/salesViewItemLine.js?v=inventory-detail-display-v4" defer></script>
@@ -177,7 +179,10 @@
                         </div>
 
                       <label class="memo">
-                            Dispatch / Delivery Notes
+                            <span class="memo-label-row">
+                                <span>Dispatch / Delivery Notes</span>
+                                <button type="button" class="w3w-notes-btn" data-w3w-open>3 Words</button>
+                            </span>
                             <textarea name="memo" rows="3" placeholder="Any notes for this order..."></textarea>
                         </label> 
 

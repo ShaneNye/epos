@@ -18,6 +18,8 @@
   <script src="/assistant/assistant.js"></script>
   <script type="module" src="/assistant/assistantHooks.js"></script>
   <script src="/js/suitepimDashboard.js" defer></script>
+  <script src="/js/suitepimFloorPlans.js" defer></script>
+  <script src="/js/widgets/goodsValue.js" defer></script>
 </head>
 
 <body>
@@ -85,91 +87,102 @@
       </a>
     </nav>
 
-    <section class="suitepim-hub-hero">
-      <div>
-        <h2>Product workspace</h2>
-        <p>Track item sales, location performance, and month-on-month movement from the item performance search.</p>
-      </div>
-      <div class="suitepim-kpi-placeholder" id="suitepimPerformanceSource">
-        <span>Loading</span>
-        <strong>Item performance</strong>
-      </div>
+    <section class="suitepim-dashboard-tabs" role="tablist" aria-label="SuitePim dashboard views">
+      <button
+        id="suitepimStockManagementTab"
+        class="active"
+        type="button"
+        role="tab"
+        aria-selected="true"
+        aria-controls="suitepimStockManagementPanel"
+        data-suitepim-dashboard-tab="stock-management">
+        Stock Management
+      </button>
+      <button
+        id="suitepimFloorPlansTab"
+        type="button"
+        role="tab"
+        aria-selected="false"
+        aria-controls="suitepimFloorPlansPanel"
+        data-suitepim-dashboard-tab="floor-plans">
+        Floor Plans
+      </button>
     </section>
 
-    <section class="suitepim-kpi-filter-panel suitepim-collapsible is-collapsed" aria-label="Item performance filters">
-      <div class="suitepim-panel-heading">
-        <div>
-          <h2>KPI filters</h2>
-          <p>Filter the dashboard by date range, subsidiary, and item type.</p>
-        </div>
-        <button id="suitepimToggleKpiFiltersBtn" class="suitepim-panel-toggle" type="button" aria-expanded="false" aria-controls="suitepimKpiFilterBody">
-          <svg aria-hidden="true" viewBox="0 0 24 24">
-            <path d="M6 9l6 6 6-6"></path>
-          </svg>
-        </button>
-      </div>
-      <div id="suitepimKpiFilterBody" class="suitepim-panel-body">
-        <div class="suitepim-dashboard-controls">
-          <div>
-            <label for="suitepimPerformancePeriod">Period</label>
-            <select id="suitepimPerformancePeriod">
-              <option value="all">All available data</option>
-              <option value="this-month">This month</option>
-              <option value="last-month">Last month</option>
-              <option value="ytd">Year to date</option>
-              <option value="last-12">Last 12 months</option>
-            </select>
-          </div>
-          <div>
-            <label for="suitepimLocationToggle">Subsidiaries</label>
-            <button id="suitepimLocationToggle" class="suitepim-location-toggle" type="button">All subsidiaries</button>
-            <div id="suitepimLocationPanel" class="suitepim-location-panel" hidden></div>
-          </div>
-          <button id="suitepimPerformanceClear" type="button">All subsidiaries</button>
-          <button id="suitepimExportCsvBtn" type="button">Download CSV</button>
-        </div>
-
-        <section class="suitepim-report-tabs" aria-label="Item type report">
-          <button type="button" data-type="Inventory">Inventory Items</button>
-          <button type="button" data-type="Service">Service Items</button>
-          <button class="active" type="button" data-type="all">All Items</button>
-        </section>
-      </div>
+    <section
+      id="suitepimStockManagementPanel"
+      class="suitepim-dashboard-panel"
+      role="tabpanel"
+      aria-labelledby="suitepimStockManagementTab"
+      data-suitepim-dashboard-panel="stock-management">
+      <section id="goodsValueWidget" class="widget-card wide inventory-widget-card goods-value-widget suitepim-stock-management-widget"></section>
     </section>
 
-    <section id="suitepimPerformanceStatus" class="suitepim-status" aria-live="polite"></section>
-
-    <section class="suitepim-performance-kpis" aria-label="Item performance summary">
-      <div><span id="suitepimPerfSales">£0</span><small>sales</small></div>
-      <div><span id="suitepimPerfUnits">0</span><small>units</small></div>
-      <div><span id="suitepimPerfItems">0</span><small>items</small></div>
-      <div><span id="suitepimPerfAvg">£0</span><small>average item value</small></div>
-    </section>
-
-    <section class="suitepim-performance-grid" aria-label="Item performance report">
-      <article class="suitepim-report-panel">
-        <div class="suitepim-report-heading">
-          <h2 id="suitepimTrendTitle">Monthly trend</h2>
-          <span id="suitepimPerfMom">MoM 0%</span>
+    <section
+      id="suitepimFloorPlansPanel"
+      class="suitepim-dashboard-panel suitepim-floorplan-panel"
+      role="tabpanel"
+      aria-labelledby="suitepimFloorPlansTab"
+      data-suitepim-dashboard-panel="floor-plans"
+      hidden>
+      <div class="suitepim-floorplan-shell" id="suitepimFloorPlanApp">
+        <div class="suitepim-floorplan-topbar">
+          <label for="suitepimFloorPlanLocation">Location</label>
+          <select id="suitepimFloorPlanLocation"></select>
+          <span id="suitepimFloorPlanStatus" class="suitepim-floorplan-status" aria-live="polite"></span>
+          <button id="suitepimFloorPlanEdit" class="suitepim-floorplan-action" type="button">Edit</button>
+          <button id="suitepimFloorPlanSave" class="suitepim-floorplan-action is-primary" type="button" hidden>Save</button>
         </div>
-        <div id="suitepimMonthlyTrend" class="suitepim-bar-chart"></div>
-      </article>
 
-      <article class="suitepim-report-panel">
-        <div class="suitepim-report-heading">
-          <h2>Subsidiary performance</h2>
-          <span id="suitepimPerfYoy">YoY 0%</span>
-        </div>
-        <div id="suitepimStorePerformance" class="suitepim-bar-list"></div>
-      </article>
+        <div class="suitepim-floorplan-workspace">
+          <aside class="suitepim-floorplan-sidebar" id="suitepimFloorPlanSidebar">
+            <button class="suitepim-floorplan-sidebar-toggle" id="suitepimFloorPlanSidebarToggle" type="button" aria-expanded="true" aria-controls="suitepimFloorPlanSidebarBody">
+              Floor plan files
+            </button>
+            <div id="suitepimFloorPlanSidebarBody" class="suitepim-floorplan-sidebar-body">
+              <div class="suitepim-floorplan-sidebar-tabs" role="tablist" aria-label="Floor plan sidebar">
+                <button class="active" type="button" role="tab" aria-selected="true" aria-controls="suitepimFloorPlanFilesTab" data-floorplan-sidebar-tab="files">Floor Plans</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="suitepimFloorPlanAssetsTab" data-floorplan-sidebar-tab="assets">Assets</button>
+              </div>
+              <section id="suitepimFloorPlanFilesTab" data-floorplan-sidebar-panel="files">
+                <button id="suitepimFloorPlanNew" class="suitepim-floorplan-new" type="button">Create new floorplan</button>
+                <div id="suitepimFloorPlanList" class="suitepim-floorplan-list"></div>
+              </section>
+              <section id="suitepimFloorPlanAssetsTab" data-floorplan-sidebar-panel="assets" hidden>
+                <div id="suitepimFloorPlanAssets" class="suitepim-floorplan-assets"></div>
+              </section>
+            </div>
+          </aside>
 
-      <article class="suitepim-report-panel suitepim-report-panel-wide">
-        <div class="suitepim-report-heading">
-          <h2>Top items</h2>
-          <span id="suitepimPerfRows">0 rows</span>
+          <section class="suitepim-floorplan-editor">
+            <div class="suitepim-floorplan-editor-toolbar">
+              <input id="suitepimFloorPlanName" type="text" value="Untitled floor plan" aria-label="Floor plan name" disabled>
+              <div class="suitepim-floorplan-tools" role="toolbar" aria-label="Floor plan drawing tools">
+                <button type="button" data-floorplan-tool="line" class="active">Wall</button>
+                <button type="button" data-floorplan-tool="door">Door</button>
+                <button type="button" data-floorplan-tool="window">Window</button>
+                <div class="suitepim-floorplan-zoom-controls" aria-label="Floor plan zoom controls">
+                  <button id="suitepimFloorPlanZoomOut" type="button" aria-label="Zoom out">-</button>
+                  <span id="suitepimFloorPlanZoomLabel">100%</span>
+                  <button id="suitepimFloorPlanZoomIn" type="button" aria-label="Zoom in">+</button>
+                </div>
+                <label>
+                  <input id="suitepimFloorPlanLockGrid" type="checkbox" checked>
+                  Lock to grid
+                </label>
+              </div>
+              <div id="suitepimFloorPlanRotationControls" class="suitepim-floorplan-rotation-controls" hidden aria-label="Asset rotation controls">
+                <button id="suitepimFloorPlanRotateLeft" type="button" aria-label="Rotate left (← arrow)">↺ Left</button>
+                <span id="suitepimFloorPlanRotationLabel">0°</span>
+                <button id="suitepimFloorPlanRotateRight" type="button" aria-label="Rotate right (→ arrow)">Right ↻</button>
+              </div>
+            </div>
+            <div id="suitepimFloorPlanCanvasWrap" class="suitepim-floorplan-canvas-wrap">
+              <svg id="suitepimFloorPlanCanvas" class="suitepim-floorplan-canvas" role="img" aria-label="Measured floor plan drawing area"></svg>
+            </div>
+          </section>
         </div>
-        <div id="suitepimTopItems" class="suitepim-top-items"></div>
-      </article>
+      </div>
     </section>
 
   </main>

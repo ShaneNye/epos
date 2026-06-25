@@ -557,6 +557,7 @@ app.use("/api/session/role", require("./routes/sessionRole"));
 app.use("/api/forgot-password", require("./routes/forgotPassword"));
 app.use("/api/reset-password", require("./routes/resetPassword"));
 app.use("/api/fetchify", require("./routes/fetchify"));
+app.use("/api/what3words", require("./routes/what3words"));
 app.use("/api/netsuite/salesorder", require("./routes/netsuiteSalesOrder"));
 app.use("/api/netsuite/quote", require("./routes/netsuiteQuote"));
 app.use("/api/sales-order-experience", salesOrderExperience.router);

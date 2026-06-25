@@ -1342,6 +1342,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           el.id === "manageIntercompanyBtn" ||
           el.classList.contains("open-inventory") ||
           el.classList.contains("open-options") ||
+          el.classList.contains("w3w-notes-btn") ||
           el.classList.contains("sales-view-tab")
         ) {
           el.disabled = false;

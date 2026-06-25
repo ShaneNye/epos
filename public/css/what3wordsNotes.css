@@ -1,0 +1,180 @@
+.memo-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+.w3w-notes-btn {
+  border: 1px solid #d8e1ec;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #5b6b80;
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 800;
+  line-height: 1;
+  padding: 5px 10px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.w3w-notes-btn:hover:not(:disabled) {
+  border-color: var(--brand, #0081ab);
+  color: var(--brand, #0081ab);
+}
+
+.w3w-notes-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.w3w-modal[hidden] {
+  display: none;
+}
+
+.w3w-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 5000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+}
+
+.w3w-modal-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.48);
+}
+
+.w3w-modal-panel {
+  position: relative;
+  z-index: 1;
+  width: min(860px, 96vw);
+  max-height: 92vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: #ffffff;
+  border: 1px solid #d9e2ec;
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.26);
+}
+
+.w3w-modal-header,
+.w3w-modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid #e7edf3;
+}
+
+.w3w-modal-footer {
+  justify-content: flex-end;
+  border-top: 1px solid #e7edf3;
+  border-bottom: 0;
+}
+
+.w3w-modal-title {
+  margin: 0;
+  color: var(--ink, #1f2937);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.w3w-modal-close {
+  width: 32px;
+  height: 32px;
+  display: grid;
+  place-items: center;
+  border: 1px solid #d8e1ec;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #475569;
+  cursor: pointer;
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+.w3w-modal-body {
+  display: grid;
+  gap: 0.75rem;
+  padding: 0.9rem;
+  overflow-y: auto;
+}
+
+.w3w-postcode-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+}
+
+.w3w-postcode-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  color: var(--ink, #1f2937);
+  font-size: 0.84rem;
+  font-weight: 700;
+}
+
+.w3w-postcode-label input {
+  min-width: 0;
+  border: 1px solid #d8e1ec;
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+}
+
+.w3w-map {
+  min-height: 430px;
+  border: 1px solid #d8e1ec;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #eef3f7;
+}
+
+.w3w-output {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.w3w-output input {
+  min-width: 0;
+  border: 1px solid #d8e1ec;
+  border-radius: 6px;
+  padding: 0.45rem 0.6rem;
+  font-size: 0.9rem;
+}
+
+.w3w-status {
+  min-height: 1.1rem;
+  color: #64748b;
+  font-size: 0.82rem;
+}
+
+.w3w-status.error {
+  color: #b42318;
+}
+
+@media (max-width: 700px) {
+  .w3w-map {
+    min-height: 340px;
+  }
+
+  .w3w-output {
+    grid-template-columns: 1fr;
+  }
+
+  .w3w-postcode-row {
+    grid-template-columns: 1fr;
+  }
+}

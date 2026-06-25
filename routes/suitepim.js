@@ -41,6 +41,7 @@ const itemFaqFields = [
 
 let suitePimCampaignsInitialized = false;
 let suitePimSettingsInitialized = false;
+let suitePimFloorPlansInitialized = false;
 
 function normalizeEnvironment(value) {
   return String(value || process.env.ENVIRONMENT || "sandbox").toLowerCase() === "production"
@@ -217,6 +218,27 @@ async function ensureSuitePimSettingsTables() {
   `);
 
   suitePimSettingsInitialized = true;
+}
+
+async function ensureSuitePimFloorPlanTables() {
+  if (suitePimFloorPlansInitialized) return;
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS suitepim_floor_plans (
+      id SERIAL PRIMARY KEY,
+      location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
+      name TEXT NOT NULL,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_suitepim_floor_plans_location_updated
+      ON suitepim_floor_plans(location_id, updated_at DESC);
+  `);
+
+  suitePimFloorPlansInitialized = true;
 }
 
 function defaultFieldMappings() {
@@ -3430,6 +3452,179 @@ router.get("/options/:fieldName", async (req, res) => {
     res.json({ ok: true, options });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+function cleanFloorPlanName(value) {
+  return String(value || "").trim().slice(0, 120);
+}
+
+function cleanFloorPlanData(value) {
+  const data = value && typeof value === "object" && !Array.isArray(value) ? value : {};
+  const widthMeters = Math.min(200, Math.max(10, Number(data.widthMeters) || 100));
+  const heightMeters = Math.min(200, Math.max(10, Number(data.heightMeters) || 70));
+  const elements = Array.isArray(data.elements) ? data.elements : [];
+
+  return {
+    widthMeters,
+    heightMeters,
+    elements: elements.slice(0, 1000).map((element) => {
+      const type = ["line", "door", "window", "asset"].includes(element.type) ? element.type : "line";
+      if (type === "asset") {
+        return {
+          id: String(element.id || crypto.randomBytes(6).toString("hex")).slice(0, 40),
+          type,
+          assetKey: String(element.assetKey || "").slice(0, 60),
+          name: String(element.name || "Asset").slice(0, 120),
+          x: Number(element.x) || 0,
+          y: Number(element.y) || 0,
+          width: Math.min(20, Math.max(0.1, Number(element.width) || 1)),
+          height: Math.min(20, Math.max(0.1, Number(element.height) || 1)),
+        };
+      }
+      return {
+        id: String(element.id || crypto.randomBytes(6).toString("hex")).slice(0, 40),
+        type,
+        x1: Number(element.x1) || 0,
+        y1: Number(element.y1) || 0,
+        x2: Number(element.x2) || 0,
+        y2: Number(element.y2) || 0,
+      };
+    }),
+  };
+}
+
+function mapFloorPlanRow(row) {
+  return {
+    id: row.id,
+    locationId: row.location_id,
+    locationName: row.location_name || "",
+    name: row.name,
+    data: row.data || {},
+    createdBy: row.created_by || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+router.get("/floor-plans", async (req, res) => {
+  try {
+    await ensureSuitePimFloorPlanTables();
+    const locationId = Number(req.query.locationId || 0);
+    if (!Number.isInteger(locationId) || locationId <= 0) {
+      return res.status(400).json({ ok: false, error: "Invalid location id" });
+    }
+
+    const result = await pool.query(
+      `
+        SELECT fp.id, fp.location_id, l.name AS location_name, fp.name, fp.data, fp.created_by, fp.created_at, fp.updated_at
+          FROM suitepim_floor_plans fp
+          JOIN locations l ON l.id = fp.location_id
+         WHERE fp.location_id = $1
+         ORDER BY fp.updated_at DESC, fp.name ASC
+      `,
+      [locationId]
+    );
+
+    res.json({ ok: true, floorPlans: result.rows.map(mapFloorPlanRow) });
+  } catch (err) {
+    console.error("SuitePim floor plan list failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to load floor plans" });
+  }
+});
+
+router.get("/floor-plans/:id", async (req, res) => {
+  try {
+    await ensureSuitePimFloorPlanTables();
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: "Invalid floor plan id" });
+
+    const result = await pool.query(
+      `
+        SELECT fp.id, fp.location_id, l.name AS location_name, fp.name, fp.data, fp.created_by, fp.created_at, fp.updated_at
+          FROM suitepim_floor_plans fp
+          JOIN locations l ON l.id = fp.location_id
+         WHERE fp.id = $1
+      `,
+      [id]
+    );
+
+    if (!result.rowCount) return res.status(404).json({ ok: false, error: "Floor plan not found" });
+    res.json({ ok: true, floorPlan: mapFloorPlanRow(result.rows[0]) });
+  } catch (err) {
+    console.error("SuitePim floor plan load failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to load floor plan" });
+  }
+});
+
+router.post("/floor-plans", async (req, res) => {
+  try {
+    await ensureSuitePimFloorPlanTables();
+    const locationId = Number(req.body?.locationId);
+    const name = cleanFloorPlanName(req.body?.name) || "Untitled floor plan";
+    const data = cleanFloorPlanData(req.body?.data);
+    const createdBy = String(req.eposSession?.email || req.eposSession?.username || req.eposSession?.user_id || "").slice(0, 160);
+
+    if (!Number.isInteger(locationId) || locationId <= 0) {
+      return res.status(400).json({ ok: false, error: "Invalid location id" });
+    }
+
+    const result = await pool.query(
+      `
+        INSERT INTO suitepim_floor_plans (location_id, name, data, created_by)
+        VALUES ($1, $2, $3::jsonb, $4)
+        RETURNING id, location_id, name, data, created_by, created_at, updated_at
+      `,
+      [locationId, name, JSON.stringify(data), createdBy || null]
+    );
+
+    res.status(201).json({ ok: true, floorPlan: mapFloorPlanRow(result.rows[0]) });
+  } catch (err) {
+    console.error("SuitePim floor plan create failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to create floor plan" });
+  }
+});
+
+router.put("/floor-plans/:id", async (req, res) => {
+  try {
+    await ensureSuitePimFloorPlanTables();
+    const id = Number(req.params.id);
+    const name = cleanFloorPlanName(req.body?.name) || "Untitled floor plan";
+    const data = cleanFloorPlanData(req.body?.data);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: "Invalid floor plan id" });
+
+    const result = await pool.query(
+      `
+        UPDATE suitepim_floor_plans
+           SET name = $2,
+               data = $3::jsonb,
+               updated_at = NOW()
+         WHERE id = $1
+        RETURNING id, location_id, name, data, created_by, created_at, updated_at
+      `,
+      [id, name, JSON.stringify(data)]
+    );
+
+    if (!result.rowCount) return res.status(404).json({ ok: false, error: "Floor plan not found" });
+    res.json({ ok: true, floorPlan: mapFloorPlanRow(result.rows[0]) });
+  } catch (err) {
+    console.error("SuitePim floor plan update failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to save floor plan" });
+  }
+});
+
+router.delete("/floor-plans/:id", async (req, res) => {
+  try {
+    await ensureSuitePimFloorPlanTables();
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: "Invalid floor plan id" });
+
+    const result = await pool.query("DELETE FROM suitepim_floor_plans WHERE id = $1 RETURNING id", [id]);
+    if (!result.rowCount) return res.status(404).json({ ok: false, error: "Floor plan not found" });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error("SuitePim floor plan delete failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to delete floor plan" });
   }
 });
 

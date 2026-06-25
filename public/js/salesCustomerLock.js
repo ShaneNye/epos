@@ -137,6 +137,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function resetItemTable() {
     const tableBody = document.getElementById("orderItemsBody");
     if (tableBody) tableBody.innerHTML = "";
+    if (typeof window.addNewRow === "function") window.addNewRow();
     if (typeof updateOrderSummary === "function") updateOrderSummary();
     if (typeof updateQuoteSummary === "function") updateQuoteSummary();
   }

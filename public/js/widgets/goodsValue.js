@@ -139,11 +139,11 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function purchasePriceValue(row) {
-    return numberValue(row, ["Purchase Price", "PurchasePrice", "purchase price", "purchasePrice", "purchase_price", "Average Cost", "AverageCost", "Cost"]);
+    return numberValue(row, ["Purchase Price", "PurchasePrice", "purchase price", "purchasePrice", "purchase_price", "Average Cost", "AverageCost", "Cost", "Price", "price"]);
   }
 
   function goodsValue(row) {
-    const onHandValue = numericValue(row, [
+    const totalValue = numericValue(row, [
       "On Hand Value",
       "OnHandValue",
       "On Hand Total Value",
@@ -160,10 +160,29 @@ document.addEventListener("DOMContentLoaded", () => {
       "Sum of Good : Value",
       "Sum of Good: Value",
       "total value",
+    ]);
+    if (totalValue !== null) return totalValue;
+
+    const unitValue = numericValue(row, [
+      "Unit Value",
+      "UnitValue",
+      "Unit Price",
+      "UnitPrice",
+      "Purchase Price",
+      "PurchasePrice",
+      "purchase price",
+      "purchasePrice",
+      "purchase_price",
+      "Average Cost",
+      "AverageCost",
+      "Cost",
+      "Price",
+      "price",
       "Value",
       "value",
     ]);
-    return onHandValue ?? purchasePriceValue(row);
+
+    return (unitValue ?? 0) * quantityValue(row);
   }
 
   function formatMoney(value) {
