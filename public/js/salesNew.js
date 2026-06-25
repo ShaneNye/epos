@@ -875,6 +875,10 @@ function validateOrderBeforeSave() {
             tr.querySelector(".item-inv-detail")?.value ||
             tr.dataset.invdetail ||
             "";
+          const lotDetails =
+            tr.dataset.lotDetails ||
+            window.formatLotDetailsFromInventoryDetail?.(inventoryMeta || inventoryDetail) ||
+            "";
 
           const trialSel = tr.querySelector(".sixty-night-select");
           const trialOption = (trialSel?.value || "").trim() || null;
@@ -888,6 +892,7 @@ function validateOrderBeforeSave() {
             options,
             fulfilmentMethod,
             lotnumber,
+            lotDetails,
             inventoryMeta,
             inventoryDetail,
             trialOption,

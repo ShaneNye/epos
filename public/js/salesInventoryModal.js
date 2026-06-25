@@ -58,6 +58,21 @@ function formatInventoryDetailPart(detail) {
   ].join("|");
 }
 
+function formatLotDetailsFromInventoryDetail(value) {
+  return String(value || "")
+    .split(";")
+    .map((part) => {
+      const detail = parseInventoryDetailPart(part);
+      return [detail.locationId, detail.statusId, detail.inventoryNumberId]
+        .map((token) => String(token || "").trim())
+        .join("|");
+    })
+    .filter((part) => part.replace(/\|/g, "").trim())
+    .join(";");
+}
+
+window.formatLotDetailsFromInventoryDetail = formatLotDetailsFromInventoryDetail;
+
 function inventoryDetailMatchesSelectedStore(detailString) {
   const storeSelect = document.getElementById("store");
   const selectedStore = storeSelect?.selectedOptions?.[0];
@@ -214,6 +229,8 @@ function applyBackOrderToLine(row) {
 
 // 🧭 When user clicks the inventory cell or icon
 document.addEventListener("click", (e) => {
+  if (e.target.closest(".inventory-detail-collapse")) return;
+
   if (
     e.target.classList.contains("open-inventory") ||
     e.target.closest(".inventory-cell")
@@ -375,6 +392,7 @@ window.onInventorySaved = async function (itemId, detailString, lineIndex) {
     targetRow.dataset.lotnumber = invId || "";
     targetRow.dataset.inventoryMeta = "";
     targetRow.dataset.inventoryMetaJson = "";
+    targetRow.dataset.lotDetails = formatLotDetailsFromInventoryDetail(detailString || "");
     setInventoryDetail(detailString || "");
 
     const cell = targetRow.querySelector(".inventory-cell");
@@ -408,6 +426,7 @@ window.onInventorySaved = async function (itemId, detailString, lineIndex) {
 
   targetRow.dataset.lotnumber = "";
   targetRow.dataset.inventoryMeta = cleanedDetail;
+  targetRow.dataset.lotDetails = formatLotDetailsFromInventoryDetail(cleanedDetail);
   setInventoryDetail(cleanedDetail);
 
   try {

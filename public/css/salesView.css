@@ -353,6 +353,67 @@ textarea:focus {
   white-space: nowrap;
 }
 
+.inventory-detail-collapse {
+  display: inline-block;
+  max-width: 260px;
+  color: #26313d;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.inventory-detail-collapse summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  cursor: pointer;
+  list-style: none;
+  color: #14532d;
+  white-space: nowrap;
+}
+
+.inventory-detail-summary-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.inventory-detail-collapse summary::-webkit-details-marker {
+  display: none;
+}
+
+.inventory-detail-collapse summary::before {
+  content: ">";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 0.75rem;
+  color: #166534;
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.inventory-detail-collapse[open] summary::before {
+  transform: rotate(90deg);
+}
+
+.inventory-detail-collapse-body {
+  margin-top: 0.25rem;
+  padding-left: 1.1rem;
+  color: #4b5563;
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 0.74rem;
+  font-weight: 500;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 /* === LAYOUT (THREE COLUMN) === */
 .form-row.three-column {
   display: flex;

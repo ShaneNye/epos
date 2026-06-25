@@ -2258,6 +2258,11 @@ function updateActionButton(orderStatusObj, tranId, so) {
         const inventoryDetail = row.querySelector(".item-inv-detail")?.value || "";
         const inventoryMeta = row.dataset.inventoryMeta || "";
         const lotnumber = row.dataset.lotnumber || "";
+        const lotDetails =
+          window.salesViewFormatLotDetailsFromInventoryDetail?.(inventoryMeta || inventoryDetail) ||
+          window.formatLotDetailsFromInventoryDetail?.(inventoryMeta || inventoryDetail) ||
+          row.dataset.lotDetails ||
+          "";
         const discountPct =
           parseFloat(
             row.querySelector(".item-discount")?.value ||
@@ -2305,6 +2310,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
           inventoryDetail: inventoryDetail || null,
           inventoryMeta: inventoryMeta || null,
           lotnumber: lotnumber || null,
+          lotDetails: lotDetails || null,
           discountPct,
           discount: discountPct,
           saleGrossLine,
@@ -2535,6 +2541,22 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
       console.warn("⚠️ onInventorySaved: row not found", { itemId, lineIndex });
       return;
     }
+
+    if (String(detailString || "").trim() === "__BACK_ORDER__") {
+      row.dataset.lotDetails = "";
+      row.dataset.lotnumber = "";
+      row.dataset.inventoryMeta = "";
+      row.dataset.invdetail = "";
+      const backOrderInput = row.querySelector(".item-inv-detail");
+      if (backOrderInput) backOrderInput.value = "";
+      return;
+    }
+
+    row.dataset.lotDetails =
+      window.salesViewFormatLotDetailsFromInventoryDetail?.(detailString || "") ||
+      window.formatLotDetailsFromInventoryDetail?.(detailString || "") ||
+      "";
+    row.dataset.invdetail = detailString || "";
 
     const invInp = row.querySelector(".item-inv-detail");
     if (invInp) invInp.value = detailString || "";

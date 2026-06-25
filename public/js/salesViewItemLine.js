@@ -399,6 +399,15 @@ function salesViewRecordValue(record, keys) {
   return "";
 }
 
+function escapeSalesViewHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
 function existingFulfilmentMethodId(line) {
   return salesViewRecordValue(line, [
     "custcol_sb_fulfilmentlocation",
@@ -425,9 +434,22 @@ function existingInventoryDetail(line) {
 
 function existingInventoryDetailDisplay(line) {
   return salesViewRecordValue(line, [
+    "lotDetailsDisplay",
+    "custcol_sb_lot_details_display",
+    "lotDetails",
+    "custcol_sb_lot_details",
+    "CUSTCOL_SB_LOT_DETAILS",
     "inventoryDetailDisplay",
     "inventory_detail_display",
     "INVENTORY_DETAIL_DISPLAY",
+  ]);
+}
+
+function existingLotDetailsValue(line) {
+  return salesViewRecordValue(line, [
+    "lotDetails",
+    "custcol_sb_lot_details",
+    "CUSTCOL_SB_LOT_DETAILS",
   ]);
 }
 
@@ -450,16 +472,27 @@ function salesViewLotDisplayValue(line, fallback = "") {
 function salesViewInventoryDisplayForLine({
   line,
   fulfilmentName,
+  lotDetails,
   inventoryMeta,
   lotNumber,
   inventoryDetail,
   inventoryDisplay,
 }) {
+  const display = String(inventoryDisplay || "").trim();
+  const ids = String(lotDetails || "").trim();
+  if (ids && display && display !== ids) return display;
+  if (ids) return ids;
+
+  const detailIds =
+    salesViewFormatLotDetailsFromInventoryDetail(inventoryDetail) ||
+    salesViewFormatLotDetailsFromInventoryDetail(display);
+  if (detailIds) return detailIds;
+
   const meta = String(inventoryMeta || "").trim();
   if (meta) return meta;
 
   const lot = String(salesViewLotDisplayValue(line, lotNumber) || "").trim();
-  if (!lot) return inventoryDisplay || salesViewInventoryDetailSummary(inventoryDetail);
+  if (!lot) return display || salesViewInventoryDetailSummary(inventoryDetail);
 
   const fulfilment = String(fulfilmentName || "").trim().toLowerCase();
   const locationName =
@@ -472,7 +505,7 @@ function salesViewInventoryDisplayForLine({
   return [locationName, lot]
     .map((part) => String(part || "").trim())
     .filter(Boolean)
-    .join(" | ") || inventoryDisplay || salesViewInventoryDetailSummary(inventoryDetail);
+    .join(" | ") || display || salesViewInventoryDetailSummary(inventoryDetail);
 }
 
 function parseSalesViewInventoryDetailPart(part) {
@@ -516,6 +549,21 @@ function formatSalesViewInventoryDetailPart(detail) {
     detail.inventoryNumberId,
   ].join("|");
 }
+
+function salesViewFormatLotDetailsFromInventoryDetail(value) {
+  return String(value || "")
+    .split(";")
+    .map((part) => {
+      const detail = parseSalesViewInventoryDetailPart(part);
+      return [detail.locationId, detail.statusId, detail.inventoryNumberId]
+        .map((token) => String(token || "").trim())
+        .join("|");
+    })
+    .filter((part) => part.replace(/\|/g, "").trim())
+    .join(";");
+}
+
+window.salesViewFormatLotDetailsFromInventoryDetail = salesViewFormatLotDetailsFromInventoryDetail;
 
 function normalizeSalesViewLocationName(value) {
   return String(value || "")
@@ -934,6 +982,25 @@ function setInventoryButtonState(row) {
   }
 }
 
+function renderCollapsedInventoryDetail(wrapper, summary, detailText) {
+  const details = document.createElement("details");
+  details.className = "inventory-detail-collapse";
+
+  const summaryEl = document.createElement("summary");
+  const label = document.createElement("span");
+  label.className = "inventory-detail-summary-text";
+  label.textContent = "Inventory detail";
+  summaryEl.appendChild(label);
+
+  const body = document.createElement("div");
+  body.className = "inventory-detail-collapse-body";
+  body.textContent = summary || detailText || "";
+
+  details.append(summaryEl, body);
+  wrapper.appendChild(details);
+  return details;
+}
+
 function enhanceReadOnlyInventoryCell(row, inventoryDetail, lineIndex, displaySummary = "") {
   const wrapper = row?.querySelector(".inventory-cell-wrapper");
   if (!wrapper || !String(inventoryDetail || "").trim()) return;
@@ -964,9 +1031,10 @@ function enhanceReadOnlyInventoryCell(row, inventoryDetail, lineIndex, displaySu
   summarySpan.className = "inv-summary";
   summarySpan.textContent = summary;
 
-  cell.append(button, detailField, summarySpan);
+  cell.append(button, detailField);
   wrapper.textContent = "";
   wrapper.appendChild(cell);
+  renderCollapsedInventoryDetail(cell, summary, inventoryDetail);
   row.dataset.inventoryReadonly = "1";
 }
 
@@ -990,7 +1058,8 @@ function renderPendingFulfilmentInventoryText(row, inventoryDetail, displaySumma
   summarySpan.title = summary;
 
   wrapper.textContent = "";
-  wrapper.append(detailField, summarySpan);
+  wrapper.append(detailField);
+  renderCollapsedInventoryDetail(wrapper, summary, inventoryDetail);
   row.dataset.inventoryReadonly = "1";
 }
 
@@ -1535,6 +1604,7 @@ window.onInventorySaved = function onInventorySaved(itemId, detailString, lineIn
       row.dataset.lotnumber = firstDetail.inventoryNumberId || "";
       row.dataset.inventoryMeta = "";
       row.dataset.inventoryMetaJson = "";
+      row.dataset.lotDetails = salesViewFormatLotDetailsFromInventoryDetail(detailString || "");
       setInventoryDetailForSalesViewRow(row, detailString || "");
 
       const summary = row.querySelector(".inv-summary");
@@ -1567,6 +1637,7 @@ window.onInventorySaved = function onInventorySaved(itemId, detailString, lineIn
     row.dataset.lotnumber = "";
     row.dataset.inventoryMeta = cleanedDetail;
     row.dataset.inventoryMetaJson = "";
+    row.dataset.lotDetails = salesViewFormatLotDetailsFromInventoryDetail(cleanedDetail);
     setInventoryDetailForSalesViewRow(row, cleanedDetail);
 
     if (fulfilSel && window.SalesLineUI?.validateInventoryForRow) {
@@ -1762,6 +1833,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
       "CUSTCOL_SB_EPOS_INVENTORY_META",
       "inventoryMeta",
     ]);
+    const existingLotDetails = existingLotDetailsValue(line);
     const existingLotNumber = salesViewRecordValue(line, [
       "custcol_sb_lotnumber",
       "CUSTCOL_SB_LOTNUMBER",
@@ -1773,6 +1845,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
     const inventorySummary = salesViewInventoryDisplayForLine({
       line,
       fulfilmentName: fulfilmentDisplayName,
+      lotDetails: existingLotDetails,
       inventoryMeta: existingInventoryMeta,
       lotNumber: existingLotNumber,
       inventoryDetail,
@@ -1826,13 +1899,23 @@ window.renderSalesViewLines = function renderSalesViewLines({
       ? `
         <div class="inventory-cell" style="display:none">
           <button type="button" class="open-inventory btn-secondary small-btn" data-line="${idx}">${
-            inventoryDetail ? "✅" : "📦"
+            inventoryDetail ? "&#10003;" : "&#128230;"
           }</button>
-          <input type="hidden" class="item-inv-detail" value="${String(inventoryDetail).replace(/"/g, "&quot;")}" />
-          <span class="inv-summary">${inventorySummary || ""}</span>
+          <input type="hidden" class="item-inv-detail" value="${escapeSalesViewHtml(inventoryDetail)}" />
+          ${inventorySummary
+            ? `<details class="inventory-detail-collapse">
+                <summary><span class="inventory-detail-summary-text">Inventory detail</span></summary>
+                <div class="inventory-detail-collapse-body">${escapeSalesViewHtml(inventorySummary)}</div>
+              </details>`
+            : `<span class="inv-summary"></span>`}
         </div>`
       : inventoryDetail
-        ? "✅"
+        ? `
+          <input type="hidden" class="item-inv-detail" value="${escapeSalesViewHtml(inventoryDetail)}" />
+          <details class="inventory-detail-collapse">
+            <summary><span class="inventory-detail-summary-text">Inventory detail</span></summary>
+            <div class="inventory-detail-collapse-body">${escapeSalesViewHtml(inventorySummary || inventoryDetail)}</div>
+          </details>`
         : "";
 
     tr.innerHTML = `
@@ -1936,6 +2019,9 @@ window.renderSalesViewLines = function renderSalesViewLines({
     const sixtyNightSelect = tr.querySelector(".sixty-night-select");
     tr.dataset.invdetail = String(inventoryDetail || "").trim();
     tr.dataset.inventoryMeta = String(existingInventoryMeta || "").trim();
+    tr.dataset.lotDetails =
+      String(existingLotDetails || "").trim() ||
+      salesViewFormatLotDetailsFromInventoryDetail(inventoryDetail);
     tr.dataset.inventoryMetaJson = "";
     tr.dataset.lotnumber = tr.dataset.inventoryMeta
       ? ""

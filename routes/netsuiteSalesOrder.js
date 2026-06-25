@@ -31,10 +31,11 @@ const { createNetSuiteCustomer } = require("../utils/netsuiteCustomerCreate");
 // ✅ In-memory cache for GET /:id sales order payloads
 // =====================================================
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const SO_CACHE_VERSION = "inventory-detail-display-v4";
+const SO_CACHE_VERSION = "lot-details-display-v2";
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
 const LOCATION_FEED_TTL_MS = 10 * 60 * 1000;
 const locationFeedCache = { expiresAt: 0, rows: null, inFlight: null };
+const inventoryStatusFeedCache = { expiresAt: 0, rows: null, inFlight: null };
 const inventoryNumberCache = new Map();
 const lineOptionsProgress = new Map();
 const SALES_ORDER_PENDING_APPROVAL_STATUS = { id: "A" };
@@ -77,10 +78,38 @@ function cacheDeleteSalesOrder(id) {
 
 function restletPairedMemoSyncResult(data) {
   return data?.pairedMemoSync || {
-    ok: true,
+    ok: false,
     skipped: true,
     reason: "restlet-did-not-return-paired-memo-sync",
   };
+}
+
+async function ensurePairedSalesOrderMemoSync(salesOrderId, headerUpdates = {}, userId, restletData = {}) {
+  const restletResult = restletPairedMemoSyncResult(restletData);
+  if (
+    restletResult.ok &&
+    restletResult.reason !== "restlet-did-not-return-paired-memo-sync"
+  ) {
+    return restletResult;
+  }
+
+  try {
+    const fallbackResult = await syncPairedSalesOrderMemo(salesOrderId, headerUpdates, userId);
+    return {
+      ...fallbackResult,
+      fallback: true,
+      restletResult,
+    };
+  } catch (err) {
+    console.error("Failed to sync paired Sales Order memo:", err.message || err);
+    return {
+      ok: false,
+      skipped: false,
+      fallback: true,
+      restletResult,
+      error: err.message || String(err),
+    };
+  }
 }
 
 function suiteQlUrl() {
@@ -316,6 +345,84 @@ async function loadLocationFeedRows() {
   }
 }
 
+async function loadInventoryStatusFeedRows() {
+  if (inventoryStatusFeedCache.rows && inventoryStatusFeedCache.expiresAt > Date.now()) {
+    return inventoryStatusFeedCache.rows;
+  }
+
+  if (inventoryStatusFeedCache.inFlight) return inventoryStatusFeedCache.inFlight;
+
+  inventoryStatusFeedCache.inFlight = (async () => {
+    const baseUrl = process.env.SALES_ORDER_INV_STATUS_URL;
+    const token = process.env.SALES_ORDER_INV_STATUS;
+    if (!baseUrl || !token) return [];
+
+    const separator = baseUrl.includes("?") ? "&" : "?";
+    const url = `${baseUrl}${separator}token=${encodeURIComponent(token)}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`Inventory status feed response ${response.status}`);
+    const payload = await response.json();
+    const rows = Array.isArray(payload.results) ? payload.results : Array.isArray(payload) ? payload : [];
+
+    inventoryStatusFeedCache.rows = rows;
+    inventoryStatusFeedCache.expiresAt = Date.now() + LOCATION_FEED_TTL_MS;
+    inventoryStatusFeedCache.inFlight = null;
+    return rows;
+  })();
+
+  try {
+    return await inventoryStatusFeedCache.inFlight;
+  } catch (err) {
+    inventoryStatusFeedCache.inFlight = null;
+    console.warn("⚠️ Failed to load NetSuite inventory status feed:", err.message);
+    return [];
+  }
+}
+
+async function buildLocationNameById() {
+  const rows = await loadLocationFeedRows();
+  const entries = rows
+    .map((row) => [
+      String(row["Internal ID"] || row.id || row.internalid || "").trim(),
+      String(row.Name || row.name || row.Location || row.location || "").trim(),
+    ])
+    .filter(([id, name]) => id && name);
+
+  try {
+    const dbRows = await pool.query(
+      `SELECT name, distribution_location_id, netsuite_internal_id, invoice_location_id
+       FROM locations`
+    );
+    dbRows.rows.forEach((row) => {
+      [
+        row.distribution_location_id,
+        row.netsuite_internal_id,
+        row.invoice_location_id,
+      ].forEach((id) => {
+        const value = String(id || "").trim();
+        const name = String(row.name || "").trim();
+        if (value && name) entries.push([value, name]);
+      });
+    });
+  } catch (err) {
+    console.warn("⚠️ Failed to load app location names:", err.message);
+  }
+
+  return Object.fromEntries(entries);
+}
+
+async function buildInventoryStatusNameById() {
+  const rows = await loadInventoryStatusFeedRows();
+  return Object.fromEntries(
+    rows
+      .map((row) => [
+        String(row["Internal ID"] || row.id || row.internalid || "").trim(),
+        String(row.Name || row.name || row.status || "").trim(),
+      ])
+      .filter(([id, name]) => id && name)
+  );
+}
+
 async function resolveNetSuiteLocationIdByName(name) {
   const wanted = normalizeLocationLookupName(name);
   if (!wanted) return "";
@@ -330,6 +437,148 @@ async function resolveNetSuiteLocationIdByName(name) {
   });
 
   return String(broad?.["Internal ID"] || broad?.id || broad?.internalid || "").trim();
+}
+
+function normalizeLotDetailsString(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  return raw
+    .split(";")
+    .map((part) =>
+      String(part || "")
+        .split("|")
+        .slice(0, 3)
+        .map((token) => String(token || "").trim())
+        .join("|")
+    )
+    .filter((part) => part.replace(/\|/g, "").trim())
+    .join(";");
+}
+
+function lotDetailsFromInventoryDetail(value) {
+  return String(value || "")
+    .split(";")
+    .map((part) => {
+      const detail = parseInventoryDetailPart(part);
+      return [
+        detail.locationId,
+        detail.statusId,
+        detail.inventoryNumberId,
+      ]
+        .map((token) => String(token || "").trim())
+        .join("|");
+    })
+    .filter((part) => part.replace(/\|/g, "").trim())
+    .join(";");
+}
+
+function fillMissingLotDetailLocations(lotDetails, inventoryDetail) {
+  const normalized = normalizeLotDetailsString(lotDetails);
+  if (!normalized) return lotDetailsFromInventoryDetail(inventoryDetail);
+
+  const inventoryParts = String(inventoryDetail || "")
+    .split(";")
+    .map((part) => parseInventoryDetailPart(part));
+
+  return normalized
+    .split(";")
+    .map((part, index) => {
+      const tokens = String(part || "").split("|");
+      const locationId = String(tokens[0] || inventoryParts[index]?.locationId || "").trim();
+      const statusId = String(tokens[1] || inventoryParts[index]?.statusId || "").trim();
+      const inventoryNumberId = String(tokens[2] || inventoryParts[index]?.inventoryNumberId || "").trim();
+      return [locationId, statusId, inventoryNumberId].join("|");
+    })
+    .filter((part) => part.replace(/\|/g, "").trim())
+    .join(";");
+}
+
+async function displayLotDetailsFromIds(
+  lotDetails,
+  { locationNameById = {}, statusNameById = {}, inventoryNumberNameById = {}, userId } = {}
+) {
+  const normalized = normalizeLotDetailsString(lotDetails);
+  if (!normalized) return "";
+
+  const displayParts = await Promise.all(
+    normalized.split(";").map(async (part) => {
+      const [locationId, statusId, inventoryNumberId] = String(part || "").split("|");
+      const resolvedInventoryNumber =
+        inventoryNumberNameById[String(inventoryNumberId || "").trim()] || "";
+      const lotInfo = resolvedInventoryNumber
+        ? null
+        : await getInventoryNumberInfo(inventoryNumberId, userId).catch(() => null);
+      return [
+        locationNameById[String(locationId || "").trim()] || locationId,
+        statusNameById[String(statusId || "").trim()] || statusId,
+        resolvedInventoryNumber || lotInfo?.number || inventoryNumberId,
+      ]
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .join("|");
+    })
+  );
+
+  return displayParts.filter(Boolean).join("; ");
+}
+
+function numericIds(values) {
+  return [
+    ...new Set(
+      (values || [])
+        .map((value) => String(value || "").trim())
+        .filter((value) => /^\d+$/.test(value))
+    ),
+  ];
+}
+
+async function suiteQlIdNameMap({ table, ids, nameExpression, userId }) {
+  const safeIds = numericIds(ids);
+  if (!safeIds.length) return {};
+
+  try {
+    const query = `
+      SELECT id, ${nameExpression} AS name
+      FROM ${table}
+      WHERE id IN (${safeIds.join(",")})
+    `;
+    const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId);
+    return Object.fromEntries(
+      (result?.items || [])
+        .map((row) => [
+          String(row.id || row.ID || "").trim(),
+          String(row.name || row.NAME || "").trim(),
+        ])
+        .filter(([id, name]) => id && name)
+    );
+  } catch (err) {
+    console.warn(`⚠️ Failed to resolve ${table} names from SuiteQL:`, err.message);
+    return {};
+  }
+}
+
+function lotDetailIdSets(lotDetailsValues) {
+  const locationIds = [];
+  const statusIds = [];
+  const inventoryNumberIds = [];
+
+  (lotDetailsValues || []).forEach((value) => {
+    normalizeLotDetailsString(value)
+      .split(";")
+      .filter(Boolean)
+      .forEach((part) => {
+        const [locationId, statusId, inventoryNumberId] = String(part || "").split("|");
+        locationIds.push(locationId);
+        statusIds.push(statusId);
+        inventoryNumberIds.push(inventoryNumberId);
+      });
+  });
+
+  return {
+    locationIds: numericIds(locationIds),
+    statusIds: numericIds(statusIds),
+    inventoryNumberIds: numericIds(inventoryNumberIds),
+  };
 }
 
 async function resolveDistributionLocationIdByName(name) {
@@ -2484,6 +2733,13 @@ router.post("/create", async (req, res) => {
           const lotNumberId =
             normalizeLotNumberId(i.lotnumber) ||
             (!i.inventoryMeta ? lotNumberIdFromInventoryDetail(i.inventoryDetail) : "");
+          const lotDetails = fillMissingLotDetailLocations(
+            i.lotDetails,
+            i.inventoryMeta || i.inventoryDetail
+          );
+          if (lotDetails) {
+            line.custcol_sb_lot_details = lotDetails;
+          }
           if (lotNumberId) {
             line.custcol_sb_lotnumber = { id: lotNumberId };
           } else if (i.inventoryMeta) {
@@ -3229,6 +3485,7 @@ router.get("/:id", async (req, res) => {
           taxcode,
           custcol_sb_itemoptionsdisplay AS options,
           custcol_sb_fulfilmentlocation,
+          custcol_sb_lot_details,
           custcol_sb_epos_inventory_meta,
           custcol_sb_lotnumber,
           BUILTIN.DF(custcol_sb_lotnumber) AS lotnumber_name,
@@ -3270,8 +3527,42 @@ router.get("/:id", async (req, res) => {
             .map(([lotId, info]) => [lotId, String(info?.number || "").trim()])
             .filter(([, lotName]) => lotName)
         );
+        const rawLotDetailsValues = suiteql.items.map((row) =>
+          row.custcol_sb_lot_details || row.CUSTCOL_SB_LOT_DETAILS || ""
+        );
+        const { locationIds, statusIds, inventoryNumberIds } = lotDetailIdSets(rawLotDetailsValues);
+        const [
+          locationNameById,
+          statusNameById,
+          inventoryNumberNameById,
+          feedLocationNameById,
+          feedStatusNameById,
+        ] = await Promise.all([
+          suiteQlIdNameMap({
+            table: "location",
+            ids: locationIds,
+            nameExpression: "name",
+            userId,
+          }),
+          suiteQlIdNameMap({
+            table: "inventorystatus",
+            ids: statusIds,
+            nameExpression: "name",
+            userId,
+          }),
+          suiteQlIdNameMap({
+            table: "inventorynumber",
+            ids: inventoryNumberIds,
+            nameExpression: "inventorynumber",
+            userId,
+          }),
+          buildLocationNameById(),
+          buildInventoryStatusNameById(),
+        ]);
+        const resolvedLocationNameById = { ...feedLocationNameById, ...locationNameById };
+        const resolvedStatusNameById = { ...feedStatusNameById, ...statusNameById };
 
-        const items = suiteql.items.map((r) => {
+        const items = await Promise.all(suiteql.items.map(async (r) => {
           const itemId = String(r.item);
           const lineId = String(r.lineid || "");
           const info = itemMap[itemId] || {};
@@ -3321,6 +3612,10 @@ router.get("/:id", async (req, res) => {
           const inventoryMeta =
             r.custcol_sb_epos_inventory_meta ||
             r.CUSTCOL_SB_EPOS_INVENTORY_META ||
+            "";
+          const lotDetails =
+            r.custcol_sb_lot_details ||
+            r.CUSTCOL_SB_LOT_DETAILS ||
             "";
 
           const lotNumber =
@@ -3386,7 +3681,7 @@ router.get("/:id", async (req, res) => {
 
           if (inventoryMeta) {
             inventoryDetail = String(inventoryMeta).trim();
-            inventoryDetailDisplay = inventoryDetail;
+            inventoryDetailDisplay = lotDetails || inventoryDetail;
           } else if (lotNumber) {
             const fulfilmentName = fulfilId
               ? String(fulfilmentMap[fulfilId] || "").trim()
@@ -3425,11 +3720,19 @@ router.get("/:id", async (req, res) => {
                 : warehouseDisplayId;
 
             inventoryDetail = `${qty || 1}|${displayLocationName}|${displayLocationId}|||LOT|${lotNumber}`;
-            inventoryDetailDisplay = [displayLocationName, lotNumberName]
+            inventoryDetailDisplay = lotDetails || [displayLocationName, lotNumberName]
               .map((part) => String(part || "").trim())
               .filter(Boolean)
               .join(" | ");
           }
+          const effectiveLotDetails = fillMissingLotDetailLocations(lotDetails, inventoryDetail);
+          const lotDetailsDisplay = await displayLotDetailsFromIds(effectiveLotDetails, {
+            locationNameById: resolvedLocationNameById,
+            statusNameById: resolvedStatusNameById,
+            inventoryNumberNameById,
+            userId,
+          });
+          if (effectiveLotDetails) inventoryDetailDisplay = lotDetailsDisplay || effectiveLotDetails;
 
           return {
             lineId,
@@ -3443,6 +3746,9 @@ router.get("/:id", async (req, res) => {
             discount: 0,
             inventoryDetail,
             inventoryDetailDisplay,
+            lotDetailsDisplay: lotDetailsDisplay || "",
+            lotDetails: effectiveLotDetails || "",
+            custcol_sb_lot_details: effectiveLotDetails || "",
             custcol_sb_epos_inventory_meta: inventoryMeta || "",
             custcol_sb_lotnumber: lotNumber || "",
             custcol_sb_lotnumber_name: lotNumberName || "",
@@ -3463,7 +3769,7 @@ router.get("/:id", async (req, res) => {
                 : "",
             },
           };
-        });
+        }));
 
         const pairedSalesOrderId = String(
           so.relatedRecords?.custbody_sb_pairedsalesorder?.id ||
@@ -3698,6 +4004,10 @@ router.post("/:id/commit", async (req, res) => {
         rate,
         discountPct: Number(line.discountPct ?? line.discount ?? 0),
         inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta) || null,
+        lotDetails: fillMissingLotDetailLocations(
+          lotDetailsFromInventoryDetail(line.inventoryMeta || line.inventoryDetail) || line.lotDetails,
+          line.inventoryMeta || line.inventoryDetail
+        ) || null,
         trialOption: line.trialOption || null,
         ...(trialField ? { custcol_sb_30nighttrialoption: trialField } : {}),
         custcol_sb_taken_from_store: line.takenFromStore === true,
@@ -3752,7 +4062,7 @@ router.post("/:id/commit", async (req, res) => {
         : `Sales Order ${id} approved via RESTlet`
     );
     cacheDeleteSalesOrder(id);
-    const pairedMemoSync = restletPairedMemoSyncResult(data);
+    const pairedMemoSync = await ensurePairedSalesOrderMemoSync(id, headerUpdates, userId, data);
 
     const transferCreation = await createLinkedTransferOrdersForSalesOrder({
       salesOrderId: id,
@@ -4186,6 +4496,10 @@ router.post("/:id/save", async (req, res) => {
         rate,
         discountPct: Number(line.discountPct ?? line.discount ?? 0),
         inventoryMeta: normalizeInventoryDetailString(line.inventoryMeta) || null,
+        lotDetails: fillMissingLotDetailLocations(
+          lotDetailsFromInventoryDetail(line.inventoryMeta || line.inventoryDetail) || line.lotDetails,
+          line.inventoryMeta || line.inventoryDetail
+        ) || null,
         trialOption: line.trialOption || null,
         ...(trialField ? { custcol_sb_30nighttrialoption: trialField } : {}),
         custcol_sb_taken_from_store: line.takenFromStore === true,
@@ -4224,7 +4538,7 @@ router.post("/:id/save", async (req, res) => {
     }
 
     console.log(`✅ Sales Order ${id} patched via RESTlet (save-only)`);
-    const pairedMemoSync = restletPairedMemoSyncResult(data);
+    const pairedMemoSync = await ensurePairedSalesOrderMemoSync(id, headerUpdates, userId, data);
 
     // ✅ Invalidate cached SO payload so next view is always fresh
     try {

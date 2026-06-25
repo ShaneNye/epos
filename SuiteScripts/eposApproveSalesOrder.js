@@ -356,6 +356,58 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     }
   }
 
+  function lotDetailsFromInventoryDetail(inventoryDetail) {
+    return String(inventoryDetail || "")
+      .split(";")
+      .map((part) => {
+        const tokens = String(part || "").split("|");
+        return [
+          tokens[2] || "",
+          tokens[4] || "",
+          tokens.length > 6 ? tokens[tokens.length - 1] || "" : tokens[6] || "",
+        ]
+          .map((token) => String(token || "").trim())
+          .join("|");
+      })
+      .filter((part) => part.replace(/\|/g, "").trim())
+      .join(";");
+  }
+
+  function fillMissingLotDetailLocations(lotDetails, inventoryDetail) {
+    const normalized = String(lotDetails || "").trim();
+    if (!normalized) return lotDetailsFromInventoryDetail(inventoryDetail);
+
+    const inventoryParts = String(inventoryDetail || "")
+      .split(";")
+      .map((part) => String(part || "").split("|"));
+
+    return normalized
+      .split(";")
+      .map((part, index) => {
+        const tokens = String(part || "").split("|");
+        const source = inventoryParts[index] || [];
+        return [
+          tokens[0] || source[2] || "",
+          tokens[1] || source[4] || "",
+          tokens[2] || (source.length > 6 ? source[source.length - 1] : source[6]) || "",
+        ]
+          .map((token) => String(token || "").trim())
+          .join("|");
+      })
+      .filter((part) => part.replace(/\|/g, "").trim())
+      .join(";");
+  }
+
+  function applyLotDetailsToCurrentLine(soRec, lotDetails, inventoryDetail) {
+    const value = fillMissingLotDetailLocations(lotDetails, inventoryDetail);
+
+    if (value) {
+      setCurrentIfDefined(soRec, "custcol_sb_lot_details", value);
+    } else if (inventoryDetail === null || inventoryDetail === "") {
+      clearCurrentField(soRec, "custcol_sb_lot_details");
+    }
+  }
+
   function applyInventoryDetailToCurrentLine(
     soRec,
     inventoryDetail,
@@ -365,6 +417,7 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     if (inventoryDetail === null || inventoryDetail === "") {
       clearCurrentField(soRec, "custcol_sb_epos_inventory_meta");
       clearCurrentField(soRec, "custcol_sb_lotnumber");
+      clearCurrentField(soRec, "custcol_sb_lot_details");
 
       log.debug("🔧 Current line inventory cleared", { inventoryDetail });
       return;
@@ -542,6 +595,7 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
           warehouseId,
           warehouseTextNorm
         );
+        applyLotDetailsToCurrentLine(soRec, u.lotDetails, u.inventoryDetail);
       } catch (invErr) {
         log.error("⚠️ Inventory detail parse/apply failed on current line", invErr);
 
@@ -551,6 +605,7 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
             "custcol_sb_epos_inventory_meta",
             String(u.inventoryDetail)
           );
+          applyLotDetailsToCurrentLine(soRec, u.lotDetails, u.inventoryDetail);
         }
       }
     }

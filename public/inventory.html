@@ -351,6 +351,68 @@
     const clean = (v) => String(v || "").trim().toLowerCase();
     const idStr = (v) => (v == null ? "" : String(v).trim());
     const sanitizeDetailField = (v) => String(v || "").replace(/\|/g, " - ").trim();
+    const locationIdByName = new Map();
+
+    function normalizeLocationLookupName(value) {
+      return String(value || "")
+        .replace(/\b(store|warehouse)\b/gi, "")
+        .replace(/[^a-z0-9]+/gi, " ")
+        .trim()
+        .toLowerCase();
+    }
+
+    function addLocationLookup(name, id) {
+      const key = normalizeLocationLookupName(name);
+      const value = String(id || "").trim();
+      if (key && value && !locationIdByName.has(key)) locationIdByName.set(key, value);
+    }
+
+    function resolveLocationIdByName(name) {
+      const key = normalizeLocationLookupName(name);
+      if (!key) return "";
+      if (locationIdByName.has(key)) return locationIdByName.get(key);
+      for (const [lookupName, id] of locationIdByName.entries()) {
+        if (lookupName === key || lookupName.includes(key) || key.includes(lookupName)) return id;
+      }
+      return "";
+    }
+
+    async function loadLocationIdLookup() {
+      const requests = [
+        fetch("/api/netsuite/warehouse", { cache: "no-store" })
+          .then((res) => (res.ok ? res.json() : null))
+          .catch(() => null),
+        fetch("/api/meta/locations", { cache: "no-store" })
+          .then((res) => (res.ok ? res.json() : null))
+          .catch(() => null),
+      ];
+
+      const [warehouseData, metaData] = await Promise.all(requests);
+
+      (warehouseData?.results || []).forEach((row) => {
+        addLocationLookup(
+          row.Name || row.name || row.location || row.text,
+          row["Internal ID"] || row.id || row.value
+        );
+      });
+
+      (metaData?.locations || []).forEach((row) => {
+        addLocationLookup(
+          row.name,
+          row.distribution_location_id ||
+            row.netsuite_internal_id ||
+            row.invoice_location_id
+        );
+      });
+    }
+
+    function enrichStockLocationIds(stockRows) {
+      return (stockRows || []).map((row) => ({
+        ...row,
+        locationId: String(row.locationId || "").trim() || resolveLocationIdByName(row.location),
+      }));
+    }
+
     function firstField(row, keys) {
       for (const key of keys) {
         const value = row?.[key];
@@ -508,9 +570,10 @@
         const [statuses, balanceRows] = await Promise.all([
           getInventoryStatuses(),
           getInventoryBalanceRows(itemId),
+          loadLocationIdLookup(),
         ]);
 
-        stock = buildStockFromInventoryDetail(balanceRows, statuses);
+        stock = enrichStockLocationIds(buildStockFromInventoryDetail(balanceRows, statuses));
 
         // cache the inventory-detail version back to opener so subsequent popups are consistent
         try {
@@ -922,7 +985,9 @@
           const invSel = tr.querySelector(".invNumSel");
 
           const locName = sanitizeDetailField(locSel?.value || "");
-          const locId = locSel?.selectedOptions[0]?.dataset.internalid || "";
+          const locId =
+            locSel?.selectedOptions[0]?.dataset.internalid ||
+            resolveLocationIdByName(locSel?.value || "");
           const statusName = sanitizeDetailField(statusSel?.value || "");
           const statusId = statusSel?.selectedOptions[0]?.dataset.internalid || "";
           const invName = sanitizeDetailField(invSel?.value || "");
