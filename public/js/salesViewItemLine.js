@@ -1364,7 +1364,7 @@ function addSalesViewRow({ fulfilmentMethods = [] } = {}) {
     </td>
 
     <td class="inventory-cell-wrapper">
-      <div class="inventory-cell" style="display:none">
+      <div class="inventory-cell">
         <button type="button" class="open-inventory btn-secondary small-btn" data-line="${newLine}">📦</button>
         <input type="hidden" class="item-inv-detail" value="" />
         <span class="inv-summary"></span>
@@ -1897,7 +1897,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
       ? ""
       : isPending
       ? `
-        <div class="inventory-cell" style="display:none">
+        <div class="inventory-cell">
           <button type="button" class="open-inventory btn-secondary small-btn" data-line="${idx}">${
             inventoryDetail ? "&#10003;" : "&#128230;"
           }</button>

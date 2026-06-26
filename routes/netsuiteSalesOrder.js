@@ -581,6 +581,71 @@ function lotDetailIdSets(lotDetailsValues) {
   };
 }
 
+function isUnknownSuiteQlIdentifierError(err, identifier) {
+  const wanted = String(identifier || "").trim().toLowerCase();
+  if (!wanted) return false;
+
+  const details = Array.isArray(err?.responseBody?.["o:errorDetails"])
+    ? err.responseBody["o:errorDetails"]
+    : [];
+  return details.some((detail) => {
+    const message = String(detail?.detail || "").toLowerCase();
+    return message.includes("unknown identifier") && message.includes(wanted);
+  });
+}
+
+function buildSalesOrderLineSuiteQl(id, { includeLotDetails = true } = {}) {
+  const lotDetailsSelect = includeLotDetails
+    ? "custcol_sb_lot_details,"
+    : "NULL AS custcol_sb_lot_details,";
+
+  return `
+    SELECT
+      id AS lineid,
+      item,
+      quantity,
+      netamount,
+      rate,
+      taxcode,
+      custcol_sb_itemoptionsdisplay AS options,
+      custcol_sb_fulfilmentlocation,
+      ${lotDetailsSelect}
+      custcol_sb_epos_inventory_meta,
+      custcol_sb_lotnumber,
+      BUILTIN.DF(custcol_sb_lotnumber) AS lotnumber_name,
+      custcol_sb_taken_from_store,
+      custcol_sb_30nighttrialoption
+    FROM transactionline
+    WHERE transaction = ${id}
+      AND mainline = 'F'
+      AND taxline = 'F'
+    ORDER BY linesequencenumber
+  `;
+}
+
+async function fetchSalesOrderLineSuiteQl(id, userId) {
+  const url = suiteQlUrl();
+  const query = buildSalesOrderLineSuiteQl(id);
+
+  try {
+    return await nsPostRaw(url, { q: query }, userId, "sb");
+  } catch (err) {
+    if (!isUnknownSuiteQlIdentifierError(err, "custcol_sb_lot_details")) {
+      throw err;
+    }
+
+    console.warn(
+      "⚠️ custcol_sb_lot_details is not available in SuiteQL; loading sales order lines without it."
+    );
+    return nsPostRaw(
+      url,
+      { q: buildSalesOrderLineSuiteQl(id, { includeLotDetails: false }) },
+      userId,
+      "sb"
+    );
+  }
+}
+
 async function resolveDistributionLocationIdByName(name) {
   const cleanName = String(name || "").trim();
   if (!cleanName) return "";
@@ -3475,35 +3540,7 @@ router.get("/:id", async (req, res) => {
        3️⃣ Expand Item Lines via SuiteQL
     ----------------------------------------------------- */
     {
-      const query = `
-        SELECT
-          id AS lineid,
-          item,
-          quantity,
-          netamount,
-          rate,
-          taxcode,
-          custcol_sb_itemoptionsdisplay AS options,
-          custcol_sb_fulfilmentlocation,
-          custcol_sb_lot_details,
-          custcol_sb_epos_inventory_meta,
-          custcol_sb_lotnumber,
-          BUILTIN.DF(custcol_sb_lotnumber) AS lotnumber_name,
-          custcol_sb_taken_from_store,
-          custcol_sb_30nighttrialoption
-        FROM transactionline
-        WHERE transaction = ${id}
-          AND mainline = 'F'
-          AND taxline = 'F'
-        ORDER BY linesequencenumber
-      `;
-
-      const suiteql = await nsPostRaw(
-        `https://${process.env.NS_ACCOUNT_DASH}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`,
-        { q: query },
-        userId,
-        "sb"
-      );
+      const suiteql = await fetchSalesOrderLineSuiteQl(id, userId);
 
       if (suiteql && Array.isArray(suiteql.items)) {
         const lineIntercompanyPoMap = await getSalesOrderLineIntercompanyPoMap(id, userId);
