@@ -1123,6 +1123,24 @@ async function forceSalesOrderPendingApproval(salesOrderId, userId) {
   throw lastError || new Error("Unable to set Sales Order to Pending Approval");
 }
 
+async function markSalesOrderCustomerEmailSent(salesOrderId, userId) {
+  const id = String(salesOrderId || "").trim();
+  if (!id) throw new Error("Missing Sales Order ID for customer email sent flag.");
+
+  await nsPatch(
+    `/salesOrder/${encodeURIComponent(id)}`,
+    { custbody_sb_cust_email_sent: true },
+    userId
+  );
+  cacheDeleteSalesOrder(id);
+
+  return {
+    ok: true,
+    salesOrderId: id,
+    fieldId: "custbody_sb_cust_email_sent",
+  };
+}
+
 function isProductionEnv() {
   return (process.env.ENVIRONMENT || "").toUpperCase() === "PRODUCTION";
 }
@@ -4054,10 +4072,15 @@ router.post("/:id/commit", async (req, res) => {
       return applyDistributionLineLocation(normalizedLine, patchWarehouseId, patchStoreName);
     });
 
+    const commitHeaderUpdates = {
+      ...headerUpdates,
+      custbody_sb_cust_email_sent: true,
+    };
+
     const payload = {
       id,
       lines: normalizedLines,
-      headerUpdates,
+      headerUpdates: commitHeaderUpdates,
       deletedLineIds,
       email: customerEmailCheck.email,
       commit: true,
@@ -4099,6 +4122,20 @@ router.post("/:id/commit", async (req, res) => {
         : `Sales Order ${id} approved via RESTlet`
     );
     cacheDeleteSalesOrder(id);
+
+    const customerEmailSentFlag = await markSalesOrderCustomerEmailSent(id, userId).catch((err) => {
+      console.error(
+        `Failed to set custbody_sb_cust_email_sent on Sales Order ${id}:`,
+        err.message
+      );
+      return {
+        ok: false,
+        salesOrderId: String(id),
+        fieldId: "custbody_sb_cust_email_sent",
+        error: err.message || "Customer email sent flag was not updated.",
+      };
+    });
+
     const pairedMemoSync = await ensurePairedSalesOrderMemoSync(id, headerUpdates, userId, data);
 
     const transferCreation = await createLinkedTransferOrdersForSalesOrder({
@@ -4178,10 +4215,14 @@ router.post("/:id/commit", async (req, res) => {
           (warning) => `Linked Transfer Order pre-check warning: ${warning}`
         )),
         ...(comsSalesValue.ok ? [] : [comsSalesValue.error]),
+        ...(customerEmailSentFlag.ok
+          ? []
+          : [customerEmailSentFlag.error || "Customer email sent flag was not updated."]),
         ...(pairedMemoSync.ok
           ? []
           : [pairedMemoSync.error || "Paired Sales Order memo was not updated."]),
       ],
+      customerEmailSentFlag,
       pairedMemoSync,
       transferCreation,
       linkedTransferOrders,

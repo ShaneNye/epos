@@ -44,28 +44,76 @@ function getOptionSchemaForItem(itemId, itemData) {
 }
 
 function getItemClassText(item) {
-  return String(item?.["Class"] || "").trim().toLowerCase();
+  return normalizeItemReferenceText(
+    item?.["Class"] ??
+      item?.class ??
+      item?.className ??
+      item?.itemClass ??
+      item?.["Item Class"] ??
+      ""
+  );
 }
 
-function getItemCategoryText(item) {
-  const raw =
-    item?.["Category"] ??
-    item?.category ??
-    item?.itemCategory ??
-    item?.["Item Category"] ??
-    "";
+function getItemInternalId(item) {
+  return String(
+    item?.["Internal ID"] ??
+      item?.["InternalId"] ??
+      item?.["InternalID"] ??
+      item?.["internalid"] ??
+      item?.["internal id"] ??
+      item?.["Id"] ??
+      item?.["id"] ??
+      ""
+  ).trim();
+}
 
-  if (raw && typeof raw === "object") {
-    return String(raw.refName || raw.name || raw.text || raw.value || raw.id || "")
+function normalizeItemReferenceText(value) {
+  if (Array.isArray(value)) {
+    return value.map(normalizeItemReferenceText).filter(Boolean).join(", ");
+  }
+
+  if (value && typeof value === "object") {
+    return String(value.refName || value.name || value.text || value.value || value.label || value.id || "")
       .trim()
       .toLowerCase();
   }
 
-  return String(raw || "").trim().toLowerCase();
+  return String(value || "").trim().toLowerCase();
 }
 
-function rowHasAdjustableCategory(row) {
-  return String(row?.dataset?.itemCategory || "").toLowerCase().includes("adjustable");
+function getItemCategoryText(item) {
+  const directValues = [
+    item?.["Category"],
+    item?.["Categories"],
+    item?.["Web Category"],
+    item?.["Item Category"],
+    item?.["custitem_sb_category"],
+    item?.["custitem_sb_category_text"],
+    item?.["custitem_sb_category.name"],
+    item?.["custitem_sb_category_text"],
+    item?.category,
+    item?.categories,
+    item?.itemCategory,
+    item?.webCategory,
+  ];
+
+  const dynamicValues = Object.entries(item || {})
+    .filter(([key]) => {
+      const normalized = String(key || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+      return normalized.includes("category") && !normalized.includes("internalid");
+    })
+    .map(([, value]) => value);
+
+  return [...directValues, ...dynamicValues]
+    .map(normalizeItemReferenceText)
+    .filter(Boolean)
+    .join(", ");
+}
+
+function rowHasAdjustableVatFreeFlag(row) {
+  const category = String(row?.dataset?.itemCategory || "").toLowerCase();
+  const itemClass = String(row?.dataset?.itemClass || "").toLowerCase();
+  return category.includes("adjustable") || itemClass.includes("adjustable");
 }
 
 /* =========================================================
@@ -526,14 +574,14 @@ function updateVatFreeColumnVisibility() {
 
   rows.forEach((row) => ensureVatFreeCell(row));
 
-  const anyAdjustable = [...rows].some((row) => rowHasAdjustableCategory(row));
+  const anyAdjustable = [...rows].some((row) => rowHasAdjustableVatFreeFlag(row));
   header.style.display = anyAdjustable ? "table-cell" : "none";
 
   rows.forEach((row) => {
     const cell = row.querySelector("td.vat-free-cell");
     if (!cell) return;
 
-    const isAdjustable = rowHasAdjustableCategory(row);
+    const isAdjustable = rowHasAdjustableVatFreeFlag(row);
     const checkbox = cell.querySelector(".vat-free-checkbox");
     const placeholder = cell.querySelector(".vat-free-placeholder");
 
@@ -595,16 +643,7 @@ async function openOptionsWindow(row) {
 
   if (!schema || !Object.keys(schema).length) {
     const itemData = (window.items || []).find((it) => {
-      const internalId =
-        it["Internal ID"] ??
-        it["InternalId"] ??
-        it["InternalID"] ??
-        it["internalid"] ??
-        it["internal id"] ??
-        it["Id"] ??
-        it["id"] ??
-        "";
-      return String(internalId) === String(itemId);
+      return getItemInternalId(it) === String(itemId);
     });
 
     if (itemData) schema = buildLegacyOptionSchemaFromItem(itemData);
@@ -959,15 +998,7 @@ function selectItemForRow(line, input, item) {
 
   input.value = item["Name"] || "";
 
-  const internalId =
-    item["Internal ID"] ??
-    item["InternalId"] ??
-    item["InternalID"] ??
-    item["internalid"] ??
-    item["internal id"] ??
-    item["Id"] ??
-    item["id"] ??
-    "";
+  const internalId = getItemInternalId(item);
 
   if (hiddenId) hiddenId.value = String(internalId || "");
   if (hiddenBase) hiddenBase.value = item["Base Price"] || "";
@@ -984,6 +1015,7 @@ const retailPerUnitGross = Number.isFinite(rawBase) ? rawBase * 1.2 : 0;
 
   const itemId = (hiddenId?.value || "").trim();
   const itemClass = getItemClassText(item);
+  line.dataset.itemId = itemId;
   line.dataset.itemClass = itemClass;
   line.dataset.itemCategory = getItemCategoryText(item);
   const existingTrialSelect = line.querySelector(".sixty-night-select");

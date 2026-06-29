@@ -248,6 +248,7 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
 
         targetOrderLines.push({
           orderLine: String(currentOrderLine),
+          storeOrderLine: String(pairedOrderLine),
           pairedLineIndex,
           itemId: currentItemId,
           lotNumberValue,
@@ -258,31 +259,51 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
 
       if (!targetOrderLines.length) {
         if (currentSoNeedsSave) {
-          currentSo.save({
-            enableSourcing: true,
-            ignoreMandatoryFields: false
+          syncCurrentSoTakenFromStore({
+            currentSoId,
+            pairedSoId
           });
-
-          log.audit('Current SO Saved With Paired Taken FS', currentSoId);
         }
 
         log.audit('Skipped', 'No qualifying lines to fulfil');
         return;
       }
 
-      createItemFulfilment({
+      const fulfilmentResult = createItemFulfilment({
         salesOrderId: currentSoId,
         targetOrderLines,
         fulfilmentLocationId
       });
 
       if (currentSoNeedsSave) {
-        currentSo.save({
-          enableSourcing: true,
-          ignoreMandatoryFields: false
+        syncCurrentSoTakenFromStore({
+          currentSoId,
+          pairedSoId
+        });
+      }
+
+      if (fulfilmentResult && fulfilmentResult.fulfilmentId) {
+        const intercompanyInvoiceId = createInvoiceIfPendingBilling({
+          salesOrderId: currentSoId,
+          fulfilmentId: fulfilmentResult.fulfilmentId
         });
 
-        log.audit('Current SO Saved With Paired Taken FS', currentSoId);
+        if (intercompanyInvoiceId) {
+          const storeFulfilmentId = markIntercompanyPurchaseOrderShipped({
+            purchaseOrderId: intercoTransactionId,
+            storeSalesOrderId: pairedSoId,
+            sourceSalesOrderId: currentSoId,
+            intercompanyInvoiceId,
+            targetOrderLines
+          });
+
+          if (storeFulfilmentId) {
+            createInvoiceIfPendingBilling({
+              salesOrderId: pairedSoId,
+              fulfilmentId: storeFulfilmentId
+            });
+          }
+        }
       }
 
     } catch (e) {
@@ -291,6 +312,109 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
         message: e.message,
         stack: e.stack
       });
+    }
+  }
+
+  function syncCurrentSoTakenFromStore(options) {
+    const currentSoId = options.currentSoId;
+    const pairedSoId = options.pairedSoId;
+
+    try {
+      const currentSo = record.load({
+        type: record.Type.SALES_ORDER,
+        id: currentSoId,
+        isDynamic: false
+      });
+
+      const pairedSo = record.load({
+        type: record.Type.SALES_ORDER,
+        id: pairedSoId,
+        isDynamic: false
+      });
+
+      const currentLineCount = currentSo.getLineCount({
+        sublistId: 'item'
+      });
+
+      let needsSave = false;
+
+      for (let i = 0; i < currentLineCount; i++) {
+        const pairedLineId = currentSo.getSublistValue({
+          sublistId: 'item',
+          fieldId: FIELD_PAIRED_LINE_ID,
+          line: i
+        });
+
+        if (!pairedLineId) continue;
+
+        const pairedLineIndex = pairedSo.findSublistLineWithValue({
+          sublistId: 'item',
+          fieldId: 'id',
+          value: pairedLineId
+        });
+
+        if (pairedLineIndex < 0) continue;
+
+        const pairedTakenFromStore = pairedSo.getSublistValue({
+          sublistId: 'item',
+          fieldId: FIELD_TAKEN_FROM_STORE,
+          line: pairedLineIndex
+        });
+
+        const currentTakenFromStore = currentSo.getSublistValue({
+          sublistId: 'item',
+          fieldId: FIELD_TAKEN_FROM_STORE,
+          line: i
+        });
+
+        const takenFromStore = pairedTakenFromStore === true || pairedTakenFromStore === 'T';
+
+        if ((currentTakenFromStore === true || currentTakenFromStore === 'T') === takenFromStore) {
+          continue;
+        }
+
+        currentSo.setSublistValue({
+          sublistId: 'item',
+          fieldId: FIELD_TAKEN_FROM_STORE,
+          line: i,
+          value: takenFromStore
+        });
+
+        needsSave = true;
+      }
+
+      if (!needsSave) {
+        log.audit('Current SO Taken FS Sync Skipped', {
+          currentSoId,
+          pairedSoId,
+          reason: 'No changes after reload'
+        });
+
+        return null;
+      }
+
+      const savedId = currentSo.save({
+        enableSourcing: true,
+        ignoreMandatoryFields: false
+      });
+
+      log.audit('Current SO Saved With Paired Taken FS', {
+        currentSoId,
+        pairedSoId,
+        savedId
+      });
+
+      return savedId;
+    } catch (e) {
+      log.error('Current SO Taken FS Sync Failed', {
+        currentSoId,
+        pairedSoId,
+        name: e.name,
+        message: e.message,
+        stack: e.stack
+      });
+
+      return null;
     }
   }
 
@@ -479,7 +603,7 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
 
     if (!fulfilledLineCount) {
       log.audit('Skipped', 'No fulfilment lines completed');
-      return;
+      return null;
     }
 
     fulfilment.setValue({
@@ -497,6 +621,200 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
       fulfilmentId,
       fulfilledLineCount
     });
+
+    return {
+      fulfilmentId,
+      fulfilledLineCount
+    };
+  }
+
+  function createInvoiceIfPendingBilling(options) {
+    const salesOrderId = options.salesOrderId;
+    const fulfilmentId = options.fulfilmentId;
+
+    const statusData = getSalesOrderBillingStatus(salesOrderId);
+
+    log.audit('Invoice Status Check After Fulfilment', {
+      salesOrderId,
+      fulfilmentId,
+      statusValue: statusData.statusValue,
+      statusText: statusData.statusText,
+      orderStatus: statusData.orderStatus
+    });
+
+    if (!isPendingBillingStatus(statusData)) {
+      log.audit('Invoice Skipped', {
+        salesOrderId,
+        fulfilmentId,
+        reason: 'Sales order is not pending billing',
+        statusValue: statusData.statusValue,
+        statusText: statusData.statusText,
+        orderStatus: statusData.orderStatus
+      });
+
+      return null;
+    }
+
+    const invoice = record.transform({
+      fromType: record.Type.SALES_ORDER,
+      fromId: salesOrderId,
+      toType: record.Type.INVOICE,
+      isDynamic: true
+    });
+
+    const invoiceId = invoice.save({
+      enableSourcing: true,
+      ignoreMandatoryFields: false
+    });
+
+    log.audit('Invoice Created From Pending Billing Sales Order', {
+      salesOrderId,
+      fulfilmentId,
+      invoiceId
+    });
+
+    return invoiceId;
+  }
+
+  function markIntercompanyPurchaseOrderShipped(options) {
+    const purchaseOrderId = options.purchaseOrderId;
+    const storeSalesOrderId = options.storeSalesOrderId;
+    const sourceSalesOrderId = options.sourceSalesOrderId;
+    const intercompanyInvoiceId = options.intercompanyInvoiceId;
+    const targetOrderLines = options.targetOrderLines || [];
+
+    const storeOrderLines = targetOrderLines
+      .map(line => String(line.storeOrderLine || '').trim())
+      .filter(Boolean);
+
+    if (!purchaseOrderId || !storeSalesOrderId || !storeOrderLines.length) {
+      log.audit('Mark Intercompany PO Shipped Skipped', {
+        purchaseOrderId,
+        storeSalesOrderId,
+        sourceSalesOrderId,
+        intercompanyInvoiceId,
+        reason: 'Missing purchase order, store sales order, or target lines'
+      });
+
+      return null;
+    }
+
+    const fulfilment = record.transform({
+      fromType: record.Type.SALES_ORDER,
+      fromId: storeSalesOrderId,
+      toType: record.Type.ITEM_FULFILLMENT,
+      isDynamic: false
+    });
+
+    const fulfilmentLineCount = fulfilment.getLineCount({
+      sublistId: 'item'
+    });
+
+    let fulfilledLineCount = 0;
+
+    for (let i = 0; i < fulfilmentLineCount; i++) {
+      const fulfilmentOrderLine = String(fulfilment.getSublistValue({
+        sublistId: 'item',
+        fieldId: 'orderline',
+        line: i
+      }) || '').trim();
+
+      const shouldFulfil = storeOrderLines.includes(fulfilmentOrderLine);
+
+      fulfilment.setSublistValue({
+        sublistId: 'item',
+        fieldId: 'itemreceive',
+        line: i,
+        value: shouldFulfil
+      });
+
+      if (!shouldFulfil) continue;
+
+      fulfilledLineCount++;
+
+      log.audit('Store SO Mark Shipped Line', {
+        purchaseOrderId,
+        storeSalesOrderId,
+        sourceSalesOrderId,
+        fulfilmentLine: i,
+        orderline: fulfilmentOrderLine,
+        item: fulfilment.getSublistValue({
+          sublistId: 'item',
+          fieldId: 'item',
+          line: i
+        }),
+        quantity: fulfilment.getSublistValue({
+          sublistId: 'item',
+          fieldId: 'quantity',
+          line: i
+        })
+      });
+    }
+
+    if (!fulfilledLineCount) {
+      log.audit('Mark Intercompany PO Shipped Skipped', {
+        purchaseOrderId,
+        storeSalesOrderId,
+        sourceSalesOrderId,
+        intercompanyInvoiceId,
+        reason: 'No matching store fulfilment lines'
+      });
+
+      return null;
+    }
+
+    fulfilment.setValue({
+      fieldId: 'shipstatus',
+      value: 'C'
+    });
+
+    const storeFulfilmentId = fulfilment.save({
+      enableSourcing: true,
+      ignoreMandatoryFields: false
+    });
+
+    log.audit('Intercompany PO Marked Shipped Via Store SO Fulfilment', {
+      purchaseOrderId,
+      storeSalesOrderId,
+      sourceSalesOrderId,
+      intercompanyInvoiceId,
+      storeFulfilmentId,
+      fulfilledLineCount
+    });
+
+    return storeFulfilmentId;
+  }
+
+  function getSalesOrderBillingStatus(salesOrderId) {
+    const salesOrder = record.load({
+      type: record.Type.SALES_ORDER,
+      id: salesOrderId,
+      isDynamic: false
+    });
+
+    const statusValue = getRecordValueSafe(salesOrder, 'status');
+    const statusText = getRecordTextSafe(salesOrder, 'status');
+    const orderStatus = getRecordValueSafe(salesOrder, 'orderstatus');
+
+    return {
+      statusValue,
+      statusText,
+      orderStatus
+    };
+  }
+
+  function isPendingBillingStatus(statusData) {
+    const orderStatus = String(statusData.orderStatus || '').trim().toUpperCase();
+    if (orderStatus === 'F') return true;
+
+    const statusText = normalizeStatusText(
+      statusData.statusText || statusData.statusValue
+    );
+
+    return (
+      statusText === 'pending bill' ||
+      statusText === 'pending billing'
+    );
   }
 
   function setStandardInventoryDetail(options) {
@@ -741,6 +1059,34 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
     log.audit('Resolved Inventory Balance Assignment', resultData);
 
     return resultData;
+  }
+
+  function getRecordValueSafe(rec, fieldId) {
+    try {
+      return rec.getValue({
+        fieldId
+      });
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function getRecordTextSafe(rec, fieldId) {
+    try {
+      return rec.getText({
+        fieldId
+      });
+    } catch (e) {
+      return '';
+    }
+  }
+
+  function normalizeStatusText(value) {
+    return String(value || '')
+      .replace(/^sales\s+order\s*:\s*/i, '')
+      .replace(/\s+/g, ' ')
+      .trim()
+      .toLowerCase();
   }
 
   function getAssignmentValueSafe(inventoryDetail, line, fieldId) {

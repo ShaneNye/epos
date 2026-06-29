@@ -4,6 +4,7 @@
  */
 define(["N/record", "N/log", "N/error"], (record, log, error) => {
   const GROSS_DIVISOR = 1.2;
+  const CUSTOMER_EMAIL_SENT_FIELD = "custbody_sb_cust_email_sent";
 
   const toNum = (v) => {
     const n = parseFloat(v);
@@ -1003,6 +1004,10 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       if (doCommit) {
         soRec.setValue({
           fieldId: "custbody_sb_epos_approved",
+          value: true,
+        });
+        soRec.setValue({
+          fieldId: CUSTOMER_EMAIL_SENT_FIELD,
           value: true,
         });
         soRec.setValue({

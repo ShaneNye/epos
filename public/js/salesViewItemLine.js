@@ -233,24 +233,24 @@ function updateVatFreeColumnVisibility() {
 
   rows.forEach((row) => ensureVatFreeCell(row));
 
-  const anyAdjustable = [...rows].some((row) => rowHasAdjustableCategory(row));
-  header.style.display = anyAdjustable ? "table-cell" : "none";
+  const anyVatFreeReason = [...rows].some((row) => rowHasVatFreeCheckboxReason(row));
+  header.style.display = anyVatFreeReason ? "table-cell" : "none";
 
   rows.forEach((row) => {
     const cell = row.querySelector("td.vat-free-cell");
     if (!cell) return;
 
-    const isAdjustable = rowHasAdjustableCategory(row);
+    const hasVatFreeReason = rowHasVatFreeCheckboxReason(row);
     const checkbox = cell.querySelector(".vat-free-checkbox");
     const placeholder = cell.querySelector(".vat-free-placeholder");
 
-    cell.style.display = anyAdjustable ? "table-cell" : "none";
-    if (checkbox) checkbox.style.display = isAdjustable ? "inline-block" : "none";
+    cell.style.display = anyVatFreeReason ? "table-cell" : "none";
+    if (checkbox) checkbox.style.display = hasVatFreeReason ? "inline-block" : "none";
     if (placeholder) {
       placeholder.textContent = "";
       placeholder.style.display = "none";
     }
-    if (!isAdjustable && checkbox) checkbox.checked = false;
+    if (!hasVatFreeReason && checkbox) checkbox.checked = false;
   });
 }
 
@@ -362,8 +362,12 @@ function getLineItemCategory(line, itemData) {
   );
 }
 
-function rowHasAdjustableCategory(row) {
-  return String(row?.dataset?.itemCategory || "").toLowerCase().includes("adjustable");
+function rowHasVatFreeCheckboxReason(row) {
+  const category = String(row?.dataset?.itemCategory || "").toLowerCase();
+  const itemClass = String(row?.dataset?.itemClass || "").toLowerCase();
+  const savedVatFree = row?.dataset?.vatFree === "1";
+  const checkedVatFree = !!row?.querySelector(".vat-free-checkbox")?.checked;
+  return category.includes("adjustable") || itemClass.includes("adjustable") || savedVatFree || checkedVatFree;
 }
 
 function isServiceItemClass(itemClass) {
@@ -397,6 +401,38 @@ function salesViewRecordValue(record, keys) {
     }
   }
   return "";
+}
+
+function salesViewRecordValues(record, keys) {
+  if (!record || typeof record !== "object") return [];
+  const values = [];
+
+  keys.forEach((key) => {
+    const value = record[key];
+    if (value && typeof value === "object") {
+      ["id", "value", "refName", "name", "text"].forEach((nestedKey) => {
+        const nested = value[nestedKey];
+        if (nested !== undefined && nested !== null && nested !== "") values.push(String(nested).trim());
+      });
+    } else if (value !== undefined && value !== null && value !== "") {
+      values.push(String(value).trim());
+    }
+  });
+
+  return values;
+}
+
+function isSalesViewVatFreeTaxCode(value) {
+  const code = String(value || "").trim().toLowerCase();
+  if (!code) return false;
+  const compact = code.replace(/[^a-z0-9]/g, "");
+  return (
+    code === "10" ||
+    code.includes("vat free") ||
+    code.includes("zero") ||
+    compact === "vate" ||
+    compact.includes("vatexempt")
+  );
 }
 
 function escapeSalesViewHtml(value) {
@@ -1759,16 +1795,13 @@ window.renderSalesViewLines = function renderSalesViewLines({
 
     const retailGrossPerUnit = qty ? retailGrossLineTotal / qty : 0;
 
-    const existingTaxCode = salesViewRecordValue(line, [
+    const existingTaxCodeValues = salesViewRecordValues(line, [
       "taxCode",
       "taxcode",
       "tax_code",
       "Tax Code",
-    ]).toLowerCase();
-    const existingVatFree =
-      existingTaxCode === "10" ||
-      existingTaxCode.includes("vat free") ||
-      existingTaxCode.includes("zero");
+    ]);
+    const existingVatFree = existingTaxCodeValues.some(isSalesViewVatFreeTaxCode);
 
     const discountBasis = existingVatFree ? retailGrossLineTotal / 1.2 : retailGrossLineTotal;
     const displaySaleLineTotal =
@@ -1798,6 +1831,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
     const isServiceLine = isServiceItemClass(itemClass);
     tr.dataset.itemClass = itemClass;
     tr.dataset.itemCategory = itemCategory;
+    tr.dataset.vatFree = existingVatFree ? "1" : "0";
 
     const hasEditableOptions = optionSchemaHasSelectableValues(optionSchema);
     const canPatchCommittedOptions =
@@ -1993,6 +2027,9 @@ window.renderSalesViewLines = function renderSalesViewLines({
                 existingVatFree ? "checked" : ""
               } />
                <span class="vat-free-placeholder"></span>`
+            : existingVatFree
+              ? `<input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" checked disabled />
+                 <span class="vat-free-placeholder"></span>`
             : `<span class="vat-free-placeholder"></span>`
         }
       </td>
