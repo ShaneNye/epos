@@ -632,7 +632,8 @@ textarea:focus {
 .locked #autoFulfilmentInfoModal,
 .locked #autoFulfilmentInfoModal *,
 .locked #takenFromStoreModal,
-.locked #takenFromStoreModal * {
+.locked #takenFromStoreModal *,
+.locked #updateCustomerDetailsBtn {
   pointer-events: auto;
 }
 /* === Spinner Section === */
@@ -677,7 +678,8 @@ textarea:focus {
 .locked #autoFulfilmentInfoModal,
 .locked #autoFulfilmentInfoModal *,
 .locked #takenFromStoreModal,
-.locked #takenFromStoreModal * {
+.locked #takenFromStoreModal *,
+.locked #updateCustomerDetailsBtn {
   pointer-events: auto;
 }
 
@@ -1194,6 +1196,91 @@ body.sidebar-expanded .order-upsell-panel {
 .order-stock-actions .btn-secondary {
   padding: 0.35rem 0.65rem;
   white-space: nowrap;
+}
+
+.customer-update-btn {
+  width: 100%;
+  margin-top: 0.6rem;
+}
+
+.customer-details-modal {
+  width: min(980px, calc(100vw - 2rem));
+  max-height: min(760px, calc(100vh - 2rem));
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+}
+
+.customer-details-modal::backdrop {
+  background: rgba(15, 23, 42, 0.46);
+}
+
+.customer-details-modal-shell {
+  padding: 1rem;
+}
+
+.customer-details-modal-header,
+.customer-addresses-head,
+.customer-details-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.customer-details-modal-header h2,
+.customer-addresses-head h3 {
+  margin: 0;
+}
+
+.customer-details-close {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #d8dee2;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.customer-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.customer-details-grid input,
+.customer-addresses-table input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.customer-addresses-wrap {
+  margin-top: 0.75rem;
+  overflow-x: auto;
+}
+
+.customer-addresses-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.customer-addresses-table th,
+.customer-addresses-table td {
+  padding: 0.45rem;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  vertical-align: top;
+}
+
+.customer-details-status {
+  min-height: 1.25rem;
+  margin: 0.75rem 0;
+  color: var(--muted);
 }
 
 .order-upsell-tag {

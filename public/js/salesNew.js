@@ -121,7 +121,7 @@ if (window.location.pathname.includes("/sales/view/")) {
         document.querySelector('input[name="address1"]'),
         document.querySelector('input[name="address2"]'),
         document.querySelector('input[name="address3"]'),
-        document.querySelector('input[name="county"]'),
+        document.querySelector('[name="county"]'),
       ].filter(Boolean);
     }
 
@@ -132,7 +132,7 @@ function applyNoAddressMode() {
   const address1Field = document.querySelector('input[name="address1"]');
   const address2Field = document.querySelector('input[name="address2"]');
   const address3Field = document.querySelector('input[name="address3"]');
-  const countyField = document.querySelector('input[name="county"]');
+  const countyField = document.querySelector('[name="county"]');
 
 
   const addressFields = [
@@ -830,6 +830,18 @@ function validateOrderBeforeSave() {
         if (!confirmed) return;
       }
 
+      const shipAddress = [
+        document.querySelector('input[name="address1"]')?.value,
+        document.querySelector('input[name="address2"]')?.value,
+        document.querySelector('input[name="address3"]')?.value,
+        window.EposCountySelect?.getName?.(document.querySelector('[name="county"]')) ||
+          document.querySelector('[name="county"]')?.value,
+        document.querySelector('input[name="postcode"]')?.value,
+      ]
+        .map((line) => String(line || "").trim())
+        .filter(Boolean)
+        .join("\n");
+
       const customer = {
         id: noAddressRequired ? null : window.currentCustomerId || null,
         noAddressRequired,
@@ -840,7 +852,9 @@ function validateOrderBeforeSave() {
         address1: document.querySelector('input[name="address1"]').value,
         address2: document.querySelector('input[name="address2"]').value,
         address3: document.querySelector('input[name="address3"]').value,
-        county: document.querySelector('input[name="county"]').value,
+        county: document.querySelector('[name="county"]')?.value || "",
+        shipAddress: window.selectedShipAddress || shipAddress,
+        shipaddress: window.selectedShipAddress || shipAddress,
         contactNumber: document.querySelector('input[name="contactNumber"]').value,
         altContactNumber: document.querySelector('input[name="altContactNumber"]').value,
         email: document.querySelector('input[name="email"]').value,

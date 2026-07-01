@@ -251,6 +251,7 @@ async function initDailyBalancing() {
   let locations = [];
   let currentEodRecordId = null;
   let isEodLocked = false;
+  let lockCheckRequestSeq = 0;
 
   console.log("🖨 printBtn found:", !!printBtn);
 
@@ -404,6 +405,14 @@ async function initDailyBalancing() {
     return matchLoc ? matchLoc.id : null;
   }
 
+  function currentSelectedStoreName() {
+    return storeSelect?.value || userStoreName || "";
+  }
+
+  function sameLocationId(left, right) {
+    return String(left || "") === String(right || "");
+  }
+
   // ✅ Replaces updateCurrentFloatBalance()
   function updateCurrentBalances() {
     if (!selectedLocationId || !Array.isArray(locations) || !locations.length) {
@@ -542,9 +551,9 @@ async function initDailyBalancing() {
         userStoreName,
       });
 
-      const selectedStore = storeSelect?.value || userStoreName || "";
+      const selectedStore = currentSelectedStoreName();
       const locationId =
-        selectedLocationId || buildStoreMatchLocationId(selectedStore);
+        buildStoreMatchLocationId(selectedStore) || selectedLocationId;
 
       if (!selectedStore || !locationId) {
         alert("Please select a valid store first.");
@@ -1443,6 +1452,8 @@ async function initDailyBalancing() {
   storeSelect?.addEventListener("change", async () => {
     const selected = storeSelect.value;
     selectedLocationId = buildStoreMatchLocationId(selected);
+    const expectedLocationId = selectedLocationId;
+    const lockRequestSeq = ++lockCheckRequestSeq;
 
     // ✅ updated
     updateCurrentBalances();
@@ -1450,12 +1461,26 @@ async function initDailyBalancing() {
     renderStore(selected);
     renderOutstandingIntPos(selected);
     renderCashflow(selected);
+    applyLockState({ ok: true, exists: false });
 
     try {
-      const data = await checkTodayLock(selectedLocationId);
+      const data = await checkTodayLock(expectedLocationId);
+      if (
+        lockRequestSeq !== lockCheckRequestSeq ||
+        currentSelectedStoreName() !== selected ||
+        !sameLocationId(selectedLocationId, expectedLocationId)
+      ) {
+        return;
+      }
       applyLockState(data);
     } catch (err) {
       console.error("🔴 Failed to check EOD lock:", err);
+      if (
+        lockRequestSeq !== lockCheckRequestSeq ||
+        currentSelectedStoreName() !== selected
+      ) {
+        return;
+      }
       applyLockState({ ok: true, exists: false });
     }
   });
@@ -1465,6 +1490,9 @@ async function initDailyBalancing() {
   ------------------------------------------------- */
   if (userStoreName) {
     selectedLocationId = buildStoreMatchLocationId(userStoreName);
+    const initialStoreName = userStoreName;
+    const initialLocationId = selectedLocationId;
+    const lockRequestSeq = ++lockCheckRequestSeq;
 
     // ✅ updated
     updateCurrentBalances();
@@ -1474,10 +1502,23 @@ async function initDailyBalancing() {
     renderCashflow(userStoreName);
 
     try {
-      const data = await checkTodayLock(selectedLocationId);
+      const data = await checkTodayLock(initialLocationId);
+      if (
+        lockRequestSeq !== lockCheckRequestSeq ||
+        currentSelectedStoreName() !== initialStoreName ||
+        !sameLocationId(selectedLocationId, initialLocationId)
+      ) {
+        return;
+      }
       applyLockState(data);
     } catch (err) {
       console.error("🔴 Initial EOD lock check failed:", err);
+      if (
+        lockRequestSeq !== lockCheckRequestSeq ||
+        currentSelectedStoreName() !== initialStoreName
+      ) {
+        return;
+      }
       applyLockState({ ok: true, exists: false });
     }
   }
@@ -1547,6 +1588,15 @@ async function initDailyBalancing() {
         return;
       }
 
+      const locationId = buildStoreMatchLocationId(storeName);
+      if (!locationId) {
+        signoffStatus.textContent = "Please select a valid store in Step 2.";
+        signoffStatus.classList.add("signoff-status--error");
+        return;
+      }
+
+      selectedLocationId = locationId;
+
       if (currentOutstandingIntPosRows.length > 0) {
         const continueWithOutstanding = confirm(
           "There are still outstanding intercompany purchase orders are you sure you want to continue"
@@ -1595,7 +1645,7 @@ async function initDailyBalancing() {
 
       const payload = {
         store: storeName,
-        locationId: selectedLocationId,
+        locationId,
         date: new Date().toISOString().slice(0, 10),
         signoffUserId: Number(signoffUserSelect.value),
         confirmation: signoffConfirm.checked,

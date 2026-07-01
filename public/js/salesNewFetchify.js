@@ -8,8 +8,13 @@ document.addEventListener("DOMContentLoaded", () => {
   if (!findBtn) return;
 
   const setInputValue = (name, value) => {
-    const field = document.querySelector(`input[name="${name}"]`);
-    if (field) field.value = value || "";
+    const field = document.querySelector(`[name="${name}"]`);
+    if (!field) return;
+    if (name === "county" && window.EposCountySelect?.setValue) {
+      window.EposCountySelect.setValue(field, value || "");
+      return;
+    }
+    field.value = value || "";
   };
 
   const hideAddressResults = () => {
@@ -77,7 +82,7 @@ document.addEventListener("DOMContentLoaded", () => {
         hideAddressResults();
 
         ["address1", "address2", "address3", "county", "postcode"].forEach((name) => {
-          const field = document.querySelector(`input[name="${name}"]`);
+          const field = document.querySelector(`[name="${name}"]`);
           if (!field) return;
           field.classList.add("address-filled");
           setTimeout(() => field.classList.remove("address-filled"), 800);

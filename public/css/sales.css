@@ -594,6 +594,10 @@ body.sidebar-expanded .order-upsell-panel {
   flex-direction: column;
 }
 
+.form-section.narrow .form-grid {
+  grid-template-columns: minmax(190px, 0.9fr) minmax(240px, 1.1fr);
+}
+
 /* Middle: Contact + Order Details stack */
 .right-main {
   flex: 1.4;
@@ -709,6 +713,10 @@ body.sidebar-expanded .order-upsell-panel {
     gap: 0.8rem;
   }
 
+  .form-section.narrow .form-grid {
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  }
+
   .form-section.narrow,
   .right-main,
   .order-summary {
@@ -741,6 +749,14 @@ body.sidebar-expanded .order-upsell-panel {
 }
 
 @media (max-width: 560px) {
+  .no-address-wrap {
+    flex-wrap: wrap;
+  }
+
+  .customer-search-btn {
+    width: 100%;
+  }
+
   .actions {
     flex-direction: column;
   }
@@ -797,7 +813,9 @@ body.sidebar-expanded .order-upsell-panel {
 .locked #autoFulfilmentInfoModal,
 .locked #autoFulfilmentInfoModal *,
 .locked #takenFromStoreModal,
-.locked #takenFromStoreModal * {
+.locked #takenFromStoreModal *,
+.locked #updateCustomerDetailsBtn,
+.locked #customerSearchBtn {
   pointer-events: auto;
 }
 /* === Spinner Section === */
@@ -842,7 +860,9 @@ body.sidebar-expanded .order-upsell-panel {
 .locked #autoFulfilmentInfoModal,
 .locked #autoFulfilmentInfoModal *,
 .locked #takenFromStoreModal,
-.locked #takenFromStoreModal * {
+.locked #takenFromStoreModal *,
+.locked #updateCustomerDetailsBtn,
+.locked #customerSearchBtn {
   pointer-events: auto;
 }
 
@@ -1066,28 +1086,44 @@ body.sidebar-expanded .order-upsell-panel {
 }
 .no-address-wrap {
   display: flex;
-  align-items: flex-end;
-  min-height: 42px;
+  gap: 8px;
+  align-items: center;
+  align-self: end;
+  flex-wrap: nowrap;
+  min-width: 0;
+  min-height: 34px;
 }
 
 .no-address-box {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 12px;
+  justify-content: center;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 36px;
+  padding: 0 10px;
   border: 1px solid #d9e2ec;
-  border-radius: 8px;
+  border-radius: 6px;
   background: #f8fafc;
+}
+
+.customer-search-btn {
+  flex: 0 0 auto;
+  min-height: 36px;
+  padding-inline: 0.6rem;
+  font-size: 0.8rem;
+  white-space: nowrap;
 }
 
 .checkbox-label {
   display: inline-flex;
+  flex-direction: row;
   align-items: center;
   gap: 8px;
   margin: 0;
-  font-size: 13px;
+  font-size: 12.5px;
   font-style: italic;
-  font-weight: 400;
+  font-weight: 600;
   color: #6b7280;
   white-space: nowrap;
   cursor: pointer;
@@ -1121,4 +1157,89 @@ body.sidebar-expanded .order-upsell-panel {
   display: flex;
   justify-content: flex-end;
   gap: 0.75rem;
+}
+
+.customer-update-btn {
+  width: 100%;
+  margin-top: 0.6rem;
+}
+
+.customer-details-modal {
+  width: min(980px, calc(100vw - 2rem));
+  max-height: min(760px, calc(100vh - 2rem));
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  box-shadow: 0 24px 70px rgba(15, 23, 42, 0.24);
+}
+
+.customer-details-modal::backdrop {
+  background: rgba(15, 23, 42, 0.46);
+}
+
+.customer-details-modal-shell {
+  padding: 1rem;
+}
+
+.customer-details-modal-header,
+.customer-addresses-head,
+.customer-details-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.customer-details-modal-header h2,
+.customer-addresses-head h3 {
+  margin: 0;
+}
+
+.customer-details-close {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #d8dee2;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 1.4rem;
+  line-height: 1;
+}
+
+.customer-details-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0;
+}
+
+.customer-details-grid input,
+.customer-addresses-table input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.customer-addresses-wrap {
+  margin-top: 0.75rem;
+  overflow-x: auto;
+}
+
+.customer-addresses-table {
+  width: 100%;
+  min-width: 760px;
+  border-collapse: collapse;
+}
+
+.customer-addresses-table th,
+.customer-addresses-table td {
+  padding: 0.45rem;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+  vertical-align: top;
+}
+
+.customer-details-status {
+  min-height: 1.25rem;
+  margin: 0.75rem 0;
+  color: var(--muted);
 }

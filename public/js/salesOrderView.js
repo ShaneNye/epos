@@ -85,14 +85,57 @@ function resolveCustomerNameParts(entity = {}, displayName = "") {
   };
 }
 
+function normalizeCustomerNameLine(value) {
+  return String(value || "")
+    .replace(/^\d+\s+/, "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+}
+
+function customerNameVariants(entity = {}, displayName = "", nameParts = {}) {
+  const values = [
+    [nameParts.firstName, nameParts.lastName].filter(Boolean).join(" "),
+    displayName,
+    entity.entityId,
+    entity.entityid,
+    entity.altName,
+    entity.altname,
+    entity.companyName,
+    entity.companyname,
+    entity.refName,
+    entity.name,
+  ];
+
+  return values.map(normalizeCustomerNameLine).filter(Boolean);
+}
+
+function isCustomerNameAddressLine(line, entity = {}, displayName = "", nameParts = {}) {
+  const normalizedLine = normalizeCustomerNameLine(line);
+  if (!normalizedLine) return false;
+  return customerNameVariants(entity, displayName, nameParts).includes(normalizedLine);
+}
+
 function isSalesViewLockExemptControl(el) {
   return Boolean(
     el?.closest?.("#menu") ||
       el?.id === "assistantToggle" ||
+      el?.id === "updateCustomerDetailsBtn" ||
       el?.classList?.contains("auto-fulfilment-alert") ||
       el?.closest?.("#takenFromStoreModal, #autoFulfilmentInfoModal") ||
       el?.closest?.("#salesAssistant")
   );
+}
+
+function ensureCustomerUpdateButtonUnlocked() {
+  const button = document.getElementById("updateCustomerDetailsBtn");
+  if (!button) return;
+  button.disabled = false;
+  button.removeAttribute("disabled");
+  button.removeAttribute("readonly");
+  button.classList.remove("locked-input");
+  button.style.pointerEvents = "auto";
+  button.style.opacity = "1";
 }
 
 function setupSalesViewTabs() {
@@ -285,16 +328,41 @@ function extractHref(html) {
   return "";
 }
 
+function extractDispatchTrackServiceOrderNumber(value) {
+  const raw = String(value || "");
+  const match = raw.match(/service-orders\/([^"'<>\s/?#]+)/i);
+  if (match?.[1]) return match[1];
+  const fallback = raw.match(/\bSO[A-Z]*\d+\b/i);
+  return fallback?.[0] || "";
+}
+
 function renderDispatchTrack(value, scheduleHtml = "") {
   const container = document.getElementById("relatedDispatchTrack");
   if (!container) return;
 
   if (!isCheckedNetSuiteField(value)) {
     container.textContent = "Not exported";
+    window.currentDispatchTrackServiceOrderNumber = "";
+    window.currentDispatchTrackUrl = "";
+    window.currentSalesOrderExportedToDispatchTrack = false;
     return;
   }
 
   const href = extractHref(scheduleHtml);
+  const serviceOrderNumber = extractDispatchTrackServiceOrderNumber(href || scheduleHtml);
+  window.currentDispatchTrackServiceOrderNumber = serviceOrderNumber;
+  window.currentDispatchTrackUrl =
+    href ||
+    (serviceOrderNumber
+      ? `https://sussexbeds.dispatchtrack.com/a18/service-orders/${encodeURIComponent(serviceOrderNumber)}`
+      : "");
+  window.currentSalesOrderExportedToDispatchTrack = true;
+  if (window._currentSalesOrder) {
+    window._currentSalesOrder.dispatchTrackServiceOrderNumber = serviceOrderNumber;
+    window._currentSalesOrder.dispatchTrackUrl = window.currentDispatchTrackUrl;
+    window._currentSalesOrder.exportedToDispatchTrack = true;
+  }
+
   if (href) {
     container.innerHTML = `<a href="${escapeHtml(href)}" class="related-popup-link">Schedule</a>`;
     return;
@@ -1063,34 +1131,122 @@ document.addEventListener("DOMContentLoaded", async () => {
         null;
 
       const addr = defaultAddress?.addressbookAddress || {};
+      const rawAddress =
+        so.shipAddress ||
+        so.shippingAddress_text ||
+        so.billAddress ||
+        so.billingAddress_text ||
+        "";
 
-      if (defaultAddress && addr) {
-        document.querySelector('input[name="address1"]').value = addr.addr1 || "";
-        document.querySelector('input[name="address2"]').value = addr.addr2 || "";
+      if (rawAddress) {
+        let addressLines = String(rawAddress).split("\n").map((l) => l.trim()).filter(Boolean);
+        const postcodeRegex = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
+
+        const firstLineLooksLikeLabel =
+          addressLines.length > 1 &&
+          !postcodeRegex.test(addressLines[0]) &&
+          (isCustomerNameAddressLine(addressLines[0], so.entityFull, fullName, customerName) ||
+            /\d/.test(addressLines[1] || ""));
+
+        if (firstLineLooksLikeLabel) {
+          addressLines.shift();
+        }
+
+        let postcode = "";
+        let countryLine = "";
+        const cleanedAddress = [];
+
+        for (const line of addressLines) {
+          if (postcodeRegex.test(line)) {
+            const match = line.match(postcodeRegex);
+            if (match) postcode = match[0].toUpperCase();
+
+            const townPart = line.replace(postcodeRegex, "").trim();
+            if (townPart) cleanedAddress.push(townPart);
+          } else if (
+            /(United Kingdom|UK|England|Scotland|Wales|Northern Ireland)/i.test(line)
+          ) {
+            countryLine = line;
+          } else {
+            cleanedAddress.push(line);
+          }
+        }
+
+        const countySuffixRegex =
+          /\b(East Sussex|West Sussex|Kent|Surrey|Essex|Hampshire|London|Greater London|Devon|Cornwall|Dorset|Somerset|Norfolk|Suffolk|Yorkshire|North Yorkshire|South Yorkshire|West Yorkshire|Lancashire|Cheshire)\b$/i;
+        const splitTownCounty = (line) => {
+          const value = String(line || "").trim();
+          const countyMatch = value.match(countySuffixRegex);
+          if (!countyMatch) return { town: value, county: "" };
+
+          const countyValue = countyMatch[1].trim();
+          return {
+            town: value.slice(0, value.length - countyValue.length).trim(),
+            county: countyValue,
+          };
+        };
+
+        let address1 = cleanedAddress[0] || "";
+        let address2 = "";
+        let address3 = "";
+        let county = "";
+
+        if (cleanedAddress.length === 2) {
+          const townCounty = splitTownCounty(cleanedAddress[1]);
+          address3 = townCounty.town || cleanedAddress[1] || "";
+          county = townCounty.county || "";
+        } else {
+          address2 = cleanedAddress[1] || "";
+          address3 = cleanedAddress[2] || "";
+          if (address3) {
+            const townCounty = splitTownCounty(address3);
+            address3 = townCounty.town || address3;
+            county = townCounty.county;
+          }
+        }
+
+        document.querySelector('input[name="address1"]').value = address1;
+        document.querySelector('input[name="address2"]').value = address2;
+        document.querySelector('input[name="address3"]').value = address3;
+        const countyField = document.querySelector('[name="county"]');
+        if (countyField) {
+          window.EposCountySelect?.setValue?.(countyField, county);
+          if (!window.EposCountySelect?.setValue) countyField.value = county;
+        }
+        document.querySelector('input[name="postcode"]').value = postcode || "";
+        document.querySelector('input[name="country"]').value =
+          countryLine || "United Kingdom";
+      } else if (defaultAddress && addr) {
+        const rawAddr1 = String(addr.addr1 || "").trim();
+        const rawAddr2 = String(addr.addr2 || "").trim();
+        const addr1IsCustomerName = isCustomerNameAddressLine(
+          rawAddr1,
+          so.entityFull,
+          fullName,
+          customerName
+        );
+
+        document.querySelector('input[name="address1"]').value = addr1IsCustomerName ? rawAddr2 : rawAddr1;
+        document.querySelector('input[name="address2"]').value = addr1IsCustomerName ? "" : rawAddr2;
         document.querySelector('input[name="address3"]').value = addr.city || "";
-        document.querySelector('input[name="county"]').value = addr.state || "";
+        const countyField = document.querySelector('[name="county"]');
+        if (countyField) {
+          window.EposCountySelect?.setValue?.(countyField, addr.state || "");
+          if (!window.EposCountySelect?.setValue) countyField.value = addr.state || "";
+        }
         document.querySelector('input[name="postcode"]').value = addr.zip || "";
         document.querySelector('input[name="country"]').value =
           addr.country?.refName || addr.country || "United Kingdom";
       } else {
-        const rawAddress =
-          so.shipAddress ||
-          so.shippingAddress_text ||
-          so.billAddress ||
-          so.billingAddress_text ||
-          "";
-
         let addressLines = rawAddress
           ? String(rawAddress).split("\n").map((l) => l.trim()).filter(Boolean)
           : [];
 
-        if (addressLines.length && fullName) {
-          const firstLine = addressLines[0].toLowerCase().replace(/\s+/g, " ").trim();
-          const compareName = fullName.toLowerCase().replace(/\s+/g, " ").trim();
-
-          if (firstLine === compareName) {
-            addressLines.shift();
-          }
+        if (
+          addressLines.length &&
+          isCustomerNameAddressLine(addressLines[0], so.entityFull, fullName, customerName)
+        ) {
+          addressLines.shift();
         }
 
         const postcodeRegex = /\b[A-Z]{1,2}\d[A-Z\d]?\s*\d[A-Z]{2}\b/i;
@@ -1129,27 +1285,32 @@ document.addEventListener("DOMContentLoaded", async () => {
         };
 
         let address1 = cleanedAddress[0] || "";
-        let address2 = cleanedAddress[1] || "";
-        let address3 = cleanedAddress[2] || "";
+        let address2 = "";
+        let address3 = "";
         let county = "";
 
         if (cleanedAddress.length === 2) {
           const townCounty = splitTownCounty(cleanedAddress[1]);
-          if (townCounty.county) {
-            address2 = "";
-            address3 = townCounty.town;
+          address3 = townCounty.town || cleanedAddress[1] || "";
+          county = townCounty.county || "";
+        } else {
+          address2 = cleanedAddress[1] || "";
+          address3 = cleanedAddress[2] || "";
+          if (address3) {
+            const townCounty = splitTownCounty(address3);
+            address3 = townCounty.town || address3;
             county = townCounty.county;
           }
-        } else if (address3) {
-          const townCounty = splitTownCounty(address3);
-          address3 = townCounty.town;
-          county = townCounty.county;
         }
 
         document.querySelector('input[name="address1"]').value = address1;
         document.querySelector('input[name="address2"]').value = address2;
         document.querySelector('input[name="address3"]').value = address3;
-        document.querySelector('input[name="county"]').value = county;
+        const countyField = document.querySelector('[name="county"]');
+        if (countyField) {
+          window.EposCountySelect?.setValue?.(countyField, county);
+          if (!window.EposCountySelect?.setValue) countyField.value = county;
+        }
         document.querySelector('input[name="postcode"]').value = postcode || "";
         document.querySelector('input[name="country"]').value =
           countryLine || "United Kingdom";
@@ -1166,6 +1327,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     document.querySelector('input[name="altContactNumber"]').value =
       customerContact.altPhone || so.altPhone || "";
     document.querySelector('textarea[name="memo"]').value = so.memo || "";
+
+    window.EposCustomerDetailsUpdate?.show?.(
+      so.entityFull?.id || so.entity?.id || customerContact.id,
+      so.entityFull || customerContact
+    );
 
     try {
       const entity = so.entityFull || {};
@@ -1280,6 +1446,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         const allowEdit =
           isCustomField ||
+          /*
           el.name === "title" ||
           el.name === "firstName" ||
           el.name === "lastName" ||
@@ -1291,6 +1458,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           el.name === "address3" ||
           el.name === "county" ||
           el.name === "postcode" ||
+          */
           el.name === "country" ||
           el.name === "memo" ||
           el.id === "salesExec" ||
@@ -1433,6 +1601,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
       };
     }
+
+    ensureCustomerUpdateButtonUnlocked();
 
     const currentStatusId = String(
       so.orderStatus?.id || so.orderstatus?.id || so.orderstatus || so.status || ""
@@ -1889,7 +2059,7 @@ function buildSalesReceiptPayloadFromDom(tranId) {
       address1: document.querySelector('input[name="address1"]')?.value || "",
       address2: document.querySelector('input[name="address2"]')?.value || "",
       address3: document.querySelector('input[name="address3"]')?.value || "",
-      county: document.querySelector('input[name="county"]')?.value || "",
+      county: document.querySelector('[name="county"]')?.value || "",
       postcode: document.querySelector('input[name="postcode"]')?.value || "",
       email: document.querySelector('input[name="email"]')?.value || "",
       contactNumber: document.querySelector('input[name="contactNumber"]')?.value || "",
@@ -2342,6 +2512,17 @@ function updateActionButton(orderStatusObj, tranId, so) {
       selectedSalesExecUser?.netsuiteid ||
       document.getElementById("salesExec")?.selectedOptions?.[0]?.dataset?.netsuiteId ||
       null;
+    const shipAddress = [
+      document.querySelector('input[name="address1"]')?.value,
+      document.querySelector('input[name="address2"]')?.value,
+      document.querySelector('input[name="address3"]')?.value,
+      window.EposCountySelect?.getName?.(document.querySelector('[name="county"]')) ||
+        document.querySelector('[name="county"]')?.value,
+      document.querySelector('input[name="postcode"]')?.value,
+    ]
+      .map((line) => String(line || "").trim())
+      .filter(Boolean)
+      .join("\n");
 
     const headerUpdates = {
       title: document.querySelector('select[name="title"]')?.value || null,
@@ -2361,7 +2542,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
       address3:
         document.querySelector('input[name="address3"]')?.value?.trim() || null,
       county:
-        document.querySelector('input[name="county"]')?.value?.trim() || null,
+        document.querySelector('[name="county"]')?.value?.trim() || null,
       postcode:
         document.querySelector('input[name="postcode"]')?.value?.trim() || null,
       country:
@@ -2377,6 +2558,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
       store: document.getElementById("store")?.value || null,
       storeName: document.getElementById("store")?.selectedOptions?.[0]?.textContent?.trim() || null,
       warehouse: document.getElementById("warehouse")?.value || null,
+      shipaddress: window.selectedShipAddress || shipAddress || null,
     };
 
     const lines = collectEditableSalesLines();

@@ -259,6 +259,21 @@ function netSuiteAppBaseUrl() {
   return getNetSuiteAppBaseUrl();
 }
 
+function customerShipAddressText(customer = {}) {
+  const supplied = String(customer.shipAddress || customer.shipaddress || "").trim();
+  if (supplied) return supplied;
+  return [
+    customer.address1,
+    customer.address2,
+    customer.address3,
+    customer.county,
+    customer.postcode,
+  ]
+    .map((line) => String(line || "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 /* =====================================================
    === CREATE NEW QUOTE (Estimate) =====================
 ===================================================== */
@@ -288,6 +303,7 @@ router.post("/create", async (req, res) => {
       resolveStoreData(order?.store),
     ]);
     const { storeName, storeNsId, invoiceLocationId } = storeData;
+    const shipAddressText = customerShipAddressText(customer);
 
     const estimateBody = {
       entity: { id: String(customerId) },
@@ -309,6 +325,7 @@ router.post("/create", async (req, res) => {
         ? { id: String(storeNsId) }
         : undefined,
       memo: order?.memo ? String(order.memo) : "",
+      ...(shipAddressText ? { shipAddress: shipAddressText } : {}),
       item: {
         items: (items || []).map((i) => {
           const itemClass = String(i.class || "").trim().toLowerCase();

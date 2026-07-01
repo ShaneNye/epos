@@ -424,6 +424,18 @@ if (window.location.pathname.includes("/quote/view/")) {
       const token = savedAuth?.token;
       if (!token) return (window.location.href = "/index.html");
 
+      const shipAddress = [
+        document.querySelector('input[name="address1"]')?.value,
+        document.querySelector('input[name="address2"]')?.value,
+        document.querySelector('input[name="address3"]')?.value,
+        window.EposCountySelect?.getName?.(document.querySelector('[name="county"]')) ||
+          document.querySelector('[name="county"]')?.value,
+        document.querySelector('input[name="postcode"]')?.value,
+      ]
+        .map((line) => String(line || "").trim())
+        .filter(Boolean)
+        .join("\n");
+
       const customer = {
         id: window.currentCustomerId || null,
         title: document.querySelector('select[name="title"]')?.value || null,
@@ -432,6 +444,10 @@ if (window.location.pathname.includes("/quote/view/")) {
         postcode: document.querySelector('input[name="postcode"]')?.value || "",
         address1: document.querySelector('input[name="address1"]')?.value || "",
         address2: document.querySelector('input[name="address2"]')?.value || "",
+        address3: document.querySelector('input[name="address3"]')?.value || "",
+        county: document.querySelector('[name="county"]')?.value || "",
+        shipAddress: window.selectedShipAddress || shipAddress,
+        shipaddress: window.selectedShipAddress || shipAddress,
         contactNumber: document.querySelector('input[name="contactNumber"]')?.value || "",
         altContactNumber: document.querySelector('input[name="altContactNumber"]')?.value || "",
         email: document.querySelector('input[name="email"]')?.value || "",

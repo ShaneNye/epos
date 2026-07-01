@@ -779,6 +779,29 @@ app.get("/api/netsuite/titles", (req, res) =>
   fetchNetSuiteData("SALES_ORDER_CSTM_TITLE_URL", "SALES_ORDER_CSTM_TITLE", req, res, "customer titles")
 );
 
+// === Customer Counties / NetSuite States ===
+app.get("/api/netsuite/customer-counties", async (req, res) => {
+  try {
+    const baseUrl = getEnvAny("COSTOMER_COUNTY_URL", "CUSTOMER_COUNTY_URL");
+    const token = getEnvAny("COSTOMER_COUNTY", "CUSTOMER_COUNTY");
+    if (!baseUrl) throw new Error("Missing COSTOMER_COUNTY_URL or CUSTOMER_COUNTY_URL in environment");
+
+    const nsUrl = new URL(baseUrl);
+    if (token && !nsUrl.searchParams.has("token")) {
+      nsUrl.searchParams.set("token", token);
+    }
+
+    console.log("📡 [NetSuite] customer counties:", nsUrl.toString());
+    const response = await fetch(nsUrl.toString());
+    if (!response.ok) throw new Error(`NetSuite response ${response.status}`);
+    const json = await response.json();
+    res.json(json);
+  } catch (err) {
+    console.error("❌ NetSuite customer counties proxy error:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to fetch customer counties" });
+  }
+});
+
 // === Sales Order Items ===
 app.get("/api/netsuite/items", (req, res) =>
   fetchNetSuiteData("SALES_ORDER_ITEMS_URL", "SALES_ORDER_ITEMS", req, res, "sales order items")
@@ -1575,6 +1598,8 @@ app.get("/orders", (req, res) => sendNoCacheFile(res, path.join(__dirname, "publ
 app.get("/sales-tools", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "salesTools.html")));
 app.get("/reset", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "reset.html")));
 app.get("/sales/new", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "newSalesOrder.html")));
+app.get("/customer-details", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "customerDetailsPopup.html")));
+app.get("/customer-search", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "customerSearchPopup.html")));
 app.get("/sales/kiosk", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "salesKiosk.html")));
 app.get("/quote/new", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "quoteNew.html")));
 app.get("/product-hub", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "product-hub.html")))

@@ -1587,6 +1587,21 @@ function publicRequestError(message, statusCode = 400) {
   return err;
 }
 
+function customerShipAddressText(customer = {}) {
+  const supplied = String(customer.shipAddress || customer.shipaddress || "").trim();
+  if (supplied) return supplied;
+  return [
+    customer.address1,
+    customer.address2,
+    customer.address3,
+    customer.county,
+    customer.postcode,
+  ]
+    .map((line) => String(line || "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
 async function ensureCustomerEmailBeforeCommit(salesOrderId, headerUpdates, userId) {
   const suppliedEmail = normalizeCustomerEmail(headerUpdates?.email);
   if (suppliedEmail && !isLikelyEmail(suppliedEmail)) {
@@ -2343,6 +2358,62 @@ async function syncPairedSalesOrderMemo(salesOrderId, headerUpdates = {}, userId
   };
 }
 
+function normalizePatchCompareValue(value) {
+  return String(value || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n[ \t]+/g, "\n")
+    .trim();
+}
+
+function netSuiteRecordChangedError(err) {
+  const details = err?.responseBody?.["o:errorDetails"] || err?.responseBody?.oErrorDetails || [];
+  const text = `${JSON.stringify(details)} ${err?.message || ""}`;
+  return /record has been changed/i.test(text);
+}
+
+async function patchSalesOrderAndVerify(salesOrderId, patch, userId) {
+  const id = String(salesOrderId || "").trim();
+  const cleanPatch = Object.fromEntries(
+    Object.entries(patch || {}).filter(([, value]) => value !== undefined)
+  );
+  if (!id || !Object.keys(cleanPatch).length) {
+    return { ok: true, skipped: true, id, patch: cleanPatch };
+  }
+
+  try {
+    await nsPatch(`/salesOrder/${encodeURIComponent(id)}`, cleanPatch, userId);
+    cacheDeleteSalesOrder(id);
+    return { ok: true, id, patch: cleanPatch, verifiedAfterRecordChanged: false };
+  } catch (err) {
+    if (!netSuiteRecordChangedError(err)) throw err;
+
+    const fields = Object.keys(cleanPatch).join(",");
+    const current = await nsGet(
+      `/salesOrder/${encodeURIComponent(id)}?fields=${encodeURIComponent(fields)}`,
+      userId
+    );
+    const matches = Object.entries(cleanPatch).every(([field, expected]) => {
+      const actual = current?.[field];
+      return normalizePatchCompareValue(actual) === normalizePatchCompareValue(expected);
+    });
+
+    if (!matches) throw err;
+
+    console.warn("NetSuite reported Record has been changed after Sales Order PATCH, but verification matched:", {
+      id,
+      fields: Object.keys(cleanPatch),
+    });
+    cacheDeleteSalesOrder(id);
+    return {
+      ok: true,
+      id,
+      patch: cleanPatch,
+      verifiedAfterRecordChanged: true,
+    };
+  }
+}
+
 async function getSalesOrderSalesExec(salesOrderId, userId) {
   const numericId = Number(salesOrderId);
   if (!Number.isFinite(numericId) || numericId <= 0) return null;
@@ -2728,6 +2799,7 @@ router.post("/create", async (req, res) => {
     const distributionLineLocationId = isDistributionStoreName(storeName)
       ? String(order.warehouse || "").trim()
       : "";
+    const shipAddressText = customerShipAddressText(customer);
 
     console.log("👤 Sales Executive NS ID:", salesExecNsId);
     console.log("🏬 Store lookup →", {
@@ -2752,6 +2824,7 @@ router.post("/create", async (req, res) => {
       custbody_sb_paymentinfo: { id: order.paymentInfo },
       custbody_sb_warehouse: { id: order.warehouse },
       memo: order.memo,
+      ...(shipAddressText ? { shipAddress: shipAddressText } : {}),
 
       item: {
         items: items.map((i, idx) => {
@@ -4463,6 +4536,78 @@ router.post("/:id/add-deposit", async (req, res) => {
 // =====================================================
 // === SAVE SALES ORDER (Patch via RESTlet, NO approval) ===
 // =====================================================
+router.post("/:id/shipaddress", async (req, res) => {
+  const { id } = req.params;
+  const shipAddress = String(req.body?.shipAddress || req.body?.shipaddress || "").trim();
+  const contactNumber = String(req.body?.contactNumber || req.body?.phone || "").trim();
+  const email = String(req.body?.email || "").trim();
+
+  try {
+    if (!id) return res.status(400).json({ ok: false, error: "Missing Sales Order ID." });
+    if (!shipAddress && !contactNumber && !email) {
+      return res.status(400).json({ ok: false, error: "Missing shipAddress/contact/email update." });
+    }
+
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    let userId = null;
+    if (token) {
+      const session = await getSession(token);
+      userId = session?.id || null;
+    }
+
+    console.log("Patching Sales Order shipAddress:", {
+      id,
+      userId: userId || "env default",
+      lines: shipAddress.split(/\r?\n/).filter(Boolean).length,
+      hasContactNumber: !!contactNumber,
+      hasEmail: !!email,
+    });
+
+    const currentPatch = {
+      ...(shipAddress ? { shipAddress } : {}),
+      ...(contactNumber ? { custbody_sb_interco_cus_phone: contactNumber } : {}),
+      ...(email ? { custbody_sb_customer_email: email } : {}),
+    };
+    const currentResult = await patchSalesOrderAndVerify(id, currentPatch, userId);
+
+    const relatedRecords = await getSalesOrderRelatedRecords(id, userId).catch((err) => {
+      console.warn("Could not resolve paired Sales Order for customer contact patch:", err.message || err);
+      return {};
+    });
+    const pairedSalesOrderId = String(relatedRecords?.custbody_sb_pairedsalesorder?.id || "").trim();
+    let pairedResult = { ok: true, skipped: true, reason: "no-paired-sales-order" };
+    if (pairedSalesOrderId && (contactNumber || email)) {
+      pairedResult = await patchSalesOrderAndVerify(
+        pairedSalesOrderId,
+        {
+          ...(contactNumber ? { custbody_sb_interco_cus_phone: contactNumber } : {}),
+          ...(email ? { custbody_sb_customer_email: email } : {}),
+        },
+        userId
+      );
+    }
+
+    return res.json({
+      ok: true,
+      id,
+      shipAddress,
+      contactNumber,
+      email,
+      current: currentResult,
+      paired: pairedResult,
+    });
+  } catch (err) {
+    console.error("Failed to patch Sales Order customer delivery/contact fields:", err.message || err);
+    if (err.responseBody) console.error("NetSuite customer delivery/contact patch response:", err.responseBody);
+    return res.status(err.statusCode || 500).json({
+      ok: false,
+      error: err.message || "Failed to patch Sales Order customer delivery/contact fields",
+      response: err.responseBody || null,
+    });
+  }
+});
+
 router.post("/:id/save", async (req, res) => {
   try {
     const { id } = req.params;

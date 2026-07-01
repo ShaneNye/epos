@@ -1,6 +1,9 @@
 const { nsPost, nsRestlet } = require("../netsuiteClient");
 
 function trim(value) {
+  if (value && typeof value === "object") {
+    return String(value.id || value.value || value.refName || value.name || "").trim();
+  }
   return String(value || "").trim();
 }
 

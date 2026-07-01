@@ -775,6 +775,17 @@ function buildQuoteSavePayload() {
 
   const storeSelect = document.getElementById("store");
   const salesExecSelect = document.getElementById("salesExec");
+  const shipAddress = [
+    document.querySelector('input[name="address1"]')?.value,
+    document.querySelector('input[name="address2"]')?.value,
+    document.querySelector('input[name="address3"]')?.value,
+    window.EposCountySelect?.getName?.(document.querySelector('[name="county"]')) ||
+      document.querySelector('[name="county"]')?.value,
+    document.querySelector('input[name="postcode"]')?.value,
+  ]
+    .map((line) => String(line || "").trim())
+    .filter(Boolean)
+    .join("\n");
 
   const updates = items.map((i) => {
     const qty = qtySafe(i.quantity);
@@ -837,6 +848,7 @@ function buildQuoteSavePayload() {
       paymentInfo: document.getElementById("paymentInfo")?.value || "",
       warehouse: document.getElementById("warehouse")?.value || "",
       memo: document.querySelector('textarea[name="memo"]')?.value?.trim() || "",
+      shipaddress: window.selectedShipAddress || shipAddress || "",
     },
   };
 }
@@ -1481,17 +1493,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       };
 
       let address1 = cleanedAddress[0] || "";
-      let address2 = cleanedAddress[1] || "";
-      let address3 = cleanedAddress[2] || "";
+      let address2 = "";
+      let address3 = "";
+      let county = "";
 
       if (cleanedAddress.length === 2) {
         const townCounty = splitTownCounty(cleanedAddress[1]);
-        if (townCounty.county) {
-          address2 = "";
-          address3 = townCounty.town;
+        address3 = townCounty.town || cleanedAddress[1] || "";
+        county = townCounty.county || "";
+      } else {
+        address2 = cleanedAddress[1] || "";
+        address3 = cleanedAddress[2] || "";
+        if (address3) {
+          const townCounty = splitTownCounty(address3);
+          address3 = townCounty.town || address3;
+          county = townCounty.county;
         }
-      } else if (address3) {
-        address3 = splitTownCounty(address3).town;
       }
 
       const firstNameEl = document.querySelector('input[name="firstName"]');
@@ -1499,6 +1516,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       const address1El = document.querySelector('input[name="address1"]');
       const address2El = document.querySelector('input[name="address2"]');
       const address3El = document.querySelector('input[name="address3"]');
+      const countyEl = document.querySelector('[name="county"]');
       const postcodeEl = document.querySelector('input[name="postcode"]');
 
       if (firstNameEl) firstNameEl.value = customerName.firstName;
@@ -1506,6 +1524,10 @@ document.addEventListener("DOMContentLoaded", async () => {
       if (address1El) address1El.value = address1;
       if (address2El) address2El.value = address2;
       if (address3El) address3El.value = address3;
+      if (countyEl) {
+        window.EposCountySelect?.setValue?.(countyEl, county);
+        if (!window.EposCountySelect?.setValue) countyEl.value = county;
+      }
       if (postcodeEl) postcodeEl.value = postcode || "";
     } catch (err) {
       console.warn("⚠️ Address population failed:", err.message || err);
@@ -1518,6 +1540,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (emailEl) emailEl.value = quote.email || "";
     if (contactEl) contactEl.value = quote.custbody4 || quote.phone || "";
     if (altContactEl) altContactEl.value = quote.altPhone || "";
+    window.EposCustomerDetailsUpdate?.show?.(
+      quote.entity?.id || quote.customer?.id,
+      quote.entity || quote.customer || {}
+    );
     const memoEl = document.querySelector('textarea[name="memo"]');
     if (memoEl) memoEl.value = quote.memo || "";
 

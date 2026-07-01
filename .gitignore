@@ -17,6 +17,7 @@ logs/
 tmp/
 temp/
 *.tmp
+.envtemp/
 
 # === Build and cache ===
 dist/
