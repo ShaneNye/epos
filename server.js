@@ -1615,6 +1615,7 @@ app.get("/systems-processes", (req, res) => sendNoCacheFile(res, path.join(__dir
 app.get("/rota", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "rota.html")))
 app.get("/suitepim/product-data", (req, res) => res.redirect(302, "/suitepim/web-management"))
 app.get("/suitepim/web-management", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-web-management.html")))
+app.get("/suitepim/scheduled-exports", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-scheduled-exports.html")))
 app.get("/suitepim/product-validation", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-product-validation.html")))
 app.get("/suitepim/campaigns", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-campaigns.html")))
 app.get(["/suitepim/item-faqs", "/suitepim/item-faqs.html"], (req, res) =>

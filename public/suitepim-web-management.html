@@ -10,14 +10,14 @@
 
   <link rel="stylesheet" href="/assistant/assistant.css" />
   <link rel="stylesheet" href="/css/home.css" />
-  <link rel="stylesheet" href="/css/suitepim.css?v=reasons-selector-table-1" />
+  <link rel="stylesheet" href="/css/suitepim.css?v=schedule-modal-1" />
 
   <script src="/js/storage.js"></script>
   <script src="/js/menu.js"></script>
   <script src="/js/suitepimPreload.js" defer></script>
   <script src="/assistant/assistant.js"></script>
   <script type="module" src="/assistant/assistantHooks.js"></script>
-  <script src="/js/suitepimWebManagement.js?v=feature-icon-crop-3" defer></script>
+  <script src="/js/suitepimWebManagement.js?v=schedule-modal-1" defer></script>
 </head>
 
 <body>
@@ -136,13 +136,19 @@
         </svg>
       </button>
 
-      <button id="suitepimPushBtn" class="suitepim-primary-btn" type="button">
-        <svg aria-hidden="true" viewBox="0 0 24 24">
-          <path d="M12 19V5"></path>
-          <path d="M6 11l6-6 6 6"></path>
-        </svg>
-        Push changes
-      </button>
+      <div class="suitepim-push-menu">
+        <button id="suitepimPushBtn" class="suitepim-primary-btn" type="button" aria-haspopup="true" aria-expanded="false">
+          <svg aria-hidden="true" viewBox="0 0 24 24">
+            <path d="M12 19V5"></path>
+            <path d="M6 11l6-6 6 6"></path>
+          </svg>
+          Push changes
+        </button>
+        <div class="suitepim-push-menu-options" role="menu" aria-label="Push changes options">
+          <button id="suitepimPushNowBtn" type="button" role="menuitem">Push now</button>
+          <button id="suitepimSchedulePushBtn" type="button" role="menuitem">Schedule push</button>
+        </div>
+      </div>
     </section>
 
     <div class="suitepim-management-panels">
@@ -259,6 +265,42 @@
       <div class="suitepim-modal-actions">
         <button id="suitepimPreviewDone" class="suitepim-primary-btn" type="button">Close preview</button>
       </div>
+    </div>
+  </div>
+
+  <div id="suitepimScheduleModal" class="suitepim-modal hidden" role="dialog" aria-modal="true">
+    <div class="suitepim-modal-panel suitepim-schedule-panel">
+      <div class="suitepim-modal-header">
+        <div>
+          <h2>Schedule push</h2>
+          <p id="suitepimScheduleSummary" class="suitepim-schedule-summary"></p>
+        </div>
+        <button id="suitepimScheduleClose" class="suitepim-icon-btn" type="button" title="Close" aria-label="Close">
+          <svg aria-hidden="true" viewBox="0 0 24 24"><path d="M6 6l12 12"></path><path d="M18 6 6 18"></path></svg>
+        </button>
+      </div>
+      <form id="suitepimScheduleForm" class="suitepim-schedule-form">
+        <div class="suitepim-schedule-body">
+          <label class="suitepim-schedule-field suitepim-schedule-title-field">
+            <span>Title</span>
+            <input id="suitepimScheduleTitle" type="text" maxlength="160" required />
+          </label>
+          <div class="suitepim-schedule-grid">
+            <label class="suitepim-schedule-field">
+              <span>Date</span>
+              <input id="suitepimScheduleDate" type="date" required />
+            </label>
+            <label class="suitepim-schedule-field">
+              <span>Time</span>
+              <input id="suitepimScheduleTime" type="time" required />
+            </label>
+          </div>
+        </div>
+        <div class="suitepim-modal-actions suitepim-schedule-actions">
+          <button id="suitepimScheduleCancel" type="button">Cancel</button>
+          <button class="suitepim-primary-btn" type="submit">Save schedule</button>
+        </div>
+      </form>
     </div>
   </div>
 

@@ -5,6 +5,7 @@ const pool = require("../db");
 const { getSession } = require("../sessions");
 const { getAuthHeader } = require("../netsuiteClient");
 const { fields, optionFeeds, productFeeds, webManagementFeeds, validationFeeds, validationFields } = require("./suitepimFields");
+const sendEmail = require("../utils/sendEmail");
 
 const router = express.Router();
 const jobs = {};
@@ -42,6 +43,8 @@ const itemFaqFields = [
 let suitePimCampaignsInitialized = false;
 let suitePimSettingsInitialized = false;
 let suitePimFloorPlansInitialized = false;
+let suitePimScheduledExportsInitialized = false;
+let suitePimScheduleTimerStarted = false;
 
 function normalizeEnvironment(value) {
   return String(value || process.env.ENVIRONMENT || "sandbox").toLowerCase() === "production"
@@ -239,6 +242,41 @@ async function ensureSuitePimFloorPlanTables() {
   `);
 
   suitePimFloorPlansInitialized = true;
+}
+
+async function ensureSuitePimScheduledExportTables() {
+  if (suitePimScheduledExportsInitialized) return;
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS suitepim_scheduled_exports (
+      id SERIAL PRIMARY KEY,
+      environment TEXT NOT NULL CHECK (environment IN ('sandbox', 'production')),
+      title TEXT NOT NULL,
+      scheduled_at TIMESTAMPTZ NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'queued', 'completed', 'error', 'cancelled')),
+      rows JSONB NOT NULL DEFAULT '[]'::jsonb,
+      user_id TEXT,
+      created_by TEXT,
+      job_id TEXT,
+      error TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      queued_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ
+    );
+
+    ALTER TABLE suitepim_scheduled_exports
+      ADD COLUMN IF NOT EXISTS notification_sent_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS notification_error TEXT,
+      ADD COLUMN IF NOT EXISTS push_results JSONB,
+      ADD COLUMN IF NOT EXISTS push_started_at TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS push_finished_at TIMESTAMPTZ;
+
+    CREATE INDEX IF NOT EXISTS idx_suitepim_scheduled_exports_status_due
+      ON suitepim_scheduled_exports(status, scheduled_at);
+  `);
+
+  suitePimScheduledExportsInitialized = true;
 }
 
 function defaultFieldMappings() {
@@ -2800,8 +2838,405 @@ async function runNextJob() {
 
   job.status = "completed";
   job.finishedAt = new Date().toISOString();
+  if (job.scheduledExportId) {
+    await markScheduledExportCompleted(job.scheduledExportId, job).catch((err) => {
+      console.error("SuitePim scheduled export completion update failed:", err);
+    });
+  }
   jobQueue.shift();
   runNextJob().catch((err) => console.error("SuitePim job queue error:", err));
+}
+
+async function markScheduledExportCompleted(scheduleId, job) {
+  await ensureSuitePimScheduledExportTables();
+  await pool.query(
+    `
+      UPDATE suitepim_scheduled_exports
+         SET status = 'completed',
+             job_id = COALESCE(job_id, $2),
+             completed_at = NOW(),
+             push_results = $3::jsonb,
+             push_started_at = $4,
+             push_finished_at = $5,
+             updated_at = NOW()
+       WHERE id = $1
+    `,
+    [
+      scheduleId,
+      job.id,
+      JSON.stringify({
+        total: job.total,
+        results: job.results || [],
+        rows: job.rows || [],
+      }),
+      job.startedAt || null,
+      job.finishedAt || null,
+    ]
+  );
+  await sendScheduledExportCompletionEmail(scheduleId, job);
+}
+
+function enqueueSuitePimPushJob({ rows, env, cfg, userId, mappedFields, scheduledExportId = null }) {
+  const jobId = crypto.randomBytes(6).toString("hex");
+  jobs[jobId] = {
+    id: jobId,
+    status: "pending",
+    total: rows.length,
+    processed: 0,
+    results: [],
+    rows,
+    fields: mappedFields,
+    cfg,
+    userId,
+    environment: publicEnvironmentName(env),
+    createdAt: new Date().toISOString(),
+    scheduledExportId,
+  };
+  jobQueue.push(jobId);
+  if (jobQueue.length === 1) runNextJob().catch((err) => console.error("SuitePim queue failed:", err));
+  return { jobId, queuePos: jobQueue.indexOf(jobId) + 1, queueTotal: jobQueue.length };
+}
+
+function cleanScheduledExportTitle(value) {
+  return String(value || "").trim().slice(0, 160);
+}
+
+function mapScheduledExportRow(row) {
+  const rows = Array.isArray(row.rows) ? row.rows : [];
+  return {
+    id: row.id,
+    environment: publicEnvironmentName(row.environment),
+    environmentKey: row.environment,
+    title: row.title,
+    scheduledAt: row.scheduled_at,
+    status: row.status,
+    rowCount: rows.length,
+    rows,
+    createdBy: row.created_by || "",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    queuedAt: row.queued_at,
+    completedAt: row.completed_at,
+    jobId: row.job_id || "",
+    error: row.error || "",
+  };
+}
+
+function isLikelyEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value || "").trim());
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function csvValue(value) {
+  const text = String(value ?? "");
+  return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function formatDuration(ms) {
+  const safeMs = Math.max(0, Number(ms) || 0);
+  const totalSeconds = Math.round(safeMs / 1000);
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes) return `${minutes}m ${seconds}s`;
+  return `${seconds}s`;
+}
+
+function formatEmailDateTime(value) {
+  if (!value) return "Not recorded";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) return String(value);
+  return new Intl.DateTimeFormat("en-GB", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Europe/London",
+  }).format(date);
+}
+
+function scheduledExportRowLabel(row, fallback = "") {
+  return row?.__itemName || row?.Name || row?.["Item ID"] || fallback || row?.["Internal ID"] || "";
+}
+
+function scheduledExportFailureReason(result) {
+  return (
+    result?.response?.error ||
+    result?.response?.diagnostics?.response?.message ||
+    result?.response?.diagnostics?.response?.title ||
+    result?.response?.diagnostics?.statusText ||
+    "Unknown failure"
+  );
+}
+
+function failedRowsCsv(job) {
+  const rowsByInternalId = new Map(
+    (job.rows || []).map((row) => [String(row?.["Internal ID"] || "").trim(), row])
+  );
+  const failed = (job.results || []).filter((result) => result.status === "Error");
+  const lines = ["Internal ID,Item Name,Reason"];
+  failed.forEach((result) => {
+    const internalId = String(result.internalId || "").trim();
+    const row = rowsByInternalId.get(internalId) || {};
+    lines.push([
+      csvValue(internalId),
+      csvValue(scheduledExportRowLabel(row, result.itemId)),
+      csvValue(scheduledExportFailureReason(result)),
+    ].join(","));
+  });
+  return { failed, csv: `${lines.join("\r\n")}\r\n` };
+}
+
+async function scheduledExportRecipient(schedule) {
+  if (isLikelyEmail(schedule.created_by)) return schedule.created_by.trim();
+  if (!schedule.user_id) return "";
+  const result = await pool.query("SELECT email FROM users WHERE id = $1 LIMIT 1", [schedule.user_id]);
+  return isLikelyEmail(result.rows[0]?.email) ? result.rows[0].email.trim() : "";
+}
+
+function scheduledExportJobSnapshot(schedule, job) {
+  if (job) return job;
+  const stored = schedule.push_results || {};
+  const rows = Array.isArray(stored.rows) ? stored.rows : Array.isArray(schedule.rows) ? schedule.rows : [];
+  const results = Array.isArray(stored.results) ? stored.results : [];
+  return {
+    id: schedule.job_id || "",
+    total: Number(stored.total || rows.length || results.length || 0),
+    rows,
+    results,
+    startedAt: schedule.push_started_at,
+    finishedAt: schedule.push_finished_at || schedule.completed_at,
+  };
+}
+
+async function sendScheduledExportCompletionEmail(scheduleId, job = null) {
+  const scheduleResult = await pool.query(
+    `
+      SELECT id, environment, title, scheduled_at, rows, user_id, created_by, job_id,
+             completed_at, push_results, push_started_at, push_finished_at, notification_sent_at
+        FROM suitepim_scheduled_exports
+       WHERE id = $1
+       LIMIT 1
+    `,
+    [scheduleId]
+  );
+  const schedule = scheduleResult.rows[0];
+  if (!schedule || schedule.notification_sent_at) return;
+
+  try {
+    const recipient = await scheduledExportRecipient(schedule);
+    if (!recipient) throw new Error("No email recipient found for scheduled export creator");
+
+    const snapshot = scheduledExportJobSnapshot(schedule, job);
+    const total = Number(snapshot.total || (snapshot.rows || []).length || 0);
+    const hasResultDetails = (snapshot.results || []).length > 0;
+    const success = hasResultDetails
+      ? (snapshot.results || []).filter((result) => result.status === "Success").length
+      : total;
+    const skipped = hasResultDetails
+      ? (snapshot.results || []).filter((result) => result.status === "Skipped").length
+      : 0;
+    const { failed, csv } = failedRowsCsv(snapshot);
+    const startedAt = snapshot.startedAt ? new Date(snapshot.startedAt).getTime() : Date.now();
+    const finishedAt = snapshot.finishedAt ? new Date(snapshot.finishedAt).getTime() : Date.now();
+    const duration = formatDuration(finishedAt - startedAt);
+    const failedCount = failed.length;
+    const badgeColor = failedCount ? "#92400e" : "#166534";
+    const badgeBackground = failedCount ? "#fffbeb" : "#f0fdf4";
+    const badgeBorder = failedCount ? "#fde68a" : "#bbf7d0";
+    const badgeText = failedCount ? "Completed with issues" : "Completed successfully";
+    const subject = `SuitePim scheduled push complete: ${schedule.title}`;
+    const html = `
+      <div style="margin:0;padding:0;background:#f4f7fb;font-family:Arial,'Helvetica Neue',sans-serif;color:#0f172a;">
+        <div style="max-width:680px;margin:0 auto;padding:28px 18px;">
+          <div style="border:1px solid #dbe4ee;border-radius:12px;overflow:hidden;background:#ffffff;box-shadow:0 12px 30px rgba(15,23,42,0.08);">
+            <div style="background:#0f172a;padding:24px 26px;color:#ffffff;">
+              <div style="font-size:12px;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;color:#93c5fd;">SuitePim</div>
+              <h1 style="margin:8px 0 10px;font-size:24px;line-height:1.25;font-weight:800;">Scheduled push complete</h1>
+              <div style="display:inline-block;border:1px solid ${badgeBorder};border-radius:999px;background:${badgeBackground};color:${badgeColor};font-size:12px;font-weight:800;padding:6px 10px;">${badgeText}</div>
+            </div>
+
+            <div style="padding:24px 26px 8px;">
+              <p style="margin:0 0 18px;font-size:15px;line-height:1.55;color:#334155;">
+                <strong style="color:#0f172a;">${escapeHtml(schedule.title)}</strong> has finished in ${escapeHtml(publicEnvironmentName(schedule.environment))}.
+              </p>
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:separate;border-spacing:0 10px;margin:0 0 10px;">
+                <tr>
+                  <td style="width:33.33%;padding:14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
+                    <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;">Updated</div>
+                    <div style="margin-top:5px;font-size:26px;font-weight:900;color:#166534;">${success}</div>
+                  </td>
+                  <td style="width:10px;"></td>
+                  <td style="width:33.33%;padding:14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
+                    <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;">Failed</div>
+                    <div style="margin-top:5px;font-size:26px;font-weight:900;color:${failedCount ? "#b91c1c" : "#0f172a"};">${failedCount}</div>
+                  </td>
+                  <td style="width:10px;"></td>
+                  <td style="width:33.33%;padding:14px;border:1px solid #e2e8f0;border-radius:10px;background:#f8fafc;">
+                    <div style="font-size:11px;font-weight:800;text-transform:uppercase;color:#64748b;">Duration</div>
+                    <div style="margin-top:5px;font-size:26px;font-weight:900;color:#0f172a;">${escapeHtml(duration)}</div>
+                  </td>
+                </tr>
+              </table>
+
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse;margin:16px 0 18px;border:1px solid #e2e8f0;border-radius:10px;overflow:hidden;">
+                <tr>
+                  <td style="padding:11px 14px;background:#f8fafc;color:#64748b;font-size:13px;font-weight:800;">Total items</td>
+                  <td style="padding:11px 14px;text-align:right;font-size:13px;font-weight:800;color:#0f172a;">${total}</td>
+                </tr>
+                <tr>
+                  <td style="padding:11px 14px;border-top:1px solid #e2e8f0;color:#64748b;font-size:13px;font-weight:800;">Skipped</td>
+                  <td style="padding:11px 14px;border-top:1px solid #e2e8f0;text-align:right;font-size:13px;font-weight:800;color:#0f172a;">${skipped}</td>
+                </tr>
+                <tr>
+                  <td style="padding:11px 14px;border-top:1px solid #e2e8f0;color:#64748b;font-size:13px;font-weight:800;">Scheduled for</td>
+                  <td style="padding:11px 14px;border-top:1px solid #e2e8f0;text-align:right;font-size:13px;font-weight:800;color:#0f172a;">${escapeHtml(formatEmailDateTime(schedule.scheduled_at))}</td>
+                </tr>
+                <tr>
+                  <td style="padding:11px 14px;border-top:1px solid #e2e8f0;color:#64748b;font-size:13px;font-weight:800;">Completed at</td>
+                  <td style="padding:11px 14px;border-top:1px solid #e2e8f0;text-align:right;font-size:13px;font-weight:800;color:#0f172a;">${escapeHtml(formatEmailDateTime(schedule.completed_at || snapshot.finishedAt))}</td>
+                </tr>
+              </table>
+
+              ${hasResultDetails ? "" : `
+                <div style="margin:0 0 16px;border:1px solid #fde68a;border-radius:10px;background:#fffbeb;color:#92400e;padding:12px 14px;font-size:13px;line-height:1.45;font-weight:700;">
+                  Detailed row results were not available because this push completed before notification result logging was active.
+                </div>
+              `}
+
+              ${failedCount ? `
+                <div style="margin:0 0 18px;border:1px solid #fecaca;border-radius:10px;background:#fef2f2;color:#991b1b;padding:12px 14px;font-size:13px;line-height:1.45;font-weight:700;">
+                  ${failedCount} row${failedCount === 1 ? "" : "s"} failed. A CSV with the internal ID, item name and failure reason is attached.
+                </div>
+              ` : `
+                <div style="margin:0 0 18px;border:1px solid #bbf7d0;border-radius:10px;background:#f0fdf4;color:#166534;padding:12px 14px;font-size:13px;line-height:1.45;font-weight:700;">
+                  No rows failed. No action is needed.
+                </div>
+              `}
+            </div>
+
+            <div style="padding:16px 26px 20px;border-top:1px solid #e2e8f0;background:#f8fafc;color:#64748b;font-size:12px;line-height:1.45;">
+              Sent automatically by EPOS SuitePim.
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+    const attachments = failed.length
+      ? [{
+          filename: `suitepim-scheduled-push-${schedule.id}-failures.csv`,
+          content: csv,
+          contentType: "text/csv",
+        }]
+      : [];
+
+    const sent = await sendEmail(recipient, subject, html, { attachments });
+    if (!sent) throw new Error(`Email send failed for ${recipient}`);
+    await pool.query(
+      "UPDATE suitepim_scheduled_exports SET notification_sent_at = NOW(), notification_error = NULL, updated_at = NOW() WHERE id = $1",
+      [scheduleId]
+    );
+  } catch (err) {
+    await pool.query(
+      "UPDATE suitepim_scheduled_exports SET notification_error = $2, updated_at = NOW() WHERE id = $1",
+      [scheduleId, err.message]
+    );
+    console.error("SuitePim scheduled export email failed:", err);
+  }
+}
+
+async function queueDueScheduledExports() {
+  await ensureSuitePimScheduledExportTables();
+  const due = await pool.query(
+    `
+      UPDATE suitepim_scheduled_exports
+         SET status = 'queued',
+             queued_at = NOW(),
+             updated_at = NOW()
+       WHERE id IN (
+         SELECT id
+           FROM suitepim_scheduled_exports
+          WHERE status = 'pending'
+            AND scheduled_at <= NOW()
+          ORDER BY scheduled_at ASC
+          LIMIT 10
+          FOR UPDATE SKIP LOCKED
+       )
+       RETURNING id, environment, rows, user_id
+    `
+  );
+
+  for (const scheduled of due.rows) {
+    try {
+      const env = normalizeEnvironment(scheduled.environment);
+      const rows = Array.isArray(scheduled.rows) ? scheduled.rows : [];
+      if (!rows.length) throw new Error("Scheduled export has no rows to push");
+      const queued = enqueueSuitePimPushJob({
+        rows,
+        env,
+        cfg: envConfig(env),
+        userId: scheduled.user_id,
+        mappedFields: await effectiveSuitePimFields(env),
+        scheduledExportId: scheduled.id,
+      });
+      await pool.query(
+        "UPDATE suitepim_scheduled_exports SET job_id = $2, updated_at = NOW() WHERE id = $1",
+        [scheduled.id, queued.jobId]
+      );
+    } catch (err) {
+      await pool.query(
+        `
+          UPDATE suitepim_scheduled_exports
+             SET status = 'error',
+                 error = $2,
+                 updated_at = NOW()
+           WHERE id = $1
+        `,
+        [scheduled.id, err.message]
+      );
+      console.error("SuitePim scheduled export queue failed:", err);
+    }
+  }
+}
+
+function startScheduledExportTimer() {
+  if (suitePimScheduleTimerStarted) return;
+  suitePimScheduleTimerStarted = true;
+  scanScheduledExports().catch((err) => console.error("SuitePim scheduled export scan failed:", err));
+  setInterval(() => {
+    scanScheduledExports().catch((err) => console.error("SuitePim scheduled export scan failed:", err));
+  }, 60 * 1000).unref?.();
+}
+
+async function sendMissedScheduledExportNotifications() {
+  await ensureSuitePimScheduledExportTables();
+  const result = await pool.query(
+    `
+      SELECT id, job_id, push_results
+        FROM suitepim_scheduled_exports
+       WHERE status = 'completed'
+         AND notification_sent_at IS NULL
+         AND COALESCE(notification_error, '') = ''
+       ORDER BY completed_at ASC
+       LIMIT 10
+    `
+  );
+
+  for (const schedule of result.rows) {
+    const job = jobs[schedule.job_id];
+    await sendScheduledExportCompletionEmail(schedule.id, job?.status === "completed" ? job : null);
+  }
+}
+
+async function scanScheduledExports() {
+  await queueDueScheduledExports();
+  await sendMissedScheduledExportNotifications();
 }
 
 async function fetchWebManagementRows(cfg) {
@@ -3804,27 +4239,111 @@ router.post("/push-updates", async (req, res) => {
     const cfg = envConfig(env);
     const userId = req.eposSession.user_id || req.eposSession.id;
     const mappedFields = await effectiveSuitePimFields(env);
-    const jobId = crypto.randomBytes(6).toString("hex");
-
-    jobs[jobId] = {
-      id: jobId,
-      status: "pending",
-      total: rows.length,
-      processed: 0,
-      results: [],
+    const queued = enqueueSuitePimPushJob({
       rows,
-      fields: mappedFields,
+      env,
       cfg,
       userId,
-      environment: publicEnvironmentName(env),
-      createdAt: new Date().toISOString(),
-    };
-    jobQueue.push(jobId);
-    if (jobQueue.length === 1) runNextJob().catch((err) => console.error("SuitePim queue failed:", err));
+      mappedFields,
+    });
 
-    res.json({ ok: true, jobId, queuePos: jobQueue.indexOf(jobId) + 1, queueTotal: jobQueue.length });
+    res.json({ ok: true, ...queued });
   } catch (err) {
     res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get("/scheduled-exports", async (req, res) => {
+  try {
+    await ensureSuitePimScheduledExportTables();
+    await queueDueScheduledExports();
+    const env = normalizeEnvironment(req.query.environment);
+    const status = String(req.query.status || "pending").toLowerCase();
+    const allowedStatuses = new Set(["pending", "queued", "completed", "error", "cancelled", "all"]);
+    const cleanStatus = allowedStatuses.has(status) ? status : "pending";
+    const params = [env];
+    let statusClause = "";
+    if (cleanStatus !== "all") {
+      params.push(cleanStatus);
+      statusClause = "AND status = $2";
+    }
+    const result = await pool.query(
+      `
+        SELECT id, environment, title, scheduled_at, status, rows, user_id, created_by,
+               job_id, error, created_at, updated_at, queued_at, completed_at
+          FROM suitepim_scheduled_exports
+         WHERE environment = $1
+           ${statusClause}
+         ORDER BY scheduled_at ASC, created_at ASC
+      `,
+      params
+    );
+    res.json({
+      ok: true,
+      environment: publicEnvironmentName(env),
+      scheduledExports: result.rows.map(mapScheduledExportRow),
+    });
+  } catch (err) {
+    console.error("SuitePim scheduled export list failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to load scheduled exports" });
+  }
+});
+
+router.get("/scheduled-exports/:id", async (req, res) => {
+  try {
+    await ensureSuitePimScheduledExportTables();
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: "Invalid scheduled export id" });
+    const result = await pool.query(
+      `
+        SELECT id, environment, title, scheduled_at, status, rows, user_id, created_by,
+               job_id, error, created_at, updated_at, queued_at, completed_at
+          FROM suitepim_scheduled_exports
+         WHERE id = $1
+      `,
+      [id]
+    );
+    if (!result.rowCount) return res.status(404).json({ ok: false, error: "Scheduled export not found" });
+    res.json({ ok: true, scheduledExport: mapScheduledExportRow(result.rows[0]) });
+  } catch (err) {
+    console.error("SuitePim scheduled export load failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to load scheduled export" });
+  }
+});
+
+router.post("/scheduled-exports", async (req, res) => {
+  try {
+    await ensureSuitePimScheduledExportTables();
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (!rows.length) return res.status(400).json({ ok: false, error: "No rows to schedule" });
+
+    const title = cleanScheduledExportTitle(req.body?.title);
+    if (!title) return res.status(400).json({ ok: false, error: "Title is required" });
+
+    const scheduledAt = new Date(req.body?.scheduledAt);
+    if (!Number.isFinite(scheduledAt.getTime())) {
+      return res.status(400).json({ ok: false, error: "Valid date and time are required" });
+    }
+    if (scheduledAt.getTime() <= Date.now()) {
+      return res.status(400).json({ ok: false, error: "Scheduled date and time must be in the future" });
+    }
+
+    const env = normalizeEnvironment(req.body.environment || req.query.environment);
+    const userId = String(req.eposSession.user_id || req.eposSession.id || "");
+    const createdBy = String(req.eposSession.email || req.eposSession.username || userId || "").slice(0, 160);
+    const result = await pool.query(
+      `
+        INSERT INTO suitepim_scheduled_exports (environment, title, scheduled_at, rows, user_id, created_by)
+        VALUES ($1, $2, $3, $4::jsonb, $5, $6)
+        RETURNING id, environment, title, scheduled_at, status, rows, user_id, created_by,
+                  job_id, error, created_at, updated_at, queued_at, completed_at
+      `,
+      [env, title, scheduledAt.toISOString(), JSON.stringify(rows), userId || null, createdBy || null]
+    );
+    res.status(201).json({ ok: true, scheduledExport: mapScheduledExportRow(result.rows[0]) });
+  } catch (err) {
+    console.error("SuitePim scheduled export save failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to schedule export" });
   }
 });
 
@@ -3929,5 +4448,6 @@ router.get("/push-status/:jobId", (req, res) => {
 
 prewarmWebManagementCache();
 startWebManagementCacheRefreshTimer();
+startScheduledExportTimer();
 
 module.exports = router;

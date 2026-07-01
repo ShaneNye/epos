@@ -133,6 +133,8 @@
       "suitepimColumnsBtn",
       "suitepimRefreshBtn",
       "suitepimPushBtn",
+      "suitepimPushNowBtn",
+      "suitepimSchedulePushBtn",
       "suitepimPresetSelect",
       "suitepimShowChildren",
       "suitepimMount",
@@ -160,6 +162,14 @@
       "suitepimPreviewFrame",
       "suitepimPreviewClose",
       "suitepimPreviewDone",
+      "suitepimScheduleModal",
+      "suitepimScheduleForm",
+      "suitepimScheduleSummary",
+      "suitepimScheduleTitle",
+      "suitepimScheduleDate",
+      "suitepimScheduleTime",
+      "suitepimScheduleClose",
+      "suitepimScheduleCancel",
     ].forEach((id) => {
       el[id] = document.getElementById(id);
     });
@@ -4097,16 +4107,30 @@
     button.setAttribute("aria-expanded", String(!collapsed));
   }
 
-  async function pushSelected() {
-    const rows = state.rows
+  function selectedChangedPayloads() {
+    return state.rows
       .filter((row) => state.selected.has(row._suitepimKey) && state.dirty.has(row._suitepimKey))
-      .map(changedPayload);
+      .map((row) => ({
+        ...changedPayload(row),
+        __itemName: row.Name || row["Display Name"] || row["Item ID"] || row["Internal ID"] || "",
+        __itemId: row["Item ID"] || "",
+      }));
+  }
+
+  function setPushControlsDisabled(disabled) {
+    [el.suitepimPushBtn, el.suitepimPushNowBtn, el.suitepimSchedulePushBtn].forEach((button) => {
+      if (button) button.disabled = disabled;
+    });
+  }
+
+  async function pushSelected() {
+    const rows = selectedChangedPayloads();
     if (!rows.length) {
       showStatus("Select at least one changed row to push.", "warning");
       return;
     }
 
-    el.suitepimPushBtn.disabled = true;
+    setPushControlsDisabled(true);
     if (el.suitepimPushReport) {
       el.suitepimPushReport.hidden = true;
       el.suitepimPushReport.innerHTML = "";
@@ -4121,7 +4145,80 @@
       pollJob(data.jobId);
     } catch (err) {
       showStatus(err.message, "error");
-      el.suitepimPushBtn.disabled = false;
+      setPushControlsDisabled(false);
+    }
+  }
+
+  function defaultScheduleTitle(rowCount) {
+    const now = new Date();
+    const date = now.toLocaleDateString("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+    return `SuitePim push - ${rowCount} row${rowCount === 1 ? "" : "s"} - ${date}`;
+  }
+
+  function localDateInputValue(date) {
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+  }
+
+  function openScheduleModal() {
+    const rows = selectedChangedPayloads();
+    if (!rows.length) {
+      showStatus("Select at least one changed row to schedule.", "warning");
+      return;
+    }
+
+    const nextHour = new Date(Date.now() + 60 * 60 * 1000);
+    nextHour.setMinutes(0, 0, 0);
+    el.suitepimScheduleTitle.value = defaultScheduleTitle(rows.length);
+    el.suitepimScheduleSummary.textContent = `${rows.length.toLocaleString()} changed row${rows.length === 1 ? "" : "s"} will be pushed.`;
+    el.suitepimScheduleDate.value = localDateInputValue(nextHour);
+    el.suitepimScheduleTime.value = `${String(nextHour.getHours()).padStart(2, "0")}:${String(nextHour.getMinutes()).padStart(2, "0")}`;
+    el.suitepimScheduleModal.classList.remove("hidden");
+    el.suitepimScheduleTitle.focus();
+  }
+
+  function closeScheduleModal() {
+    el.suitepimScheduleModal.classList.add("hidden");
+  }
+
+  async function saveScheduledPush(event) {
+    event.preventDefault();
+    const rows = selectedChangedPayloads();
+    if (!rows.length) {
+      closeScheduleModal();
+      showStatus("There are no selected changes left to schedule.", "warning");
+      return;
+    }
+
+    const title = el.suitepimScheduleTitle.value.trim();
+    const date = el.suitepimScheduleDate.value;
+    const time = el.suitepimScheduleTime.value;
+    const scheduledAt = new Date(`${date}T${time}`);
+    if (!title || !date || !time || !Number.isFinite(scheduledAt.getTime())) {
+      showStatus("Enter a title, date and time for the scheduled push.", "warning");
+      return;
+    }
+    if (scheduledAt.getTime() <= Date.now()) {
+      showStatus("Choose a future date and time for the scheduled push.", "warning");
+      return;
+    }
+
+    setPushControlsDisabled(true);
+    try {
+      const data = await api("/scheduled-exports", {
+        method: "POST",
+        body: JSON.stringify({
+          title,
+          scheduledAt: scheduledAt.toISOString(),
+          rows,
+          environment: state.environment,
+        }),
+      });
+      closeScheduleModal();
+      showStatus(`Scheduled "${data.scheduledExport.title}" for ${scheduledAt.toLocaleString("en-GB")}.`, "success");
+    } catch (err) {
+      showStatus(err.message, "error");
+    } finally {
+      setPushControlsDisabled(false);
     }
   }
 
@@ -4132,7 +4229,7 @@
         showStatus(`Push ${job.status}: ${job.processed}/${job.total} processed`, job.status === "completed" ? "success" : "info");
         if (job.status === "completed" || job.status === "error") {
           clearInterval(timer);
-          el.suitepimPushBtn.disabled = false;
+          setPushControlsDisabled(false);
           commitSuccessfulPushResults(job.results || []);
           const ok = (job.results || []).filter((result) => result.status === "Success").length;
           const failed = (job.results || []).filter((result) => result.status === "Error").length;
@@ -4141,7 +4238,7 @@
         }
       } catch (err) {
         clearInterval(timer);
-        el.suitepimPushBtn.disabled = false;
+        setPushControlsDisabled(false);
         showStatus(err.message, "error");
       }
     }, 2500);
@@ -4177,6 +4274,8 @@
     el.suitepimToggleBulkBtn.addEventListener("click", () => togglePanel(el.suitepimToggleBulkBtn));
     el.suitepimRefreshBtn.addEventListener("click", () => loadProducts(true).catch((err) => showStatus(err.message, "error")));
     el.suitepimPushBtn.addEventListener("click", pushSelected);
+    el.suitepimPushNowBtn?.addEventListener("click", pushSelected);
+    el.suitepimSchedulePushBtn?.addEventListener("click", openScheduleModal);
     el.suitepimPresetSelect?.addEventListener("change", () => {
       preserveVisibleDrafts();
       applyPreset();
@@ -4212,6 +4311,9 @@
     el.suitepimModalSave.addEventListener("click", saveModalSelection);
     el.suitepimPreviewClose?.addEventListener("click", closePreviewModal);
     el.suitepimPreviewDone?.addEventListener("click", closePreviewModal);
+    el.suitepimScheduleForm?.addEventListener("submit", saveScheduledPush);
+    el.suitepimScheduleClose?.addEventListener("click", closeScheduleModal);
+    el.suitepimScheduleCancel?.addEventListener("click", closeScheduleModal);
   }
 
   async function boot() {

@@ -3,6 +3,7 @@
   const PAGE_URLS = [
     "/suitepim",
     "/suitepim/web-management",
+    "/suitepim/scheduled-exports",
     "/suitepim/product-validation",
     "/suitepim/reasons-to-buy",
     "/suitepim/item-faqs",
@@ -22,6 +23,26 @@
       const label = String(link.textContent || "").trim();
       if (label) link.title = label;
     });
+
+    const itemManagementLink = nav.querySelector('a[href="/suitepim/web-management"]');
+    if (itemManagementLink && !nav.querySelector('a[href="/suitepim/scheduled-exports"]')) {
+      const scheduledLink = document.createElement("a");
+      scheduledLink.className = "suitepim-subnav-link";
+      if (window.location.pathname.replace(/\/$/, "") === "/suitepim/scheduled-exports") scheduledLink.classList.add("active");
+      scheduledLink.href = "/suitepim/scheduled-exports";
+      scheduledLink.title = "Scheduled Exports";
+      scheduledLink.innerHTML = `
+        <svg aria-hidden="true" viewBox="0 0 24 24">
+          <path d="M8 2v4"></path>
+          <path d="M16 2v4"></path>
+          <path d="M4 9h16"></path>
+          <path d="M5 5h14v15H5z"></path>
+          <path d="M12 13v3l2 1"></path>
+        </svg>
+        Scheduled Exports
+      `;
+      itemManagementLink.insertAdjacentElement("afterend", scheduledLink);
+    }
 
     const closeButton = document.createElement("button");
     closeButton.type = "button";

@@ -2005,6 +2005,222 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   opacity: 0.55;
 }
 
+.suitepim-push-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.suitepim-push-menu-options {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  z-index: 60;
+  display: none;
+  min-width: 180px;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 16px 35px rgba(15, 23, 42, 0.18);
+  padding: 6px;
+}
+
+.suitepim-push-menu:hover .suitepim-push-menu-options,
+.suitepim-push-menu:focus-within .suitepim-push-menu-options {
+  display: grid;
+  gap: 4px;
+}
+
+.suitepim-push-menu-options button {
+  min-height: 38px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #0f172a;
+  cursor: pointer;
+  font-weight: 800;
+  padding: 0 10px;
+  text-align: left;
+}
+
+.suitepim-push-menu-options button:hover,
+.suitepim-push-menu-options button:focus-visible {
+  background: #f1f5f9;
+  outline: none;
+}
+
+.suitepim-push-menu-options button:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.suitepim-schedule-panel {
+  width: min(520px, calc(100vw - 32px));
+  max-width: 520px;
+}
+
+.suitepim-schedule-panel .suitepim-modal-header {
+  align-items: flex-start;
+  padding: 20px 22px 18px;
+}
+
+.suitepim-schedule-panel .suitepim-modal-header h2 {
+  font-size: 1.08rem;
+  line-height: 1.2;
+}
+
+.suitepim-schedule-panel .suitepim-modal-header .suitepim-icon-btn {
+  flex: 0 0 auto;
+}
+
+.suitepim-schedule-summary {
+  min-height: 18px;
+  margin: 6px 0 0;
+  color: #64748b;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.suitepim-schedule-form {
+  display: grid;
+}
+
+.suitepim-schedule-body {
+  display: grid;
+  gap: 18px;
+  padding: 20px 22px 22px;
+}
+
+.suitepim-schedule-field {
+  display: grid;
+  gap: 8px;
+  color: #334155;
+  font-weight: 800;
+}
+
+.suitepim-schedule-field span {
+  font-size: 0.82rem;
+  line-height: 1.2;
+}
+
+.suitepim-schedule-field input {
+  width: 100%;
+  min-height: 46px;
+  box-sizing: border-box;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  background: #fff;
+  color: #0f172a;
+  font: 800 0.95rem "Segoe UI", system-ui, sans-serif;
+  padding: 10px 12px;
+}
+
+.suitepim-schedule-field input:focus {
+  border-color: #0284c7;
+  box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15);
+  outline: none;
+}
+
+.suitepim-schedule-title-field input {
+  font-size: 1rem;
+}
+
+.suitepim-schedule-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 12px;
+}
+
+.suitepim-schedule-actions {
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+  padding: 16px 22px;
+}
+
+.suitepim-scheduled-shell {
+  display: grid;
+  gap: 12px;
+}
+
+.suitepim-scheduled-list {
+  display: grid;
+  gap: 12px;
+}
+
+.suitepim-scheduled-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.suitepim-scheduled-card summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  cursor: pointer;
+  list-style: none;
+  padding: 14px;
+}
+
+.suitepim-scheduled-card summary::-webkit-details-marker {
+  display: none;
+}
+
+.suitepim-scheduled-card strong,
+.suitepim-scheduled-card small {
+  display: block;
+}
+
+.suitepim-scheduled-card strong {
+  color: #0f172a;
+  font-size: 1rem;
+}
+
+.suitepim-scheduled-card small {
+  color: #64748b;
+  font-weight: 700;
+  margin-top: 4px;
+}
+
+.suitepim-scheduled-meta {
+  border-radius: 999px;
+  background: #f1f5f9;
+  color: #334155;
+  font-size: 0.78rem;
+  font-weight: 900;
+  padding: 6px 10px;
+  text-transform: uppercase;
+}
+
+.suitepim-scheduled-details {
+  border-top: 1px solid #e2e8f0;
+  padding: 12px 14px 14px;
+}
+
+.suitepim-scheduled-details p {
+  margin: 0 0 10px;
+  color: #475569;
+  font-weight: 700;
+}
+
+.suitepim-scheduled-error {
+  color: #991b1b;
+}
+
+.suitepim-scheduled-table-wrap {
+  max-height: 520px;
+  overflow: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.suitepim-scheduled-table {
+  min-width: 760px;
+  width: max-content;
+}
+
 .suitepim-filter-builder,
 .suitepim-bulk-panel {
   border: 1px solid #e2e8f0;
@@ -3253,6 +3469,15 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
   .suitepim-reasons-list-body {
     max-height: 320px;
+  }
+
+  .suitepim-schedule-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .suitepim-schedule-actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
   }
 
 }

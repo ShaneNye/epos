@@ -14,7 +14,7 @@ oauth2Client.setCredentials({
   refresh_token: process.env.GOOGLE_REFRESH_TOKEN,
 });
 
-async function sendEmail(to, subject, html) {
+async function sendEmail(to, subject, html, options = {}) {
   try {
     const accessToken = await oauth2Client.getAccessToken();
 
@@ -35,11 +35,15 @@ async function sendEmail(to, subject, html) {
       to,
       subject,
       html,
+      ...(options.text ? { text: options.text } : {}),
+      ...(Array.isArray(options.attachments) && options.attachments.length ? { attachments: options.attachments } : {}),
     });
 
     console.log(`📨 Email sent to ${to}`);
+    return true;
   } catch (err) {
     console.error("❌ Email send failed:", err.message);
+    return false;
   }
 }
 
