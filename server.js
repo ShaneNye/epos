@@ -1196,12 +1196,16 @@ app.get("/api/netsuite/breathe-rota", async (req, res) => {
 
     const baseUrl = getEnvAny("BREATHE_ROTA_URL", "breathe_rota_url");
     const token = getEnvAny("BREATHE_ROTA", "breathe_rota");
+    const rotaDateField =
+      getEnvAny("BREATHE_ROTA_DATE_FIELD", "breathe_rota_date_field") ||
+      "custrecord_sb_breathehrrotas_date";
     if (!baseUrl || !token) {
       throw new Error("Missing BREATHE_ROTA_URL/breathe_rota_url or BREATHE_ROTA/breathe_rota in environment");
     }
 
     const nsUrl = new URL(baseUrl);
     nsUrl.searchParams.set("token", token);
+    nsUrl.searchParams.set("dateField", rotaDateField);
     nsUrl.searchParams.set("_", String(Date.now()));
     Object.entries(req.query || {}).forEach(([key, value]) => {
       if (["token", "refresh", "force", "fresh"].includes(String(key).toLowerCase())) return;
