@@ -3,7 +3,7 @@
  * @NScriptType Suitelet
  * @NModuleScope SameAccount
  */
-define(['N/search', 'N/runtime', 'N/log'], (search, runtime, log) => {
+define(['N/search', 'N/runtime', 'N/log', 'N/format'], (search, runtime, log, format) => {
 
   function onRequest(context) {
     const { request, response } = context;
@@ -32,8 +32,20 @@ define(['N/search', 'N/runtime', 'N/log'], (search, runtime, log) => {
 
       const locationParam = (request.parameters.location || '').trim(); // internal id preferred
       const zoneParam     = (request.parameters.zone || '').trim();     // expects e.g. "Zone 5"
+      const dateFromParam = (request.parameters.dateFrom || request.parameters.fromDate || request.parameters.startDate || '').trim();
+      const dateToParam   = (request.parameters.dateTo || request.parameters.toDate || request.parameters.endDate || '').trim();
+      const dateField     = normalizeDateField(request.parameters.dateField);
 
-      log.debug('Parameters', { lastName, email, postcode, location: locationParam, zone: zoneParam });
+      log.debug('Parameters', {
+        lastName,
+        email,
+        postcode,
+        location: locationParam,
+        zone: zoneParam,
+        dateFrom: dateFromParam,
+        dateTo: dateToParam,
+        dateField
+      });
 
       if (!savedSearchId) {
         return sendJSON(response, { ok: false, error: 'Missing required script parameter: saved search ID' });
@@ -102,6 +114,31 @@ define(['N/search', 'N/runtime', 'N/log'], (search, runtime, log) => {
         // filters.push(['binnumber.zone', 'contains', zoneParam]);
       }
 
+      const dateFrom = dateFromParam ? formatSearchDate(dateFromParam, format) : '';
+      const dateTo = dateToParam ? formatSearchDate(dateToParam, format) : '';
+
+      if (dateFromParam && !dateFrom) {
+        return sendJSON(response, { ok: false, error: 'Invalid dateFrom. Use YYYY-MM-DD or DD/MM/YYYY.' });
+      }
+
+      if (dateToParam && !dateTo) {
+        return sendJSON(response, { ok: false, error: 'Invalid dateTo. Use YYYY-MM-DD or DD/MM/YYYY.' });
+      }
+
+      if (!dateField) {
+        return sendJSON(response, { ok: false, error: 'Invalid dateField.' });
+      }
+
+      if (dateFrom) {
+        if (filters.length) filters.push('AND');
+        filters.push([dateField, 'onorafter', dateFrom]);
+      }
+
+      if (dateTo) {
+        if (filters.length) filters.push('AND');
+        filters.push([dateField, 'onorbefore', dateTo]);
+      }
+
       log.debug('Applied Filters', filters);
       if (filters.length) loadedSearch.filterExpression = filters;
 
@@ -124,7 +161,16 @@ define(['N/search', 'N/runtime', 'N/log'], (search, runtime, log) => {
         ok: true,
         recordType: recordTypeParam || loadedSearch.searchType,
         searchId: savedSearchId,
-        filtersUsed: { email, lastName, postcode, location: locationParam, zone: zoneParam },
+        filtersUsed: {
+          email,
+          lastName,
+          postcode,
+          location: locationParam,
+          zone: zoneParam,
+          dateFrom: dateFromParam,
+          dateTo: dateToParam,
+          dateField
+        },
         count: results.length,
         results
       });
@@ -139,6 +185,51 @@ define(['N/search', 'N/runtime', 'N/log'], (search, runtime, log) => {
     response.setHeader({ name: 'Content-Type', value: 'application/json' });
     response.setHeader({ name: 'Access-Control-Allow-Origin', value: '*' });
     response.write(JSON.stringify(obj, null, 2));
+  }
+
+  function normalizeDateField(value) {
+    const fieldId = String(value || 'trandate').trim() || 'trandate';
+    return /^[A-Za-z0-9_.]+$/.test(fieldId) ? fieldId : '';
+  }
+
+  function formatSearchDate(value, format) {
+    const parsedDate = parseDateParam(value);
+    if (!parsedDate) return '';
+
+    return format.format({
+      value: parsedDate,
+      type: format.Type.DATE
+    });
+  }
+
+  function parseDateParam(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return null;
+
+    let match = raw.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match) return buildDate(match[1], match[2], match[3]);
+
+    match = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+    if (match) return buildDate(match[3], match[2], match[1]);
+
+    return null;
+  }
+
+  function buildDate(year, month, day) {
+    const y = Number(year);
+    const m = Number(month);
+    const d = Number(day);
+    const date = new Date(y, m - 1, d);
+
+    if (
+      date.getFullYear() !== y ||
+      date.getMonth() !== m - 1 ||
+      date.getDate() !== d
+    ) {
+      return null;
+    }
+
+    return date;
   }
 
   function addFallbackSorts(loadedSearch, search, log) {

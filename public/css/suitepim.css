@@ -12,6 +12,7 @@ body:has(.suitepim-page-wide) {
 
 .suitepim-page {
   min-height: 100vh;
+  margin-left: 52px;
   padding: 28px;
   background: #f6f8fb;
   transition: margin-left 0.18s ease;
@@ -176,7 +177,7 @@ body.suitepim-nav-open .suitepim-subnav {
 .suitepim-side-nav-tab {
   position: fixed;
   top: 172px;
-  left: 70px;
+  left: 53px;
   z-index: 899;
   display: inline-flex;
   align-items: center;
@@ -540,6 +541,27 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   display: none;
 }
 
+.suitepim-empty-state {
+  display: grid;
+  gap: 0.35rem;
+  max-width: 560px;
+  padding: 1rem;
+  border: 1px solid #d7e6ed;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.suitepim-empty-state h2 {
+  margin: 0;
+  color: #123143;
+  font-size: 1rem;
+}
+
+.suitepim-empty-state p {
+  margin: 0;
+  color: #5d7280;
+}
+
 .suitepim-stock-management-widget {
   min-height: calc(100vh - 210px);
 }
@@ -550,8 +572,8 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 }
 
 .suitepim-floorplan-topbar {
-  display: grid;
-  grid-template-columns: auto minmax(220px, 340px) minmax(140px, 1fr) auto auto;
+  display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 10px;
   padding: 12px;
@@ -568,6 +590,7 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 }
 
 .suitepim-floorplan-topbar select,
+.suitepim-floorplan-topbar input[type="date"],
 .suitepim-floorplan-editor-toolbar input {
   min-height: 36px;
   border: 1px solid #cfdde5;
@@ -578,7 +601,38 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   padding: 7px 9px;
 }
 
+.suitepim-floorplan-topbar select {
+  width: clamp(150px, 18vw, 280px);
+}
+
+.suitepim-floorplan-topbar input[type="date"] {
+  width: 150px;
+}
+
+.suitepim-floorplan-footfall {
+  display: grid;
+  gap: 2px;
+  flex: 0 0 96px;
+  border-right: 1px solid #d8e6ee;
+  padding-right: 12px;
+}
+
+.suitepim-floorplan-footfall span {
+  color: #385366;
+  font-size: 0.68rem;
+  font-weight: 900;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
+
+.suitepim-floorplan-footfall strong {
+  color: #006d8d;
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
 .suitepim-floorplan-status {
+  flex: 1 1 120px;
   min-height: 20px;
   color: #637283;
   font-weight: 800;
@@ -655,7 +709,7 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
 .suitepim-floorplan-sidebar-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 4px;
   padding: 3px;
   border: 1px solid #d7e6ed;
@@ -688,23 +742,48 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   gap: 8px;
 }
 
-.suitepim-floorplan-list button {
+.suitepim-floorplan-list-row {
   display: grid;
-  gap: 3px;
-  width: 100%;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
   border: 1px solid #e1ebf0;
   border-radius: 8px;
   background: #fff;
-  color: #10283a;
+  overflow: hidden;
+}
+
+.suitepim-floorplan-list-row button {
+  border: 0;
+  background: transparent;
   cursor: pointer;
+}
+
+.suitepim-floorplan-list-row [data-floorplan-id] {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: #10283a;
   padding: 10px;
   text-align: left;
 }
 
-.suitepim-floorplan-list button.active,
-.suitepim-floorplan-list button:hover {
+.suitepim-floorplan-list-row.active,
+.suitepim-floorplan-list-row:hover {
   border-color: #0081ab;
   background: #f3f9fb;
+}
+
+.suitepim-floorplan-delete {
+  align-self: stretch;
+  border-left: 1px solid #e1ebf0 !important;
+  color: #b42318;
+  font-size: 0.76rem;
+  font-weight: 900;
+  padding: 0 10px;
+}
+
+.suitepim-floorplan-delete:hover {
+  background: #fff1f0;
 }
 
 .suitepim-floorplan-list strong {
@@ -717,14 +796,38 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   font-weight: 800;
 }
 
-.suitepim-floorplan-assets {
+.suitepim-floorplan-bin-search {
+  width: 100%;
+  min-height: 36px;
+  margin-bottom: 8px;
+  border: 1px solid #cfdde5;
+  border-radius: 6px;
+  background: #fff;
+  color: #1f3444;
+  font: 800 0.88rem "Segoe UI", system-ui, sans-serif;
+  padding: 7px 9px;
+}
+
+.suitepim-floorplan-bin-search::placeholder {
+  color: #8a9aa7;
+  font-weight: 700;
+}
+
+.suitepim-floorplan-assets,
+.suitepim-floorplan-bins {
   display: grid;
   gap: 8px;
 }
 
-.suitepim-floorplan-assets button {
+.suitepim-floorplan-bins {
+  max-height: min(520px, calc(100vh - 360px));
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+.suitepim-floorplan-assets button,
+.suitepim-floorplan-bins button {
   display: grid;
-  grid-template-columns: 54px minmax(0, 1fr);
   gap: 10px;
   align-items: center;
   width: 100%;
@@ -738,11 +841,21 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   text-align: left;
 }
 
-.suitepim-floorplan-assets button:active {
+.suitepim-floorplan-assets button {
+  grid-template-columns: 54px minmax(0, 1fr);
+}
+
+.suitepim-floorplan-bins button {
+  gap: 3px;
+}
+
+.suitepim-floorplan-assets button:active,
+.suitepim-floorplan-bins button:active {
   cursor: grabbing;
 }
 
-.suitepim-floorplan-assets button:hover {
+.suitepim-floorplan-assets button:hover,
+.suitepim-floorplan-bins button:hover {
   border-color: #0081ab;
   background: #f6fbfd;
 }
@@ -761,8 +874,15 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
     #fdfdfb;
 }
 
-.suitepim-floorplan-assets strong {
+.suitepim-floorplan-assets strong,
+.suitepim-floorplan-bins strong {
   font-size: 0.9rem;
+}
+
+.suitepim-floorplan-bins small {
+  color: #637283;
+  font-size: 0.76rem;
+  font-weight: 800;
 }
 
 .suitepim-floorplan-editor {
@@ -876,8 +996,32 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   pointer-events: none;
 }
 
+.suitepim-floorplan-heatmap-layer {
+  mix-blend-mode: multiply;
+  opacity: 0.58;
+  pointer-events: none;
+}
+
+.suitepim-floorplan-heatmap-cell {
+  stroke: none;
+  shape-rendering: crispEdges;
+}
+
 .suitepim-floorplan-element {
   pointer-events: none;
+}
+
+.suitepim-floorplan-element.is-selected {
+  filter: drop-shadow(0 0 2px rgba(0, 129, 171, 0.5));
+}
+
+.suitepim-floorplan-element.is-selected .suitepim-floorplan-wall-edge,
+.suitepim-floorplan-element.is-selected .suitepim-floorplan-opening-edge,
+.suitepim-floorplan-element.is-selected .suitepim-floorplan-door-leaf,
+.suitepim-floorplan-element.is-selected .suitepim-floorplan-door-swing,
+.suitepim-floorplan-element.is-selected .suitepim-floorplan-dimension-line,
+.suitepim-floorplan-element.is-selected .suitepim-floorplan-dimension-tick {
+  stroke: #0081ab;
 }
 
 .suitepim-floorplan-wall-core {
@@ -953,7 +1097,7 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   fill: rgba(253, 253, 251, 0.94);
   stroke: #1b1f21;
   stroke-width: 1.1;
-  cursor: move;
+  cursor: pointer;
 }
 
 .suitepim-floorplan-placed-asset line {
@@ -973,10 +1117,24 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   pointer-events: none;
 }
 
+.suitepim-floorplan-placed-asset .suitepim-floorplan-asset-bin-main {
+  fill: #006d8d;
+  font-size: 8.4px;
+}
+
+.suitepim-floorplan-placed-asset .suitepim-floorplan-asset-size-label {
+  fill: #385366;
+  font-size: 5.3px;
+}
+
 .suitepim-floorplan-placed-asset.is-selected rect {
   stroke: #0081ab;
   stroke-width: 2;
   filter: drop-shadow(0 0 2px rgba(0, 129, 171, 0.35));
+}
+
+.suitepim-floorplan-canvas.is-editing .suitepim-floorplan-placed-asset rect {
+  cursor: move;
 }
 
 .suitepim-floorplan-element.is-draft {

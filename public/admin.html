@@ -30,6 +30,7 @@
     <script defer src="/js/adminLocations.js"></script>
     <script defer src="/js/adminManagementRules.js"></script>
     <script defer src="/js/adminPromotionSettings.js"></script>
+    <script defer src="/js/adminSuitePimSettings.js"></script>
     <script defer src="/js/adminItemOptionSettings.js"></script>
     <script defer src="/js/adminEmailAlerts.js"></script>
     <script defer src="/js/adminCustomFields.js"></script>
@@ -54,6 +55,7 @@
             
             <div class="tab" data-target="dashboard-widgets">Dashboard Tabs</div>
             <div class="tab" data-target="sales-features">Sales Features</div>
+            <div class="tab" data-target="suitepim-features">SuitePim</div>
             <div class="tab" data-target="item-options">Item Options</div>
             <div class="tab" data-target="email-alerts">Email Alerts</div>
             <div class="tab" data-target="sales-order-feedback">Sales Feedback</div>
@@ -469,6 +471,97 @@
                 <div class="admin-feature-actions">
                     <button id="adminSavePromotionSettings" type="button" class="btn-primary">Save Promotion Settings</button>
                     <span id="adminPromotionSettingsStatus" class="admin-feature-status" aria-live="polite"></span>
+                </div>
+            </section>
+        </div>
+
+        <!-- === SuitePim === -->
+        <div id="suitepim-features" class="tab-content hidden">
+            <h2>SuitePim</h2>
+            <p>Choose which SuitePim features are available in the SuitePim area.</p>
+
+            <section class="admin-feature-panel admin-suitepim-panel" aria-labelledby="suitePimFeaturesTitle">
+                <div>
+                    <h3 id="suitePimFeaturesTitle">SuitePim Features</h3>
+                    <p>Disabled options are hidden from SuitePim navigation and dashboard tabs.</p>
+                </div>
+
+                <div class="admin-settings-grid">
+                    <div class="admin-environment-card">
+                        <h4>Dashboard</h4>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Stock Management</strong>
+                                <small>Show the SuitePim stock management dashboard tab.</small>
+                            </span>
+                            <input id="adminSuitePimStockManagementEnabled" type="checkbox">
+                        </label>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Floor Plans</strong>
+                                <small>Show the SuitePim floor plans dashboard tab.</small>
+                            </span>
+                            <input id="adminSuitePimFloorPlansEnabled" type="checkbox">
+                        </label>
+                    </div>
+
+                    <div class="admin-environment-card">
+                        <h4>Pages</h4>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Item Management</strong>
+                                <small>Show the SuitePim item management page.</small>
+                            </span>
+                            <input id="adminSuitePimItemManagementEnabled" type="checkbox">
+                        </label>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Scheduled Exports</strong>
+                                <small>Show scheduled SuitePim exports.</small>
+                            </span>
+                            <input id="adminSuitePimScheduledExportsEnabled" type="checkbox">
+                        </label>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Campaigns</strong>
+                                <small>Show SuitePim campaign management.</small>
+                            </span>
+                            <input id="adminSuitePimCampaignsEnabled" type="checkbox">
+                        </label>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Product Validation</strong>
+                                <small>Show product validation checks.</small>
+                            </span>
+                            <input id="adminSuitePimProductValidationEnabled" type="checkbox">
+                        </label>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Reasons to Buy</strong>
+                                <small>Show reasons to buy content tools.</small>
+                            </span>
+                            <input id="adminSuitePimReasonsToBuyEnabled" type="checkbox">
+                        </label>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Item FAQs</strong>
+                                <small>Show item FAQ content tools.</small>
+                            </span>
+                            <input id="adminSuitePimItemFaqsEnabled" type="checkbox">
+                        </label>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Settings</strong>
+                                <small>Show SuitePim mapping and setup settings.</small>
+                            </span>
+                            <input id="adminSuitePimSettingsEnabled" type="checkbox">
+                        </label>
+                    </div>
+                </div>
+
+                <div class="admin-feature-actions">
+                    <button id="adminSaveSuitePimSettings" type="button" class="btn-primary">Save SuitePim Settings</button>
+                    <span id="adminSuitePimSettingsStatus" class="admin-feature-status" aria-live="polite"></span>
                 </div>
             </section>
         </div>

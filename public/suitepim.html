@@ -127,8 +127,38 @@
       hidden>
       <div class="suitepim-floorplan-shell" id="suitepimFloorPlanApp">
         <div class="suitepim-floorplan-topbar">
+          <div class="suitepim-floorplan-footfall" aria-live="polite">
+            <span>Footfall</span>
+            <strong id="suitepimFloorPlanFootfallTotal">-</strong>
+          </div>
           <label for="suitepimFloorPlanLocation">Location</label>
           <select id="suitepimFloorPlanLocation"></select>
+          <label for="suitepimFloorPlanDateRange">Date range</label>
+          <select id="suitepimFloorPlanDateRange">
+            <option value="today">Today</option>
+            <option value="yesterday">Yesterday</option>
+            <option value="thisMonth" selected>This Month</option>
+            <option value="lastMonth">Last Month</option>
+            <option value="thisYear">This Year</option>
+            <option value="lastYear">Last Year</option>
+            <option value="custom">Custom</option>
+          </select>
+          <label for="suitepimFloorPlanHeatmap">Heat map</label>
+          <select id="suitepimFloorPlanHeatmap">
+            <option value="none" selected>- None -</option>
+            <option value="inventory">Inventory Count</option>
+            <option value="sold">Items Sold</option>
+            <option value="revenue">Revenue</option>
+          </select>
+          <label for="suitepimFloorPlanHeatmapScope">Heat map type</label>
+          <select id="suitepimFloorPlanHeatmapScope">
+            <option value="bin" selected>By Bin</option>
+            <option value="squareFootage">By Square Footage</option>
+          </select>
+          <label for="suitepimFloorPlanStartDate">Start date</label>
+          <input id="suitepimFloorPlanStartDate" type="date">
+          <label for="suitepimFloorPlanEndDate">End date</label>
+          <input id="suitepimFloorPlanEndDate" type="date">
           <span id="suitepimFloorPlanStatus" class="suitepim-floorplan-status" aria-live="polite"></span>
           <button id="suitepimFloorPlanEdit" class="suitepim-floorplan-action" type="button">Edit</button>
           <button id="suitepimFloorPlanSave" class="suitepim-floorplan-action is-primary" type="button" hidden>Save</button>
@@ -143,6 +173,7 @@
               <div class="suitepim-floorplan-sidebar-tabs" role="tablist" aria-label="Floor plan sidebar">
                 <button class="active" type="button" role="tab" aria-selected="true" aria-controls="suitepimFloorPlanFilesTab" data-floorplan-sidebar-tab="files">Floor Plans</button>
                 <button type="button" role="tab" aria-selected="false" aria-controls="suitepimFloorPlanAssetsTab" data-floorplan-sidebar-tab="assets">Assets</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="suitepimFloorPlanBinsTab" data-floorplan-sidebar-tab="bins">Bins</button>
               </div>
               <section id="suitepimFloorPlanFilesTab" data-floorplan-sidebar-panel="files">
                 <button id="suitepimFloorPlanNew" class="suitepim-floorplan-new" type="button">Create new floorplan</button>
@@ -150,6 +181,10 @@
               </section>
               <section id="suitepimFloorPlanAssetsTab" data-floorplan-sidebar-panel="assets" hidden>
                 <div id="suitepimFloorPlanAssets" class="suitepim-floorplan-assets"></div>
+              </section>
+              <section id="suitepimFloorPlanBinsTab" data-floorplan-sidebar-panel="bins" hidden>
+                <input id="suitepimFloorPlanBinSearch" class="suitepim-floorplan-bin-search" type="search" placeholder="Search bins..." aria-label="Search bins">
+                <div id="suitepimFloorPlanBins" class="suitepim-floorplan-bins"></div>
               </section>
             </div>
           </aside>
@@ -172,9 +207,10 @@
                 </label>
               </div>
               <div id="suitepimFloorPlanRotationControls" class="suitepim-floorplan-rotation-controls" hidden aria-label="Asset rotation controls">
-                <button id="suitepimFloorPlanRotateLeft" type="button" aria-label="Rotate left (← arrow)">↺ Left</button>
+                <button id="suitepimFloorPlanRotateLeft" type="button" aria-label="Rotate left 45 degrees">↺ Left</button>
                 <span id="suitepimFloorPlanRotationLabel">0°</span>
-                <button id="suitepimFloorPlanRotateRight" type="button" aria-label="Rotate right (→ arrow)">Right ↻</button>
+                <button id="suitepimFloorPlanAssetEdit" type="button" aria-label="Edit selected asset">Edit</button>
+                <button id="suitepimFloorPlanRotateRight" type="button" aria-label="Rotate right 45 degrees">Right ↻</button>
               </div>
             </div>
             <div id="suitepimFloorPlanCanvasWrap" class="suitepim-floorplan-canvas-wrap">

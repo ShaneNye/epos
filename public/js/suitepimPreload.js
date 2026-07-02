@@ -1,6 +1,31 @@
 (function () {
   const NAV_COLLAPSED_KEY = "suitepimNavCollapsed";
-  const PAGE_URLS = [
+  const DEFAULT_FEATURES = {
+    dashboard: {
+      stockManagement: true,
+      floorPlans: true,
+    },
+    pages: {
+      itemManagement: true,
+      scheduledExports: true,
+      campaigns: true,
+      productValidation: true,
+      reasonsToBuy: true,
+      itemFaqs: true,
+      settings: true,
+    },
+  };
+  const PAGE_FEATURES = {
+    "/suitepim/web-management": "itemManagement",
+    "/suitepim/product-data": "itemManagement",
+    "/suitepim/scheduled-exports": "scheduledExports",
+    "/suitepim/product-validation": "productValidation",
+    "/suitepim/campaigns": "campaigns",
+    "/suitepim/item-faqs": "itemFaqs",
+    "/suitepim/settings": "settings",
+    "/suitepim/reasons-to-buy": "reasonsToBuy",
+  };
+  const ALL_PAGE_URLS = [
     "/suitepim",
     "/suitepim/web-management",
     "/suitepim/scheduled-exports",
@@ -9,6 +34,50 @@
     "/suitepim/item-faqs",
     "/suitepim/settings",
   ];
+
+  function authHeaders(extra = {}) {
+    const saved = typeof storageGet === "function" ? storageGet() : null;
+    return {
+      ...extra,
+      ...(saved?.token ? { Authorization: `Bearer ${saved.token}` } : {}),
+    };
+  }
+
+  function normalizePath(value) {
+    const path = String(value || "").replace(/\/$/, "") || "/";
+    return path.endsWith(".html") ? path.slice(0, -5) : path;
+  }
+
+  function normalizeFeatures(value = {}) {
+    const dashboard = value.dashboard && typeof value.dashboard === "object" ? value.dashboard : {};
+    const pages = value.pages && typeof value.pages === "object" ? value.pages : {};
+    return {
+      dashboard: Object.fromEntries(
+        Object.entries(DEFAULT_FEATURES.dashboard).map(([key, fallback]) => [key, dashboard[key] !== false && fallback])
+      ),
+      pages: Object.fromEntries(
+        Object.entries(DEFAULT_FEATURES.pages).map(([key, fallback]) => [key, pages[key] !== false && fallback])
+      ),
+    };
+  }
+
+  async function loadSuitePimFeatures() {
+    try {
+      const response = await fetch("/api/suitepim/features", {
+        headers: authHeaders(),
+      });
+      if (!response.ok) throw new Error(`Request failed: ${response.status}`);
+      const data = await response.json();
+      return normalizeFeatures(data.features || {});
+    } catch (err) {
+      console.warn("SuitePim feature settings unavailable:", err.message);
+      return normalizeFeatures();
+    }
+  }
+
+  function dashboardEnabled(features) {
+    return features.dashboard.stockManagement !== false || features.dashboard.floorPlans !== false;
+  }
 
   function setupSuitePimSideNav() {
     const nav = document.querySelector(".suitepim-subnav");
@@ -83,6 +152,100 @@
     nav.prepend(heading);
   }
 
+  function hideDisabledNavLinks(features) {
+    const nav = document.querySelector(".suitepim-subnav");
+    if (!nav) return;
+
+    nav.querySelectorAll(".suitepim-subnav-link").forEach((link) => {
+      const path = normalizePath(link.getAttribute("href"));
+      const pageFeature = PAGE_FEATURES[path];
+      const isDashboard = path === "/suitepim";
+      const isEnabled = isDashboard
+        ? dashboardEnabled(features)
+        : !pageFeature || features.pages[pageFeature] !== false;
+      link.hidden = !isEnabled;
+      link.setAttribute("aria-hidden", String(!isEnabled));
+    });
+  }
+
+  function setDashboardTabState(id, enabled) {
+    const tab = document.getElementById(`${id}Tab`);
+    const panel = document.getElementById(`${id}Panel`);
+    if (tab) {
+      tab.hidden = !enabled;
+      tab.disabled = !enabled;
+      tab.setAttribute("aria-hidden", String(!enabled));
+    }
+    if (panel) {
+      panel.dataset.suitepimFeatureDisabled = enabled ? "0" : "1";
+      if (!enabled) panel.hidden = true;
+    }
+  }
+
+  function showDashboardDisabledMessage() {
+    const existing = document.getElementById("suitepimDashboardDisabledMessage");
+    if (existing) {
+      existing.hidden = false;
+      return;
+    }
+
+    const tabs = document.querySelector(".suitepim-dashboard-tabs");
+    if (!tabs) return;
+
+    const message = document.createElement("section");
+    message.id = "suitepimDashboardDisabledMessage";
+    message.className = "suitepim-dashboard-panel";
+    message.innerHTML = `
+      <div class="suitepim-empty-state">
+        <h2>SuitePim dashboard is switched off</h2>
+        <p>Enable Stock Management or Floor Plans in Admin to show dashboard content.</p>
+      </div>
+    `;
+    tabs.insertAdjacentElement("afterend", message);
+  }
+
+  function applyDashboardFeatures(features) {
+    const hasDashboardTabs = document.querySelector("[data-suitepim-dashboard-tab]");
+    if (!hasDashboardTabs) return;
+
+    setDashboardTabState("suitepimStockManagement", features.dashboard.stockManagement !== false);
+    setDashboardTabState("suitepimFloorPlans", features.dashboard.floorPlans !== false);
+
+    const enabledTabs = Array.from(document.querySelectorAll("[data-suitepim-dashboard-tab]"))
+      .filter((tab) => !tab.hidden && !tab.disabled);
+    const disabledMessage = document.getElementById("suitepimDashboardDisabledMessage");
+
+    if (!enabledTabs.length) {
+      document.querySelectorAll("[data-suitepim-dashboard-panel]").forEach((panel) => {
+        panel.hidden = true;
+      });
+      showDashboardDisabledMessage();
+      return;
+    }
+
+    if (disabledMessage) disabledMessage.hidden = true;
+
+    const active = enabledTabs.find((tab) => tab.classList.contains("active"));
+    const tabToActivate = active || enabledTabs[0];
+    tabToActivate.click();
+  }
+
+  function redirectIfCurrentPageDisabled(features) {
+    const currentPath = normalizePath(window.location.pathname);
+    const pageFeature = PAGE_FEATURES[currentPath];
+    if (pageFeature && features.pages[pageFeature] === false) {
+      window.location.replace("/suitepim");
+    }
+  }
+
+  function enabledPrefetchUrls(features) {
+    return ALL_PAGE_URLS.filter((url) => {
+      if (url === "/suitepim") return dashboardEnabled(features);
+      const key = PAGE_FEATURES[url];
+      return !key || features.pages[key] !== false;
+    });
+  }
+
   function prefetchDocument(url) {
     const existing = document.querySelector(`link[rel="prefetch"][href="${url}"]`);
     if (existing) return;
@@ -94,12 +257,16 @@
     document.head.appendChild(link);
   }
 
-  function schedulePrefetch() {
+  async function schedulePrefetch() {
     setupSuitePimSideNav();
+    const features = await loadSuitePimFeatures();
+    hideDisabledNavLinks(features);
+    applyDashboardFeatures(features);
+    redirectIfCurrentPageDisabled(features);
 
     const currentPath = window.location.pathname.replace(/\/$/, "") || "/";
     const run = () => {
-      PAGE_URLS
+      enabledPrefetchUrls(features)
         .filter((url) => url !== currentPath)
         .forEach(prefetchDocument);
     };

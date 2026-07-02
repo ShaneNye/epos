@@ -127,6 +127,34 @@ function isOutboundBinRow(row) {
   return rowBinText(row).toUpperCase().includes("OUTBOUND");
 }
 
+function inventoryFilterText(row, keys) {
+  for (const key of keys) {
+    const value = row?.[key];
+    if (value !== undefined && value !== null && String(value).trim()) return String(value).trim();
+  }
+  return "";
+}
+
+function normalizeInventoryFilter(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function normalizeInventoryLocation(value) {
+  return normalizeInventoryFilter(value)
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .replace(/\b(store|showroom|warehouse|branch|shop)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function inventoryLocationMatches(rowLocation, requestedLocation) {
+  const rowExact = normalizeInventoryFilter(rowLocation);
+  const requestedExact = normalizeInventoryFilter(requestedLocation);
+  if (!rowExact || !requestedExact) return false;
+  if (rowExact === requestedExact) return true;
+  return normalizeInventoryLocation(rowExact) === normalizeInventoryLocation(requestedExact);
+}
+
 function excludeOutboundBinRows(payload) {
   if (Array.isArray(payload)) return payload.filter((row) => !isOutboundBinRow(row));
   if (!payload || typeof payload !== "object") return payload;
@@ -865,7 +893,9 @@ app.get("/api/netsuite/inventorybalance", async (req, res) => {
     const json = await response.json();
 
     const itemId = req.query.id;
-    let results = (json.results || json).filter((row) => !isOutboundBinRow(row));
+    const locationFilter = normalizeInventoryFilter(req.query.location);
+    const binFilter = normalizeInventoryFilter(req.query.bin);
+    let results = (Array.isArray(json.results) ? json.results : Array.isArray(json) ? json : []).filter((row) => !isOutboundBinRow(row));
     if (itemId) {
       const wanted = String(itemId).trim();
       results = results.filter((r) => {
@@ -879,6 +909,19 @@ app.get("/api/netsuite/inventorybalance", async (req, res) => {
         ).trim();
         return rowItemId === wanted;
       });
+    }
+    if (locationFilter) {
+      results = results.filter((r) =>
+        inventoryLocationMatches(
+          inventoryFilterText(r, ["Location", "location", "Store", "Warehouse", "Inventory Location"]),
+          req.query.location
+        )
+      );
+    }
+    if (binFilter) {
+      results = results.filter((r) =>
+        normalizeInventoryFilter(inventoryFilterText(r, ["Bin Number", "Bin", "bin", "binNumber", "binnumber", "Bin Name"])) === binFilter
+      );
     }
     res.json({ ok: true, results });
   } catch (err) {

@@ -169,12 +169,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       })();
 
     // Header order matches body:
-    // [blank expander] [Item] [Location?] [Available] [Due In (Net)?] [Booked In?]
+    // [blank expander] [Item] [Location?] [On Hand] [Due In (Net)?] [Booked In?]
     tr.innerHTML = `
       <th style="width:34px;"></th>
       <th>Item</th>
       ${showLocation ? `<th>Location</th>` : ``}
-      <th style="text-align:right;">Available</th>
+      <th style="text-align:right;">On Hand</th>
       ${
         showInbound
           ? `
@@ -368,61 +368,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   ===================================================== */
   async function fetchInventoryData() {
     try {
-      const [balanceRes, numbersRes] = await Promise.all([
-        fetch("/api/netsuite/inventorybalance").then((r) => r.json()),
-        fetch("/api/netsuite/invoice-numbers").then((r) => r.json()),
-      ]);
-
+      const balanceRes = await fetch("/api/netsuite/inventorybalance").then((r) => r.json());
       if (!balanceRes.ok) throw new Error("Inventory balance fetch failed");
-      if (!numbersRes.ok) throw new Error("Inventory numbers fetch failed");
 
       const balance = balanceRes.results || balanceRes.data || [];
-      const numbers = numbersRes.results || numbersRes.data || [];
+      console.log(`Loaded ${balance.length} balance rows`);
 
-      console.log(`📊 Loaded ${balance.length} balance rows`);
-      console.log(`📦 Loaded ${numbers.length} inventory number rows`);
-
-      // 1) Aggregate invoice-number quantities per (itemId + number + location)
-      const numberAgg = {};
-
-      for (const row of numbers) {
-        const itemId = idStr(row["Item Id"] || row["Item ID"] || row["itemid"]);
-        const inv = clean(row["Number"]);
-        const loc = clean(row["Location"]);
-        if (!itemId || !inv || !loc) continue;
-
-        const key = `${itemId}||${inv}||${loc}`;
-
-        if (!numberAgg[key]) {
-          numberAgg[key] = {
-            available: 0,
-            onHand: 0,
-            itemId,
-            itemName: row["Item"] || "",
-            invNumberId: row["inv number id"] || "",
-            className: norm(row["Class"] || row["class"] || row["CLASS"] || ""),
-            sizeName: norm(row["Size"] || row["size"] || row["SIZE"] || ""),
-          };
-        }
-
-        numberAgg[key].available += parseInt(row["Available"] || 0, 10) || 0;
-        numberAgg[key].onHand += parseInt(row["On Hand"] || 0, 10) || 0;
-
-        if (!numberAgg[key].className) {
-          numberAgg[key].className = norm(
-            row["Class"] || row["class"] || row["CLASS"] || ""
-          );
-        }
-        if (!numberAgg[key].sizeName) {
-          numberAgg[key].sizeName = norm(
-            row["Size"] || row["size"] || row["SIZE"] || ""
-          );
-        }
-      }
-
-      // 2) Collapse duplicate inventorybalance rows
       const collapsed = {};
-
       for (const bal of balance) {
         const itemId = idStr(
           bal["Item ID"] || bal["Item Id"] || bal["itemid"] || bal["Item"]
@@ -435,57 +387,34 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (!collapsed[key]) collapsed[key] = bal;
       }
 
-      const balanceFinal = Object.values(collapsed);
-
-      // 3) Merge
-      const merged = balanceFinal.map((bal) => {
+      const merged = Object.values(collapsed).map((bal) => {
         const itemId = idStr(
           bal["Item ID"] || bal["Item Id"] || bal["itemid"] || bal["Item"]
         );
-
-        const invClean = clean(bal["Inventory Number"]);
-        const locClean = clean(bal["Location"]);
-        const rawLoc = bal["Location"] || "-";
-
-        const key = `${itemId}||${invClean}||${locClean}`;
-
-        const agg = numberAgg[key] || {
-          available: 0,
-          onHand: 0,
-          itemId,
-          itemName: "",
-          invNumberId: "",
-          className: "",
-          sizeName: "",
-        };
+        const onHand = parseInt(bal["On Hand"] || bal["OnHand"] || bal["Quantity On Hand"] || 0, 10) || 0;
 
         return {
-          itemId: agg.itemId || itemId,
-          itemName: agg.itemName || bal["Name"] || bal["Item"] || "-",
-
+          itemId,
+          itemName: bal["Name"] || bal["Item"] || "-",
           inventoryNumber: bal["Inventory Number"] || "-",
-          invNumberId: agg.invNumberId || "",
-
-          location: rawLoc,
+          invNumberId: "",
+          location: bal["Location"] || "-",
           bin: bal["Bin Number"] || "-",
           status: bal["Status"] || "-",
-
-          className: agg.className || "",
-          sizeName: agg.sizeName || "",
-
-          available: agg.available,
-          onHand: agg.onHand,
+          className: norm(bal["Class"] || bal["class"] || bal["CLASS"] || ""),
+          sizeName: norm(bal["Size"] || bal["size"] || bal["SIZE"] || ""),
+          available: onHand,
+          onHand,
         };
       });
 
-      console.log("🧩 Example merged record:", merged[0]);
+      console.log("Example stock record:", merged[0]);
       return merged;
     } catch (err) {
-      console.error("❌ Inventory data load/merge failed:", err);
+      console.error("Inventory data load failed:", err);
       return [];
     }
   }
-
   /* =====================================================
      FETCH INBOUND / BACKORDER DATA (✅ NEW)
   ===================================================== */
@@ -936,20 +865,20 @@ document.addEventListener("DOMContentLoaded", async () => {
                   <th style="text-align:left; padding:6px 4px;">Lot Number</th>
                   <th style="text-align:left; padding:6px 4px;">Bin</th>
                   <th style="text-align:left; padding:6px 4px;">Status</th>
-                  <th style="text-align:right; padding:6px 4px;">Available</th>
+                  <th style="text-align:right; padding:6px 4px;">On Hand</th>
                 </tr>
               </thead>
               <tbody>
                 ${
                   g.lines
-                    .filter((l) => (parseInt(l.available, 10) || 0) > 0)
+                    .filter((l) => (parseInt(l.onHand, 10) || 0) > 0)
                     .map(
                       (l) => `
                         <tr>
                           <td style="padding:6px 4px;">${escapeHtml(l.inventoryNumber || "—")}</td>
                           <td style="padding:6px 4px;">${escapeHtml(l.bin || "—")}</td>
                           <td style="padding:6px 4px;">${escapeHtml(l.status || "—")}</td>
-                          <td style="padding:6px 4px; text-align:right; font-weight:600;">${l.available}</td>
+                          <td style="padding:6px 4px; text-align:right; font-weight:600;">${l.onHand}</td>
                         </tr>
                       `
                     )

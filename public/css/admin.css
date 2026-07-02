@@ -258,6 +258,16 @@
   gap: 1rem;
 }
 
+.admin-suitepim-panel {
+  max-width: 880px;
+}
+
+.admin-settings-grid {
+  display: grid;
+  grid-template-columns: minmax(240px, 0.75fr) minmax(300px, 1.25fr);
+  gap: 1rem;
+}
+
 .admin-environment-card {
   display: grid;
   gap: 0.75rem;
@@ -749,6 +759,11 @@
   .subtabs {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  .admin-environment-settings,
+  .admin-settings-grid {
+    grid-template-columns: 1fr;
   }
 
   .tab,
