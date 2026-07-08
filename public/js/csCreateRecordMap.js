@@ -16,6 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
     sourceRecordWrap: document.getElementById("sourceRecordWrap"),
     recordSourceTab: document.getElementById("recordSourceTab"),
     workflowInputSourceTab: document.getElementById("workflowInputSourceTab"),
+    lineFieldSourceTab: document.getElementById("lineFieldSourceTab"),
     target: document.getElementById("targetRecordSelect"),
     sourceContext: document.getElementById("sourceContext"),
     targetContext: document.getElementById("targetContext"),
@@ -34,7 +35,10 @@ document.addEventListener("DOMContentLoaded", () => {
     editorStatic: document.getElementById("editorStaticValue"),
     editorCalculationWrap: document.getElementById("editorCalculationWrap"),
     editorCalculation: document.getElementById("editorCalculationExpression"),
+    calculationLineNumbers: document.getElementById("calculationLineNumbers"),
     calculationSuggestions: document.getElementById("calculationSuggestionList"),
+    calculationHelp: document.getElementById("calculationHelpBtn"),
+    calculationDocs: document.getElementById("calculationDocs"),
     editorSourceWrap: document.getElementById("editorSourceWrap"),
     editorValueModeWrap: document.getElementById("editorValueModeWrap"),
     editorStaticWrap: document.getElementById("editorStaticWrap"),
@@ -93,6 +97,23 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function sourceFields() {
     return sourceRecord(state.createRecord.sourceRecord)?.fields || [];
+  }
+
+  function sourceLineFieldEntries() {
+    const record = sourceRecord(state.createRecord.sourceRecord);
+    const sublist = itemSublistForRecord(record);
+    return (sublist?.fields || []).map((field) => ({
+      id: `${sublist.internalId}.${field.internalId}`,
+      label: field.label,
+      internalId: field.internalId,
+      sourceType: "record",
+      field,
+      sourceField: field.internalId,
+      sourceChildField: "",
+      sourceChildRecord: "",
+      sourceSublist: sublist.internalId,
+      sourceSublistLabel: sublist.label,
+    }));
   }
 
   function nodeCanReach(startId, targetId) {
@@ -305,6 +326,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function sourceOptionValue(mapping = {}) {
     if (mapping.sourceType === "workflowInput") return mapping.sourceInputId ? `input:${mapping.sourceInputId}:${mapping.sourceInputFieldId || "answer"}` : "";
+    if (mapping.sourceSublist && mapping.sourceField) return `${mapping.sourceSublist}.${mapping.sourceField}`;
     return mapping.sourceChildField
       ? `${mapping.sourceField}.${mapping.sourceChildField}`
       : mapping.sourceField || "";
@@ -318,11 +340,15 @@ document.addEventListener("DOMContentLoaded", () => {
     mapping.sourceField = entry?.sourceField || "";
     mapping.sourceChildField = entry?.sourceChildField || "";
     mapping.sourceChildRecord = entry?.sourceChildRecord || "";
+    mapping.sourceSublist = entry?.sourceSublist || "";
+    mapping.sourceSublistLabel = entry?.sourceSublistLabel || "";
     mapping.sourceFieldPath = entry?.sourceChildField ? [entry.sourceField, entry.sourceChildField] : [];
   }
 
   function sourceFieldOptions(selectedValue = "") {
-    const entries = sourceFieldOptionEntries();
+    const entries = state.mapMode === "itemLineAction"
+      ? [...sourceFieldOptionEntries(), ...sourceLineFieldEntries()]
+      : sourceFieldOptionEntries();
     if (!entries.length) return '<option value="">No fields mapped</option>';
     return entries.map((entry) => `
       <option value="${escapeHtml(entry.id)}" ${String(entry.id) === String(selectedValue) ? "selected" : ""}>${escapeHtml(entry.label)}</option>
@@ -330,7 +356,10 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function findSourceEntry(value = "") {
-    return sourceFieldOptionEntries().find((entry) => String(entry.id) === String(value)) || null;
+    const entries = state.mapMode === "itemLineAction"
+      ? [...sourceFieldOptionEntries(), ...sourceLineFieldEntries()]
+      : sourceFieldOptionEntries();
+    return entries.find((entry) => String(entry.id) === String(value)) || null;
   }
 
   function normaliseMapping(mapping = {}) {
@@ -343,6 +372,8 @@ document.addEventListener("DOMContentLoaded", () => {
       sourceField: mapping.sourceField || "",
       sourceChildField: mapping.sourceChildField || sourceFieldPath[1] || "",
       sourceChildRecord: mapping.sourceChildRecord || "",
+      sourceSublist: mapping.sourceSublist || "",
+      sourceSublistLabel: mapping.sourceSublistLabel || "",
       sourceFieldPath,
       targetField: mapping.targetField || "",
       targetSublist: mapping.targetSublist || "",
@@ -360,7 +391,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return {
       targetRecord: config.targetRecord || "salesOrder",
       sourceRecord: config.sourceRecord || "storeSalesOrder",
-      sourcePanel: config.sourcePanel === "workflowInputs" ? "workflowInputs" : "record",
+      sourcePanel: ["workflowInputs", "lineFields"].includes(config.sourcePanel) ? config.sourcePanel : "record",
       mappings: Array.isArray(config.mappings) ? config.mappings.map(normaliseMapping) : [],
     };
   }
@@ -374,6 +405,8 @@ document.addEventListener("DOMContentLoaded", () => {
       sourceField: seed.sourceField || "",
       sourceChildField: seed.sourceChildField || "",
       sourceChildRecord: seed.sourceChildRecord || "",
+      sourceSublist: seed.sourceSublist || "",
+      sourceSublistLabel: seed.sourceSublistLabel || "",
       sourceFieldPath: Array.isArray(seed.sourceFieldPath) ? seed.sourceFieldPath : [],
       targetField: seed.targetField || "",
       targetSublist: seed.targetSublist || "",
@@ -459,6 +492,27 @@ document.addEventListener("DOMContentLoaded", () => {
       : '<div class="empty-state">No workflow inputs are available before this action.</div>';
   }
 
+  function renderSourceLineFieldList(container) {
+    const fields = sourceLineFieldEntries();
+    container.innerHTML = fields.length
+      ? fields.map((entry) => `
+        <div class="field-row">
+          <button
+            type="button"
+            class="field-pill"
+            draggable="true"
+            data-field-side="source"
+            data-field-id="${escapeHtml(entry.sourceField)}"
+            data-source-sublist="${escapeHtml(entry.sourceSublist)}"
+            data-source-sublist-label="${escapeHtml(entry.sourceSublistLabel)}">
+            <strong>${escapeHtml(entry.label)}</strong>
+            <small>${escapeHtml(entry.sourceSublist)}.${escapeHtml(entry.sourceField)}</small>
+          </button>
+        </div>
+      `).join("")
+      : '<div class="empty-state">No item line fields mapped for this source record yet.</div>';
+  }
+
   function renderTargetFieldList(container) {
     const record = targetRecord(state.createRecord.targetRecord);
     if (state.mapMode === "itemLineAction") {
@@ -525,6 +579,16 @@ document.addEventListener("DOMContentLoaded", () => {
         meta: field ? `${field.type || "string"} result${castText}` : `Input not found${castText}`,
       };
     }
+    if (mapping.sourceSublist) {
+      const lineEntry = sourceLineFieldEntries().find((entry) =>
+        String(entry.sourceSublist) === String(mapping.sourceSublist) &&
+        String(entry.sourceField) === String(mapping.sourceField)
+      );
+      return {
+        title: lineEntry?.label || mapping.sourceField || "Source line field",
+        meta: `${mapping.sourceSublistLabel || mapping.sourceSublist} line field${castText}`,
+      };
+    }
     const childLabel = mapping.sourceChildField
       ? fieldLabel(relatedRecordForField(findField(sourceFields(), mapping.sourceField) || {})?.fields || [], mapping.sourceChildField, mapping.sourceChildField)
       : "";
@@ -573,10 +637,16 @@ document.addEventListener("DOMContentLoaded", () => {
     const createConfig = state.createRecord;
     el.source.value = createConfig.sourceRecord || "storeSalesOrder";
     el.target.value = createConfig.targetRecord || "salesOrder";
-    const sourcePanel = createConfig.sourcePanel === "workflowInputs" ? "workflowInputs" : "record";
+    let sourcePanel = ["workflowInputs", "lineFields"].includes(createConfig.sourcePanel) ? createConfig.sourcePanel : "record";
+    if (sourcePanel === "lineFields" && state.mapMode !== "itemLineAction") {
+      sourcePanel = "record";
+      createConfig.sourcePanel = "record";
+    }
     el.recordSourceTab?.classList.toggle("is-active", sourcePanel === "record");
     el.workflowInputSourceTab?.classList.toggle("is-active", sourcePanel === "workflowInputs");
-    if (el.sourceRecordWrap) el.sourceRecordWrap.hidden = sourcePanel !== "record";
+    el.lineFieldSourceTab?.classList.toggle("is-active", sourcePanel === "lineFields");
+    if (el.lineFieldSourceTab) el.lineFieldSourceTab.hidden = state.mapMode !== "itemLineAction";
+    if (el.sourceRecordWrap) el.sourceRecordWrap.hidden = !["record", "lineFields"].includes(sourcePanel);
 
     const source = sourceRecord(createConfig.sourceRecord);
     const target = targetRecord(createConfig.targetRecord);
@@ -595,6 +665,10 @@ document.addEventListener("DOMContentLoaded", () => {
       : `Mapping ${source?.label || "source"} fields to ${targetLabel}.`;
     el.sourceContext.textContent = sourcePanel === "workflowInputs"
       ? "Inputs captured earlier in this workflow path."
+      : sourcePanel === "lineFields"
+        ? source
+          ? `${source.label} item line fields from Record Management.`
+          : "Source record is not mapped in Record Management yet."
       : source
         ? `${source.label} fields from Record Management.`
         : "Source record is not mapped in Record Management yet.";
@@ -605,6 +679,7 @@ document.addEventListener("DOMContentLoaded", () => {
       : `${targetLabel} is not mapped in Record Management yet.`;
 
     if (sourcePanel === "workflowInputs") renderWorkflowInputList(el.sourceFieldList);
+    else if (sourcePanel === "lineFields") renderSourceLineFieldList(el.sourceFieldList);
     else renderFieldList(el.sourceFieldList, sourceFields(), "source");
     renderTargetFieldList(el.targetFieldList);
     renderMappings();
@@ -631,6 +706,8 @@ document.addEventListener("DOMContentLoaded", () => {
       fieldId: button.dataset.fieldId,
       childRecord: button.dataset.childRecord || "",
       childField: button.dataset.childField || "",
+      sourceSublist: button.dataset.sourceSublist || "",
+      sourceSublistLabel: button.dataset.sourceSublistLabel || "",
       inputNodeId: button.dataset.inputNodeId || "",
       inputFieldId: button.dataset.inputFieldId || "",
       targetSublist: button.dataset.targetSublist || "",
@@ -662,6 +739,8 @@ document.addEventListener("DOMContentLoaded", () => {
           sourceField: payload.fieldId,
           sourceChildField: payload.childField || "",
           sourceChildRecord: payload.childRecord || "",
+          sourceSublist: payload.sourceSublist || "",
+          sourceSublistLabel: payload.sourceSublistLabel || "",
         });
       }
     } else {
@@ -693,6 +772,7 @@ document.addEventListener("DOMContentLoaded", () => {
     el.editorValueCast.value = mapping.valueCast || "";
     el.editorStatic.value = mapping.staticValue || "";
     if (el.editorCalculation) el.editorCalculation.value = mapping.calculationExpression || "";
+    updateCalculationLineNumbers();
     renderEditorVisibility();
   }
 
@@ -703,6 +783,7 @@ document.addEventListener("DOMContentLoaded", () => {
     el.editorValueModeWrap.hidden = isStatic || isCalculation;
     el.editorStaticWrap.hidden = !isStatic;
     if (el.editorCalculationWrap) el.editorCalculationWrap.hidden = !isCalculation;
+    if (!isCalculation && el.calculationDocs) el.calculationDocs.hidden = true;
     const targetEntry = findTargetEntry(el.editorTarget.value);
     const targetType = String(targetEntry?.targetFieldType || "").trim().toLowerCase();
     const effectiveType = el.editorValueCast.value || targetType;
@@ -711,6 +792,12 @@ document.addEventListener("DOMContentLoaded", () => {
       : effectiveType === "decimal"
         ? "e.g. 12.50"
       : "Enter the value to set";
+  }
+
+  function updateCalculationLineNumbers() {
+    if (!el.editorCalculation || !el.calculationLineNumbers) return;
+    const lineCount = Math.max(1, String(el.editorCalculation.value || "").split("\n").length);
+    el.calculationLineNumbers.textContent = Array.from({ length: lineCount }, (_, index) => String(index + 1)).join("\n");
   }
 
   function lineFieldEntriesForCalculation() {
@@ -872,6 +959,8 @@ document.addEventListener("DOMContentLoaded", () => {
     state.createRecord.mappings = state.createRecord.mappings.map((mapping) => ({
       ...mapping,
       sourceField: "",
+      sourceSublist: "",
+      sourceSublistLabel: "",
     }));
     render();
   });
@@ -883,6 +972,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   el.workflowInputSourceTab?.addEventListener("click", () => {
     state.createRecord.sourcePanel = "workflowInputs";
+    render();
+  });
+
+  el.lineFieldSourceTab?.addEventListener("click", () => {
+    state.createRecord.sourcePanel = "lineFields";
     render();
   });
 
@@ -950,9 +1044,18 @@ document.addEventListener("DOMContentLoaded", () => {
   el.editorMode.addEventListener("change", renderEditorVisibility);
   el.editorTarget.addEventListener("change", renderEditorVisibility);
   el.editorValueCast.addEventListener("change", renderEditorVisibility);
-  el.editorCalculation?.addEventListener("input", renderCalculationSuggestions);
+  el.editorCalculation?.addEventListener("input", () => {
+    updateCalculationLineNumbers();
+    renderCalculationSuggestions();
+  });
+  el.editorCalculation?.addEventListener("scroll", () => {
+    if (el.calculationLineNumbers) el.calculationLineNumbers.scrollTop = el.editorCalculation.scrollTop;
+  });
   el.editorCalculation?.addEventListener("keyup", renderCalculationSuggestions);
   el.editorCalculation?.addEventListener("click", renderCalculationSuggestions);
+  el.calculationHelp?.addEventListener("click", () => {
+    if (el.calculationDocs) el.calculationDocs.hidden = !el.calculationDocs.hidden;
+  });
   el.calculationSuggestions?.addEventListener("mousedown", (event) => {
     event.preventDefault();
     const button = event.target.closest("[data-calculation-suggestion]");

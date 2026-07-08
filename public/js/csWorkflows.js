@@ -104,6 +104,7 @@ document.addEventListener("DOMContentLoaded", () => {
     nodeActionMessage: document.getElementById("nodeActionMessage"),
     actionConfigWrap: document.getElementById("actionConfigWrap"),
     actionType: document.getElementById("actionTypeSelect"),
+    actionMandatory: document.getElementById("actionMandatoryCheckbox"),
     itemLineItemWrap: document.getElementById("itemLineItemWrap"),
     itemLineItem: document.getElementById("itemLineItemSelect"),
     itemLineInputWrap: document.getElementById("itemLineInputWrap"),
@@ -980,6 +981,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function ensureActionConfig(node) {
     node.actionConfig = node.actionConfig || {};
     node.actionConfig.type = node.actionConfig.type || "";
+    node.actionConfig.mandatory = node.actionConfig.mandatory !== false;
     node.actionConfig.createRecord = node.actionConfig.createRecord && typeof node.actionConfig.createRecord === "object"
       ? node.actionConfig.createRecord
       : {};
@@ -1226,6 +1228,19 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function checkFieldOptions(recordType) {
+    if (recordType === "affectedItem") {
+      const fields = salesOrderItemSublist()?.fields || [];
+      if (fields.length) {
+        return fields.map((field) => ({
+          value: field.internalId,
+          label: field.label,
+          id: field.id,
+          recordTypeId: field.recordTypeId,
+          fieldType: field.fieldType,
+          listValuesQuery: field.listValuesQuery || "",
+        }));
+      }
+    }
     if (BUILT_IN_CHECK_FIELD_OPTIONS[recordType]) return BUILT_IN_CHECK_FIELD_OPTIONS[recordType];
     const recordId = customRecordIdFromValue(recordType);
     const record = state.records.find((item) => String(item.id) === String(recordId));
@@ -1364,6 +1379,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const validTypes = new Set(["", "itemLineAction", "closeSalesLine", "closeIntercompanyLine", "closeSupplierPurchaseOrderLine", "createRecord"]);
     if (!validTypes.has(config.type)) config.type = "";
     el.actionType.value = config.type;
+    if (el.actionMandatory) el.actionMandatory.checked = config.mandatory !== false;
     [
       el.itemLineItemWrap,
       el.itemLineInputWrap,
@@ -2277,6 +2293,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (config.type === "createRecord" && !config.createRecord.mappings.length) {
       config.createRecord.mappings.push(defaultCreateRecordMapping(config.createRecord));
     }
+    render();
+    el.actionConfigWrap.open = true;
+    pushHistory(before);
+  });
+
+  el.actionMandatory?.addEventListener("change", () => {
+    const node = selectedNode();
+    if (!node || node.type !== "action") return;
+    const before = snapshot();
+    ensureActionConfig(node).mandatory = el.actionMandatory.checked;
     render();
     el.actionConfigWrap.open = true;
     pushHistory(before);

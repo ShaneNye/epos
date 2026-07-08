@@ -119,7 +119,7 @@ body {
 
 .source-tabs {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   border-bottom: 1px solid var(--line);
   background: #fbfcfe;
 }
@@ -177,9 +177,9 @@ textarea {
 .calculation-suggestion-list {
   position: absolute;
   z-index: 30;
-  left: 0;
+  left: 44px;
   right: 0;
-  top: calc(100% + 4px);
+  top: 2.6rem;
   max-height: 220px;
   overflow: auto;
   border: 1px solid var(--line);
@@ -488,7 +488,7 @@ button {
 }
 
 .mapping-dialog {
-  width: min(620px, calc(100vw - 32px));
+  width: min(980px, calc(100vw - 32px));
   border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 0;
@@ -524,6 +524,115 @@ button {
 
 .dialog-wide {
   grid-column: 1 / -1;
+}
+
+.calculation-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.calculation-help-button {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  min-width: 28px;
+  min-height: 28px;
+  border-radius: 999px;
+  padding: 0;
+  border-color: #9fc7d8;
+  background: #eef9fc;
+  color: var(--brand);
+  font-weight: 900;
+}
+
+.calculation-editor-shell {
+  position: relative;
+  display: grid;
+  grid-template-columns: 44px minmax(0, 1fr);
+  min-height: 260px;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  overflow: visible;
+  background: #0f1720;
+}
+
+.calculation-line-numbers {
+  overflow: hidden;
+  padding: 0.7rem 0.55rem;
+  border-right: 1px solid #25384b;
+  background: #111827;
+  color: #7f94a8;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  text-align: right;
+  user-select: none;
+  white-space: pre;
+}
+
+#editorCalculationExpression {
+  min-height: 260px;
+  border: 0;
+  border-radius: 0;
+  background: #0f1720;
+  color: #f8fafc;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.88rem;
+  font-weight: 700;
+  line-height: 1.45;
+  padding: 0.7rem 0.8rem;
+  resize: vertical;
+  white-space: pre;
+}
+
+#editorCalculationExpression:focus {
+  outline: none;
+  box-shadow: none;
+}
+
+.calculation-docs {
+  margin-top: 0.65rem;
+  padding: 0.8rem;
+  border: 1px solid #cfd8e3;
+  border-radius: 8px;
+  background: #f8fafc;
+}
+
+.calculation-docs h3 {
+  margin: 0 0 0.35rem;
+  font-size: 0.9rem;
+}
+
+.calculation-docs p {
+  margin: 0 0 0.65rem;
+  color: var(--muted);
+}
+
+.calculation-docs dl {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr);
+  gap: 0.45rem 0.7rem;
+  margin: 0;
+}
+
+.calculation-docs dt {
+  font-weight: 900;
+}
+
+.calculation-docs dd {
+  margin: 0;
+  color: #344054;
+}
+
+.calculation-docs code {
+  padding: 0.08rem 0.25rem;
+  border-radius: 4px;
+  background: #e9eef5;
+  color: #0f1720;
+  font-family: Consolas, "Courier New", monospace;
+  font-size: 0.78rem;
 }
 
 [hidden] {
@@ -741,4 +850,41 @@ body.cs-map-dark .calculation-suggestion-list button:focus-visible {
 
 body.cs-map-dark .calculation-suggestion-list span {
   color: #9badbf;
+}
+
+body.cs-map-dark .calculation-help-button {
+  border-color: #2f5b70;
+  background: #0d2f3c;
+  color: #7edcff;
+}
+
+body.cs-map-dark .calculation-editor-shell {
+  border-color: #31475c;
+  background: #07111a;
+}
+
+body.cs-map-dark .calculation-line-numbers {
+  border-right-color: #25384b;
+  background: #0a131d;
+  color: #7890a4;
+}
+
+body.cs-map-dark #editorCalculationExpression {
+  background: #07111a;
+  color: #f8fafc;
+}
+
+body.cs-map-dark .calculation-docs {
+  border-color: #31475c;
+  background: #101a25;
+}
+
+body.cs-map-dark .calculation-docs p,
+body.cs-map-dark .calculation-docs dd {
+  color: #b7c7d6;
+}
+
+body.cs-map-dark .calculation-docs code {
+  background: #0d1722;
+  color: #7edcff;
 }

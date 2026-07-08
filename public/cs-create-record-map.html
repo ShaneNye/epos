@@ -30,6 +30,7 @@
         <div class="source-tabs" role="tablist" aria-label="Source type">
           <button id="recordSourceTab" type="button" class="source-tab is-active">Record Fields</button>
           <button id="workflowInputSourceTab" type="button" class="source-tab">Workflow Inputs</button>
+          <button id="lineFieldSourceTab" type="button" class="source-tab">Line Fields</button>
         </div>
         <label id="sourceRecordWrap" class="select-label">
           Source Record
@@ -132,12 +133,37 @@
           <input id="editorStaticValue" type="text" placeholder="Enter the value to set">
         </label>
         <label id="editorCalculationWrap" class="dialog-wide" hidden>
-          Calculation
-          <span class="calculation-editor-shell">
-            <textarea id="editorCalculationExpression" rows="3" placeholder="{line.amount} - {wf.input}"></textarea>
+          <span class="calculation-label-row">
+            <span>Calculation</span>
+            <button id="calculationHelpBtn" type="button" class="calculation-help-button" aria-label="Calculation help">?</button>
+          </span>
+          <span class="calculation-editor-shell" data-line-numbers="1">
+            <span id="calculationLineNumbers" class="calculation-line-numbers" aria-hidden="true">1</span>
+            <textarea id="editorCalculationExpression" rows="10" spellcheck="false" placeholder="ROUND(
+  CASE WHEN {line.taxcode_display} = 's-gb' THEN
+    ({line.amount} / 100 * 120)
+  ELSE
+    {line.amount}
+  END,
+  2
+)"></textarea>
             <span id="calculationSuggestionList" class="calculation-suggestion-list" hidden></span>
           </span>
-          <small>Use line fields like {line.amount} and the selected workflow input as {wf.input}.</small>
+          <small>Use arithmetic, ROUND(value, 2), or CASE WHEN statements with fields like {line.amount}, {line.taxcode_display}, and {wf.input}.</small>
+          <aside id="calculationDocs" class="calculation-docs" hidden>
+            <h3>Calculation Help</h3>
+            <p>Supported syntax is intentionally small and safe for workflow mappings.</p>
+            <dl>
+              <dt>Fields</dt>
+              <dd><code>{line.amount}</code>, <code>{line.taxcode_display}</code>, <code>{wf.input}</code></dd>
+              <dt>Arithmetic</dt>
+              <dd><code>{line.amount} - {wf.input}</code></dd>
+              <dt>Rounding</dt>
+              <dd><code>ROUND({line.amount} / 3, 2)</code></dd>
+              <dt>Conditional</dt>
+              <dd><code>CASE WHEN {line.taxcode_display} = 's-gb' THEN ({line.amount} / 100 * 120) ELSE {line.amount} END</code></dd>
+            </dl>
+          </aside>
         </label>
       </div>
       <footer>

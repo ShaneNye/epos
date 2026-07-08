@@ -685,6 +685,17 @@
       font-weight: 900;
     }
 
+    .workflow-action-icon.skipped {
+      background: #f8fafc;
+      color: #667085;
+      border-color: #cbd5e1;
+    }
+
+    .workflow-action-icon.skipped::before {
+      content: "-";
+      font-weight: 900;
+    }
+
     .workflow-action-icon.running {
       background: #fff;
       color: transparent;
@@ -852,6 +863,14 @@
     .workflow-validation-table input {
       width: auto;
       min-height: auto;
+    }
+
+    .workflow-action-confirm {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      font-weight: 700;
+      white-space: nowrap;
     }
 
     button {
@@ -1251,6 +1270,7 @@
     }
 
     function workflowActionMessageHtml(action = {}) {
+      if (action.executionState === "skipped") return escapeHtml(action.executionMessage || "Skipped by user.");
       const text = escapeHtml(action.executionMessage || action.message || "No action note was set.");
       const url = String(action.executionDocumentUrl || "").trim();
       const number = String(action.executionDocumentNumber || "").trim();
@@ -1342,6 +1362,16 @@
           </div>
         </details>
       `;
+    }
+
+    function defaultWorkflowActionApproval(action = {}) {
+      return action.mandatory === false;
+    }
+
+    function workflowMandatoryActionsApproved() {
+      return (workflowRun.actions || []).every((action, index) =>
+        action.mandatory === false || workflowRun.actionApprovals[index]
+      );
     }
 
     function normaliseWorkflowCompareValue(value) {
@@ -2692,7 +2722,12 @@
               <tbody>
                 ${actions.map((action, index) => `
                   <tr>
-                    <td><input type="checkbox" data-workflow-action-approval="${index}" ${workflowRun.actionApprovals[index] ? "checked" : ""}></td>
+                    <td>
+                      <label class="workflow-action-confirm">
+                        <input type="checkbox" data-workflow-action-approval="${index}" ${workflowRun.actionApprovals[index] ? "checked" : ""}>
+                        <span class="case-status">${action.mandatory === false ? "Optional" : "Required"}</span>
+                      </label>
+                    </td>
                     <td>
                       <strong>${escapeHtml(action.label || `Action ${index + 1}`)}</strong><br>
                       <span class="case-status">${escapeHtml(workflowActionTypeLabel(action.actionType))}</span>
@@ -2704,7 +2739,7 @@
             </table>
             <div class="workflow-run-actions">
               <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
-              <button id="executeWorkflowActionsBtn" type="button" class="btn-primary" ${workflowRun.actionApprovals.every(Boolean) ? "" : "disabled"}>Execute</button>
+              <button id="executeWorkflowActionsBtn" type="button" class="btn-primary" ${workflowMandatoryActionsApproved() ? "" : "disabled"}>Execute</button>
             </div>
           </div>
         </div>
@@ -2716,7 +2751,7 @@
       if (!runner) return;
       const updateExecuteState = () => {
         const execute = document.getElementById("executeWorkflowActionsBtn");
-        if (execute) execute.disabled = !workflowRun.actions.length || !workflowRun.actionApprovals.every(Boolean);
+        if (execute) execute.disabled = !workflowRun.actions.length || !workflowMandatoryActionsApproved();
       };
       runner.querySelectorAll("[data-workflow-action-approval]").forEach((checkbox) => {
         checkbox.addEventListener("change", () => {
@@ -2726,7 +2761,7 @@
         });
       });
       document.getElementById("executeWorkflowActionsBtn")?.addEventListener("click", async () => {
-        if (!workflowRun.actionApprovals.every(Boolean)) return;
+        if (!workflowMandatoryActionsApproved()) return;
         const execute = document.getElementById("executeWorkflowActionsBtn");
         if (execute) {
           execute.disabled = true;
@@ -2831,12 +2866,13 @@
         label: node.label || "Action",
         type: node.type || "action",
         actionType: actionConfig.type || "",
+        mandatory: actionConfig.mandatory !== false,
         createRecord: actionConfig.createRecord || null,
         itemLineAction: actionConfig.itemLineAction || null,
         message,
         stepIndex: workflowRun.collectingFromStepIndex,
       });
-      workflowRun.actionApprovals.push(false);
+      workflowRun.actionApprovals.push(defaultWorkflowActionApproval(workflowRun.actions[workflowRun.actions.length - 1]));
     }
 
     function collectSystemWorkflowAction(node, message, actionConfig = {}) {
@@ -2846,6 +2882,7 @@
         label: node.label || node.type || "Action",
         type: node.type || "system",
         actionType: actionConfig.type || "",
+        mandatory: true,
         statusId: actionConfig.statusId || "",
         statusName: actionConfig.statusName || "",
         message,
@@ -2860,7 +2897,7 @@
       } else {
         workflowRun.actions = workflowRun.actions.filter((action) => Number(action.stepIndex ?? -1) < stepIndex);
       }
-      workflowRun.actionApprovals = workflowRun.actions.map(() => false);
+      workflowRun.actionApprovals = workflowRun.actions.map(defaultWorkflowActionApproval);
       workflowRun.debugActionNodeIds = workflowRun.actions.map((action) => String(action.nodeId || "")).filter(Boolean);
     }
 
@@ -2869,7 +2906,7 @@
       workflowRun.currentNodeId = "";
       workflowRun.complete = true;
       workflowRun.awaitingActionApproval = workflowRun.actions.length > 0;
-      workflowRun.actionApprovals = workflowRun.actions.map(() => false);
+      workflowRun.actionApprovals = workflowRun.actions.map(defaultWorkflowActionApproval);
       workflowRun.actionsRendered = false;
       renderWorkflowRunner();
     }
@@ -3243,7 +3280,7 @@
       const state = action.executionState || "pending";
       const running = state === "pending" && action.executionMessage === "Running...";
       return {
-        className: state === "success" ? "success" : state === "failed" ? "failed" : state === "needsInput" ? "warning" : running ? "running" : "",
+        className: state === "success" ? "success" : state === "failed" ? "failed" : state === "needsInput" ? "warning" : state === "skipped" ? "skipped" : running ? "running" : "",
       };
     }
 
@@ -3291,6 +3328,7 @@
         icon.classList.toggle("success", state === "success");
         icon.classList.toggle("failed", state === "failed");
         icon.classList.toggle("warning", state === "needsInput");
+        icon.classList.toggle("skipped", state === "skipped");
         const iconState = workflowActionIconState(action);
         icon.classList.toggle("running", iconState.className === "running");
         if (iconState.className === "running") icon.textContent = "";
@@ -3446,6 +3484,10 @@
         await executeWorkflowActionAtIndex(index);
         if (workflowRun.actions[index]?.executionState === "success") {
           for (let nextIndex = index + 1; nextIndex < workflowRun.actions.length; nextIndex += 1) {
+            if (workflowActionSkippedByUser(nextIndex)) {
+              markWorkflowActionSkipped(nextIndex);
+              continue;
+            }
             try {
               await executeWorkflowActionAtIndex(nextIndex);
             } catch (err) {
@@ -3460,6 +3502,19 @@
             }
           }
         }
+      });
+    }
+
+    function workflowActionSkippedByUser(index) {
+      const action = workflowRun.actions[index];
+      return !!action && action.mandatory === false && workflowRun.actionApprovals[index] === false;
+    }
+
+    function markWorkflowActionSkipped(index) {
+      updateWorkflowActionRow(index, {
+        executionState: "skipped",
+        executionMessage: "Skipped by user.",
+        executionError: "",
       });
     }
 
@@ -3531,6 +3586,10 @@
     async function executeWorkflowRunActions() {
       renderWorkflowExecutionTable();
       for (let index = 0; index < workflowRun.actions.length; index += 1) {
+        if (workflowActionSkippedByUser(index)) {
+          markWorkflowActionSkipped(index);
+          continue;
+        }
         try {
           await executeWorkflowActionAtIndex(index);
         } catch (err) {

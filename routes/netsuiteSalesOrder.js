@@ -1233,6 +1233,22 @@ function workflowCheckLineValue(row = {}, fieldId = "") {
   return valueMap[key] ?? row[fieldId] ?? row[key] ?? "";
 }
 
+function workflowCheckLineSourceMappings(rules = []) {
+  const fields = new Set();
+  (Array.isArray(rules) ? rules : []).forEach((rule) => {
+    const field = cleanDraftValue(rule?.field);
+    if (field) fields.add(field);
+    if (rule?.compareType === "field") {
+      const compareField = cleanDraftValue(rule?.compareField);
+      if (compareField) fields.add(compareField);
+    }
+  });
+  return Array.from(fields).map((field) => ({
+    sourceSublist: "item",
+    sourceField: field,
+  }));
+}
+
 function normaliseWorkflowLineQuantities(row = {}) {
   const output = { ...row };
   ["quantity", "quantitycommitted", "quantityfulfilled", "quantitybackordered"].forEach((key) => {
@@ -1340,13 +1356,49 @@ async function getSalesOrderDocumentInfo(salesOrderId, userId) {
   };
 }
 
-function buildAffectedItemWorkflowLineSuiteQl(salesOrderId, itemId, { includeLotDetails = true, includeCreatePo = false } = {}) {
+const BASE_WORKFLOW_LINE_FIELD_ALIASES = new Set([
+  "lineid",
+  "item",
+  "itemname",
+  "quantity",
+  "quantitycommitted",
+  "quantityfulfilled",
+  "quantitybackordered",
+  "rate",
+  "taxcode",
+  "taxcodedisplay",
+  "taxcode_display",
+  "amount",
+  "expectedshipdate",
+  "createpo",
+  "createponame",
+  "custcol_sb_fulfilmentlocation",
+  "fulfilmentlocationname",
+  "custcol_sb_lot_details",
+  "custcol_sb_taken_from_store",
+  "takenfromstorename",
+  "linesequencenumber",
+]);
+
+function workflowLineSourceFieldsFromMappings(mappings = []) {
+  return Array.from(new Set((Array.isArray(mappings) ? mappings : [])
+    .filter((mapping) => cleanDraftValue(mapping.sourceSublist))
+    .map((mapping) => cleanDraftValue(mapping.sourceField))
+    .filter((field) => {
+      const clean = field.toLowerCase();
+      return field && safeSuiteQlIdentifier(field) && !BASE_WORKFLOW_LINE_FIELD_ALIASES.has(clean) && !["id", "lineid"].includes(clean);
+    })));
+}
+
+function buildAffectedItemWorkflowLineSuiteQl(salesOrderId, itemId, { includeLotDetails = true, includeCreatePo = false, sourceFields = [] } = {}) {
   const lotDetailsSelect = includeLotDetails
     ? "tl.custcol_sb_lot_details,"
     : "NULL AS custcol_sb_lot_details,";
   const createPoSelect = includeCreatePo
     ? "tl.createdpo AS createpo, BUILTIN.DF(tl.createdpo) AS createponame,"
     : "NULL AS createpo, NULL AS createponame,";
+  const extraSourceSelect = workflowLineSourceFieldsFromMappings(sourceFields).map((field) => `
+      tl.${field} AS ${field},`).join("");
 
   return `
     SELECT
@@ -1358,6 +1410,9 @@ function buildAffectedItemWorkflowLineSuiteQl(salesOrderId, itemId, { includeLot
       tl.quantityshiprecv AS quantityfulfilled,
       tl.quantitybackordered,
       tl.rate,
+      tl.taxcode,
+      BUILTIN.DF(tl.taxcode) AS taxcodedisplay,
+      BUILTIN.DF(tl.taxcode) AS taxcode_display,
       tl.netamount AS amount,
       tl.expectedshipdate,
       ${createPoSelect}
@@ -1366,6 +1421,7 @@ function buildAffectedItemWorkflowLineSuiteQl(salesOrderId, itemId, { includeLot
       ${lotDetailsSelect}
       tl.custcol_sb_taken_from_store,
       BUILTIN.DF(tl.custcol_sb_taken_from_store) AS takenfromstorename,
+      ${extraSourceSelect}
       tl.linesequencenumber
     FROM transactionline tl
     WHERE tl.transaction = ${salesOrderId}
@@ -1376,7 +1432,26 @@ function buildAffectedItemWorkflowLineSuiteQl(salesOrderId, itemId, { includeLot
   `;
 }
 
-async function loadAffectedItemSalesOrderLineForCase(caseId, userId, source = "storeSalesOrder") {
+async function fetchWorkflowLineSuiteQl({ salesOrderId, itemId, sourceMappings = [], includeLotDetails = true, userId }) {
+  try {
+    return await nsPostRaw(
+      suiteQlUrl(),
+      { q: buildAffectedItemWorkflowLineSuiteQl(salesOrderId, itemId, { includeLotDetails, sourceFields: sourceMappings }) },
+      userId
+    );
+  } catch (err) {
+    const hasDynamicFields = workflowLineSourceFieldsFromMappings(sourceMappings).length > 0;
+    if (!hasDynamicFields) throw err;
+    console.warn("[workflow-item-line-action] Dynamic source line field SuiteQL failed; retrying without dynamic fields.", err.message);
+    return nsPostRaw(
+      suiteQlUrl(),
+      { q: buildAffectedItemWorkflowLineSuiteQl(salesOrderId, itemId, { includeLotDetails, sourceFields: [] }) },
+      userId
+    );
+  }
+}
+
+async function loadAffectedItemSalesOrderLineForCase(caseId, userId, source = "storeSalesOrder", sourceMappings = []) {
   const supportCase = await getSupportCaseDetail(caseId, userId);
   const salesOrderId = Number(supportCase.salesOrderId);
   const itemId = Number(supportCase.itemId);
@@ -1395,19 +1470,11 @@ async function loadAffectedItemSalesOrderLineForCase(caseId, userId, source = "s
 
   let result;
   try {
-    result = await nsPostRaw(
-      suiteQlUrl(),
-      { q: buildAffectedItemWorkflowLineSuiteQl(targetOrder.id, itemId) },
-      userId
-    );
+    result = await fetchWorkflowLineSuiteQl({ salesOrderId: targetOrder.id, itemId, sourceMappings, userId });
   } catch (err) {
     if (!isUnknownSuiteQlIdentifierError(err, "custcol_sb_lot_details")) throw err;
     console.warn("custcol_sb_lot_details is not available in SuiteQL; evaluating workflow check without it.");
-    result = await nsPostRaw(
-      suiteQlUrl(),
-      { q: buildAffectedItemWorkflowLineSuiteQl(targetOrder.id, itemId, { includeLotDetails: false }) },
-      userId
-    );
+    result = await fetchWorkflowLineSuiteQl({ salesOrderId: targetOrder.id, itemId, sourceMappings, includeLotDetails: false, userId });
   }
   const line = Array.isArray(result?.items) ? result.items[0] : null;
   if (!line) {
@@ -1431,7 +1498,7 @@ async function loadAffectedItemSalesOrderLineForCase(caseId, userId, source = "s
   };
 }
 
-async function loadInputItemSalesOrderLineForCase(caseId, itemIdValue, userId, source = "storeSalesOrder") {
+async function loadInputItemSalesOrderLineForCase(caseId, itemIdValue, userId, source = "storeSalesOrder", sourceMappings = []) {
   const supportCase = await getSupportCaseDetail(caseId, userId);
   const salesOrderId = Number(supportCase.salesOrderId);
   const itemId = Number(itemIdValue);
@@ -1450,19 +1517,11 @@ async function loadInputItemSalesOrderLineForCase(caseId, itemIdValue, userId, s
 
   let result;
   try {
-    result = await nsPostRaw(
-      suiteQlUrl(),
-      { q: buildAffectedItemWorkflowLineSuiteQl(targetOrder.id, itemId) },
-      userId
-    );
+    result = await fetchWorkflowLineSuiteQl({ salesOrderId: targetOrder.id, itemId, sourceMappings, userId });
   } catch (err) {
     if (!isUnknownSuiteQlIdentifierError(err, "custcol_sb_lot_details")) throw err;
     console.warn("custcol_sb_lot_details is not available in SuiteQL; evaluating workflow input item check without it.");
-    result = await nsPostRaw(
-      suiteQlUrl(),
-      { q: buildAffectedItemWorkflowLineSuiteQl(targetOrder.id, itemId, { includeLotDetails: false }) },
-      userId
-    );
+    result = await fetchWorkflowLineSuiteQl({ salesOrderId: targetOrder.id, itemId, sourceMappings, includeLotDetails: false, userId });
   }
   const line = Array.isArray(result?.items) ? result.items[0] : null;
   if (!line) {
@@ -1672,7 +1731,13 @@ async function evaluateWorkflowCheck({ caseId, node, inputValue, inputLabel, inp
   }
 
   if (recordType === "input" && inputSource === "salesOrderItems") {
-    const { supportCase, line, source } = await loadInputItemSalesOrderLineForCase(caseId, inputValue, userId, affectedItemSource);
+    const { supportCase, line, source } = await loadInputItemSalesOrderLineForCase(
+      caseId,
+      inputValue,
+      userId,
+      affectedItemSource,
+      workflowCheckLineSourceMappings(rules)
+    );
     const checks = evaluateWorkflowLineRules(rules, line);
     return {
       result: checks.every((check) => check.passed) ? "Pass" : "Fail",
@@ -1706,7 +1771,12 @@ async function evaluateWorkflowCheck({ caseId, node, inputValue, inputLabel, inp
     };
   }
 
-  const { supportCase, line, source } = await loadAffectedItemSalesOrderLineForCase(caseId, userId, affectedItemSource);
+  const { supportCase, line, source } = await loadAffectedItemSalesOrderLineForCase(
+    caseId,
+    userId,
+    affectedItemSource,
+    workflowCheckLineSourceMappings(rules)
+  );
   const checks = evaluateWorkflowLineRules(rules, line);
 
   return {
@@ -1859,6 +1929,22 @@ async function resolveCreateRecordMappingValue(mapping = {}, context = {}, userI
   const sourceField = cleanDraftValue(mapping.sourceField);
   if (!sourceField) return "";
 
+  if (cleanDraftValue(mapping.sourceSublist) && context.line && typeof context.line === "object") {
+    if (mapping.valueMode === "name" || mapping.valueCast === "text") {
+      const displayValue = rowValue(
+        context.line,
+        `${sourceField}_display`,
+        `${sourceField}display`,
+        `${sourceField}name`,
+        `${sourceField}_name`,
+        `${sourceField}Name`,
+        `${sourceField}Display`
+      );
+      if (cleanDraftValue(displayValue)) return displayValue;
+    }
+    return rowValue(context.line, sourceField, sourceField.toLowerCase(), sourceField.toUpperCase());
+  }
+
   let sourceRecord = null;
   let parentValue = "";
   if (context.sourceRecord === "case") {
@@ -1987,9 +2073,42 @@ async function resolveCalculationToken(token = "", mapping = {}, context = {}, u
   return 0;
 }
 
-async function resolveWorkflowCalculation(mapping = {}, context = {}, userId) {
-  const expression = cleanDraftValue(mapping.calculationExpression);
-  if (!expression) return "";
+async function resolveCalculationTokenRaw(token = "", mapping = {}, context = {}, userId) {
+  const cleanToken = cleanDraftValue(token);
+  const lower = cleanToken.toLowerCase();
+  if (lower === "wf.input") {
+    return workflowAnswerValue(context.answers, mapping.sourceInputId, mapping.sourceInputFieldId, "id");
+  }
+  if (lower.startsWith("wf.")) {
+    const fieldId = cleanToken.slice(3);
+    return workflowAnswerValue(context.answers, mapping.sourceInputId, fieldId, "id");
+  }
+  if (lower.startsWith("line.")) {
+    const fieldId = cleanToken.slice(5);
+    const line = context.line || {};
+    return lineCalculationValue(line, fieldId);
+  }
+  if (lower.startsWith("source.") || lower.startsWith("record.")) {
+    const path = cleanToken.slice(cleanToken.indexOf(".") + 1).split(".").filter(Boolean);
+    const fieldId = path[0] || "";
+    const childFieldId = path[1] || "";
+    const childSource = (Array.isArray(context.records) ? context.records : [])
+      .flatMap((record) => record?.fields || [])
+      .find((field) => String(field.internalId) === String(fieldId));
+    return resolveCreateRecordMappingValue({
+      ...mapping,
+      mode: "source",
+      sourceType: "record",
+      sourceField: fieldId,
+      sourceChildField: childFieldId,
+      sourceChildRecord: childFieldId ? cleanDraftValue(childSource?.listRecord || childSource?.listRecordId || childSource?.recordType || childSource?.sourceRecord) : "",
+      sourceFieldPath: childFieldId ? [fieldId, childFieldId] : [],
+    }, context, userId);
+  }
+  return "";
+}
+
+async function resolveCalculationExpression(expression = "", mapping = {}, context = {}, userId) {
   let resolved = expression;
   const tokens = [...expression.matchAll(/\{([^}]+)\}/g)];
   const resolvedTokens = [];
@@ -2010,13 +2129,146 @@ async function resolveWorkflowCalculation(mapping = {}, context = {}, userId) {
   if (!Number.isFinite(Number(result))) {
     throw new Error(`Calculation did not return a numeric value: ${expression}`);
   }
+  return { result: Number(result), resolved, tokens: resolvedTokens };
+}
+
+function parseCaseCalculation(expression = "") {
+  const match = String(expression || "").trim().match(/^case\s+when\s+([\s\S]+?)\s+then\s+([\s\S]+?)\s+else\s+([\s\S]+?)\s+end\s*$/i);
+  if (!match) return null;
+  return {
+    condition: match[1].trim(),
+    thenExpression: match[2].trim(),
+    elseExpression: match[3].trim(),
+  };
+}
+
+async function evaluateCalculationCondition(condition = "", mapping = {}, context = {}, userId) {
+  const match = String(condition || "").trim().match(/^\{([^}]+)\}\s*(=|==|!=|<>|>=|<=|>|<)\s*(?:'([^']*)'|"([^"]*)"|(-?\d+(?:\.\d+)?))\s*$/i);
+  if (!match) throw new Error(`Calculation condition is not supported: ${condition}`);
+  const actualRaw = await resolveCalculationTokenRaw(match[1], mapping, context, userId);
+  const operator = match[2];
+  const expectedRaw = match[3] ?? match[4] ?? match[5] ?? "";
+  const actualNumber = calculationNumber(actualRaw);
+  const expectedNumber = calculationNumber(expectedRaw);
+  const compareAsNumber = /^-?\d+(\.\d+)?$/.test(cleanDraftValue(expectedRaw)) && cleanDraftValue(actualRaw).match(/-?\d+(\.\d+)?/);
+  const actual = compareAsNumber ? actualNumber : cleanDraftValue(actualRaw).toLowerCase();
+  const expected = compareAsNumber ? expectedNumber : cleanDraftValue(expectedRaw).toLowerCase();
+  switch (operator) {
+    case "=":
+    case "==":
+      return actual === expected;
+    case "!=":
+    case "<>":
+      return actual !== expected;
+    case ">":
+      return Number(actual) > Number(expected);
+    case "<":
+      return Number(actual) < Number(expected);
+    case ">=":
+      return Number(actual) >= Number(expected);
+    case "<=":
+      return Number(actual) <= Number(expected);
+    default:
+      return false;
+  }
+}
+
+function splitCalculationArguments(value = "") {
+  const args = [];
+  let current = "";
+  let depth = 0;
+  let quote = "";
+  for (const char of String(value || "")) {
+    if (quote) {
+      current += char;
+      if (char === quote) quote = "";
+      continue;
+    }
+    if (char === "'" || char === '"') {
+      quote = char;
+      current += char;
+      continue;
+    }
+    if (char === "(") depth += 1;
+    if (char === ")") depth -= 1;
+    if (char === "," && depth === 0) {
+      args.push(current.trim());
+      current = "";
+      continue;
+    }
+    current += char;
+  }
+  if (current.trim()) args.push(current.trim());
+  return args;
+}
+
+function parseRoundCalculation(expression = "") {
+  const clean = String(expression || "").trim();
+  if (!/^round\s*\(/i.test(clean) || !clean.endsWith(")")) return null;
+  const openIndex = clean.indexOf("(");
+  const inner = clean.slice(openIndex + 1, -1);
+  const args = splitCalculationArguments(inner);
+  if (!args.length || args.length > 2) throw new Error(`ROUND expects value and optional decimals: ${expression}`);
+  const decimals = args.length === 2 ? Number(args[1]) : 0;
+  if (!Number.isInteger(decimals) || decimals < 0 || decimals > 8) {
+    throw new Error(`ROUND decimals must be an integer from 0 to 8: ${expression}`);
+  }
+  return { expression: args[0], decimals };
+}
+
+function roundCalculationValue(value, decimals = 0) {
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) throw new Error("ROUND did not receive a numeric value.");
+  const factor = 10 ** decimals;
+  return Math.round((numeric + Number.EPSILON) * factor) / factor;
+}
+
+async function resolveWorkflowCalculation(mapping = {}, context = {}, userId) {
+  const expression = cleanDraftValue(mapping.calculationExpression);
+  if (!expression) return "";
+
+  const roundExpression = parseRoundCalculation(expression);
+  if (roundExpression) {
+    const unrounded = await resolveWorkflowCalculation({
+      ...mapping,
+      calculationExpression: roundExpression.expression,
+    }, context, userId);
+    const rounded = roundCalculationValue(unrounded, roundExpression.decimals);
+    console.log("[workflow-calculation] resolved round", {
+      expression,
+      innerExpression: roundExpression.expression,
+      decimals: roundExpression.decimals,
+      unrounded,
+      result: rounded,
+    });
+    return rounded;
+  }
+
+  const caseExpression = parseCaseCalculation(expression);
+  if (caseExpression) {
+    const passed = await evaluateCalculationCondition(caseExpression.condition, mapping, context, userId);
+    const branch = passed ? caseExpression.thenExpression : caseExpression.elseExpression;
+    const evaluated = await resolveCalculationExpression(branch, mapping, context, userId);
+    console.log("[workflow-calculation] resolved case", {
+      expression,
+      condition: caseExpression.condition,
+      conditionPassed: passed,
+      branch,
+      resolved: evaluated.resolved,
+      tokens: evaluated.tokens,
+      result: evaluated.result,
+    });
+    return evaluated.result;
+  }
+
+  const evaluated = await resolveCalculationExpression(expression, mapping, context, userId);
   console.log("[workflow-calculation] resolved", {
     expression,
-    resolved,
-    tokens: resolvedTokens,
-    result: Number(result),
+    resolved: evaluated.resolved,
+    tokens: evaluated.tokens,
+    result: evaluated.result,
   });
-  return Number(result);
+  return evaluated.result;
 }
 
 async function buildCreateRecordPayload(action = {}, context = {}, userId) {
@@ -2699,8 +2951,8 @@ async function executeItemLineAction({ caseId, action, checks = [], answers = []
   }
 
   const resolved = inputItemId
-    ? await loadInputItemSalesOrderLineForCase(caseId, inputItemId, userId, target)
-    : await loadAffectedItemSalesOrderLineForCase(caseId, userId, target);
+    ? await loadInputItemSalesOrderLineForCase(caseId, inputItemId, userId, target, config.mappings)
+    : await loadAffectedItemSalesOrderLineForCase(caseId, userId, target, config.mappings);
   const patch = await itemLinePatchFromMappings(config.mappings, { ...mappingContext, line: resolved.line }, userId);
   console.log("[workflow-item-line-action] resolved patch", {
     caseId,
@@ -3228,8 +3480,52 @@ async function loadSupplierPurchaseOrderLineForCase(caseId, userId, checks = [],
   };
 }
 
-async function executeWorkflowActions({ caseId, actions = [], approvals = [], checks = [], answers = [] }, userId) {
-  const approvedActions = (Array.isArray(actions) ? actions : [])
+async function loadLatestWorkflowActions(workflowId, actions = []) {
+  const cleanWorkflowId = cleanDraftValue(workflowId);
+  const sourceActions = Array.isArray(actions) ? actions : [];
+  if (!cleanWorkflowId || !sourceActions.length) return sourceActions;
+
+  try {
+    const result = await pool.query("SELECT definition FROM cs_workflows WHERE id = $1 LIMIT 1", [cleanWorkflowId]);
+    const definition = result.rows[0]?.definition || {};
+    const nodes = Array.isArray(definition.nodes) ? definition.nodes : [];
+    if (!nodes.length) return sourceActions;
+
+    return sourceActions.map((action) => {
+      const node = nodes.find((item) => String(item.id) === String(action?.nodeId));
+      const actionConfig = node?.actionConfig && typeof node.actionConfig === "object" ? node.actionConfig : null;
+      if (!actionConfig) return action;
+      if (action.actionType === "itemLineAction" || actionConfig.type === "itemLineAction") {
+        return {
+          ...action,
+          actionType: "itemLineAction",
+          itemLineAction: {
+            ...(action.itemLineAction || {}),
+            ...(actionConfig.itemLineAction || {}),
+          },
+        };
+      }
+      if (action.actionType === "createRecord" || actionConfig.type === "createRecord") {
+        return {
+          ...action,
+          actionType: "createRecord",
+          createRecord: {
+            ...(action.createRecord || {}),
+            ...(actionConfig.createRecord || {}),
+          },
+        };
+      }
+      return action;
+    });
+  } catch (err) {
+    console.warn("[workflow-actions] Could not refresh workflow action config:", err.message);
+    return sourceActions;
+  }
+}
+
+async function executeWorkflowActions({ caseId, workflowId = "", actions = [], approvals = [], checks = [], answers = [] }, userId) {
+  const latestActions = await loadLatestWorkflowActions(workflowId, actions);
+  const approvedActions = latestActions
     .filter((action, index) => approvals[index] === true || approvals[index] === "true")
     .filter((action) => ["setCaseStatus", "itemLineAction", "closeSalesLine", "closeIntercompanyLine", "closeSupplierPurchaseOrderLine", "createRecord"].includes(action.actionType));
 
@@ -6657,6 +6953,7 @@ router.post("/cases/:caseId/workflow-actions/execute", async (req, res) => {
     const userId = await resolveUserIdFromRequest(req);
     const result = await executeWorkflowActions({
       caseId: req.params.caseId,
+      workflowId: req.body?.workflowId || "",
       actions: req.body?.actions || [],
       approvals: req.body?.approvals || [],
       checks: req.body?.checks || [],
