@@ -24,6 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
     { value: "rota", label: "Rota" },
     { value: "suitepim", label: "SuitePim" },
     { value: "systems-processes", label: "Systems & Processes" },
+    { value: "cs-workflows", label: "CS Workflows" },
     { value: "promotions", label: "Promotions" },
     { value: "ai-access", label: "AI Access" },
     { value: "admin", label: "Admin" },

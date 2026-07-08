@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/js/browserLogFilter.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>CS Workflows</title>
+  <link rel="stylesheet" href="/css/home.css">
+  <link rel="stylesheet" href="/css/csWorkflows.css">
+  <script src="/js/storage.js"></script>
+  <script defer src="/js/menu.js"></script>
+  <script defer src="/js/csWorkflows.js"></script>
+</head>
+<body>
+  <div id="menu"></div>
+
+  <button id="csWorkflowNavTab" class="cs-workflow-side-tab" type="button" aria-expanded="false" aria-controls="csWorkflowSubnav">
+    <span>CS Workflows</span>
+  </button>
+
+  <nav id="csWorkflowSubnav" class="cs-workflow-subnav" aria-label="CS Workflows sections">
+    <div class="cs-workflow-side-head">
+      <div>
+        <span>Customer Service</span>
+        <strong>Workflows</strong>
+      </div>
+      <button id="csWorkflowNavClose" class="cs-workflow-side-close" type="button" aria-label="Close CS Workflows menu">x</button>
+    </div>
+    <button type="button" class="cs-workflow-subnav-link active" data-workflow-view="workflows">Workflows</button>
+    <button type="button" class="cs-workflow-subnav-link" data-workflow-view="records">Record Management</button>
+    <button id="openSuiteQlStudioBtn" type="button" class="cs-workflow-subnav-link" data-workflow-tool="suiteql">SuiteQL Studio</button>
+    <button type="button" class="cs-workflow-subnav-link" data-workflow-view="builder" data-new-workflow="true">New Workflow</button>
+  </nav>
+
+  <main class="cs-workflows-page">
+    <header class="cs-workflows-header">
+      <div>
+        <h1>CS Workflows</h1>
+        <p>Create guided customer service workflows made from questions, response paths and action messages.</p>
+      </div>
+    </header>
+
+    <section class="existing-workflows-panel" data-workflow-panel="workflows">
+      <div class="existing-workflows-header">
+        <div>
+          <h2>Existing Workflows</h2>
+          <p>Select a workflow to edit it in the builder.</p>
+        </div>
+        <div class="workflow-header-actions">
+          <label class="workflow-theme-toggle" title="Toggle dark mode">
+            <input class="workflow-dark-mode-toggle" type="checkbox">
+            <span class="workflow-theme-toggle-track" aria-hidden="true"></span>
+            <span class="workflow-theme-toggle-label">Dark</span>
+          </label>
+          <button id="refreshWorkflowsBtn" type="button" class="btn-secondary">Refresh</button>
+        </div>
+      </div>
+      <div id="existingWorkflowsList" class="existing-workflows-list" aria-live="polite">
+        <p class="workflow-status">Loading workflows...</p>
+      </div>
+    </section>
+
+    <section class="existing-workflows-panel record-management-panel" data-workflow-panel="records" hidden>
+      <div class="existing-workflows-header">
+        <div>
+          <h2>Record Management</h2>
+          <p>Define records and fields available to workflow checks and future actions.</p>
+        </div>
+        <div class="workflow-header-actions">
+          <label class="workflow-theme-toggle" title="Toggle dark mode">
+            <input class="workflow-dark-mode-toggle" type="checkbox">
+            <span class="workflow-theme-toggle-track" aria-hidden="true"></span>
+            <span class="workflow-theme-toggle-label">Dark</span>
+          </label>
+          <button id="refreshWorkflowRecordsBtn" type="button" class="btn-secondary">Refresh</button>
+        </div>
+      </div>
+
+      <div class="record-management-layout">
+        <aside class="record-management-side">
+          <form id="workflowRecordForm" class="record-config-form record-hidden-form">
+            <input id="workflowRecordId" type="hidden">
+            <input id="workflowRecordLabel" type="hidden">
+            <input id="workflowRecordInternalId" type="hidden">
+            <button id="deleteWorkflowRecordBtn" type="button" hidden></button>
+            <button id="newWorkflowRecordBtn" type="button" hidden></button>
+            <button type="submit" hidden></button>
+          </form>
+
+          <div class="record-config-list">
+            <div class="record-list-head">
+              <h3>Records</h3>
+              <button id="addWorkflowRecordInlineBtn" type="button" class="btn-secondary">Add Record</button>
+            </div>
+            <div id="workflowRecordsList" class="workflow-records-list">
+              <p class="workflow-status">No records configured yet.</p>
+            </div>
+          </div>
+        </aside>
+
+        <form id="workflowRecordFieldForm" class="record-fields-workspace">
+          <input id="workflowRecordFieldId" type="hidden">
+          <input id="workflowRecordFieldListQuery" type="hidden">
+          <div class="record-fields-toolbar">
+            <div>
+              <h3>Fields</h3>
+              <p id="workflowRecordFieldContext" class="workflow-status">Select or save a record first.</p>
+            </div>
+            <button id="newWorkflowRecordFieldBtn" type="button" class="btn-secondary">Add Field</button>
+          </div>
+          <div class="record-fields-table-wrap">
+            <table class="record-fields-table">
+              <thead>
+                <tr>
+                  <th aria-label="Reorder"></th>
+                  <th>Label</th>
+                  <th>Internal ID</th>
+                  <th>Field Type</th>
+                  <th>SuiteQL</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="workflowRecordFieldsList"></tbody>
+            </table>
+          </div>
+          <div class="record-sublist-section">
+            <div class="record-fields-toolbar">
+              <div>
+                <h3>Sublists</h3>
+                <p class="workflow-status">Map sublist IDs and their fields for line-level checks and actions.</p>
+              </div>
+              <button id="addWorkflowSublistBtn" type="button" class="btn-secondary">Add Sublist</button>
+            </div>
+            <div id="workflowRecordSublistsList" class="record-sublists-list"></div>
+          </div>
+          <input id="workflowRecordFieldLabel" type="hidden">
+          <input id="workflowRecordFieldInternalId" type="hidden">
+          <select id="workflowRecordFieldType" hidden>
+            <option value="free-form text">free-form text</option>
+            <option value="Decimal">Decimal</option>
+            <option value="Text-area">Text-area</option>
+            <option value="Freeform-text">Freeform-text</option>
+            <option value="date">date</option>
+            <option value="checkbox">checkbox</option>
+            <option value="list/record">list/record</option>
+            <option value="multiple select">multiple select</option>
+          </select>
+          <input id="workflowRecordFieldSortOrder" type="hidden">
+          <span id="workflowRecordFieldSuiteQlState" hidden></span>
+          <button id="workflowRecordFieldSuiteQlBtn" type="button" hidden></button>
+          <button id="deleteWorkflowRecordFieldBtn" type="button" hidden></button>
+          <button type="submit" hidden></button>
+        </form>
+      </div>
+
+      <dialog id="workflowSuiteQlDialog" class="suiteql-dialog">
+        <form method="dialog" class="suiteql-dialog-panel">
+          <div class="suiteql-dialog-header">
+            <div>
+              <h3>SuiteQL List Values</h3>
+              <p>Return id and name columns for list/record and multiple select values.</p>
+            </div>
+            <button id="closeWorkflowSuiteQlBtn" type="button" class="icon-btn" aria-label="Close SuiteQL editor">x</button>
+          </div>
+          <textarea id="workflowSuiteQlEditor" spellcheck="false" placeholder="SELECT id, name FROM ... ORDER BY name"></textarea>
+          <div class="suiteql-dialog-actions">
+            <button id="cancelWorkflowSuiteQlBtn" type="button" class="btn-secondary">Cancel</button>
+            <button id="saveWorkflowSuiteQlBtn" type="button" class="btn-primary">Save Query</button>
+          </div>
+        </form>
+      </dialog>
+    </section>
+
+    <section class="workflow-shell" data-workflow-panel="builder" hidden>
+      <aside class="workflow-sidebar">
+        <div class="workflow-sidebar-head">
+          <div class="workflow-sidebar-tabs" role="tablist" aria-label="Workflow editor">
+            <button id="workflowTabBtn" class="workflow-sidebar-tab active" type="button" data-builder-tab="workflow" aria-selected="true">Workflow</button>
+            <button id="nodePropertiesTabBtn" class="workflow-sidebar-tab" type="button" data-builder-tab="nodeProperties" aria-selected="false">Node Properties</button>
+          </div>
+          <button id="workflowSidebarToggle" class="workflow-sidebar-toggle" type="button" aria-label="Collapse workflow panel" aria-expanded="true" title="Collapse panel">
+            <span aria-hidden="true">&lsaquo;</span>
+          </button>
+        </div>
+
+        <div id="workflowTabPanel" class="workflow-sidebar-panel" data-builder-panel="workflow">
+          <label>
+            Workflow
+            <select id="workflowSelect">
+              <option value="">New workflow</option>
+            </select>
+          </label>
+          <label>
+            Name
+            <input id="workflowName" type="text" placeholder="e.g. Refund or cancellation">
+          </label>
+          <label>
+            Description
+            <textarea id="workflowDescription" placeholder="Optional internal description"></textarea>
+          </label>
+
+          <details class="workflow-sidebar-segment">
+            <summary>Criteria</summary>
+            <p class="workflow-status">Only show this workflow on cases where every criterion matches.</p>
+            <div class="property-row property-row-tight">
+              <button id="addWorkflowCriteriaBtn" type="button" class="btn-secondary">Add Criteria</button>
+            </div>
+            <div id="workflowCriteriaRules"></div>
+          </details>
+
+          <details class="workflow-sidebar-segment" open>
+            <summary>Nodes</summary>
+            <div class="workflow-toolbox" aria-label="Workflow elements">
+              <button type="button" class="toolbox-item" draggable="true" data-node-type="question">Question</button>
+              <button type="button" class="toolbox-item" draggable="true" data-node-type="action">Action</button>
+              <button type="button" class="toolbox-item" draggable="true" data-node-type="input">Input</button>
+              <button type="button" class="toolbox-item" draggable="true" data-node-type="check">Check</button>
+              <button type="button" class="toolbox-item" draggable="true" data-node-type="break">Break</button>
+              <button type="button" class="toolbox-item" draggable="true" data-node-type="closeCase">Close Case</button>
+            </div>
+          </details>
+
+          <details class="workflow-sidebar-segment" open>
+            <summary>Settings</summary>
+            <label>
+              Execution
+              <select id="workflowExecutionMode">
+                <option value="actionMessageOnly">Action message only</option>
+                <option value="fullExecution">Full Execution</option>
+              </select>
+            </label>
+            <label class="workflow-checkbox-row">
+              <input id="workflowPathwayDebug" type="checkbox">
+              <span>Pathway Debug</span>
+            </label>
+          </details>
+        </div>
+
+        <div id="nodePropertiesTabPanel" class="workflow-sidebar-panel" data-builder-panel="nodeProperties" hidden>
+          <div id="emptyProperties" class="empty-properties">Select a workflow element.</div>
+          <div id="nodeProperties" class="node-properties" hidden>
+            <label>
+              Label
+              <input id="nodeLabel" type="text">
+            </label>
+            <label id="questionTextWrap">
+              <span id="nodeQuestionLabel">Question</span>
+              <textarea id="nodeQuestion"></textarea>
+            </label>
+            <label id="actionMessageWrap">
+              Node Notes
+              <textarea id="nodeActionMessage"></textarea>
+            </label>
+            <details id="actionConfigWrap" class="property-segment">
+              <summary>Actions</summary>
+              <label>
+                Action
+                <select id="actionTypeSelect">
+                  <option value="">Action message only</option>
+                  <option value="itemLineAction">Item Line Action</option>
+                  <option value="closeSupplierPurchaseOrderLine">Close Supplier Purchase Order Line</option>
+                  <option value="createRecord">Create Record</option>
+                </select>
+              </label>
+              <label id="itemLineItemWrap" hidden>
+                Item
+                <select id="itemLineItemSelect">
+                  <option value="caseAffectedItem">Case : affected item</option>
+                  <option value="input">Input</option>
+                </select>
+              </label>
+              <label id="itemLineInputWrap" hidden>
+                Input
+                <select id="itemLineInputSelect"></select>
+              </label>
+              <label id="itemLineSourceWrap" hidden>
+                Target
+                <select id="itemLineSourceSelect">
+                  <option value="storeSalesOrder">Store Sales Order</option>
+                  <option value="intercompanySalesOrder">Paired Sales Order</option>
+                  <option value="supplierPurchaseOrder">Supplier Purchase Order</option>
+                </select>
+              </label>
+              <div id="itemLineMapWrap" class="property-row property-row-tight" hidden>
+                <button id="addItemLineMappingBtn" type="button" class="btn-secondary">MAP</button>
+              </div>
+              <div id="itemLineMappingsList" class="input-fields-list" hidden></div>
+              <label id="createRecordTargetWrap" hidden>
+                Record
+                <select id="createRecordTargetSelect">
+                  <option value="salesOrder">Sales Order</option>
+                  <option value="customerDeposit">Customer Deposit</option>
+                  <option value="customerRefund">Customer Refund</option>
+                  <option value="returnAuthorization">Return Authorisation</option>
+                </select>
+              </label>
+              <div id="createRecordMapWrap" class="property-row property-row-tight" hidden>
+                <button id="openCreateRecordMapBtn" type="button" class="btn-secondary">MAP</button>
+              </div>
+            </details>
+            <label id="startStatusWrap">
+              Status
+              <select id="startCaseStatus">
+                <option value="">No status change</option>
+              </select>
+            </label>
+            <details id="inputConfigWrap" class="property-segment">
+              <summary>Inputs</summary>
+              <div class="property-row property-row-tight">
+                <button id="addInputFieldBtn" type="button" class="btn-secondary">Add Input</button>
+              </div>
+              <div id="inputFieldsList" class="input-fields-list"></div>
+              <label hidden>
+                Input Type
+                <select id="inputTypeSelect">
+                  <option value="string">string</option>
+                  <option value="currency">Currency</option>
+                  <option value="list">List</option>
+                  <option value="boolean">Boolean</option>
+                </select>
+              </label>
+              <label id="inputListSourceWrap" hidden>
+                Source
+                <select id="inputListSourceSelect">
+                  <option value="salesOrderItems">Sales order items</option>
+                  <option value="item">Item</option>
+                </select>
+              </label>
+              <label id="inputListFieldWrap" hidden>
+                Field
+                <select id="inputListFieldSelect"></select>
+              </label>
+            </details>
+            <details id="checkConfigWrap" class="property-segment">
+              <summary>Check</summary>
+              <label>
+                Record Type
+                <select id="checkRecordType">
+                  <option value="affectedItem">Affected item</option>
+                  <option value="input">Input</option>
+                </select>
+              </label>
+              <label id="checkInputSourceWrap" hidden>
+                Input
+                <select id="checkInputSource"></select>
+              </label>
+              <label id="affectedItemSourceWrap">
+                Affected Item Source
+                <select id="checkAffectedItemSource">
+                  <option value="storeSalesOrder">Store Sales Order</option>
+                  <option value="intercompanySalesOrder">Intercompany Sales Order</option>
+                </select>
+              </label>
+              <div class="property-row property-row-tight">
+                <button id="addCheckRuleBtn" type="button" class="btn-secondary">Add Check</button>
+              </div>
+              <div id="checkRules"></div>
+            </details>
+            <details id="responseOptionsWrap" class="property-segment">
+              <summary>Response Options</summary>
+              <div class="property-row property-row-tight">
+                <button id="addOptionBtn" type="button" class="btn-secondary">Add Option</button>
+              </div>
+              <div id="responseOptions"></div>
+            </details>
+            <details id="pathRulesWrap" class="property-segment">
+              <summary>Outgoing Paths</summary>
+              <div id="pathRules"></div>
+            </details>
+            <button id="deleteNodeBtn" type="button" class="btn-danger">Delete Element</button>
+          </div>
+        </div>
+        <div class="workflow-sidebar-footer">
+          <div class="workflow-save-row">
+            <button id="deleteWorkflowBtn" type="button" class="workflow-delete-btn" aria-label="Delete workflow" title="Delete workflow">
+              <span class="workflow-delete-icon" aria-hidden="true"></span>
+            </button>
+            <button id="saveWorkflowBtn" type="button" class="btn-primary">Save Workflow</button>
+          </div>
+          <div id="deleteWorkflowConfirm" class="workflow-delete-confirm" hidden>
+            <p>you are about to delete this workflow - are you sure you want to continue?</p>
+            <div>
+              <button id="cancelDeleteWorkflowBtn" type="button" class="btn-secondary">Cancel</button>
+              <button id="confirmDeleteWorkflowBtn" type="button" class="btn-danger">Delete Workflow</button>
+            </div>
+          </div>
+          <p id="workflowStatus" class="workflow-status" aria-live="polite"></p>
+        </div>
+      </aside>
+
+      <section class="workflow-canvas-wrap">
+        <div class="workflow-canvas-toolbar">
+          <button id="workflowSidebarExpandToggle" class="workflow-sidebar-expand-toggle" type="button" aria-label="Expand workflow panel" title="Expand panel" hidden>
+            <span aria-hidden="true">&rsaquo;</span>
+          </button>
+          <span id="connectHint">Drag elements into the workspace. Drag a response connector to another element's input to create a path.</span>
+          <div class="workflow-toolbar-actions">
+            <label class="workflow-theme-toggle" title="Toggle dark mode">
+              <input id="workflowDarkModeToggle" class="workflow-dark-mode-toggle" type="checkbox">
+              <span class="workflow-theme-toggle-track" aria-hidden="true"></span>
+              <span class="workflow-theme-toggle-label">Dark</span>
+            </label>
+            <span id="workflowZoomLabel" class="workflow-zoom-label">100%</span>
+          </div>
+        </div>
+        <div id="workflowCanvas" class="workflow-canvas">
+          <div id="workflowSurface" class="workflow-surface">
+            <svg id="workflowEdges" class="workflow-edges"></svg>
+          </div>
+        </div>
+      </section>
+
+    </section>
+  </main>
+</body>
+</html>

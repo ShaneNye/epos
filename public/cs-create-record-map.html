@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/js/browserLogFilter.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>Create Record Mapping</title>
+  <link rel="stylesheet" href="/css/csCreateRecordMap.css">
+  <script defer src="/js/csCreateRecordMap.js"></script>
+</head>
+<body>
+  <header class="mapper-header">
+    <div>
+      <h1>Create Record Mapping</h1>
+      <p id="mapperContext">Configure source and target fields.</p>
+    </div>
+    <button id="saveMappingBtn" type="button" class="btn-primary">Save Mapping</button>
+  </header>
+
+  <main class="mapper-page">
+    <section class="mapper-board">
+      <aside class="mapper-panel field-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Source Fields</h2>
+            <p id="sourceContext">Source fields from Record Management.</p>
+          </div>
+        </div>
+        <div class="source-tabs" role="tablist" aria-label="Source type">
+          <button id="recordSourceTab" type="button" class="source-tab is-active">Record Fields</button>
+          <button id="workflowInputSourceTab" type="button" class="source-tab">Workflow Inputs</button>
+        </div>
+        <label id="sourceRecordWrap" class="select-label">
+          Source Record
+          <select id="sourceRecordSelect">
+            <option value="storeSalesOrder">Store Sales Order</option>
+            <option value="intercompanySalesOrder">Paired Sales Order</option>
+            <option value="case">Case</option>
+          </select>
+        </label>
+        <div id="sourceFieldList" class="field-list" aria-label="Source fields"></div>
+      </aside>
+
+      <section id="mappingDropZone" class="mapper-panel mapping-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Field Mapping</h2>
+            <p>Drag fields onto the mapping table. Edit a row to set static values or choose ID/name mapping.</p>
+          </div>
+        </div>
+        <div id="mappingTableWrap" class="mapping-table-wrap">
+          <table class="mapping-table">
+            <thead>
+              <tr>
+                <th class="icon-column"></th>
+                <th>Source Value</th>
+                <th class="arrow-column"></th>
+                <th>Creating Record Field</th>
+                <th class="icon-column"></th>
+              </tr>
+            </thead>
+            <tbody id="mappingRows" aria-label="Field mappings"></tbody>
+          </table>
+        </div>
+      </section>
+
+      <aside class="mapper-panel field-panel">
+        <div class="panel-heading">
+          <div>
+            <h2>Creating Record Fields</h2>
+            <p id="targetContext">Target fields from Record Management.</p>
+          </div>
+        </div>
+        <label class="select-label">
+          Target Record
+          <select id="targetRecordSelect">
+            <option value="salesOrder">Sales Order</option>
+            <option value="customerDeposit">Customer Deposit</option>
+            <option value="customerRefund">Customer Refund</option>
+            <option value="returnAuthorization">Return Authorisation</option>
+            <option value="supplierPurchaseOrder">Supplier Purchase Order</option>
+          </select>
+        </label>
+        <div id="targetFieldList" class="field-list" aria-label="Target fields"></div>
+      </aside>
+    </section>
+  </main>
+
+  <dialog id="mappingEditorDialog" class="mapping-dialog">
+    <form method="dialog">
+      <header>
+        <h2>Edit Mapping</h2>
+        <button id="closeEditorBtn" type="button" class="icon-button" aria-label="Close">x</button>
+      </header>
+      <div class="dialog-grid">
+        <label>
+          Target Field
+          <select id="editorTargetField"></select>
+        </label>
+        <label>
+          Value Type
+          <select id="editorMode">
+            <option value="source">Map from source</option>
+            <option value="static">Static value</option>
+            <option value="calculation">Calculation</option>
+          </select>
+        </label>
+        <label id="editorSourceWrap">
+          Source Field
+          <select id="editorSourceField"></select>
+        </label>
+        <label id="editorValueModeWrap">
+          Source Value
+          <select id="editorValueMode">
+            <option value="id">Internal ID</option>
+            <option value="name">Name / display value</option>
+          </select>
+        </label>
+        <label>
+          Send As
+          <select id="editorValueCast">
+            <option value="">Use target field type</option>
+            <option value="text">Text</option>
+            <option value="decimal">Decimal</option>
+            <option value="checkbox">Checkbox</option>
+            <option value="reference">NetSuite reference ID</option>
+          </select>
+        </label>
+        <label id="editorStaticWrap" class="dialog-wide">
+          Static Value
+          <input id="editorStaticValue" type="text" placeholder="Enter the value to set">
+        </label>
+        <label id="editorCalculationWrap" class="dialog-wide" hidden>
+          Calculation
+          <span class="calculation-editor-shell">
+            <textarea id="editorCalculationExpression" rows="3" placeholder="{line.amount} - {wf.input}"></textarea>
+            <span id="calculationSuggestionList" class="calculation-suggestion-list" hidden></span>
+          </span>
+          <small>Use line fields like {line.amount} and the selected workflow input as {wf.input}.</small>
+        </label>
+      </div>
+      <footer>
+        <button id="cancelEditorBtn" type="button" class="btn-secondary">Cancel</button>
+        <button id="saveEditorBtn" type="button" class="btn-primary">Save Row</button>
+      </footer>
+    </form>
+  </dialog>
+</body>
+</html>

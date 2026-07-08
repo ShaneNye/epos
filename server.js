@@ -596,6 +596,9 @@ app.use("/api/suitepim", require("./routes/suitepim"));
 app.use("/api/meta/store", require("./routes/storeName"));
 app.use("/api/meta/management-rules", require("./routes/managementRules"));
 app.use("/api/promotions", require("./routes/promotions"));
+app.use("/api/releases", require("./routes/releases"));
+app.use("/api/ai-manager", require("./routes/aiManager"));
+app.use("/api/cs-workflows", require("./routes/csWorkflows"));
 app.use("/api/vsa", require("./routes/vsa"));
 app.use("/api/systems-processes", require("./routes/systemsProcesses"));
 app.use("/api/google", require("./routes/google").router);
@@ -1659,6 +1662,9 @@ app.get("/suitepim/settings", (req, res) => sendNoCacheFile(res, path.join(__dir
 app.get("/suitepim/settings.html", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-settings.html")))
 app.get("/suitepim", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim.html")))
 app.get("/systems-processes", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "systems-processes.html")))
+app.get("/cs-workflows", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cs-workflows.html")))
+app.get("/cs-workflows/suiteql-studio", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cs-suiteql-studio.html")))
+app.get("/cs-workflows/create-record-map", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cs-create-record-map.html")))
 app.get("/rota", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "rota.html")))
 app.get("/suitepim/product-data", (req, res) => res.redirect(302, "/suitepim/web-management"))
 app.get("/suitepim/web-management", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-web-management.html")))

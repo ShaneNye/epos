@@ -1,0 +1,3748 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <script src="/js/browserLogFilter.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>Raise Case</title>
+  <style>
+    :root {
+      --brand: #0081ab;
+      --brand-600: #006c8e;
+      --brand-700: #00536f;
+      --brand-rgb: 0, 129, 171;
+      --brand-shadow: rgba(0, 129, 171, 0.18);
+      --accent: #f4b740;
+      --accent-600: #c98500;
+      --accent-soft: rgba(244, 183, 64, 0.16);
+      --ink: #1a1f24;
+      --muted: #667085;
+      --line: #e6e9ee;
+      --panel: #fff;
+      --bg: #f8fafc;
+      --radius: 6px;
+      --shadow: 0 1px 4px rgba(15, 23, 42, 0.08);
+    }
+
+    body {
+      box-sizing: border-box;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: "Inter", "Segoe UI", sans-serif;
+    }
+
+    .case-card {
+      width: 100%;
+      min-height: 100vh;
+      margin: 0;
+      padding: 0;
+      background: var(--panel);
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+      overflow: hidden;
+    }
+
+    .case-header {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 1rem;
+      align-items: start;
+      padding: 0.8rem 1rem;
+      border-bottom: 0;
+      background: var(--brand);
+      color: #fff;
+    }
+
+    .case-title-wrap {
+      display: flex;
+      align-items: center;
+      gap: 0.65rem;
+      min-width: 0;
+    }
+
+    .case-header h1 {
+      margin: 0;
+      color: #fff;
+      font-size: 1.2rem;
+    }
+
+    .header-step-toggle {
+      display: none;
+      place-items: center;
+      width: 34px;
+      min-height: 32px;
+      padding: 0;
+      border-color: rgba(255, 255, 255, 0.35);
+      background: rgba(255, 255, 255, 0.14);
+      color: #fff;
+      font-size: 1.05rem;
+      line-height: 1;
+    }
+
+    body.workflow-steps-available .header-step-toggle {
+      display: inline-grid;
+    }
+
+    .case-context {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+      justify-content: flex-end;
+      color: #fff;
+      font-size: 0.78rem;
+      font-weight: 700;
+    }
+
+    .case-context span {
+      padding: 0.18rem 0.42rem;
+      border: 1px solid rgba(255, 255, 255, 0.3);
+      border-radius: 4px;
+      background: rgba(255, 255, 255, 0.12);
+      white-space: nowrap;
+    }
+
+    .case-body {
+      padding: 0.8rem 1rem 1rem;
+    }
+
+    .case-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.8rem 0.9rem;
+    }
+
+    .case-tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 0.7rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .case-tab {
+      border: 1px solid transparent;
+      border-bottom: 0;
+      border-radius: 4px 4px 0 0;
+      background: transparent;
+      color: var(--muted);
+      min-height: 31px;
+      padding: 0.28rem 0.65rem;
+    }
+
+    .case-tab.active {
+      border-color: var(--line);
+      border-top-color: var(--accent);
+      background: #fff;
+      color: var(--brand);
+      box-shadow: inset 0 2px 0 var(--accent);
+    }
+
+    .case-panel[hidden] {
+      display: none;
+    }
+
+    label {
+      display: flex;
+      flex-direction: column;
+      gap: 0.35rem;
+      color: #2f3e46;
+      font-size: 0.84rem;
+      font-weight: 700;
+    }
+
+    input,
+    select,
+    textarea {
+      box-sizing: border-box;
+      width: 100%;
+      min-height: 36px;
+      padding: 0.42rem 0.55rem;
+      border: 1px solid #d8dee2;
+      border-radius: 4px;
+      background: #fff;
+      color: var(--ink);
+      font: inherit;
+    }
+
+    textarea {
+      min-height: 88px;
+      resize: vertical;
+    }
+
+    input[readonly] {
+      background: #f8fafb;
+      color: #475467;
+    }
+
+    .case-status {
+      min-height: 1.25rem;
+      margin: 0.5rem 0;
+      color: var(--muted);
+      font-size: 0.84rem;
+    }
+
+    .actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.65rem;
+      margin-top: 0.6rem;
+    }
+
+    body.customer-service-active .actions,
+    body.customer-service-active .ai-case-summary {
+      display: none;
+    }
+
+    .ai-case-summary {
+      margin: 0 1rem 1rem;
+      padding-top: 0.8rem;
+      border-top: 1px solid var(--line);
+      background: #fff;
+    }
+
+    .ai-case-summary[hidden] {
+      display: none;
+    }
+
+    .ai-case-summary h2 {
+      margin: 0 0 0.45rem;
+      color: var(--ink);
+      font-size: 0.95rem;
+    }
+
+    .ai-case-summary-body {
+      max-width: 900px;
+      margin: 0;
+      color: #344054;
+      font-size: 0.88rem;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .ai-case-check {
+      max-width: 900px;
+      margin-top: 0.8rem;
+      padding: 0.8rem 0.9rem;
+      border: 1px solid #f0c36a;
+      border-left: 4px solid #f59e0b;
+      border-radius: 4px;
+      background: #fffbeb;
+      color: #7c4a03;
+    }
+
+    .ai-case-check[hidden] {
+      display: none;
+    }
+
+    .ai-case-check h3 {
+      margin: 0 0 0.4rem;
+      font-size: 0.9rem;
+      color: #7c4a03;
+    }
+
+    .ai-case-check ul {
+      margin: 0;
+      padding-left: 1.1rem;
+    }
+
+    .ai-case-check li + li {
+      margin-top: 0.25rem;
+    }
+
+    .case-notes-layout {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(260px, 0.45fr);
+      gap: 1rem;
+    }
+
+    .case-notes-list {
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .case-note {
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 0.7rem;
+      background: #fff;
+    }
+
+    .case-note strong {
+      display: block;
+      margin-bottom: 0.25rem;
+      color: var(--ink);
+    }
+
+    .case-note small {
+      display: block;
+      margin-bottom: 0.45rem;
+      color: var(--muted);
+    }
+
+    .case-note p {
+      margin: 0;
+      color: #344054;
+      white-space: pre-wrap;
+    }
+
+    .case-note-form {
+      display: grid;
+      gap: 0.75rem;
+      align-content: start;
+    }
+
+    .case-workflow-layout {
+      display: grid;
+      gap: 0.65rem;
+    }
+
+    .workflow-runner {
+      display: grid;
+      gap: 0.65rem;
+      max-width: none;
+    }
+
+    .workflow-run-shell {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      gap: 0.75rem;
+      align-items: start;
+      max-width: none;
+    }
+
+    .workflow-step-panel {
+      position: fixed;
+      inset: 0 auto 0 0;
+      z-index: 50;
+      width: min(310px, 86vw);
+      max-height: 100vh;
+      box-sizing: border-box;
+      border-right: 1px solid var(--line);
+      background: #fff;
+      padding: 0.85rem;
+      box-shadow: 12px 0 28px rgba(15, 23, 42, 0.16);
+      transform: translateX(-104%);
+      transition: transform 0.18s ease;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .workflow-step-panel.open {
+      transform: translateX(0);
+    }
+
+    .workflow-step-panel-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.65rem;
+      margin-bottom: 0.75rem;
+      padding-bottom: 0.65rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .workflow-step-panel h3 {
+      margin: 0;
+      font-size: 0.86rem;
+      color: #344054;
+    }
+
+    .workflow-drawer-tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 0.75rem;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .workflow-drawer-tab {
+      min-height: 30px;
+      padding: 0.32rem 0.45rem;
+      border: 1px solid transparent;
+      border-bottom: 0;
+      background: transparent;
+      color: #475467;
+      font-size: 0.78rem;
+    }
+
+    .workflow-drawer-tab.active {
+      border-color: var(--line);
+      background: #fff;
+      color: var(--brand);
+    }
+
+    #workflowStepsDrawerBody,
+    #workflowActionsDrawerBody {
+      min-height: 0;
+      flex: 1 1 auto;
+      overflow-y: auto;
+      padding-right: 0.15rem;
+    }
+
+    .workflow-step-close {
+      width: 32px;
+      min-height: 30px;
+      padding: 0;
+      background: #fff;
+    }
+
+    .workflow-step-list {
+      display: grid;
+      gap: 0.32rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .workflow-step {
+      width: 100%;
+      min-height: 30px;
+      padding: 0.32rem 0.42rem;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #f8fafc;
+      color: var(--muted);
+      font-size: 0.76rem;
+      text-align: left;
+    }
+
+    .workflow-step.completed {
+      border-color: #86efac;
+      background: #f0fdf4;
+      color: #166534;
+    }
+
+    .workflow-step.current {
+      border-color: var(--brand);
+      background: #eef8fb;
+      color: var(--ink);
+      font-weight: 900;
+    }
+
+    .workflow-step.future {
+      color: #98a2b3;
+      cursor: default;
+      opacity: 0.75;
+    }
+
+    .workflow-step:disabled {
+      cursor: default;
+    }
+
+    .workflow-drawer-section {
+      display: grid;
+      gap: 0.55rem;
+    }
+
+    .workflow-drawer-section h4 {
+      margin: 0.3rem 0 0;
+      font-size: 0.82rem;
+      color: #101828;
+    }
+
+    .workflow-log-card {
+      display: grid;
+      gap: 0.35rem;
+      padding: 0.55rem;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #f8fafc;
+      font-size: 0.76rem;
+    }
+
+    .workflow-log-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.4rem;
+      font-weight: 900;
+      color: #101828;
+    }
+
+    .workflow-result-pill {
+      border-radius: 999px;
+      padding: 0.12rem 0.4rem;
+      border: 1px solid #d0d5dd;
+      background: #fff;
+      color: #475467;
+      font-size: 0.68rem;
+      white-space: nowrap;
+    }
+
+    .workflow-result-pill.pass {
+      border-color: #86efac;
+      background: #f0fdf4;
+      color: #166534;
+    }
+
+    .workflow-result-pill.fail {
+      border-color: #fecaca;
+      background: #fef2f2;
+      color: #991b1b;
+    }
+
+    .workflow-check-rule {
+      padding-top: 0.35rem;
+      border-top: 1px solid #e4e7ec;
+      color: #344054;
+      line-height: 1.35;
+    }
+
+    .workflow-captured-data {
+      margin: 0;
+      max-height: 150px;
+      overflow: auto;
+      padding: 0.45rem;
+      border: 1px solid #e4e7ec;
+      border-radius: 4px;
+      background: #fff;
+      color: #344054;
+      white-space: pre-wrap;
+      font-size: 0.68rem;
+    }
+
+    .workflow-question-card {
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      padding: 0.75rem;
+      background: #fff;
+    }
+
+    .workflow-question-card h3 {
+      margin: 0 0 0.55rem;
+      font-size: 0.95rem;
+      line-height: 1.25;
+    }
+
+    .workflow-description {
+      margin: 0 0 0.8rem;
+      color: #344054;
+      line-height: 1.45;
+      white-space: pre-wrap;
+    }
+
+    .workflow-options {
+      display: grid;
+      gap: 0.4rem;
+    }
+
+    .workflow-option {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.5rem;
+      align-items: center;
+      padding: 0.38rem 0.5rem;
+      border: 1px solid #d8dee2;
+      border-radius: 4px;
+      background: #fff;
+      font-weight: 700;
+    }
+
+    .workflow-option input {
+      width: auto;
+      min-height: auto;
+    }
+
+    .workflow-input-fields {
+      display: grid;
+      gap: 0.75rem;
+    }
+
+    .workflow-item-search-field {
+      position: relative;
+    }
+
+    .workflow-item-suggestions {
+      position: absolute;
+      z-index: 20;
+      left: 0;
+      right: 0;
+      top: calc(100% + 0.25rem);
+      max-height: 240px;
+      overflow: auto;
+      border: 1px solid #cfd8e3;
+      border-radius: 6px;
+      background: #fff;
+      box-shadow: 0 12px 24px rgba(15, 23, 42, 0.14);
+    }
+
+    .workflow-item-suggestions button {
+      display: grid;
+      gap: 0.12rem;
+      width: 100%;
+      min-height: 0;
+      padding: 0.55rem 0.65rem;
+      border: 0;
+      border-bottom: 1px solid #edf1f5;
+      border-radius: 0;
+      background: #fff;
+      color: var(--ink);
+      text-align: left;
+    }
+
+    .workflow-item-suggestions button:hover,
+    .workflow-item-suggestions button:focus-visible {
+      background: #eef9fc;
+      outline: none;
+    }
+
+    .workflow-item-suggestions small,
+    .workflow-item-suggestion-empty {
+      color: var(--muted);
+      font-size: 0.78rem;
+    }
+
+    .workflow-item-suggestion-empty {
+      padding: 0.65rem;
+    }
+
+    .workflow-run-actions {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      margin-top: 0.45rem;
+    }
+
+    .workflow-action-table {
+      width: 100%;
+      max-width: none;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      background: #fff;
+      font-size: 0.88rem;
+    }
+
+    .workflow-action-table th,
+    .workflow-action-table td {
+      padding: 0.55rem 0.65rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .workflow-action-table th {
+      background: #f3f6f8;
+      color: #344054;
+    }
+
+    .workflow-action-response {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      gap: 0.5rem;
+      align-items: start;
+    }
+
+    .workflow-action-icon {
+      width: 1.25rem;
+      height: 1.25rem;
+      border-radius: 999px;
+      display: inline-grid;
+      place-items: center;
+      font-size: 0.78rem;
+      font-weight: 900;
+      line-height: 1;
+      background: #eef4ff;
+      color: #175cd3;
+      border: 1px solid #b2ccff;
+    }
+
+    .workflow-action-icon::before {
+      content: "\2026";
+    }
+
+    .workflow-action-icon.success {
+      background: #ecfdf3;
+      color: #027a48;
+      border-color: #abefc6;
+    }
+
+    .workflow-action-icon.success::before {
+      content: "\2713";
+    }
+
+    .workflow-action-icon.failed {
+      background: #fef3f2;
+      color: #b42318;
+      border-color: #fecdca;
+    }
+
+    .workflow-action-icon.failed::before {
+      content: "\00D7";
+    }
+
+    .workflow-action-icon.warning {
+      background: #fffaeb;
+      color: #b54708;
+      border-color: #fedf89;
+    }
+
+    .workflow-action-icon.warning::before {
+      content: "!";
+      font-weight: 900;
+    }
+
+    .workflow-action-icon.running {
+      background: #fff;
+      color: transparent;
+      border-color: #b2ccff;
+      position: relative;
+    }
+
+    .workflow-action-icon.running::before {
+      content: "";
+      width: 0.72rem;
+      height: 0.72rem;
+      border-radius: 999px;
+      border: 2px solid #b2ccff;
+      border-top-color: #175cd3;
+      animation: workflowActionSpin 0.75s linear infinite;
+    }
+
+    .workflow-check-running {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.45rem;
+      justify-content: center;
+      width: 100%;
+      margin: 0.75rem 0 0.35rem;
+      color: #475467;
+      font-weight: 800;
+      text-align: center;
+    }
+
+    .workflow-check-spinner {
+      width: 1.75rem;
+      height: 1.75rem;
+      border-radius: 999px;
+      border: 3px solid #d1e0ff;
+      border-top-color: var(--brand);
+      animation: workflowActionSpin 0.75s linear infinite;
+    }
+
+    .workflow-check-note {
+      text-align: center;
+    }
+
+    @keyframes workflowActionSpin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    .workflow-action-error {
+      margin-top: 0.3rem;
+      color: #b42318;
+      font-weight: 700;
+    }
+
+    .workflow-action-debug {
+      margin-top: 0.45rem;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      background: #f8fafc;
+      color: var(--ink);
+      font-size: 0.78rem;
+    }
+
+    .workflow-action-debug summary {
+      cursor: pointer;
+      padding: 0.45rem 0.55rem;
+      font-weight: 800;
+    }
+
+    .workflow-action-debug-body {
+      display: grid;
+      gap: 0.45rem;
+      padding: 0 0.55rem 0.55rem;
+    }
+
+    .workflow-debug-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+    }
+
+    .workflow-debug-table th,
+    .workflow-debug-table td {
+      border: 1px solid var(--line);
+      padding: 0.3rem 0.4rem;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .workflow-allocation-panel {
+      margin-top: 0.55rem;
+      border: 1px solid #d0d5dd;
+      background: #fff;
+      border-radius: 6px;
+      padding: 0.6rem;
+      max-width: 560px;
+    }
+
+    .workflow-allocation-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      align-items: baseline;
+      margin-bottom: 0.45rem;
+    }
+
+    .workflow-allocation-total {
+      color: #475467;
+      font-size: 0.82rem;
+      white-space: nowrap;
+    }
+
+    .workflow-allocation-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: #fff;
+      font-size: 0.82rem;
+    }
+
+    .workflow-allocation-table th,
+    .workflow-allocation-table td {
+      border: 1px solid var(--line);
+      padding: 0.4rem;
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .workflow-allocation-table input[type="number"] {
+      width: 7rem;
+      max-width: 100%;
+      min-height: 30px;
+      padding: 0.25rem 0.4rem;
+    }
+
+    .workflow-allocation-actions {
+      display: flex;
+      gap: 0.5rem;
+      justify-content: flex-end;
+      align-items: center;
+      margin-top: 0.5rem;
+    }
+
+    .workflow-validation-table {
+      width: 100%;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      background: #fff;
+      font-size: 0.84rem;
+    }
+
+    .workflow-validation-table th,
+    .workflow-validation-table td {
+      padding: 0.5rem 0.55rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    .workflow-validation-table th {
+      background: #f3f6f8;
+      color: #344054;
+    }
+
+    .workflow-validation-table input {
+      width: auto;
+      min-height: auto;
+    }
+
+    button {
+      min-height: 34px;
+      padding: 0.38rem 0.75rem;
+      border-radius: 4px;
+      border: 1px solid #d8dee2;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      border-color: var(--brand);
+      background: var(--brand);
+      color: #fff;
+    }
+
+    .btn-primary:hover {
+      background: var(--brand-600);
+    }
+
+    .btn-secondary {
+      background: #fff;
+      color: var(--ink);
+    }
+
+    @media (max-width: 620px) {
+      body {
+        padding: 0.8rem;
+      }
+
+      .case-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .case-notes-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .workflow-run-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .actions {
+        flex-direction: column-reverse;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="case-card">
+    <header class="case-header">
+      <div class="case-title-wrap">
+        <button id="headerWorkflowStepToggle" class="header-step-toggle" type="button" aria-label="Show workflow steps" aria-expanded="false">&#9776;</button>
+        <h1>Raise Case</h1>
+      </div>
+      <div class="case-context" aria-label="Case context">
+        <span id="contextDate">Today</span>
+        <span id="contextStore">Store</span>
+        <span id="contextCustomer">Customer</span>
+      </div>
+    </header>
+
+    <form id="raiseCaseForm" class="case-body">
+      <div class="case-tabs" role="tablist" aria-label="Raise case sections">
+        <button id="primaryInfoTab" class="case-tab active" type="button" role="tab" aria-selected="true" aria-controls="primaryInfoPanel" data-panel="primaryInfoPanel">Primary Info</button>
+        <button id="incidentInfoTab" class="case-tab" type="button" role="tab" aria-selected="false" aria-controls="incidentInfoPanel" data-panel="incidentInfoPanel">Incident Info</button>
+        <button id="userNotesTab" class="case-tab" type="button" role="tab" aria-selected="false" aria-controls="userNotesPanel" data-panel="userNotesPanel">User Notes</button>
+        <button id="customerServiceTab" class="case-tab" type="button" role="tab" aria-selected="false" aria-controls="customerServicePanel" data-panel="customerServicePanel">Customer Service</button>
+      </div>
+
+      <div id="primaryInfoPanel" class="case-panel case-grid" role="tabpanel" aria-labelledby="primaryInfoTab">
+        <label>
+          Subject
+          <input id="caseSubject" name="subject" type="text" required>
+        </label>
+
+        <label>
+          Store
+          <input id="caseStoreName" name="storeName" type="text" readonly>
+          <input id="caseStore" name="store" type="hidden">
+          <input id="caseStoreNetSuiteId" name="storeNetSuiteId" type="hidden">
+          <input id="caseStoreDistributionLocationId" name="storeDistributionLocationId" type="hidden">
+        </label>
+
+        <label>
+          Customer
+          <input id="caseCustomerName" name="customerName" type="text" readonly>
+          <input id="caseCustomerId" name="customerId" type="hidden">
+        </label>
+
+        <label>
+          Status
+          <input id="caseStatusName" name="statusName" type="text" readonly>
+          <input id="caseStatus" name="status" type="hidden">
+        </label>
+
+        <label>
+          Assigned To
+          <select id="caseAssignedTo" name="assignedTo" required>
+            <option value="">Loading users...</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="incidentInfoPanel" class="case-panel case-grid" role="tabpanel" aria-labelledby="incidentInfoTab" hidden>
+        <label>
+          Incident Date
+          <input id="caseIncidentDate" name="incidentDate" type="date">
+        </label>
+
+        <label>
+          Type
+          <select id="caseType" name="type">
+            <option value="">Loading types...</option>
+          </select>
+        </label>
+
+        <label>
+          Sub-Type
+          <select id="caseSubType" name="subType">
+            <option value="">Loading sub-types...</option>
+          </select>
+        </label>
+
+        <label>
+          Item
+          <select id="caseItem" name="item">
+            <option value="">Loading items...</option>
+          </select>
+        </label>
+      </div>
+
+      <div id="userNotesPanel" class="case-panel case-notes-layout" role="tabpanel" aria-labelledby="userNotesTab" hidden>
+        <div>
+          <div id="caseNotesList" class="case-notes-list" aria-live="polite">
+            <p class="case-status">Open an existing case to review user notes.</p>
+          </div>
+        </div>
+
+        <div class="case-note-form">
+          <label>
+            Note Title
+            <input id="caseNoteTitle" type="text" placeholder="Add a note title">
+          </label>
+          <label>
+            Note
+            <textarea id="caseNoteText" placeholder="Add a user note"></textarea>
+          </label>
+          <button id="addCaseNoteBtn" type="button" class="btn-secondary">Add Note</button>
+          <div id="caseNoteStatus" class="case-status" aria-live="polite"></div>
+        </div>
+      </div>
+
+      <div id="customerServicePanel" class="case-panel case-workflow-layout" role="tabpanel" aria-labelledby="customerServiceTab" hidden>
+        <label>
+          Workflow
+          <select id="caseWorkflowSelect">
+            <option value="">Loading workflows...</option>
+          </select>
+        </label>
+
+        <div id="caseWorkflowRunner" class="workflow-runner" aria-live="polite">
+          <p class="case-status">Select a workflow to begin.</p>
+        </div>
+
+        <table id="caseWorkflowActionTable" class="workflow-action-table" hidden>
+          <thead>
+            <tr>
+              <th style="width: 90px;">Step</th>
+              <th>Action Message</th>
+            </tr>
+          </thead>
+          <tbody id="caseWorkflowActions">
+            <tr>
+              <td colspan="2">No workflow actions have been submitted yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div id="caseStatusText" class="case-status" aria-live="polite"></div>
+
+      <div class="actions">
+        <button type="button" id="cancelBtn" class="btn-secondary">Cancel</button>
+        <button type="submit" class="btn-primary">Create Case</button>
+      </div>
+    </form>
+
+    <section id="aiCaseSummary" class="ai-case-summary" aria-live="polite" hidden>
+      <h2>Case Summary</h2>
+      <p id="aiCaseSummaryBody" class="ai-case-summary-body">Loading draft case summary...</p>
+      <div id="aiCaseCheck" class="ai-case-check" hidden>
+        <h3>Please check</h3>
+        <ul id="aiCaseCheckList"></ul>
+      </div>
+    </section>
+
+    <aside id="workflowStepsDrawer" class="workflow-step-panel" aria-label="Workflow steps" aria-hidden="true">
+      <div class="workflow-step-panel-head">
+        <h3>Workflow</h3>
+        <button id="workflowStepsClose" class="workflow-step-close" type="button" aria-label="Close workflow steps">x</button>
+      </div>
+      <div class="workflow-drawer-tabs" role="tablist" aria-label="Workflow drawer">
+        <button id="workflowDrawerStepsTab" class="workflow-drawer-tab active" type="button" data-workflow-drawer-tab="steps">Workflow Steps</button>
+        <button id="workflowDrawerActionsTab" class="workflow-drawer-tab" type="button" data-workflow-drawer-tab="actions">Actions</button>
+      </div>
+      <div id="workflowStepsDrawerBody"></div>
+      <div id="workflowActionsDrawerBody" hidden></div>
+    </aside>
+  </main>
+
+  <script src="/js/storage.js"></script>
+  <script>
+    const USER_THEME_CACHE_KEY = "eposUserTheme";
+    let loadedCase = null;
+    const caseNoteCache = new Map();
+    const workflowRun = {
+      workflows: [],
+      records: [],
+      inputOptionsCache: new Map(),
+      itemSearchItems: [],
+      itemSearchLoading: null,
+      selected: null,
+      currentNodeId: "",
+      started: false,
+      stepHistory: [],
+      answers: [],
+      actions: [],
+      actionApprovals: [],
+      checks: [],
+      debugSessionId: `case-debug-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
+      debugUser: null,
+      debugNodeIds: [],
+      debugEdgeIds: [],
+      debugActionNodeIds: [],
+      collectingFromStepIndex: -1,
+      drawerTab: "steps",
+      runningCheckNodeId: "",
+      terminalNodeId: "",
+      awaitingActionApproval: false,
+      complete: false,
+      actionsRendered: false,
+      timer: null,
+    };
+
+    function params() {
+      return new URLSearchParams(window.location.search);
+    }
+
+    function authHeaders(extra = {}) {
+      const saved =
+        (typeof storageGet === "function" ? storageGet() : null) ||
+        (window.opener && typeof window.opener.storageGet === "function" ? window.opener.storageGet() : null);
+      return {
+        ...extra,
+        ...(saved?.token ? { Authorization: `Bearer ${saved.token}` } : {}),
+      };
+    }
+
+    function currentStoredSession() {
+      return (
+        (typeof storageGet === "function" ? storageGet() : null) ||
+        (window.opener && typeof window.opener.storageGet === "function" ? window.opener.storageGet() : null) ||
+        {}
+      );
+    }
+
+    function isHexColor(value) {
+      return /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(String(value || "").trim());
+    }
+
+    function normalizeHexColor(value) {
+      if (!isHexColor(value)) return "";
+      const hex = String(value).trim();
+      if (hex.length === 4) return `#${hex[1]}${hex[1]}${hex[2]}${hex[2]}${hex[3]}${hex[3]}`.toUpperCase();
+      return hex.toUpperCase();
+    }
+
+    function hexToRgb(hex) {
+      const normalized = normalizeHexColor(hex);
+      if (!normalized) return null;
+      const value = parseInt(normalized.slice(1), 16);
+      return {
+        r: (value >> 16) & 255,
+        g: (value >> 8) & 255,
+        b: value & 255,
+      };
+    }
+
+    function rgbToHex({ r, g, b }) {
+      return `#${[r, g, b].map((value) => Math.max(0, Math.min(255, Math.round(value))).toString(16).padStart(2, "0")).join("")}`.toUpperCase();
+    }
+
+    function mixColors(a, b, weight) {
+      const first = hexToRgb(a);
+      const second = hexToRgb(b);
+      if (!first || !second) return normalizeHexColor(a);
+      const w = Math.max(0, Math.min(1, weight));
+      return rgbToHex({
+        r: first.r * (1 - w) + second.r * w,
+        g: first.g * (1 - w) + second.g * w,
+        b: first.b * (1 - w) + second.b * w,
+      });
+    }
+
+    function userThemeCacheKey() {
+      const saved = currentStoredSession();
+      const userKey = String(saved?.username || saved?.email || saved?.user?.email || "").trim().toLowerCase();
+      return userKey ? `${USER_THEME_CACHE_KEY}:${userKey}` : USER_THEME_CACHE_KEY;
+    }
+
+    function getCachedPopupTheme() {
+      try {
+        return JSON.parse(localStorage.getItem(userThemeCacheKey()) || localStorage.getItem(USER_THEME_CACHE_KEY) || "null");
+      } catch {
+        return null;
+      }
+    }
+
+    function applyPopupUserTheme() {
+      const saved = currentStoredSession();
+      const openerTheme = window.opener?.document?.documentElement;
+      const cached = getCachedPopupTheme() || {};
+      const primary = normalizeHexColor(
+        saved.themeHex ||
+        saved.themehex ||
+        saved.theme?.primary ||
+        cached.primary ||
+        cached.themeHex ||
+        openerTheme?.style?.getPropertyValue("--brand")
+      );
+      const accent = normalizeHexColor(
+        saved.themeAccentHex ||
+        saved.themeaccenthex ||
+        saved.theme?.accent ||
+        cached.accent ||
+        cached.themeAccentHex ||
+        openerTheme?.style?.getPropertyValue("--accent")
+      );
+      const root = document.documentElement;
+
+      if (primary) {
+        const rgb = hexToRgb(primary);
+        const rgbText = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
+        root.style.setProperty("--brand", primary);
+        root.style.setProperty("--brand-600", mixColors(primary, "#000000", 0.12));
+        root.style.setProperty("--brand-700", mixColors(primary, "#000000", 0.24));
+        root.style.setProperty("--brand-rgb", rgbText);
+        root.style.setProperty("--brand-shadow", `rgba(${rgbText}, 0.18)`);
+      }
+
+      if (accent) {
+        const rgb = hexToRgb(accent);
+        const rgbText = `${rgb.r}, ${rgb.g}, ${rgb.b}`;
+        root.style.setProperty("--accent", accent);
+        root.style.setProperty("--accent-600", mixColors(accent, "#000000", 0.16));
+        root.style.setProperty("--accent-soft", `rgba(${rgbText}, 0.16)`);
+      }
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function displayWorkflowValue(value) {
+      if (value === null || value === undefined || value === "") return "blank";
+      return String(value);
+    }
+
+    function workflowOperatorLabel(operator) {
+      return ({
+        equals: "equals",
+        notEquals: "does not equal",
+        greaterThan: "is greater than",
+        lessThan: "is less than",
+        isSet: "is set",
+        isNotSet: "is not set",
+      })[operator] || operator || "equals";
+    }
+
+    function workflowActionTypeLabel(type = "") {
+      return ({
+        setCaseStatus: "Set Case Status",
+        itemLineAction: "Item Line Action",
+        closeSalesLine: "Close Sales Line",
+        closeIntercompanyLine: "Close Intercompany Line",
+        closeSupplierPurchaseOrderLine: "Close Supplier Purchase Order Line",
+        createRecord: "Create Record",
+      })[type] || "Action message only";
+    }
+
+    function workflowActionMessageHtml(action = {}) {
+      const text = escapeHtml(action.executionMessage || action.message || "No action note was set.");
+      const url = String(action.executionDocumentUrl || "").trim();
+      const number = String(action.executionDocumentNumber || "").trim();
+      if (!url || !number) return text;
+      const link = `<a href="${escapeHtml(url)}" class="related-popup-link" title="Open in NetSuite">${escapeHtml(number)}</a>`;
+      const escapedNumber = escapeHtml(number);
+      return text.includes(escapedNumber) ? text.replace(escapedNumber, link) : `${text} ${link}`;
+    }
+
+    function workflowActionAllocationHtml(action = {}, index = 0) {
+      if (action.executionState !== "needsInput" || action.needsInput !== "customerDepositAllocation") return "";
+      const deposits = Array.isArray(action.depositOptions) ? action.depositOptions : [];
+      const expected = Number(action.expectedAmount || 0);
+      const rows = deposits.map((deposit, rowIndex) => {
+        const amount = Number(deposit.total || deposit.amount || 0);
+        return `
+          <tr>
+            <td><input type="checkbox" data-allocation-select="${index}" data-allocation-row="${rowIndex}" ${deposits.length === 1 ? "checked" : ""}></td>
+            <td>${escapeHtml(deposit.tranId || deposit.id || "-")}</td>
+            <td>${escapeHtml(deposit.total || deposit.amount || "-")}</td>
+            <td><input type="number" step="0.01" min="0" max="${escapeHtml(String(amount || expected || ""))}" value="" data-allocation-amount="${index}" data-allocation-row="${rowIndex}"></td>
+          </tr>
+        `;
+      }).join("");
+      return `
+        <div class="workflow-allocation-panel" data-allocation-panel="${index}">
+          <div class="workflow-allocation-head">
+            <strong>Customer deposit allocation</strong>
+            <span class="workflow-allocation-total">Refund total: ${escapeHtml(expected ? expected.toFixed(2) : "-")}</span>
+          </div>
+          <table class="workflow-allocation-table">
+            <thead>
+              <tr>
+                <th>Use</th>
+                <th>Deposit</th>
+                <th>Available</th>
+                <th>Refund amount</th>
+              </tr>
+            </thead>
+            <tbody>${rows || `<tr><td colspan="4">No customer deposits were returned.</td></tr>`}</tbody>
+          </table>
+          <div class="workflow-allocation-actions">
+            <span class="workflow-action-error" data-allocation-error="${index}" hidden></span>
+            <button type="button" class="btn-primary" data-allocation-confirm="${index}">Continue</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function workflowActionDebugHtml(debug = null) {
+      if (!debug || typeof debug !== "object") return "";
+      const po = debug.supplierPurchaseOrder || {};
+      const expected = debug.expectedItem || {};
+      const paired = debug.pairedSalesOrder || {};
+      const items = Array.isArray(debug.availableItems) ? debug.availableItems : [];
+      const poNumber = po.documentNumber || po.id || "";
+      const poLink = po.url && poNumber
+        ? `<a href="${escapeHtml(po.url)}" class="related-popup-link" title="Open in NetSuite">${escapeHtml(poNumber)}</a>`
+        : escapeHtml(poNumber || "-");
+      return `
+        <details class="workflow-action-debug" data-workflow-action-debug>
+          <summary>Debug details</summary>
+          <div class="workflow-action-debug-body">
+            <div><strong>Supplier PO:</strong> ${poLink}</div>
+            <div><strong>Expected item:</strong> ${escapeHtml(expected.name || "-")} ${expected.id ? `(${escapeHtml(expected.id)})` : ""}</div>
+            <div><strong>Paired Sales Order:</strong> ${escapeHtml(paired.documentNumber || paired.id || "-")} ${paired.lineId ? `line ${escapeHtml(paired.lineId)}` : ""}</div>
+            <table class="workflow-debug-table">
+              <thead>
+                <tr>
+                  <th>Line</th>
+                  <th>Item ID</th>
+                  <th>Item</th>
+                  <th>Qty</th>
+                  <th>Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${items.length ? items.map((item) => `
+                  <tr>
+                    <td>${escapeHtml(item.lineSequenceNumber || item.lineId || "")}</td>
+                    <td>${escapeHtml(item.itemId || "")}</td>
+                    <td>${escapeHtml(item.itemName || "")}</td>
+                    <td>${escapeHtml(item.quantity || "")}</td>
+                    <td>${escapeHtml(item.amount || "")}</td>
+                  </tr>
+                `).join("") : '<tr><td colspan="5">No item lines were returned for this purchase order.</td></tr>'}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      `;
+    }
+
+    function normaliseWorkflowCompareValue(value) {
+      if (value === null || value === undefined) return "";
+      return String(value).trim();
+    }
+
+    function workflowNumericValue(value) {
+      const number = Number(String(value ?? "").replace(/[^0-9.-]/g, ""));
+      return Number.isFinite(number) ? number : null;
+    }
+
+    function compareWorkflowValues(actualValue, operator = "equals", expectedValue = "") {
+      const actual = normaliseWorkflowCompareValue(actualValue);
+      const expected = normaliseWorkflowCompareValue(expectedValue);
+      if (operator === "isSet") return actual !== "";
+      if (operator === "isNotSet") return actual === "";
+      const actualNumber = workflowNumericValue(actual);
+      const expectedNumber = workflowNumericValue(expected);
+      if (operator === "greaterThan" && actualNumber !== null && expectedNumber !== null) return actualNumber > expectedNumber;
+      if (operator === "lessThan" && actualNumber !== null && expectedNumber !== null) return actualNumber < expectedNumber;
+      if (operator === "notEquals") return actual.toLowerCase() !== expected.toLowerCase();
+      return actual.toLowerCase() === expected.toLowerCase();
+    }
+
+    function locationValue(location = {}) {
+      return String(location.id || location.locationId || location.location_id || "").trim();
+    }
+
+    function locationLabel(location = {}) {
+      return String(location.name || location.storeName || location.store_name || location.label || locationValue(location)).trim();
+    }
+
+    function locationNetSuiteId(location = {}) {
+      return String(location.netsuiteInternalId || location.netsuite_internal_id || location.netsuiteId || location.netsuiteid || "").trim();
+    }
+
+    function locationDistributionId(location = {}) {
+      return String(location.distributionLocationId || location.distribution_location_id || "").trim();
+    }
+
+    function todayIsoDate() {
+      const now = new Date();
+      const offset = now.getTimezoneOffset();
+      return new Date(now.getTime() - offset * 60000).toISOString().slice(0, 10);
+    }
+
+    function todayDisplayDate() {
+      return new Date().toLocaleDateString("en-GB", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      });
+    }
+
+    function openerLocations() {
+      try {
+        return Array.isArray(window.opener?._salesLocations) ? window.opener._salesLocations : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function populateStore() {
+      const query = params();
+      const currentStore = query.get("store") || "";
+      const locations = openerLocations();
+      const match = locations.find((location) => locationValue(location) === currentStore);
+
+      document.getElementById("caseStoreName").value =
+        query.get("storeName") || locationLabel(match || {}) || currentStore || "";
+      document.getElementById("caseStore").value = currentStore;
+      document.getElementById("caseStoreNetSuiteId").value =
+        query.get("storeNetSuiteId") || locationNetSuiteId(match || {});
+      document.getElementById("caseStoreDistributionLocationId").value =
+        query.get("storeDistributionLocationId") || locationDistributionId(match || {});
+    }
+
+    function populateHeaderContext() {
+      const query = params();
+      const store = document.getElementById("caseStoreName").value || query.get("storeName") || "Store not set";
+      const customer = query.get("customerName") || "Customer not set";
+      document.getElementById("contextDate").textContent = `Today ${todayDisplayDate()}`;
+      document.getElementById("contextStore").textContent = store;
+      document.getElementById("contextCustomer").textContent = customer;
+    }
+
+    async function populateStatuses() {
+      const statusName = document.getElementById("caseStatusName");
+      const statusId = document.getElementById("caseStatus");
+      const statusText = document.getElementById("caseStatusText");
+      statusName.value = "Loading statuses...";
+      statusId.value = "";
+
+      try {
+        const res = await fetch("/api/netsuite/salesorder/case-statuses", {
+          headers: authHeaders(),
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+
+        const statuses = Array.isArray(data.statuses) ? data.statuses : [];
+        const defaultStatus =
+          statuses.find((status) => String(status.id) === "1") ||
+          statuses.find((status) => String(status.name || "").trim().toLowerCase() === "not started") ||
+          { id: "1", name: "Not Started" };
+        statusName.value = defaultStatus.name || "Not Started";
+        statusId.value = defaultStatus.id || "1";
+        statusText.textContent = "";
+      } catch (err) {
+        console.error("Failed to load case statuses:", err);
+        statusName.value = "Not Started";
+        statusId.value = "1";
+        statusText.textContent = err.message || "Could not load statuses.";
+      }
+    }
+
+    function userLabel(user = {}) {
+      return String(
+        [user.firstName || user.firstname || "", user.lastName || user.lastname || ""]
+          .filter(Boolean)
+          .join(" ") ||
+        user.name ||
+        user.email ||
+        user.id ||
+        ""
+      ).trim();
+    }
+
+    async function populateAssignedTo() {
+      const select = document.getElementById("caseAssignedTo");
+      const statusText = document.getElementById("caseStatusText");
+      const defaultStoreManager = String(params().get("storeManager") || "").trim();
+      select.innerHTML = '<option value="">Loading users...</option>';
+
+      try {
+        const res = await fetch("/api/users", {
+          headers: authHeaders(),
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+
+        const users = Array.isArray(data.users) ? data.users : Array.isArray(data.data) ? data.data : [];
+        select.innerHTML = '<option value="">Select user</option>' + users
+          .map((user) => {
+            const userId = String(user.id || "").trim();
+            const id = String(user.netsuiteId || user.netsuiteid || userId || "").trim();
+            const label = userLabel(user);
+            if (!id || !label) return "";
+            return `<option value="${escapeHtml(id)}" data-user-id="${escapeHtml(userId)}">${escapeHtml(label)}</option>`;
+          })
+          .filter(Boolean)
+          .join("");
+
+        if (defaultStoreManager) {
+          const defaultOption = [...select.options].find((option) =>
+            option.dataset.userId === defaultStoreManager || option.value === defaultStoreManager
+          );
+          if (defaultOption) select.value = defaultOption.value;
+        }
+      } catch (err) {
+        console.error("Failed to load users:", err);
+        select.innerHTML = '<option value="">Users unavailable</option>';
+        statusText.textContent = err.message || "Could not load users.";
+      }
+    }
+
+    function setOptions(select, rows, placeholder) {
+      select.innerHTML = `<option value="">${escapeHtml(placeholder)}</option>` + rows
+        .map((row) => {
+          const id = String(row.id || row.value || "").trim();
+          const name = String(row.name || row.label || row.text || "").trim();
+          if (!id || !name) return "";
+          return `<option value="${escapeHtml(id)}">${escapeHtml(name)}</option>`;
+        })
+        .filter(Boolean)
+        .join("");
+    }
+
+    async function fetchCaseOptionRows(path, key) {
+      const res = await fetch(path, {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+      return Array.isArray(data[key]) ? data[key] : [];
+    }
+
+    async function populateCaseTypes() {
+      const select = document.getElementById("caseType");
+      const statusText = document.getElementById("caseStatusText");
+      select.innerHTML = '<option value="">Loading types...</option>';
+      try {
+        setOptions(
+          select,
+          await fetchCaseOptionRows("/api/netsuite/salesorder/case-types", "types"),
+          "Select type"
+        );
+      } catch (err) {
+        console.error("Failed to load case types:", err);
+        select.innerHTML = '<option value="">Types unavailable</option>';
+        statusText.textContent = err.message || "Could not load case types.";
+      }
+    }
+
+    async function populateCaseSubTypes(caseTypeId = "") {
+      const select = document.getElementById("caseSubType");
+      const statusText = document.getElementById("caseStatusText");
+      if (!caseTypeId) {
+        select.innerHTML = '<option value="">Select type first</option>';
+        select.disabled = true;
+        return;
+      }
+
+      select.disabled = false;
+      select.innerHTML = '<option value="">Loading sub-types...</option>';
+      try {
+        const query = new URLSearchParams({ caseTypeId });
+        setOptions(
+          select,
+          await fetchCaseOptionRows(`/api/netsuite/salesorder/case-sub-types?${query.toString()}`, "subTypes"),
+          "Select sub-type"
+        );
+      } catch (err) {
+        console.error("Failed to load case sub-types:", err);
+        select.innerHTML = '<option value="">Sub-types unavailable</option>';
+        statusText.textContent = err.message || "Could not load case sub-types.";
+      }
+    }
+
+    function itemId(item = {}) {
+      return String(
+        item.itemId ||
+        item.item ||
+        item.id ||
+        item.internalid ||
+        item["Internal ID"] ||
+        item.value ||
+        ""
+      ).trim();
+    }
+
+    function itemName(item = {}) {
+      const nestedItem = item.item && typeof item.item === "object" ? item.item : {};
+      return String(
+        item.itemName ||
+        item.name ||
+        item.itemid ||
+        item.displayname ||
+        nestedItem.refName ||
+        nestedItem.name ||
+        item["Name"] ||
+        item["Display Name"] ||
+        itemId(item)
+      ).trim();
+    }
+
+    function currentSaleItems() {
+      try {
+        if (Array.isArray(window.opener?._raiseCaseItems) && window.opener._raiseCaseItems.length) {
+          return window.opener._raiseCaseItems;
+        }
+        const so = window.opener?._currentSalesOrder || {};
+        return Array.isArray(so.item?.items) ? so.item.items : [];
+      } catch {
+        return [];
+      }
+    }
+
+    function populateItems() {
+      const select = document.getElementById("caseItem");
+      const rows = currentSaleItems()
+        .map((item) => ({ id: itemId(item), name: itemName(item) }))
+        .filter((item) => item.id && item.name)
+        .filter((item, index, list) => list.findIndex((next) => next.id === item.id) === index);
+
+      setOptions(select, rows, rows.length ? "Select item" : "No items available");
+    }
+
+    function selectedOptionText(id) {
+      const select = document.getElementById(id);
+      const text = select?.selectedOptions?.[0]?.textContent || "";
+      return /^select\b/i.test(text.trim()) || /unavailable/i.test(text) ? "" : text.trim();
+    }
+
+    function ensureSelectOption(select, value, label) {
+      const cleanValue = String(value || "").trim();
+      if (!select || !cleanValue) return;
+      if (![...select.options].some((option) => option.value === cleanValue)) {
+        const option = document.createElement("option");
+        option.value = cleanValue;
+        option.textContent = label || cleanValue;
+        select.appendChild(option);
+      }
+      select.value = cleanValue;
+    }
+
+    function currentCaseDraft() {
+      return {
+        salesOrderId: loadedCase?.salesOrderId || params().get("salesOrderId") || "",
+        subject: document.getElementById("caseSubject")?.value || "",
+        storeName: document.getElementById("caseStoreName")?.value || "",
+        storeId: document.getElementById("caseStore")?.value || "",
+        storeNetSuiteId: document.getElementById("caseStoreNetSuiteId")?.value || "",
+        storeDistributionLocationId: document.getElementById("caseStoreDistributionLocationId")?.value || "",
+        customerName: document.getElementById("caseCustomerName")?.value || "",
+        customerId: document.getElementById("caseCustomerId")?.value || "",
+        statusName: document.getElementById("caseStatusName")?.value || "",
+        statusId: document.getElementById("caseStatus")?.value || "",
+        assignedToName: selectedOptionText("caseAssignedTo"),
+        assignedToId: document.getElementById("caseAssignedTo")?.value || "",
+        incidentDate: document.getElementById("caseIncidentDate")?.value || "",
+        typeName: selectedOptionText("caseType"),
+        typeId: document.getElementById("caseType")?.value || "",
+        subTypeName: selectedOptionText("caseSubType"),
+        subTypeId: document.getElementById("caseSubType")?.value || "",
+        itemName: selectedOptionText("caseItem"),
+        itemId: document.getElementById("caseItem")?.value || "",
+      };
+    }
+
+    async function loadExistingCase() {
+      const caseId = String(params().get("caseId") || "").trim();
+      if (!caseId) return;
+
+      const statusText = document.getElementById("caseStatusText");
+      statusText.textContent = "Loading case...";
+      const res = await fetch(`/api/netsuite/salesorder/cases/${encodeURIComponent(caseId)}?_=${Date.now()}`, {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+
+      loadedCase = data.case || {};
+      document.querySelector(".case-header h1").textContent =
+        loadedCase.caseNumber ? `Case ${loadedCase.caseNumber}` : "Case";
+      document.title = loadedCase.caseNumber ? `Case ${loadedCase.caseNumber}` : "Case";
+
+      document.getElementById("caseSubject").value = loadedCase.subject || "";
+      document.getElementById("caseCustomerName").value = loadedCase.customerName || params().get("customerName") || "";
+      document.getElementById("caseCustomerId").value = loadedCase.customerId || params().get("customerId") || "";
+      document.getElementById("caseStatusName").value = loadedCase.statusName || loadedCase.statusId || "";
+      document.getElementById("caseStatus").value = loadedCase.statusId || "";
+      document.getElementById("caseIncidentDate").value = loadedCase.incidentDate || "";
+
+      if (loadedCase.storeName) document.getElementById("caseStoreName").value = loadedCase.storeName;
+      if (loadedCase.storeNetSuiteId) document.getElementById("caseStoreNetSuiteId").value = loadedCase.storeNetSuiteId;
+
+      ensureSelectOption(document.getElementById("caseAssignedTo"), loadedCase.assignedToId, loadedCase.assignedToName);
+      ensureSelectOption(document.getElementById("caseType"), loadedCase.typeId, loadedCase.typeName);
+      await populateCaseSubTypes(loadedCase.typeId || "");
+      ensureSelectOption(document.getElementById("caseSubType"), loadedCase.subTypeId, loadedCase.subTypeName);
+      ensureSelectOption(document.getElementById("caseItem"), loadedCase.itemId, loadedCase.itemName);
+
+      populateHeaderContext();
+      statusText.textContent = "";
+      const submitButton = document.querySelector('#raiseCaseForm button[type="submit"]');
+      if (submitButton) submitButton.textContent = "Save Case";
+      loadCaseNotes().catch((err) => {
+        console.error("Failed to load case notes:", err);
+        document.getElementById("caseNotesList").innerHTML = `<p class="case-status">${escapeHtml(err.message || "Could not load user notes.")}</p>`;
+      });
+      loadAiCaseSummary();
+    }
+
+    function renderCaseNotes(notes = [], state = "") {
+      const list = document.getElementById("caseNotesList");
+      if (!list) return;
+
+      if (state === "loading") {
+        list.innerHTML = '<p class="case-status">Loading user notes...</p>';
+        return;
+      }
+
+      if (!loadedCase?.id) {
+        list.innerHTML = '<p class="case-status">Create or open a case before adding user notes.</p>';
+        return;
+      }
+
+      if (!notes.length) {
+        list.innerHTML = '<p class="case-status">No user notes found for this case.</p>';
+        return;
+      }
+
+      const mergedNotes = notes.map((note) => {
+        const id = String(note.id || note.ID || "").trim();
+        const cached = id ? caseNoteCache.get(id) : null;
+        const merged = {
+          ...note,
+          ...(cached && !note.title ? { title: cached.title } : {}),
+          ...(cached && !note.memo ? { memo: cached.memo } : {}),
+          ...(cached && !note.date ? { date: cached.date } : {}),
+          ...(cached && !note.author ? { author: cached.author } : {}),
+        };
+        if (id && (merged.title || merged.memo)) caseNoteCache.set(id, merged);
+        return merged;
+      });
+
+      list.innerHTML = mergedNotes.map((note) => `
+        <article class="case-note">
+          <strong>${escapeHtml(note.title || "Case Note")}</strong>
+          <small>${escapeHtml([note.date, note.author].filter(Boolean).join(" - "))}</small>
+          <p>${escapeHtml(note.memo || "")}</p>
+        </article>
+      `).join("");
+    }
+
+    function prependCaseNote(note = {}) {
+      const list = document.getElementById("caseNotesList");
+      if (!list || !loadedCase?.id) return;
+      const id = String(note.id || note.ID || "").trim();
+      if (id) caseNoteCache.set(id, note);
+      const existing = list.innerHTML;
+      const html = `
+        <article class="case-note">
+          <strong>${escapeHtml(note.title || "Case Note")}</strong>
+          <small>${escapeHtml([note.date, note.author].filter(Boolean).join(" - "))}</small>
+          <p>${escapeHtml(note.memo || "")}</p>
+        </article>
+      `;
+
+      if (existing.includes("No user notes found") || existing.includes("Create or open a case") || existing.includes("Loading user notes")) {
+        list.innerHTML = html;
+      } else {
+        list.insertAdjacentHTML("afterbegin", html);
+      }
+    }
+
+    async function loadCaseNotes() {
+      if (!loadedCase?.id) {
+        renderCaseNotes([]);
+        return;
+      }
+
+      renderCaseNotes([], "loading");
+      const res = await fetch(`/api/netsuite/salesorder/cases/${encodeURIComponent(loadedCase.id)}/notes?_=${Date.now()}`, {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+      renderCaseNotes(Array.isArray(data.notes) ? data.notes : []);
+    }
+
+    async function addCaseNote() {
+      const status = document.getElementById("caseNoteStatus");
+      const titleInput = document.getElementById("caseNoteTitle");
+      const noteInput = document.getElementById("caseNoteText");
+      const button = document.getElementById("addCaseNoteBtn");
+      const title = titleInput.value.trim();
+      const memo = noteInput.value.trim();
+
+      if (!loadedCase?.id) {
+        status.textContent = "Open an existing case before adding a note.";
+        return;
+      }
+
+      if (!memo) {
+        status.textContent = "Enter a note before saving.";
+        return;
+      }
+
+      button.disabled = true;
+      status.textContent = "Adding note...";
+      try {
+        const res = await fetch(`/api/netsuite/salesorder/cases/${encodeURIComponent(loadedCase.id)}/notes`, {
+          method: "POST",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ title, memo }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+
+        titleInput.value = "";
+        noteInput.value = "";
+        status.textContent = "Note added.";
+        prependCaseNote(data.note || { title, memo });
+        loadCaseNotes().catch((err) => {
+          console.warn("Note was added, but refresh failed:", err.message || err);
+        });
+      } catch (err) {
+        console.error("Failed to add case note:", err);
+        status.textContent = err.message || "Could not add note.";
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    async function loadAiCaseSummary() {
+      const panel = document.getElementById("aiCaseSummary");
+      const body = document.getElementById("aiCaseSummaryBody");
+      const checkPanel = document.getElementById("aiCaseCheck");
+      const checkList = document.getElementById("aiCaseCheckList");
+      if (!panel || !body) return;
+
+      try {
+        const res = await fetch("/api/netsuite/salesorder/case-draft-summary", {
+          method: "POST",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          cache: "no-store",
+          body: JSON.stringify({ draft: currentCaseDraft() }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+
+        if (data.enabled === false) {
+          panel.hidden = true;
+          return;
+        }
+
+        panel.hidden = false;
+        body.textContent = data.summary || "No draft case summary is available yet.";
+
+        const pleaseCheck = Array.isArray(data.pleaseCheck) ? data.pleaseCheck.filter(Boolean) : [];
+        if (checkPanel && checkList) {
+          checkPanel.hidden = pleaseCheck.length === 0;
+          checkList.innerHTML = pleaseCheck.map((issue) => `<li>${escapeHtml(issue)}</li>`).join("");
+        }
+      } catch (err) {
+        console.error("Failed to load AI case summary:", err);
+        panel.hidden = false;
+        body.textContent = err.message || "Could not generate the draft case summary.";
+        if (checkPanel && checkList) {
+          checkPanel.hidden = true;
+          checkList.innerHTML = "";
+        }
+      }
+    }
+
+    function bindAiCaseSummaryRefresh() {
+      const form = document.getElementById("raiseCaseForm");
+      if (!form) return;
+
+      let timer = null;
+      const queue = () => {
+        window.clearTimeout(timer);
+        timer = window.setTimeout(loadAiCaseSummary, 650);
+      };
+
+      form.addEventListener("input", queue);
+      form.addEventListener("change", queue);
+    }
+
+    function workflowDefinition(workflow = {}) {
+      return workflow.definition && typeof workflow.definition === "object"
+        ? workflow.definition
+        : { nodes: [], edges: [] };
+    }
+
+    function workflowSettings(workflow = workflowRun.selected) {
+      const settings = workflowDefinition(workflow).settings || {};
+      return {
+        executionMode: settings.executionMode === "fullExecution" ? "fullExecution" : "actionMessageOnly",
+        pathwayDebug: settings.pathwayDebug === true,
+      };
+    }
+
+    function workflowCriteria(workflow = {}) {
+      const criteria = workflowDefinition(workflow).criteria;
+      return Array.isArray(criteria) ? criteria : [];
+    }
+
+    function currentCaseId() {
+      return String(params().get("caseId") || loadedCase?.id || "").trim();
+    }
+
+    function storedDebugUser() {
+      const saved =
+        (typeof storageGet === "function" ? storageGet() : null) ||
+        (window.opener && typeof window.opener.storageGet === "function" ? window.opener.storageGet() : null) ||
+        {};
+      const name = String(
+        saved.name ||
+        saved.userName ||
+        `${saved.firstName || ""} ${saved.lastName || ""}`.trim() ||
+        saved.email ||
+        ""
+      ).trim();
+      return {
+        id: saved.id || saved.userId || "",
+        name,
+        email: saved.email || "",
+        firstName: saved.firstName || "",
+        lastName: saved.lastName || "",
+        profileImage: saved.profileImage || saved.avatar || saved.picture || "",
+      };
+    }
+
+    async function currentDebugUser() {
+      if (workflowRun.debugUser) return workflowRun.debugUser;
+      try {
+        const res = await fetch("/api/me", {
+          headers: authHeaders(),
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+        const user = data.user || {};
+        workflowRun.debugUser = {
+          id: user.id || "",
+          name: `${user.firstName || ""} ${user.lastName || ""}`.trim() || user.email || "",
+          email: user.email || "",
+          firstName: user.firstName || "",
+          lastName: user.lastName || "",
+          profileImage: user.profileImage || "",
+        };
+      } catch {
+        workflowRun.debugUser = storedDebugUser();
+      }
+      return workflowRun.debugUser;
+    }
+
+    function addWorkflowDebugNode(nodeId) {
+      const clean = String(nodeId || "");
+      if (clean && !workflowRun.debugNodeIds.includes(clean)) workflowRun.debugNodeIds.push(clean);
+    }
+
+    function addWorkflowDebugEdge(edgeId) {
+      const clean = String(edgeId || "");
+      if (clean && !workflowRun.debugEdgeIds.includes(clean)) workflowRun.debugEdgeIds.push(clean);
+    }
+
+    function addWorkflowDebugAction(nodeId) {
+      const clean = String(nodeId || "");
+      if (clean && !workflowRun.debugActionNodeIds.includes(clean)) workflowRun.debugActionNodeIds.push(clean);
+      addWorkflowDebugNode(clean);
+    }
+
+    async function broadcastWorkflowDebug(nodeId = "", { ended = false } = {}) {
+      if (!workflowRun.selected || !workflowSettings().pathwayDebug) return;
+      const activeNodeId = String(nodeId || workflowRun.currentNodeId || workflowRun.terminalNodeId || "");
+      if (!activeNodeId && !ended) return;
+      if (activeNodeId && !ended) addWorkflowDebugNode(activeNodeId);
+      const payload = {
+        type: "cs-workflow-debug",
+        workflowId: String(workflowRun.selected.id || ""),
+        sessionId: workflowRun.debugSessionId,
+        nodeId: activeNodeId,
+        nodeIds: workflowRun.debugNodeIds,
+        edgeIds: workflowRun.debugEdgeIds,
+        actionNodeIds: workflowRun.debugActionNodeIds,
+        user: ended ? (workflowRun.debugUser || storedDebugUser()) : await currentDebugUser(),
+        ended,
+        at: Date.now(),
+      };
+      try {
+        const channel = new BroadcastChannel("cs-workflow-debug");
+        channel.postMessage(payload);
+        channel.close();
+      } catch {}
+      try {
+        localStorage.setItem("csWorkflowDebug", JSON.stringify(payload));
+      } catch {}
+    }
+
+    function endWorkflowDebug() {
+      if (!workflowRun.selected || !workflowSettings().pathwayDebug) return;
+      broadcastWorkflowDebug(workflowRun.currentNodeId || workflowRun.terminalNodeId || "", { ended: true });
+    }
+
+    function workflowNodes() {
+      const definition = workflowDefinition(workflowRun.selected);
+      return Array.isArray(definition.nodes) ? definition.nodes : [];
+    }
+
+    function workflowEdges() {
+      const definition = workflowDefinition(workflowRun.selected);
+      return Array.isArray(definition.edges) ? definition.edges : [];
+    }
+
+    function findWorkflowNode(id) {
+      return workflowNodes().find((node) => String(node.id) === String(id)) || null;
+    }
+
+    function isWorkflowPromptNode(node = {}) {
+      return node.type === "question" || node.type === "input" || node.type === "check";
+    }
+
+    function workflowStartNode() {
+      return workflowNodes().find((node) => node.type === "start") || null;
+    }
+
+    function firstWorkflowNode() {
+      const nodes = workflowNodes();
+      const edges = workflowEdges();
+      const incoming = new Set(edges.map((edge) => String(edge.to)));
+      return (
+        workflowStartNode() ||
+        nodes.find((node) => isWorkflowPromptNode(node) && !incoming.has(String(node.id))) ||
+        nodes.find((node) => isWorkflowPromptNode(node)) ||
+        nodes.find((node) => !incoming.has(String(node.id))) ||
+        nodes[0] ||
+        null
+      );
+    }
+
+    function outgoingWorkflowEdges(nodeId) {
+      return workflowEdges().filter((edge) => String(edge.from) === String(nodeId));
+    }
+
+    function workflowSourceLabel(source = null) {
+      if (!source) return "";
+      if (source.type === "inputSalesOrderItem") return `Input item - ${source.label || source.itemName || source.inputNodeId || "selected item"}`;
+      if (source.type === "input") return `Input - ${source.label || source.inputNodeId || "selected answer"}`;
+      if (source.type === "intercompanySalesOrder") return "Intercompany Sales Order";
+      return "Store Sales Order";
+    }
+
+    function workflowInputConfig(node = {}) {
+      const config = node.inputConfig && typeof node.inputConfig === "object" ? node.inputConfig : {};
+      const type = ["string", "currency", "list", "boolean"].includes(config.type) ? config.type : "string";
+      const fields = Array.isArray(config.fields) && config.fields.length
+        ? config.fields.map((field, index) => ({
+          id: field.id || `field_${index}`,
+          label: field.label || `Response ${index + 1}`,
+          type: ["string", "currency", "list", "boolean"].includes(field.type) ? field.type : "string",
+          listSource: field.listSource || "salesOrderItems",
+          listField: field.listField || "",
+        }))
+        : [{
+          id: "answer",
+          label: "Response",
+          type,
+          listSource: config.listSource || "salesOrderItems",
+          listField: config.listField || "",
+        }];
+      return {
+        type,
+        listSource: config.listSource || "salesOrderItems",
+        listField: config.listField || "",
+        fields,
+      };
+    }
+
+    function workflowRecordSourceId(source = "") {
+      const match = String(source || "").match(/^record:(\d+)$/);
+      return match ? match[1] : "";
+    }
+
+    function workflowInputRecord(source = "") {
+      const id = workflowRecordSourceId(source);
+      return workflowRun.records.find((record) => String(record.id) === String(id)) || null;
+    }
+
+    function workflowInputField(record = null, internalId = "") {
+      return (record?.fields || []).find((field) => String(field.internalId) === String(internalId)) || null;
+    }
+
+    function workflowCheckInputNode(node = {}) {
+      return findWorkflowNode(node?.checkConfig?.inputNodeId || "");
+    }
+
+    function workflowCheckInputStep(node = {}) {
+      return workflowRun.stepHistory.find((step) => String(step.nodeId) === String(node?.checkConfig?.inputNodeId || ""));
+    }
+
+    function workflowCheckInputUsesSalesOrderItems(node = {}) {
+      const input = workflowCheckInputNode(node);
+      if (input?.type !== "input") return false;
+      const fields = workflowInputConfig(input).fields;
+      if (fields.some((field) => field.type === "list" && field.listSource === "salesOrderItems")) return true;
+      return input.inputConfig?.type === "list" && input.inputConfig?.listSource === "salesOrderItems";
+    }
+
+    function workflowInputPrimaryAnswer(inputNode = {}, inputStep = {}) {
+      const fields = workflowInputConfig(inputNode).fields;
+      const itemField = fields.find((field) => field.type === "list" && field.listSource === "salesOrderItems");
+      const firstField = itemField || fields[0];
+      if (firstField && inputStep.answers && Object.prototype.hasOwnProperty.call(inputStep.answers, firstField.id)) {
+        return {
+          value: inputStep.answers[firstField.id] || "",
+          label: inputStep.answerLabels?.[firstField.id] || firstField.label || inputNode.question || inputNode.label || "Input",
+          fieldId: firstField.id,
+        };
+      }
+      return {
+        value: inputStep.answer || "",
+        label: inputNode?.question || inputNode?.label || "Input",
+        fieldId: "",
+      };
+    }
+
+    function workflowInputCurrentAnswer(nodeId = "", fieldId = "answer") {
+      const step = workflowRun.stepHistory.find((item) => String(item.nodeId) === String(nodeId));
+      if (step?.answers && Object.prototype.hasOwnProperty.call(step.answers, fieldId)) return step.answers[fieldId] || "";
+      return fieldId === "answer" ? step?.answer || "" : "";
+    }
+
+    function workflowSalesOrderItemOptions() {
+      return currentSaleItems()
+        .map((item) => ({ id: itemId(item), name: itemName(item) }))
+        .filter((item) => item.id && item.name)
+        .filter((item, index, list) => list.findIndex((next) => next.id === item.id) === index);
+    }
+
+    function workflowItemSearchRows() {
+      return (workflowRun.itemSearchItems || [])
+        .map((item) => ({
+          id: itemId(item),
+          name: itemName(item),
+          displayName: String(item["Display Name"] || item.displayName || "").trim(),
+        }))
+        .filter((item) => item.id && item.name)
+        .filter((item, index, list) => list.findIndex((next) => next.id === item.id) === index);
+    }
+
+    async function loadWorkflowItemSearchItems() {
+      if (workflowRun.itemSearchItems.length) return workflowRun.itemSearchItems;
+      if (workflowRun.itemSearchLoading) return workflowRun.itemSearchLoading;
+      workflowRun.itemSearchLoading = fetch("/api/netsuite/items", {
+        headers: authHeaders(),
+        cache: "no-store",
+      })
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+          workflowRun.itemSearchItems = Array.isArray(data.results) ? data.results : [];
+          return workflowRun.itemSearchItems;
+        })
+        .finally(() => {
+          workflowRun.itemSearchLoading = null;
+        });
+      return workflowRun.itemSearchLoading;
+    }
+
+    function workflowInputItemAnswerLabel(nodeId = "", input = {}) {
+      const answer = workflowInputCurrentAnswer(nodeId, input.id);
+      if (!answer) return "";
+      const step = workflowRun.stepHistory.find((item) => String(item.nodeId) === String(nodeId));
+      const savedLabel = step?.answerLabels?.[input.id] || "";
+      if (savedLabel && savedLabel !== answer) return savedLabel;
+      return workflowItemSearchRows().find((item) => String(item.id) === String(answer))?.name || savedLabel || "";
+    }
+
+    function workflowInputOptionCacheKey(node = {}, field = null) {
+      const config = workflowInputConfig(node);
+      const input = field || config.fields[0] || config;
+      return `${input.listSource}:${input.listField}`;
+    }
+
+    async function loadWorkflowInputListOptions(node = {}, field = null) {
+      const config = workflowInputConfig(node);
+      const input = field || config.fields[0] || config;
+      if (input.type !== "list" || input.listSource === "salesOrderItems") return;
+      const record = workflowInputRecord(input.listSource);
+      const listField = workflowInputField(record, input.listField);
+      const key = workflowInputOptionCacheKey(node, input);
+      if (!record || !listField?.id) {
+        workflowRun.inputOptionsCache.set(key, []);
+        return;
+      }
+      const res = await fetch(`/api/cs-workflows/records/${encodeURIComponent(record.id)}/fields/${encodeURIComponent(listField.id)}/options`, {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+      workflowRun.inputOptionsCache.set(key, Array.isArray(data.options) ? data.options : []);
+    }
+
+    function renderWorkflowInputFieldControl(node = {}, input = {}) {
+      const answer = workflowInputCurrentAnswer(node.id, input.id);
+      const label = input.label || "Response";
+      if (input.type === "currency") {
+        return `
+          <label>
+            ${escapeHtml(label)}
+            <input data-workflow-input-answer="${escapeHtml(input.id)}" type="number" step="0.01" inputmode="decimal" value="${escapeHtml(answer)}" placeholder="0.00">
+          </label>
+        `;
+      }
+      if (input.type === "boolean") {
+        return `
+          <label>
+            ${escapeHtml(label)}
+            <select data-workflow-input-answer="${escapeHtml(input.id)}">
+              <option value="">Select response</option>
+              <option value="true" ${answer === "true" ? "selected" : ""}>True</option>
+              <option value="false" ${answer === "false" ? "selected" : ""}>False</option>
+            </select>
+          </label>
+        `;
+      }
+      if (input.type === "list") {
+        const isSalesOrderItems = input.listSource === "salesOrderItems";
+        const isItemSearch = input.listSource === "item";
+        if (isItemSearch) {
+          const searchValue = workflowInputItemAnswerLabel(node.id, input);
+          return `
+            <label class="workflow-item-search-field">
+              ${escapeHtml(label)}
+              <input
+                data-workflow-item-search="${escapeHtml(input.id)}"
+                type="search"
+                value="${escapeHtml(searchValue)}"
+                placeholder="Search item"
+                autocomplete="off">
+              <input
+                data-workflow-input-answer="${escapeHtml(input.id)}"
+                data-workflow-input-label="${escapeHtml(input.id)}"
+                type="hidden"
+                value="${escapeHtml(answer)}">
+              <div class="workflow-item-suggestions" data-workflow-item-suggestions="${escapeHtml(input.id)}" hidden></div>
+            </label>
+          `;
+        }
+        const key = workflowInputOptionCacheKey(node, input);
+        const options = isSalesOrderItems ? workflowSalesOrderItemOptions() : workflowRun.inputOptionsCache.get(key);
+        if (!isSalesOrderItems && !workflowRun.inputOptionsCache.has(key)) {
+          loadWorkflowInputListOptions(node, input)
+            .then(() => {
+              if (String(workflowRun.currentNodeId) === String(node.id)) renderWorkflowRunner();
+            })
+            .catch((err) => {
+              workflowRun.inputOptionsCache.set(key, []);
+              if (String(workflowRun.currentNodeId) === String(node.id)) {
+                renderWorkflowRunner(err.message || "Could not load list options.");
+              }
+            });
+          return `
+            <label>
+              ${escapeHtml(label)}
+              <select data-workflow-input-answer="${escapeHtml(input.id)}" disabled>
+                <option value="">Loading options...</option>
+              </select>
+            </label>
+          `;
+        }
+        return `
+          <label>
+            ${escapeHtml(label)}
+            <select data-workflow-input-answer="${escapeHtml(input.id)}">
+              <option value="">Select response</option>
+              ${(options || []).map((option) => `
+                <option value="${escapeHtml(option.id)}" ${String(answer) === String(option.id) ? "selected" : ""}>${escapeHtml(option.name)}</option>
+              `).join("")}
+            </select>
+          </label>
+        `;
+      }
+      return `
+        <label>
+          ${escapeHtml(label)}
+          <input data-workflow-input-answer="${escapeHtml(input.id)}" type="text" value="${escapeHtml(answer)}" placeholder="Enter response">
+        </label>
+      `;
+    }
+
+    function renderWorkflowInputControl(node = {}) {
+      const config = workflowInputConfig(node);
+      return `
+        <div class="workflow-input-fields">
+          ${config.fields.map((field) => renderWorkflowInputFieldControl(node, field)).join("")}
+        </div>
+      `;
+    }
+
+    function bindWorkflowItemSearchInputs(node = {}, runner = document) {
+      runner.querySelectorAll("[data-workflow-item-search]").forEach((input) => {
+        const inputId = input.dataset.workflowItemSearch || "";
+        const hidden = runner.querySelector(`[data-workflow-input-answer="${CSS.escape(inputId)}"]`);
+        const suggestions = runner.querySelector(`[data-workflow-item-suggestions="${CSS.escape(inputId)}"]`);
+        if (!hidden || !suggestions) return;
+
+        const hideSuggestions = () => {
+          suggestions.hidden = true;
+          suggestions.innerHTML = "";
+        };
+
+        const renderSuggestions = async () => {
+          const query = String(input.value || "").trim().toLowerCase();
+          hidden.value = "";
+          hidden.dataset.selectedLabel = "";
+          if (query.length < 2) {
+            hideSuggestions();
+            return;
+          }
+          suggestions.hidden = false;
+          suggestions.innerHTML = '<div class="workflow-item-suggestion-empty">Searching...</div>';
+          try {
+            await loadWorkflowItemSearchItems();
+            const matches = workflowItemSearchRows()
+              .filter((item) => {
+                const haystack = `${item.name} ${item.displayName} ${item.id}`.toLowerCase();
+                return haystack.includes(query);
+              })
+              .slice(0, 20);
+            suggestions.innerHTML = matches.length
+              ? matches.map((item) => `
+                <button type="button" data-workflow-item-id="${escapeHtml(item.id)}" data-workflow-item-name="${escapeHtml(item.name)}">
+                  <span>${escapeHtml(item.name)}</span>
+                  <small>${escapeHtml(item.displayName || item.id)}</small>
+                </button>
+              `).join("")
+              : '<div class="workflow-item-suggestion-empty">No items found.</div>';
+          } catch (err) {
+            suggestions.innerHTML = `<div class="workflow-item-suggestion-empty">${escapeHtml(err.message || "Could not load items.")}</div>`;
+          }
+        };
+
+        input.addEventListener("input", renderSuggestions);
+        input.addEventListener("focus", () => {
+          if (String(input.value || "").trim().length >= 2 && !hidden.value) renderSuggestions();
+        });
+        input.addEventListener("blur", () => {
+          window.setTimeout(hideSuggestions, 160);
+        });
+        suggestions.addEventListener("click", (event) => {
+          const option = event.target.closest("[data-workflow-item-id]");
+          if (!option) return;
+          input.value = option.dataset.workflowItemName || "";
+          hidden.value = option.dataset.workflowItemId || "";
+          hidden.dataset.selectedLabel = option.dataset.workflowItemName || "";
+          hideSuggestions();
+        });
+      });
+    }
+
+    function collectWorkflowInputAnswers(node = {}, runner = document) {
+      const config = workflowInputConfig(node);
+      const answers = {};
+      const labels = {};
+      config.fields.forEach((field) => {
+        const control = runner.querySelector(`[data-workflow-input-answer="${CSS.escape(String(field.id))}"]`);
+        const value = control?.value || "";
+        const searchInput = runner.querySelector(`[data-workflow-item-search="${CSS.escape(String(field.id))}"]`);
+        const selectedText = searchInput
+          ? (control?.dataset?.selectedLabel || searchInput.value || value)
+          : control?.tagName === "SELECT"
+          ? control.selectedOptions?.[0]?.textContent || value
+          : value;
+        answers[field.id] = value;
+        labels[field.id] = selectedText;
+      });
+      const summary = config.fields
+        .map((field) => {
+          const value = labels[field.id] || answers[field.id] || "";
+          return value ? `${field.label || "Response"}: ${value}` : "";
+        })
+        .filter(Boolean)
+        .join("; ");
+      return { summary, answers, labels };
+    }
+
+    function resetWorkflowRun(workflow = null) {
+      window.clearInterval(workflowRun.timer);
+      endWorkflowDebug();
+      workflowRun.selected = workflow;
+      workflowRun.currentNodeId = "";
+      workflowRun.started = false;
+      workflowRun.stepHistory = [];
+      workflowRun.answers = [];
+      workflowRun.actions = [];
+      workflowRun.actionApprovals = [];
+      workflowRun.checks = [];
+      workflowRun.debugNodeIds = [];
+      workflowRun.debugEdgeIds = [];
+      workflowRun.debugActionNodeIds = [];
+      workflowRun.collectingFromStepIndex = -1;
+      workflowRun.runningCheckNodeId = "";
+      workflowRun.terminalNodeId = "";
+      workflowRun.drawerTab = "steps";
+      workflowRun.awaitingActionApproval = false;
+      workflowRun.complete = false;
+      workflowRun.actionsRendered = false;
+      const table = document.getElementById("caseWorkflowActions");
+      if (table) {
+        table.innerHTML = '<tr><td colspan="2">No workflow actions have been submitted yet.</td></tr>';
+      }
+      const actionTable = document.getElementById("caseWorkflowActionTable");
+      if (actionTable) actionTable.hidden = true;
+      closeWorkflowSteps();
+      updateWorkflowStepMenuVisibility();
+    }
+
+    function renderWorkflowRunner(message = "") {
+      const runner = document.getElementById("caseWorkflowRunner");
+      if (!runner) return;
+
+      if (!workflowRun.selected) {
+        runner.innerHTML = '<p class="case-status">Select a workflow to begin.</p>';
+        renderWorkflowStepsDrawer();
+        updateWorkflowStepMenuVisibility();
+        return;
+      }
+
+      if (message) {
+        runner.innerHTML = `<p class="case-status">${escapeHtml(message)}</p>`;
+        renderWorkflowStepsDrawer();
+        updateWorkflowStepMenuVisibility();
+        return;
+      }
+
+      if (!workflowRun.started) {
+        const description = String(workflowRun.selected.description || "").trim();
+        runner.innerHTML = `
+          <div class="workflow-question-card">
+            <h3>${escapeHtml(workflowRun.selected.name || "Selected workflow")}</h3>
+            <p class="workflow-description">${escapeHtml(description || "No workflow description has been added.")}</p>
+            <div class="workflow-run-actions">
+              <button id="beginWorkflowRunBtn" type="button" class="btn-primary">Begin</button>
+            </div>
+          </div>
+        `;
+        document.getElementById("beginWorkflowRunBtn")?.addEventListener("click", beginWorkflow);
+        renderWorkflowStepsDrawer();
+        updateWorkflowStepMenuVisibility();
+        return;
+      }
+
+      if (workflowRun.complete) {
+        if (workflowRun.awaitingActionApproval) {
+          runner.innerHTML = renderWorkflowActionValidation();
+          document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
+          bindWorkflowActionValidation();
+          renderWorkflowStepsDrawer();
+          updateWorkflowStepMenuVisibility();
+          return;
+        }
+
+        runner.innerHTML = `
+          <div class="workflow-run-shell">
+            <div class="workflow-question-card">
+              <h3>Workflow complete</h3>
+              <p class="case-status">${workflowRun.actions.length ? "The action messages are now being shown in order." : "No action messages were found on this path."}</p>
+              <div class="workflow-run-actions">
+                <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
+              </div>
+            </div>
+          </div>
+        `;
+        document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
+        renderWorkflowStepsDrawer();
+        updateWorkflowStepMenuVisibility();
+        return;
+      }
+
+      const node = findWorkflowNode(workflowRun.currentNodeId);
+      if (!node) {
+        runner.innerHTML = '<p class="case-status">This workflow does not have a starting question yet.</p>';
+        return;
+      }
+      broadcastWorkflowDebug(node.id);
+
+      const options = Array.isArray(node.options) ? node.options.filter((option) => option?.label) : [];
+      const title = node.question || node.label || "Workflow step";
+      const note = node.message || "";
+      const isInput = node.type === "input";
+      const isCheck = node.type === "check";
+      if (isCheck) {
+        runner.innerHTML = `
+          <div class="workflow-run-shell">
+            <div class="workflow-question-card">
+              <h3>${escapeHtml(title)}</h3>
+              ${note ? `<p class="workflow-description workflow-check-note">${escapeHtml(note)}</p>` : ""}
+              <div class="workflow-check-running" role="status" aria-live="polite">
+                <span class="workflow-check-spinner" aria-hidden="true"></span>
+                <span>Running Check</span>
+              </div>
+              <div class="workflow-run-actions">
+                <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
+              </div>
+            </div>
+          </div>
+        `;
+        document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
+        renderWorkflowStepsDrawer();
+        updateWorkflowStepMenuVisibility();
+        runWorkflowCheck(node);
+        return;
+      }
+      runner.innerHTML = `
+        <div class="workflow-run-shell">
+          <div class="workflow-question-card">
+            <h3>${escapeHtml(title)}</h3>
+            ${note ? `<p class="workflow-description">${escapeHtml(note)}</p>` : ""}
+            ${isInput ? renderWorkflowInputControl(node) : `
+              <div class="workflow-options">
+                ${options.map((option, index) => `
+                  <label class="workflow-option">
+                    <input type="radio" name="workflowAnswer" value="${escapeHtml(option.label)}" ${index === 0 ? "checked" : ""}>
+                    <span>${escapeHtml(option.label)}</span>
+                  </label>
+                `).join("") || '<p class="case-status">This step has no response options yet.</p>'}
+              </div>
+            `}
+            <div class="workflow-run-actions">
+              <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
+              <button id="nextWorkflowStepBtn" type="button" class="btn-primary" ${isInput || options.length ? "" : "disabled"}>Next</button>
+            </div>
+          </div>
+        </div>
+      `;
+      document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
+      if (isInput) bindWorkflowItemSearchInputs(node, runner);
+      renderWorkflowStepsDrawer();
+      updateWorkflowStepMenuVisibility();
+      document.getElementById("nextWorkflowStepBtn")?.addEventListener("click", () => {
+        const answer = isInput
+          ? collectWorkflowInputAnswers(node, runner)
+          : runner.querySelector('input[name="workflowAnswer"]:checked')?.value || "";
+        advanceWorkflow(answer);
+      });
+    }
+
+    function workflowQuestionNodesInOrder() {
+      const nodes = workflowNodes();
+      const seen = new Set();
+      const ordered = [];
+      const visit = (nodeId) => {
+        const node = findWorkflowNode(nodeId);
+        if (!node || seen.has(String(node.id))) return;
+        seen.add(String(node.id));
+        if (isWorkflowPromptNode(node)) ordered.push(node);
+        outgoingWorkflowEdges(node.id).forEach((edge) => visit(edge.to));
+      };
+      const start = firstWorkflowNode();
+      if (start) visit(start.id);
+      nodes
+        .filter((node) => isWorkflowPromptNode(node) && !seen.has(String(node.id)))
+        .forEach((node) => ordered.push(node));
+      return ordered;
+    }
+
+    function renderWorkflowStepList() {
+      const historyIds = new Set(workflowRun.stepHistory.map((step) => String(step.nodeId)));
+      const historyIndexById = new Map(workflowRun.stepHistory.map((step, index) => [String(step.nodeId), index]));
+      const steps = workflowQuestionNodesInOrder();
+      return `
+        <ol class="workflow-step-list">
+          ${steps.map((node, index) => {
+            const nodeId = String(node.id);
+            const historyIndex = historyIndexById.get(nodeId);
+            const isCurrent = nodeId === String(workflowRun.currentNodeId);
+            const isCompleted = historyIds.has(nodeId) && !isCurrent;
+            const stateClass = isCurrent ? "current" : isCompleted ? "completed" : "future";
+            const label = node.question || node.label || `Step ${index + 1}`;
+            const clickable = Number.isFinite(historyIndex) && (workflowRun.complete || !isCurrent);
+            return `
+              <li>
+                <button
+                  type="button"
+                  class="workflow-step ${stateClass}"
+                  ${clickable ? `data-workflow-step-index="${historyIndex}"` : "disabled"}>
+                  ${index + 1}. ${escapeHtml(label)}
+                </button>
+              </li>
+            `;
+          }).join("")}
+        </ol>
+      `;
+    }
+
+    function renderWorkflowActionsLog() {
+      const checksHtml = workflowRun.checks.length
+        ? workflowRun.checks.map((check) => {
+          const resultClass = String(check.result || "").toLowerCase() === "pass" ? "pass" : "fail";
+          const rules = Array.isArray(check.checks) ? check.checks : [];
+          return `
+            <article class="workflow-log-card">
+              <div class="workflow-log-title">
+                <span>${escapeHtml(check.label || "Check")}</span>
+                <span class="workflow-result-pill ${resultClass}">${escapeHtml(check.result || "Fail")}</span>
+              </div>
+              ${check.source ? `
+                <p class="case-status">
+                  Source: ${escapeHtml(workflowSourceLabel(check.source))}
+                  ${check.source.checkedSalesOrderId ? `- checked order ${escapeHtml(check.source.checkedSalesOrderId)}` : ""}
+                </p>
+              ` : ""}
+              ${check.message ? `<p class="case-status">${escapeHtml(check.message)}</p>` : ""}
+              ${rules.map((rule) => `
+                <div class="workflow-check-rule">
+                  <strong>${escapeHtml(rule.fieldLabel || rule.field || "Field")}</strong>
+                  ${escapeHtml(workflowOperatorLabel(rule.operator))}
+                  ${rule.operator === "isSet" || rule.operator === "isNotSet" ? "" : `<strong>${escapeHtml(displayWorkflowValue(rule.expectedValue))}</strong>`}
+                  <br>
+                  Captured: ${escapeHtml(displayWorkflowValue(rule.actualValue))}
+                  <span class="workflow-result-pill ${rule.passed ? "pass" : "fail"}">${rule.passed ? "Matched" : "Did not match"}</span>
+                </div>
+              `).join("") || '<p class="case-status">No rules were configured for this check.</p>'}
+              ${check.data ? `
+                <details>
+                  <summary>Captured data</summary>
+                  <pre class="workflow-captured-data">${escapeHtml(JSON.stringify(check.data, null, 2))}</pre>
+                </details>
+              ` : ""}
+            </article>
+          `;
+        }).join("")
+        : '<p class="case-status">No checks have run yet.</p>';
+
+      const actionsHtml = workflowRun.actions.length
+        ? workflowRun.actions.map((action, index) => `
+          <article class="workflow-log-card">
+            <div class="workflow-log-title">
+              <span>${index + 1}. ${escapeHtml(action.label || "Action")}</span>
+              <span class="workflow-result-pill">${escapeHtml(action.type || "action")}</span>
+            </div>
+            <p class="case-status">${escapeHtml(action.message || "No action note was set.")}</p>
+          </article>
+        `).join("")
+        : '<p class="case-status">No action notes have triggered yet.</p>';
+
+      return `
+        <div class="workflow-drawer-section">
+          <h4>Checks</h4>
+          ${checksHtml}
+          <h4>Action Notes</h4>
+          ${actionsHtml}
+        </div>
+      `;
+    }
+
+    function renderWorkflowActionValidation() {
+      const actions = workflowRun.actions || [];
+      if (!actions.length) {
+        return `
+          <div class="workflow-run-shell">
+            <div class="workflow-question-card">
+              <h3>Workflow complete</h3>
+              <p class="case-status">No action messages were found on this path.</p>
+              <div class="workflow-run-actions">
+                <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="workflow-run-shell">
+          <div class="workflow-question-card">
+            <h3>Review actions</h3>
+            <p class="workflow-description">Check each action before executing this workflow path.</p>
+            <table class="workflow-validation-table">
+              <thead>
+                <tr>
+                  <th>Confirm</th>
+                  <th>Action</th>
+                  <th>Message</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${actions.map((action, index) => `
+                  <tr>
+                    <td><input type="checkbox" data-workflow-action-approval="${index}" ${workflowRun.actionApprovals[index] ? "checked" : ""}></td>
+                    <td>
+                      <strong>${escapeHtml(action.label || `Action ${index + 1}`)}</strong><br>
+                      <span class="case-status">${escapeHtml(workflowActionTypeLabel(action.actionType))}</span>
+                    </td>
+                    <td>${escapeHtml(action.message || "No action note was set.")}</td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+            <div class="workflow-run-actions">
+              <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
+              <button id="executeWorkflowActionsBtn" type="button" class="btn-primary" ${workflowRun.actionApprovals.every(Boolean) ? "" : "disabled"}>Execute</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
+    function bindWorkflowActionValidation() {
+      const runner = document.getElementById("caseWorkflowRunner");
+      if (!runner) return;
+      const updateExecuteState = () => {
+        const execute = document.getElementById("executeWorkflowActionsBtn");
+        if (execute) execute.disabled = !workflowRun.actions.length || !workflowRun.actionApprovals.every(Boolean);
+      };
+      runner.querySelectorAll("[data-workflow-action-approval]").forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          const index = Number(checkbox.dataset.workflowActionApproval);
+          if (Number.isFinite(index)) workflowRun.actionApprovals[index] = checkbox.checked;
+          updateExecuteState();
+        });
+      });
+      document.getElementById("executeWorkflowActionsBtn")?.addEventListener("click", async () => {
+        if (!workflowRun.actionApprovals.every(Boolean)) return;
+        const execute = document.getElementById("executeWorkflowActionsBtn");
+        if (execute) {
+          execute.disabled = true;
+          execute.textContent = workflowSettings().executionMode === "fullExecution" ? "Executing..." : "Execute";
+        }
+        workflowRun.awaitingActionApproval = false;
+        workflowRun.actionsRendered = true;
+        renderWorkflowRunner();
+        await executeWorkflowRunActions();
+      });
+    }
+
+    function renderWorkflowStepsDrawer() {
+      const stepsBody = document.getElementById("workflowStepsDrawerBody");
+      const actionsBody = document.getElementById("workflowActionsDrawerBody");
+      if (!stepsBody || !actionsBody) return;
+      document.querySelectorAll("[data-workflow-drawer-tab]").forEach((tab) => {
+        const isActive = tab.dataset.workflowDrawerTab === workflowRun.drawerTab;
+        tab.classList.toggle("active", isActive);
+        tab.setAttribute("aria-selected", isActive ? "true" : "false");
+      });
+      stepsBody.hidden = workflowRun.drawerTab !== "steps";
+      actionsBody.hidden = workflowRun.drawerTab !== "actions";
+      if (!workflowRun.started) {
+        stepsBody.innerHTML = '<p class="case-status">Begin a workflow to view its steps.</p>';
+        actionsBody.innerHTML = '<p class="case-status">Begin a workflow to view checks and actions.</p>';
+        return;
+      }
+      stepsBody.innerHTML = renderWorkflowStepList();
+      actionsBody.innerHTML = renderWorkflowActionsLog();
+      stepsBody.querySelectorAll("[data-workflow-step-index]").forEach((button) => {
+        button.addEventListener("click", () => {
+          goToWorkflowStep(Number(button.dataset.workflowStepIndex));
+          closeWorkflowSteps();
+        });
+      });
+    }
+
+    function isCustomerServiceTabActive() {
+      return document.getElementById("customerServiceTab")?.classList.contains("active");
+    }
+
+    function updateWorkflowStepMenuVisibility() {
+      const available = isCustomerServiceTabActive() && workflowRun.started;
+      document.body.classList.toggle("workflow-steps-available", !!available);
+      const toggle = document.getElementById("headerWorkflowStepToggle");
+      if (toggle) toggle.disabled = !available;
+      if (!available) closeWorkflowSteps();
+    }
+
+    function updateCustomerServiceChrome() {
+      document.body.classList.toggle("customer-service-active", isCustomerServiceTabActive());
+    }
+
+    function openWorkflowSteps() {
+      const drawer = document.getElementById("workflowStepsDrawer");
+      const toggle = document.getElementById("headerWorkflowStepToggle");
+      renderWorkflowStepsDrawer();
+      drawer?.classList.add("open");
+      drawer?.setAttribute("aria-hidden", "false");
+      toggle?.setAttribute("aria-expanded", "true");
+    }
+
+    function closeWorkflowSteps() {
+      const drawer = document.getElementById("workflowStepsDrawer");
+      const toggle = document.getElementById("headerWorkflowStepToggle");
+      drawer?.classList.remove("open");
+      drawer?.setAttribute("aria-hidden", "true");
+      toggle?.setAttribute("aria-expanded", "false");
+    }
+
+    function toggleWorkflowStepsDrawer() {
+      const drawer = document.getElementById("workflowStepsDrawer");
+      if (drawer?.classList.contains("open")) closeWorkflowSteps();
+      else openWorkflowSteps();
+    }
+
+    function ensureCurrentStepInHistory() {
+      if (!workflowRun.currentNodeId) return;
+      const existingIndex = workflowRun.stepHistory.findIndex((step) => String(step.nodeId) === String(workflowRun.currentNodeId));
+      if (existingIndex >= 0) {
+        workflowRun.stepHistory = workflowRun.stepHistory.slice(0, existingIndex + 1);
+        return;
+      }
+      const node = findWorkflowNode(workflowRun.currentNodeId);
+      workflowRun.stepHistory.push({
+        nodeId: workflowRun.currentNodeId,
+        question: node?.question || node?.label || "Workflow step",
+        answer: "",
+        answers: {},
+        answerLabels: {},
+      });
+    }
+
+    function collectWorkflowAction(node) {
+      addWorkflowDebugAction(node.id);
+      const message = String(node?.message || node?.label || "").trim();
+      const actionConfig = node?.actionConfig && typeof node.actionConfig === "object" ? node.actionConfig : {};
+      if (!message && !actionConfig.type) return;
+      workflowRun.actions.push({
+        nodeId: node.id,
+        label: node.label || "Action",
+        type: node.type || "action",
+        actionType: actionConfig.type || "",
+        createRecord: actionConfig.createRecord || null,
+        itemLineAction: actionConfig.itemLineAction || null,
+        message,
+        stepIndex: workflowRun.collectingFromStepIndex,
+      });
+      workflowRun.actionApprovals.push(false);
+    }
+
+    function collectSystemWorkflowAction(node, message, actionConfig = {}) {
+      addWorkflowDebugAction(node.id);
+      workflowRun.actions.push({
+        nodeId: node.id,
+        label: node.label || node.type || "Action",
+        type: node.type || "system",
+        actionType: actionConfig.type || "",
+        statusId: actionConfig.statusId || "",
+        statusName: actionConfig.statusName || "",
+        message,
+        stepIndex: workflowRun.collectingFromStepIndex,
+      });
+      workflowRun.actionApprovals.push(false);
+    }
+
+    function trimWorkflowActionsFromStep(stepIndex) {
+      if (!Number.isFinite(stepIndex) || stepIndex < 0) {
+        workflowRun.actions = [];
+      } else {
+        workflowRun.actions = workflowRun.actions.filter((action) => Number(action.stepIndex ?? -1) < stepIndex);
+      }
+      workflowRun.actionApprovals = workflowRun.actions.map(() => false);
+      workflowRun.debugActionNodeIds = workflowRun.actions.map((action) => String(action.nodeId || "")).filter(Boolean);
+    }
+
+    function completeWorkflowRun() {
+      if (workflowRun.terminalNodeId) broadcastWorkflowDebug(workflowRun.terminalNodeId);
+      workflowRun.currentNodeId = "";
+      workflowRun.complete = true;
+      workflowRun.awaitingActionApproval = workflowRun.actions.length > 0;
+      workflowRun.actionApprovals = workflowRun.actions.map(() => false);
+      workflowRun.actionsRendered = false;
+      renderWorkflowRunner();
+    }
+
+    function trimWorkflowDiagnosticsToHistory() {
+      const historyIds = new Set(workflowRun.stepHistory.map((step) => String(step.nodeId)));
+      workflowRun.checks = workflowRun.checks.filter((check) => historyIds.has(String(check.nodeId)));
+    }
+
+    function evaluateInputWorkflowCheck(node) {
+      const config = node?.checkConfig || {};
+      const rules = Array.isArray(config.rules) ? config.rules : [];
+      const inputNode = findWorkflowNode(config.inputNodeId);
+      const inputStep = workflowRun.stepHistory.find((step) => String(step.nodeId) === String(config.inputNodeId));
+      const primary = workflowInputPrimaryAnswer(inputNode, inputStep);
+      const actualValue = primary.value || "";
+      const inputLabel = primary.label || inputNode?.question || inputNode?.label || "Input";
+
+      if (!config.inputNodeId || !inputStep) {
+        return {
+          nodeId: node.id,
+          label: node.label || node.question || "Check",
+          result: "Fail",
+          recordType: "input",
+          source: { type: "input", inputNodeId: config.inputNodeId || "", label: inputLabel },
+          message: "Selected input has not been collected yet.",
+          checks: [],
+          data: { inputNodeId: config.inputNodeId || "", inputLabel, value: actualValue },
+        };
+      }
+
+      const checks = rules.map((rule) => {
+        const expectedValue = rule.compareType === "field" ? "" : rule.staticValue;
+        const passed = compareWorkflowValues(actualValue, rule.operator || "equals", expectedValue);
+        return {
+          field: "value",
+          fieldLabel: inputLabel,
+          operator: rule.operator || "equals",
+          compareType: "static",
+          staticValue: rule.staticValue || "",
+          actualValue,
+          expectedValue,
+          passed,
+        };
+      });
+
+      return {
+        nodeId: node.id,
+        label: node.label || node.question || "Check",
+        result: checks.length && checks.every((check) => check.passed) ? "Pass" : "Fail",
+        recordType: "input",
+        source: { type: "input", inputNodeId: config.inputNodeId, label: inputLabel },
+        message: checks.length ? "" : "No check rules configured",
+        checks,
+        data: { inputNodeId: config.inputNodeId, inputLabel, value: actualValue },
+      };
+    }
+
+    async function runWorkflowCheck(node) {
+      if (!node || workflowRun.runningCheckNodeId === String(node.id)) return;
+      const caseId = params().get("caseId") || loadedCase?.id || "";
+      const runner = document.getElementById("caseWorkflowRunner");
+      workflowRun.runningCheckNodeId = String(node.id);
+
+      try {
+        if (node.checkConfig?.recordType === "input") {
+          const inputStep = workflowCheckInputStep(node);
+          const inputNode = workflowCheckInputNode(node);
+          if (workflowCheckInputUsesSalesOrderItems(node)) {
+            if (!caseId) throw new Error("Save the case before running workflow checks.");
+            if (!inputStep) throw new Error("Selected input has not been collected yet.");
+            const res = await fetch(`/api/netsuite/salesorder/cases/${encodeURIComponent(caseId)}/workflow-check`, {
+              method: "POST",
+              headers: authHeaders({ "Content-Type": "application/json" }),
+              body: JSON.stringify({
+                node,
+                inputValue: workflowInputPrimaryAnswer(inputNode, inputStep).value || "",
+                inputLabel: workflowInputPrimaryAnswer(inputNode, inputStep).label || inputNode?.question || inputNode?.label || "Input",
+                inputSource: "salesOrderItems",
+              }),
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+            const captured = {
+              nodeId: node.id,
+              label: node.label || node.question || "Check",
+              result: data.result || "Fail",
+              recordType: data.recordType || "input",
+              affectedItemSource: data.affectedItemSource || node.checkConfig?.affectedItemSource || "storeSalesOrder",
+              source: data.source || null,
+              message: data.message || "",
+              checks: Array.isArray(data.checks) ? data.checks : [],
+              data: data.data || {},
+              case: data.case || null,
+            };
+            workflowRun.checks = workflowRun.checks.filter((check) => String(check.nodeId) !== String(node.id));
+            workflowRun.checks.push(captured);
+            workflowRun.drawerTab = "actions";
+            renderWorkflowStepsDrawer();
+            workflowRun.runningCheckNodeId = "";
+            advanceWorkflow(captured.result);
+            return;
+          }
+          const captured = evaluateInputWorkflowCheck(node);
+          workflowRun.checks = workflowRun.checks.filter((check) => String(check.nodeId) !== String(node.id));
+          workflowRun.checks.push(captured);
+          workflowRun.drawerTab = "actions";
+          renderWorkflowStepsDrawer();
+          workflowRun.runningCheckNodeId = "";
+          advanceWorkflow(captured.result);
+          return;
+        }
+        if (!caseId) throw new Error("Save the case before running workflow checks.");
+        const res = await fetch(`/api/netsuite/salesorder/cases/${encodeURIComponent(caseId)}/workflow-check`, {
+          method: "POST",
+          headers: authHeaders({ "Content-Type": "application/json" }),
+          body: JSON.stringify({ node }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+
+        const captured = {
+          nodeId: node.id,
+          label: node.label || node.question || "Check",
+          result: data.result || "Fail",
+          recordType: data.recordType || node.checkConfig?.recordType || "affectedItem",
+          affectedItemSource: data.affectedItemSource || node.checkConfig?.affectedItemSource || "storeSalesOrder",
+          source: data.source || null,
+          message: data.message || "",
+          checks: Array.isArray(data.checks) ? data.checks : [],
+          data: data.data || {},
+          case: data.case || null,
+        };
+        workflowRun.checks = workflowRun.checks.filter((check) => String(check.nodeId) !== String(node.id));
+        workflowRun.checks.push(captured);
+        workflowRun.drawerTab = "actions";
+        renderWorkflowStepsDrawer();
+        workflowRun.runningCheckNodeId = "";
+        advanceWorkflow(captured.result);
+      } catch (err) {
+        console.error("Workflow check failed:", err);
+        workflowRun.runningCheckNodeId = "";
+        const captured = {
+          nodeId: node.id,
+          label: node.label || node.question || "Check",
+          result: "Fail",
+          recordType: node.checkConfig?.recordType || "affectedItem",
+          affectedItemSource: node.checkConfig?.affectedItemSource || "storeSalesOrder",
+          source: null,
+          message: err.message || "Check failed",
+          checks: [],
+          data: {},
+        };
+        workflowRun.checks = workflowRun.checks.filter((check) => String(check.nodeId) !== String(node.id));
+        workflowRun.checks.push(captured);
+        workflowRun.drawerTab = "actions";
+        renderWorkflowStepsDrawer();
+        if (runner) {
+          runner.innerHTML = `
+            <div class="workflow-run-shell">
+              <div class="workflow-question-card">
+                <h3>${escapeHtml(node.label || node.question || "Check")}</h3>
+                <p class="case-status">${escapeHtml(captured.message)}</p>
+                <div class="workflow-run-actions">
+                  <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
+                </div>
+              </div>
+            </div>
+          `;
+          document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
+        }
+      }
+    }
+
+    function followWorkflowPath(nextNodeId) {
+      let node = findWorkflowNode(nextNodeId);
+      let guard = 0;
+      while (node && guard < 100) {
+        guard += 1;
+        if (isWorkflowPromptNode(node)) {
+          workflowRun.currentNodeId = node.id;
+          ensureCurrentStepInHistory();
+          renderWorkflowRunner();
+          return;
+        }
+
+        if (node.type === "start" && node.startStatusId) {
+          collectSystemWorkflowAction(node, `Set case status to ${node.startStatusName || node.startStatusId}`, {
+            type: "setCaseStatus",
+            statusId: node.startStatusId,
+            statusName: node.startStatusName || node.startStatusId,
+          });
+        }
+        if (node.type === "action" || node.type === "break") collectWorkflowAction(node);
+        if (node.type === "closeCase") collectSystemWorkflowAction(node, "I have closed the case");
+        if (node.type === "closeCase" || node.type === "break") {
+          workflowRun.terminalNodeId = node.id;
+          addWorkflowDebugNode(node.id);
+          break;
+        }
+        const nextEdge = outgoingWorkflowEdges(node.id)[0];
+        if (!nextEdge) {
+          workflowRun.terminalNodeId = node.id;
+          addWorkflowDebugNode(node.id);
+          break;
+        }
+        addWorkflowDebugEdge(nextEdge.id);
+        node = findWorkflowNode(nextEdge.to);
+      }
+
+      completeWorkflowRun();
+    }
+
+    function followWorkflowBranches(nextEdges = []) {
+      const promptTarget = { id: "" };
+      const visited = new Set();
+
+      const walk = (nodeId) => {
+        let node = findWorkflowNode(nodeId);
+        let guard = 0;
+        while (node && guard < 100) {
+          guard += 1;
+          const visitKey = String(node.id);
+          if (visited.has(visitKey)) break;
+          visited.add(visitKey);
+
+          if (isWorkflowPromptNode(node)) {
+            if (!promptTarget.id) promptTarget.id = node.id;
+            return;
+          }
+
+          if (node.type === "start" && node.startStatusId) {
+            collectSystemWorkflowAction(node, `Set case status to ${node.startStatusName || node.startStatusId}`, {
+              type: "setCaseStatus",
+              statusId: node.startStatusId,
+              statusName: node.startStatusName || node.startStatusId,
+            });
+          }
+          if (node.type === "action" || node.type === "break") collectWorkflowAction(node);
+          if (node.type === "closeCase") collectSystemWorkflowAction(node, "I have closed the case");
+          if (node.type === "closeCase" || node.type === "break") {
+            workflowRun.terminalNodeId = node.id;
+            addWorkflowDebugNode(node.id);
+            return;
+          }
+
+          const edges = outgoingWorkflowEdges(node.id);
+          if (!edges.length) {
+            workflowRun.terminalNodeId = node.id;
+            addWorkflowDebugNode(node.id);
+            return;
+          }
+          const nextEdge = edges[0];
+          addWorkflowDebugEdge(nextEdge.id);
+          node = findWorkflowNode(nextEdge.to);
+        }
+      };
+
+      nextEdges.forEach((edge) => walk(edge.to));
+
+      if (promptTarget.id) {
+        workflowRun.currentNodeId = promptTarget.id;
+        ensureCurrentStepInHistory();
+        renderWorkflowRunner();
+        return;
+      }
+
+      completeWorkflowRun();
+    }
+
+    function advanceWorkflow(answer) {
+      const node = findWorkflowNode(workflowRun.currentNodeId);
+      if (!node) return;
+      const isInputAnswer = answer && typeof answer === "object" && !Array.isArray(answer);
+      const answerText = isInputAnswer ? answer.summary || "" : answer;
+      const currentStepIndex = workflowRun.stepHistory.findIndex((step) => String(step.nodeId) === String(node.id));
+      if (currentStepIndex >= 0) {
+        workflowRun.stepHistory = workflowRun.stepHistory.slice(0, currentStepIndex + 1);
+        workflowRun.stepHistory[currentStepIndex].answer = answerText;
+        if (isInputAnswer) {
+          workflowRun.stepHistory[currentStepIndex].answers = answer.answers || {};
+          workflowRun.stepHistory[currentStepIndex].answerLabels = answer.labels || {};
+        }
+      }
+      trimWorkflowDiagnosticsToHistory();
+      trimWorkflowActionsFromStep(currentStepIndex);
+      workflowRun.awaitingActionApproval = false;
+      workflowRun.terminalNodeId = "";
+      workflowRun.complete = false;
+      workflowRun.actionsRendered = false;
+      workflowRun.answers = workflowRun.stepHistory
+        .filter((item) => item.answer)
+        .map((item) => ({ questionId: item.nodeId, question: item.question, answer: item.answer, answers: item.answers || {}, answerLabels: item.answerLabels || {} }));
+      const actionTable = document.getElementById("caseWorkflowActionTable");
+      const table = document.getElementById("caseWorkflowActions");
+      if (actionTable) actionTable.hidden = true;
+      if (table) table.innerHTML = '<tr><td colspan="2">No workflow actions have been submitted yet.</td></tr>';
+
+      const edges = outgoingWorkflowEdges(node.id);
+      const cleanAnswer = String(answerText || "").trim().toLowerCase();
+      const matchingEdges = edges.filter((item) => String(item.label || "").trim().toLowerCase() === cleanAnswer);
+      const fallbackEdges = edges.filter((item) => !item.label);
+      const nextEdges = matchingEdges.length ? matchingEdges : fallbackEdges.length ? fallbackEdges : edges.slice(0, 1);
+      nextEdges.forEach((edge) => addWorkflowDebugEdge(edge.id));
+
+      if (!nextEdges.length) {
+        completeWorkflowRun();
+        return;
+      }
+
+      workflowRun.collectingFromStepIndex = currentStepIndex;
+      followWorkflowBranches(nextEdges);
+      workflowRun.collectingFromStepIndex = -1;
+    }
+
+    function startWorkflow(workflow) {
+      resetWorkflowRun(workflow);
+      renderWorkflowRunner();
+    }
+
+    function beginWorkflow() {
+      if (!workflowRun.selected) {
+        renderWorkflowRunner();
+        return;
+      }
+
+      const start = firstWorkflowNode();
+      if (!start) {
+        renderWorkflowRunner("This workflow is empty. Add questions and actions in CS Workflows first.");
+        return;
+      }
+      workflowRun.started = true;
+      workflowRun.currentNodeId = start.id;
+      followWorkflowPath(start.id);
+    }
+
+    function restartWorkflow() {
+      const workflow = workflowRun.selected;
+      resetWorkflowRun(workflow);
+      workflowRun.selected = workflow;
+      beginWorkflow();
+    }
+
+    function goToWorkflowStep(index) {
+      if (!Number.isFinite(index) || index < 0 || index >= workflowRun.stepHistory.length) return;
+      const step = workflowRun.stepHistory[index];
+      workflowRun.stepHistory = workflowRun.stepHistory.slice(0, index + 1);
+      workflowRun.stepHistory[workflowRun.stepHistory.length - 1].answer = "";
+      workflowRun.stepHistory[workflowRun.stepHistory.length - 1].answers = {};
+      workflowRun.stepHistory[workflowRun.stepHistory.length - 1].answerLabels = {};
+      workflowRun.currentNodeId = step.nodeId;
+      trimWorkflowActionsFromStep(index);
+      workflowRun.terminalNodeId = "";
+      trimWorkflowDiagnosticsToHistory();
+      workflowRun.answers = workflowRun.stepHistory
+        .slice(0, -1)
+        .filter((item) => item.answer)
+        .map((item) => ({ questionId: item.nodeId, question: item.question, answer: item.answer, answers: item.answers || {}, answerLabels: item.answerLabels || {} }));
+      workflowRun.complete = false;
+      workflowRun.awaitingActionApproval = false;
+      workflowRun.actionsRendered = false;
+      const actionTable = document.getElementById("caseWorkflowActionTable");
+      const table = document.getElementById("caseWorkflowActions");
+      if (actionTable) actionTable.hidden = true;
+      if (table) table.innerHTML = '<tr><td colspan="2">No workflow actions have been submitted yet.</td></tr>';
+      window.clearInterval(workflowRun.timer);
+      renderWorkflowRunner();
+    }
+
+    function workflowActionIconState(action = {}) {
+      const state = action.executionState || "pending";
+      const running = state === "pending" && action.executionMessage === "Running...";
+      return {
+        className: state === "success" ? "success" : state === "failed" ? "failed" : state === "needsInput" ? "warning" : running ? "running" : "",
+      };
+    }
+
+    function appendWorkflowActionRow(action, index) {
+      const table = document.getElementById("caseWorkflowActions");
+      if (!table) return;
+      if (index === 0) table.innerHTML = "";
+      const state = action.executionState || "pending";
+      const icon = state === "success" ? "✓" : state === "failed" ? "×" : "…";
+      const iconClass = state === "success" ? "success" : state === "failed" ? "failed" : "";
+      const actionIcon = workflowActionIconState(action);
+      table.insertAdjacentHTML("beforeend", `
+        <tr data-workflow-action-row="${index}">
+          <td>${index + 1}</td>
+          <td>
+            <div class="workflow-action-response">
+              <span class="workflow-action-icon ${actionIcon.className || iconClass}" data-workflow-action-icon="${index}"></span>
+              <div>
+                <strong>${escapeHtml(action.label || `Action ${index + 1}`)}</strong>
+                <span class="case-status"> ${escapeHtml(workflowActionTypeLabel(action.actionType))}</span>
+                <div data-workflow-action-message="${index}">${workflowActionMessageHtml(action)}</div>
+                <div data-workflow-action-allocation="${index}">${workflowActionAllocationHtml(action, index)}</div>
+                ${action.executionError ? `<div class="workflow-action-error" data-workflow-action-error="${index}">${escapeHtml(action.executionError)}</div>` : `<div class="workflow-action-error" data-workflow-action-error="${index}" hidden></div>`}
+                <div data-workflow-action-debug="${index}">${action.executionState === "failed" ? workflowActionDebugHtml(action.executionDebug) : ""}</div>
+              </div>
+            </div>
+          </td>
+        </tr>
+      `);
+      wireWorkflowAllocationControls(index);
+    }
+
+    function updateWorkflowActionRow(index, patch = {}) {
+      const action = workflowRun.actions[index];
+      if (!action) return;
+      Object.assign(action, patch);
+      const state = action.executionState || "pending";
+      const icon = document.querySelector(`[data-workflow-action-icon="${index}"]`);
+      const message = document.querySelector(`[data-workflow-action-message="${index}"]`);
+      const allocation = document.querySelector(`[data-workflow-action-allocation="${index}"]`);
+      const error = document.querySelector(`[data-workflow-action-error="${index}"]`);
+      const debug = document.querySelector(`[data-workflow-action-debug="${index}"]`);
+      if (icon) {
+        icon.textContent = state === "success" ? "✓" : state === "failed" ? "×" : "…";
+        icon.classList.toggle("success", state === "success");
+        icon.classList.toggle("failed", state === "failed");
+        icon.classList.toggle("warning", state === "needsInput");
+        const iconState = workflowActionIconState(action);
+        icon.classList.toggle("running", iconState.className === "running");
+        if (iconState.className === "running") icon.textContent = "";
+        icon.textContent = "";
+      }
+      if (message) message.innerHTML = workflowActionMessageHtml(action);
+      if (allocation) allocation.innerHTML = workflowActionAllocationHtml(action, index);
+      wireWorkflowAllocationControls(index);
+      if (error) {
+        error.hidden = !action.executionError;
+        error.textContent = action.executionError || "";
+      }
+      if (debug) debug.innerHTML = state === "failed" ? workflowActionDebugHtml(action.executionDebug) : "";
+      renderWorkflowStepsDrawer();
+    }
+
+    function renderWorkflowExecutionTable(actions = workflowRun.actions) {
+      window.clearInterval(workflowRun.timer);
+      const actionTable = document.getElementById("caseWorkflowActionTable");
+      const table = document.getElementById("caseWorkflowActions");
+      if (!table) return;
+      if (actionTable) actionTable.hidden = false;
+
+      if (!actions.length) {
+        table.innerHTML = '<tr><td colspan="2">This workflow path did not contain any action messages.</td></tr>';
+        return;
+      }
+
+      table.innerHTML = "";
+      actions.forEach((action, index) => appendWorkflowActionRow(action, index));
+    }
+
+    function delayWorkflowAction(ms) {
+      return new Promise((resolve) => window.setTimeout(resolve, ms));
+    }
+
+    const workflowAlertSound = {
+      ctx: null,
+      timer: null,
+    };
+
+    function playWorkflowBong() {
+      try {
+        const AudioContext = window.AudioContext || window.webkitAudioContext;
+        if (!AudioContext) return;
+        workflowAlertSound.ctx = workflowAlertSound.ctx || new AudioContext();
+        const ctx = workflowAlertSound.ctx;
+        if (ctx.state === "suspended") ctx.resume();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(180, ctx.currentTime);
+        gain.gain.setValueAtTime(0.001, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.24, ctx.currentTime + 0.03);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.85);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start();
+        osc.stop(ctx.currentTime + 0.9);
+      } catch {}
+    }
+
+    function startWorkflowBong() {
+      if (workflowAlertSound.timer) return;
+      playWorkflowBong();
+      workflowAlertSound.timer = window.setInterval(playWorkflowBong, 4500);
+    }
+
+    function stopWorkflowBong() {
+      if (workflowAlertSound.timer) window.clearInterval(workflowAlertSound.timer);
+      workflowAlertSound.timer = null;
+    }
+
+    function allocationRows(index) {
+      const panel = document.querySelector(`[data-allocation-panel="${index}"]`);
+      if (!panel) return [];
+      const action = workflowRun.actions[index] || {};
+      const deposits = Array.isArray(action.depositOptions) ? action.depositOptions : [];
+      return deposits.map((deposit, rowIndex) => ({
+        rowIndex,
+        deposit,
+        checkbox: panel.querySelector(`[data-allocation-select="${index}"][data-allocation-row="${rowIndex}"]`),
+        amountInput: panel.querySelector(`[data-allocation-amount="${index}"][data-allocation-row="${rowIndex}"]`),
+        available: Number(deposit.total || deposit.amount || 0),
+      }));
+    }
+
+    function distributeAllocation(index, lockedRowIndex = null) {
+      const action = workflowRun.actions[index] || {};
+      const expected = Number(action.expectedAmount || 0);
+      if (!(expected > 0)) return;
+      const rows = allocationRows(index);
+      const selected = rows.filter((row) => row.checkbox?.checked);
+      rows.forEach((row) => {
+        if (!row.checkbox?.checked && row.amountInput) row.amountInput.value = "";
+      });
+      if (!selected.length) return;
+
+      const locked = selected.find((row) => row.rowIndex === lockedRowIndex);
+      const lockedAmount = locked ? Math.max(0, Number(locked.amountInput?.value || 0)) : 0;
+      const remainingRows = locked ? selected.filter((row) => row.rowIndex !== lockedRowIndex) : selected;
+      const remainingTotal = Math.max(0, expected - lockedAmount);
+      const share = remainingRows.length ? remainingTotal / remainingRows.length : 0;
+
+      remainingRows.forEach((row, position) => {
+        if (!row.amountInput) return;
+        const value = position === remainingRows.length - 1
+          ? remainingTotal - share * (remainingRows.length - 1)
+          : share;
+        row.amountInput.value = Math.min(Math.max(0, value), row.available || value).toFixed(2);
+      });
+
+      if (locked?.amountInput && lockedAmount > expected) locked.amountInput.value = expected.toFixed(2);
+    }
+
+    function wireWorkflowAllocationControls(index) {
+      const panel = document.querySelector(`[data-allocation-panel="${index}"]`);
+      if (!panel || panel.dataset.wired === "1") return;
+      panel.dataset.wired = "1";
+      panel.querySelectorAll(`[data-allocation-select="${index}"]`).forEach((checkbox) => {
+        checkbox.addEventListener("change", () => distributeAllocation(index));
+      });
+      panel.querySelectorAll(`[data-allocation-amount="${index}"]`).forEach((input) => {
+        input.addEventListener("input", () => distributeAllocation(index, Number(input.dataset.allocationRow)));
+      });
+      distributeAllocation(index);
+      panel.querySelector(`[data-allocation-confirm="${index}"]`)?.addEventListener("click", async () => {
+        const action = workflowRun.actions[index];
+        if (!action) return;
+        const expected = Number(action.expectedAmount || 0);
+        const deposits = Array.isArray(action.depositOptions) ? action.depositOptions : [];
+        const error = panel.querySelector(`[data-allocation-error="${index}"]`);
+        const allocations = [];
+        panel.querySelectorAll(`[data-allocation-select="${index}"]`).forEach((checkbox) => {
+          if (!checkbox.checked) return;
+          const rowIndex = Number(checkbox.dataset.allocationRow);
+          const deposit = deposits[rowIndex] || {};
+          const amountInput = panel.querySelector(`[data-allocation-amount="${index}"][data-allocation-row="${rowIndex}"]`);
+          const amount = Number(amountInput?.value || 0);
+          if (amount > 0) allocations.push({ id: deposit.id, tranId: deposit.tranId, amount: amount.toFixed(2) });
+        });
+        const total = allocations.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+        if (!allocations.length) {
+          if (error) { error.hidden = false; error.textContent = "Select at least one customer deposit."; }
+          return;
+        }
+        if (expected > 0 && total - expected > 0.0001) {
+          if (error) { error.hidden = false; error.textContent = "Selected refund amounts exceed the workflow refund amount."; }
+          return;
+        }
+        stopWorkflowBong();
+        action.depositAllocations = allocations;
+        await executeWorkflowActionAtIndex(index);
+        if (workflowRun.actions[index]?.executionState === "success") {
+          for (let nextIndex = index + 1; nextIndex < workflowRun.actions.length; nextIndex += 1) {
+            try {
+              await executeWorkflowActionAtIndex(nextIndex);
+            } catch (err) {
+              if (err.message === "__WORKFLOW_ACTION_WAITING_FOR_INPUT__") return;
+              stopWorkflowBong();
+              updateWorkflowActionRow(nextIndex, {
+                executionState: "failed",
+                executionMessage: workflowRun.actions[nextIndex]?.message || "Action failed.",
+                executionError: err.message || "Action failed.",
+              });
+              return;
+            }
+          }
+        }
+      });
+    }
+
+    async function executeWorkflowActionAtIndex(index) {
+      const action = workflowRun.actions[index];
+      if (!action) return;
+      updateWorkflowActionRow(index, {
+        executionState: "pending",
+        executionMessage: "Running...",
+        executionError: "",
+      });
+
+      if (workflowSettings().executionMode !== "fullExecution" || !action.actionType) {
+        await delayWorkflowAction(2000);
+        updateWorkflowActionRow(index, {
+          executionState: "success",
+          executionMessage: action.message || "Action message shown.",
+          executionError: "",
+        });
+        return;
+      }
+
+      const caseId = params().get("caseId") || loadedCase?.id || "";
+      if (!caseId) throw new Error("Save the case before executing workflow actions.");
+      const res = await fetch(`/api/netsuite/salesorder/cases/${encodeURIComponent(caseId)}/workflow-actions/execute`, {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          workflowId: workflowRun.selected?.id || "",
+          actions: [action],
+          approvals: [true],
+          checks: workflowRun.checks,
+          answers: workflowRun.answers,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+      const result = Array.isArray(data.results) ? data.results[0] : null;
+      if (result?.needsInput === "customerDepositAllocation") {
+        updateWorkflowActionRow(index, {
+          executionState: "needsInput",
+          executionMessage: result.message || "Choose customer deposit allocation.",
+          executionError: "",
+          needsInput: result.needsInput,
+          depositOptions: Array.isArray(result.deposits) ? result.deposits : [],
+          expectedAmount: result.expectedAmount || 0,
+          executionDebug: result.debug || null,
+        });
+        startWorkflowBong();
+        throw new Error("__WORKFLOW_ACTION_WAITING_FOR_INPUT__");
+      }
+      if (result?.ok !== false && action.actionType === "setCaseStatus") {
+        const statusId = action.statusId || "";
+        const statusName = action.statusName || statusId;
+        document.getElementById("caseStatus").value = statusId;
+        document.getElementById("caseStatusName").value = statusName;
+      }
+      updateWorkflowActionRow(index, {
+        executionState: result?.ok === false ? "failed" : "success",
+        executionMessage: result?.message || action.message || "Workflow action completed.",
+        executionDocumentNumber: result?.document?.number || "",
+        executionDocumentUrl: result?.document?.url || "",
+        executionError: result?.ok === false ? result?.error || "Action failed." : "",
+        executionDebug: result?.debug || null,
+      });
+      if (result?.ok !== false) stopWorkflowBong();
+    }
+
+    async function executeWorkflowRunActions() {
+      renderWorkflowExecutionTable();
+      for (let index = 0; index < workflowRun.actions.length; index += 1) {
+        try {
+          await executeWorkflowActionAtIndex(index);
+        } catch (err) {
+          if (err.message === "__WORKFLOW_ACTION_WAITING_FOR_INPUT__") return;
+          stopWorkflowBong();
+          updateWorkflowActionRow(index, {
+            executionState: "failed",
+            executionMessage: workflowRun.actions[index]?.message || "Action failed.",
+            executionError: err.message || "Action failed.",
+          });
+        }
+      }
+    }
+
+    async function loadCaseWorkflows() {
+      const select = document.getElementById("caseWorkflowSelect");
+      if (!select) return;
+      select.innerHTML = '<option value="">Loading workflows...</option>';
+      try {
+        const [res, recordsRes] = await Promise.all([
+          fetch("/api/cs-workflows", {
+            headers: authHeaders(),
+            cache: "no-store",
+          }),
+          fetch("/api/cs-workflows/records", {
+            headers: authHeaders(),
+            cache: "no-store",
+          }),
+        ]);
+        const data = await res.json().catch(() => ({}));
+        const recordsData = await recordsRes.json().catch(() => ({}));
+        if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+        if (!recordsRes.ok || recordsData?.ok === false) throw new Error(recordsData?.error || `HTTP ${recordsRes.status}`);
+
+        workflowRun.workflows = await filterAvailableWorkflows((Array.isArray(data.workflows) ? data.workflows : []).filter((workflow) => workflow.isActive !== false));
+        workflowRun.records = Array.isArray(recordsData.records) ? recordsData.records : [];
+        select.innerHTML = '<option value="">Select workflow</option>' + workflowRun.workflows
+          .map((workflow) => `<option value="${escapeHtml(workflow.id)}">${escapeHtml(workflow.name)}</option>`)
+          .join("");
+        renderWorkflowRunner();
+      } catch (err) {
+        console.error("Failed to load CS workflows:", err);
+        workflowRun.workflows = [];
+        select.innerHTML = '<option value="">Workflows unavailable</option>';
+        renderWorkflowRunner(err.message || "Could not load workflows.");
+      }
+    }
+
+    async function filterAvailableWorkflows(workflows = []) {
+      const caseId = currentCaseId();
+      const checks = await Promise.all(workflows.map(async (workflow) => {
+        const criteria = workflowCriteria(workflow);
+        if (!criteria.length) return workflow;
+        if (!caseId) return null;
+        try {
+          const res = await fetch(`/api/netsuite/salesorder/cases/${encodeURIComponent(caseId)}/workflow-criteria`, {
+            method: "POST",
+            headers: authHeaders({ "Content-Type": "application/json" }),
+            body: JSON.stringify({ workflowId: workflow.id, criteria }),
+          });
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+          return data.available ? workflow : null;
+        } catch (err) {
+          console.warn("Workflow criteria failed; hiding workflow.", workflow.name || workflow.id, err.message || err);
+          return null;
+        }
+      }));
+      return checks.filter(Boolean);
+    }
+
+    function bindCaseWorkflowRunner() {
+      const select = document.getElementById("caseWorkflowSelect");
+      if (!select) return;
+      select.addEventListener("change", () => {
+        const workflow = workflowRun.workflows.find((item) => String(item.id) === String(select.value)) || null;
+        resetWorkflowRun(workflow);
+        renderWorkflowRunner();
+      });
+    }
+
+    function bindWorkflowDrawerTabs() {
+      document.querySelectorAll("[data-workflow-drawer-tab]").forEach((tab) => {
+        tab.addEventListener("click", () => {
+          workflowRun.drawerTab = tab.dataset.workflowDrawerTab || "steps";
+          renderWorkflowStepsDrawer();
+        });
+      });
+    }
+
+    function initTabs() {
+      const tabs = Array.from(document.querySelectorAll(".case-tab"));
+      const panels = Array.from(document.querySelectorAll(".case-panel"));
+      tabs.forEach((tab) => {
+        tab.addEventListener("click", () => {
+          tabs.forEach((next) => {
+            const active = next === tab;
+            next.classList.toggle("active", active);
+            next.setAttribute("aria-selected", active ? "true" : "false");
+          });
+          panels.forEach((panel) => {
+            panel.hidden = panel.id !== tab.dataset.panel;
+          });
+          updateCustomerServiceChrome();
+          updateWorkflowStepMenuVisibility();
+        });
+      });
+    }
+
+    function bindRelatedPopups() {
+      document.addEventListener("click", (event) => {
+        const link = event.target.closest(".related-popup-link");
+        if (!link) return;
+        event.preventDefault();
+        const win = window.open(
+          link.href,
+          "RelatedRecord",
+          "width=1200,height=800,resizable=yes,scrollbars=yes"
+        );
+        if (win) win.focus();
+        else window.location.href = link.href;
+      });
+    }
+
+    async function init() {
+      applyPopupUserTheme();
+      const query = params();
+      document.getElementById("caseCustomerName").value = query.get("customerName") || "";
+      document.getElementById("caseCustomerId").value = query.get("customerId") || "";
+      populateStore();
+      populateHeaderContext();
+      document.getElementById("caseIncidentDate").value = todayIsoDate();
+      await Promise.all([populateStatuses(), populateAssignedTo(), populateCaseTypes()]);
+      populateItems();
+      if (query.get("caseId")) {
+        await loadExistingCase().catch((err) => {
+          console.error("Failed to load case:", err);
+          document.getElementById("caseStatusText").textContent = err.message || "Could not load case.";
+        });
+      } else {
+        populateCaseSubTypes();
+      }
+      loadAiCaseSummary();
+      bindAiCaseSummaryRefresh();
+      bindCaseWorkflowRunner();
+      bindWorkflowDrawerTabs();
+      bindRelatedPopups();
+      loadCaseWorkflows();
+      initTabs();
+      window.addEventListener("pagehide", endWorkflowDebug);
+      window.addEventListener("beforeunload", endWorkflowDebug);
+
+      document.getElementById("caseType").addEventListener("change", (event) => {
+        populateCaseSubTypes(event.target.value);
+      });
+      document.getElementById("addCaseNoteBtn").addEventListener("click", addCaseNote);
+      document.getElementById("headerWorkflowStepToggle")?.addEventListener("click", toggleWorkflowStepsDrawer);
+      document.getElementById("workflowStepsClose")?.addEventListener("click", closeWorkflowSteps);
+      renderCaseNotes([]);
+      updateCustomerServiceChrome();
+      updateWorkflowStepMenuVisibility();
+
+      document.getElementById("caseSubject").focus();
+      document.getElementById("cancelBtn").addEventListener("click", () => window.close());
+      document.getElementById("raiseCaseForm").addEventListener("submit", async (event) => {
+        event.preventDefault();
+        const statusText = document.getElementById("caseStatusText");
+        const submitButton = event.currentTarget.querySelector('button[type="submit"]');
+
+        submitButton.disabled = true;
+        const isExistingCase = !!loadedCase?.id;
+        statusText.textContent = isExistingCase ? "Saving case..." : "Creating case...";
+
+        try {
+          const res = await fetch(
+            isExistingCase
+              ? `/api/netsuite/salesorder/cases/${encodeURIComponent(loadedCase.id)}`
+              : "/api/netsuite/salesorder/cases",
+            {
+              method: isExistingCase ? "PATCH" : "POST",
+              headers: authHeaders({ "Content-Type": "application/json" }),
+              body: JSON.stringify({ case: currentCaseDraft() }),
+            }
+          );
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+
+          if (isExistingCase) {
+            statusText.textContent = `Case saved${data.caseNumber ? `: ${data.caseNumber}` : ""}.`;
+            loadedCase = { ...loadedCase, ...currentCaseDraft(), caseNumber: data.caseNumber || loadedCase.caseNumber };
+            try {
+              window.opener?.postMessage({ action: "support-case-updated", caseId: loadedCase.id || "" }, window.location.origin);
+            } catch {}
+            submitButton.disabled = false;
+            return;
+          }
+
+          statusText.textContent = `Case created${data.caseNumber ? `: ${data.caseNumber}` : ""}.`;
+          try {
+            window.opener?.postMessage({ action: "support-case-created", caseId: data.id || "" }, window.location.origin);
+          } catch {}
+          window.setTimeout(() => window.close(), 700);
+        } catch (err) {
+          console.error(isExistingCase ? "Failed to save case:" : "Failed to create case:", err);
+          statusText.textContent = err.message || (isExistingCase ? "Could not save the case." : "Could not create the case.");
+          submitButton.disabled = false;
+        }
+      });
+    }
+
+    init();
+  </script>
+</body>
+
+</html>

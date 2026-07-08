@@ -27,9 +27,11 @@
     <script defer src="/js/adminRoles.js"></script>
     <script defer src="/js/adminAiAccess.js"></script>
     <script defer src="/js/adminAiPromptManager.js"></script>
+    <script defer src="/js/adminAiCaseSettings.js"></script>
     <script defer src="/js/adminLocations.js"></script>
     <script defer src="/js/adminManagementRules.js"></script>
     <script defer src="/js/adminPromotionSettings.js"></script>
+    <script defer src="/js/adminReleaseSettings.js"></script>
     <script defer src="/js/adminSuitePimSettings.js"></script>
     <script defer src="/js/adminItemOptionSettings.js"></script>
     <script defer src="/js/adminEmailAlerts.js"></script>
@@ -55,6 +57,7 @@
             
             <div class="tab" data-target="dashboard-widgets">Dashboard Tabs</div>
             <div class="tab" data-target="sales-features">Sales Features</div>
+            <div class="tab" data-target="releases">Releases</div>
             <div class="tab" data-target="suitepim-features">SuitePim</div>
             <div class="tab" data-target="item-options">Item Options</div>
             <div class="tab" data-target="email-alerts">Email Alerts</div>
@@ -475,6 +478,32 @@
             </section>
         </div>
 
+        <!-- === Releases === -->
+        <div id="releases" class="tab-content hidden">
+            <h2>Releases</h2>
+            <p>Control release-gated features.</p>
+
+            <section class="admin-feature-panel" aria-labelledby="customerServiceReleaseTitle">
+                <div>
+                    <h3 id="customerServiceReleaseTitle">Customer Service</h3>
+                    <p>When production is active, disabling this hides the Customer Service panel on Sales View.</p>
+                </div>
+
+                <label class="admin-toggle-row">
+                    <span>
+                        <strong>Customer Service</strong>
+                        <small>Show the Customer Service panel and Raise Case button on Sales View.</small>
+                    </span>
+                    <input id="adminCustomerServiceReleaseEnabled" type="checkbox">
+                </label>
+
+                <div class="admin-feature-actions">
+                    <button id="adminSaveReleaseSettings" type="button" class="btn-primary">Save Release Settings</button>
+                    <span id="adminReleaseSettingsStatus" class="admin-feature-status" aria-live="polite"></span>
+                </div>
+            </section>
+        </div>
+
         <!-- === SuitePim === -->
         <div id="suitepim-features" class="tab-content hidden">
             <h2>SuitePim</h2>
@@ -771,6 +800,7 @@
             <div class="subtabs" data-subtab-group="ai-manager">
                 <div class="subtab active" data-target="sub-ai-access">AI Access</div>
                 <div class="subtab" data-target="sub-ai-product-descriptions">Product Descriptions</div>
+                <div class="subtab" data-target="sub-ai-cases">Cases</div>
             </div>
 
             <div id="sub-ai-access" class="subtab-content active">
@@ -841,6 +871,23 @@
                         <span class="ai-prompt-status" aria-live="polite"></span>
                     </div>
                 </div>
+            </div>
+
+            <div id="sub-ai-cases" class="subtab-content hidden">
+                <section class="admin-feature-panel" aria-labelledby="aiCaseSummaryTitle">
+                    <div>
+                        <h3 id="aiCaseSummaryTitle">Case Summary</h3>
+                        <p>Show a generated summary of the case currently being raised.</p>
+                    </div>
+                    <label class="admin-toggle-row">
+                        <span>
+                            <strong>Case summaries</strong>
+                            <small>Generate a short summary in the Raise Case window.</small>
+                        </span>
+                        <input id="adminAiCaseSummaryEnabled" type="checkbox">
+                    </label>
+                    <span id="adminAiCaseSettingsStatus" class="admin-feature-status" aria-live="polite"></span>
+                </section>
             </div>
         </div>
 

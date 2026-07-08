@@ -12,10 +12,12 @@ define(['N/record', 'N/query', 'N/error'], (record, query, error) => {
 
   const post = (context) => {
     try {
-      const { orderId, title, memo, type, authorId } = context;
+      const { orderId, transactionId, caseId, activityId, title, memo, type, authorId } = context;
+      const linkedTransactionId = orderId || transactionId;
+      const linkedActivityId = caseId || activityId;
 
-      if (!orderId)
-        throw error.create({ name: 'MISSING_ORDER_ID', message: 'orderId is required.' });
+      if (!linkedTransactionId && !linkedActivityId)
+        throw error.create({ name: 'MISSING_LINKED_RECORD', message: 'orderId or caseId is required.' });
 
       if (!title)
         throw error.create({ name: 'MISSING_TITLE', message: 'Memo title is required.' });
@@ -35,8 +37,12 @@ define(['N/record', 'N/query', 'N/error'], (record, query, error) => {
       note.setValue({ fieldId: "note", value: memo });
       note.setValue({ fieldId: "notetype", value: nsNoteType });
 
-      // Link to the transaction. This supports Sales Orders and Estimates/Quotes.
-      note.setValue({ fieldId: "transaction", value: Number(orderId) });
+      if (linkedActivityId) {
+        note.setValue({ fieldId: "activity", value: Number(linkedActivityId) });
+      } else {
+        // Link to the transaction. This supports Sales Orders and Estimates/Quotes.
+        note.setValue({ fieldId: "transaction", value: Number(linkedTransactionId) });
+      }
 
       // Set Author if provided
       if (authorId) {
@@ -57,6 +63,35 @@ define(['N/record', 'N/query', 'N/error'], (record, query, error) => {
 
   const get = (context) => {
     try {
+      const activityId = context.caseId || context.activityId;
+      if (activityId) {
+        const numericActivityId = Number(activityId);
+        if (!numericActivityId)
+          throw error.create({ name: 'INVALID_ACTIVITY_ID', message: 'caseId/activityId must be numeric.' });
+
+        const sql = `
+          SELECT
+            note.id AS id,
+            note.title AS title,
+            note.note AS memo
+          FROM
+            note
+          WHERE
+            note.activity = ?
+          ORDER BY
+            note.id DESC
+        `;
+
+        const results = query
+          .runSuiteQL({
+            query: sql,
+            params: [numericActivityId]
+          })
+          .asMappedResults();
+
+        return { ok: true, results };
+      }
+
       const transactionId = context.orderId || context.transactionId || context.id;
 
       if (!transactionId)

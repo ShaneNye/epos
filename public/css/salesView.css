@@ -544,9 +544,14 @@ textarea:focus {
   .right-main,
   .order-summary,
   .deposits-panel,
+  .sales-bottom-panel,
   .memo-panel {
     min-width: 0;
     width: 100%;
+  }
+
+  .sales-bottom-panel-row {
+    grid-template-columns: 1fr;
   }
 
   .form-scroll {
@@ -570,23 +575,34 @@ textarea:focus {
     min-width: 720px;
   }
 
+  .customer-service-cases-table {
+    min-width: 0;
+  }
+
   .actions,
-  .deposits-panel .section-header-flex {
+  .deposits-panel .section-header-flex,
+  .sales-bottom-panel .section-header-flex {
     flex-wrap: wrap;
   }
 }
 
 @media (max-width: 560px) {
   .actions,
-  .deposits-panel .section-header-flex {
+  .deposits-panel .section-header-flex,
+  .sales-bottom-panel .section-header-flex {
     flex-direction: column;
     align-items: stretch;
   }
 
   .actions button,
   .actions a,
-  #addDepositBtn {
+  #addDepositBtn,
+  #raiseCaseBtn {
     width: 100%;
+  }
+
+  #raiseCaseBtn {
+    align-self: stretch;
   }
 }
 
@@ -791,6 +807,67 @@ textarea:focus {
   font-size: 0.8rem;
   padding: 0.25rem 0.5rem;
   border-radius: 6px;
+}
+
+.sales-bottom-panel-row {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) minmax(260px, 1fr);
+  gap: 1rem;
+  align-items: stretch;
+  margin-top: 20px;
+}
+
+.sales-bottom-panel-row.single-panel {
+  grid-template-columns: 1fr;
+}
+
+.sales-bottom-panel {
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.sales-bottom-panel .section-header-flex {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+}
+
+.sales-bottom-panel .section-header-flex h3 {
+  margin: 0;
+}
+
+.customer-service-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+#raiseCaseBtn {
+  align-self: flex-start;
+}
+
+.customer-service-cases {
+  margin-top: 0.85rem;
+}
+
+.customer-service-empty {
+  margin: 0;
+  color: #667085;
+  font-size: 0.88rem;
+}
+
+.customer-service-cases-table {
+  min-width: 0;
+  font-size: 0.82rem;
+}
+
+.customer-service-cases-table th,
+.customer-service-cases-table td {
+  padding: 8px;
+}
+
+.open-case-btn {
+  white-space: nowrap;
 }
 
 .styled-table.compact-table {

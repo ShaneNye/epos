@@ -2,6 +2,7 @@
 <html lang="en">
   <head>
     <script src="/js/browserLogFilter.js"></script>
+    <script src="/js/storage.js"></script>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico" />
@@ -150,6 +151,13 @@
 
       <label>Name <input name="name" required /></label>
 
+      <label>
+        Store Manager
+        <select name="store_manager">
+          <option value="">Loading users...</option>
+        </select>
+      </label>
+
       <!-- Keep legacy field for backwards compatibility -->
       <label>
         Email (legacy)
@@ -223,20 +231,101 @@
       let currentId = null;
       let glAccounts = [];
       let glAccountsLoaded = false;
+      let usersLoaded = false;
       let pendingLocationData = null;
+
+      function authHeaders() {
+        try {
+          const saved =
+            typeof storageGet === "function"
+              ? storageGet()
+              : JSON.parse(sessionStorage.getItem("eposAuth") || localStorage.getItem("eposAuth") || "null");
+
+          return saved?.token ? { Authorization: `Bearer ${saved.token}` } : {};
+        } catch {
+          return {};
+        }
+      }
+
+      async function readJsonResponse(res) {
+        const text = await res.text();
+        let data = {};
+
+        if (text) {
+          try {
+            data = JSON.parse(text);
+          } catch {
+            data = { ok: false, error: text };
+          }
+        }
+
+        if (!res.ok) {
+          throw new Error(data.error || data.message || `Request failed with status ${res.status}`);
+        }
+
+        return data;
+      }
+
+      function userLabel(user = {}) {
+        return String(
+          [user.firstName || user.firstname || "", user.lastName || user.lastname || ""]
+            .filter(Boolean)
+            .join(" ") ||
+            user.name ||
+            user.email ||
+            user.id ||
+            ""
+        ).trim();
+      }
+
+      async function loadUsers() {
+        const managerSelect = document.querySelector('[name="store_manager"]');
+
+        try {
+          const res = await fetch("/api/users", {
+            headers: authHeaders(),
+          });
+          const data = await readJsonResponse(res);
+          const users = Array.isArray(data.users) ? data.users : Array.isArray(data.data) ? data.data : [];
+
+          managerSelect.innerHTML = `<option value="">Select Store Manager</option>`;
+          users.forEach((user) => {
+            const id = String(user.id || "").trim();
+            const label = userLabel(user);
+            if (!id || !label) return;
+
+            const opt = document.createElement("option");
+            opt.value = id;
+            opt.textContent = label;
+            opt.dataset.netsuiteId = user.netsuiteId || user.netsuiteid || "";
+            managerSelect.appendChild(opt);
+          });
+
+          usersLoaded = true;
+          if (pendingLocationData !== null) {
+            applyLocationData(pendingLocationData);
+            if (glAccountsLoaded) pendingLocationData = null;
+          }
+        } catch (err) {
+          console.error("âŒ Failed to load users:", err);
+          managerSelect.innerHTML = `<option value="">Users unavailable</option>`;
+        }
+      }
 
       /* === Load GL Accounts from NetSuite === */
       async function loadGLAccounts() {
+        const pettySelect = document.querySelector('[name="petty_cash_account"]');
+        const currentSelect = document.querySelector('[name="current_account"]');
+
         try {
-          const res = await fetch("/api/netsuite/glaccounts");
-          const data = await res.json();
+          const res = await fetch("/api/netsuite/glaccounts", {
+            headers: authHeaders(),
+          });
+          const data = await readJsonResponse(res);
 
           if (data.ok && Array.isArray(data.results)) {
             glAccounts = data.results;
             glAccountsLoaded = true;
-
-            const pettySelect = document.querySelector('[name="petty_cash_account"]');
-            const currentSelect = document.querySelector('[name="current_account"]');
 
             pettySelect.innerHTML = `<option value="">Select Account</option>`;
             currentSelect.innerHTML = `<option value="">Select Account</option>`;
@@ -255,7 +344,7 @@
             // If edit data arrived before GL accounts were ready, apply now
             if (pendingLocationData !== null) {
               applyLocationData(pendingLocationData);
-              pendingLocationData = null;
+              if (usersLoaded) pendingLocationData = null;
             }
           } else {
             console.warn("⚠️ GL accounts payload unexpected:", data);
@@ -290,6 +379,7 @@
         setField("invoice_location_id", loc.invoice_location_id);
         setField("intercompany_customer", loc.intercompany_customer);
         setField("distribution_location_id", loc.distribution_location_id);
+        setField("store_manager", loc.store_manager || "");
 
         // Emails: support both, and if one is missing, mirror from the other for convenience
         setField("email", loc.email);
@@ -316,8 +406,8 @@
       window.addEventListener("message", (event) => {
         if (event.data?.action === "edit-location") {
           const loc = event.data.location; // can be null
-          if (glAccountsLoaded) applyLocationData(loc);
-          else pendingLocationData = loc; // wait until GL accounts load
+          applyLocationData(loc);
+          if ((!glAccountsLoaded || !usersLoaded) && loc) pendingLocationData = loc; // re-apply selects when async options load
         }
       });
 
@@ -347,11 +437,11 @@
         try {
           const res = await fetch(url, {
             method,
-            headers: { "Content-Type": "application/json" },
+            headers: { "Content-Type": "application/json", ...authHeaders() },
             body: JSON.stringify(formData),
           });
 
-          const data = await res.json();
+          const data = await readJsonResponse(res);
           if (data.ok) {
             window.opener?.postMessage({ action: "refresh-locations" }, "*");
             window.close();
@@ -364,6 +454,7 @@
         }
       });
 
+      loadUsers();
       loadGLAccounts();
     </script>
   </body>

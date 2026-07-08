@@ -141,8 +141,17 @@ router.delete("/roles/:id", async (req, res) => {
    ====== LOCATIONS =========
    ========================== */
 
+let locationStoreManagerColumnReady = false;
+
+async function ensureLocationStoreManagerColumn() {
+  if (locationStoreManagerColumnReady) return;
+  await pool.query("ALTER TABLE locations ADD COLUMN IF NOT EXISTS store_manager INTEGER");
+  locationStoreManagerColumnReady = true;
+}
+
 router.get("/locations", async (req, res) => {
   try {
+    await ensureLocationStoreManagerColumn();
     const result = await pool.query(
       `SELECT 
         id,
@@ -154,6 +163,7 @@ router.get("/locations", async (req, res) => {
         distribution_location_id,
         petty_cash_account,
         current_account,
+        store_manager,
 
         -- existing field (keep for backwards compatibility)
         email,
@@ -184,6 +194,7 @@ router.get("/locations", async (req, res) => {
 // Create new location
 router.post("/locations", async (req, res) => {
   try {
+    await ensureLocationStoreManagerColumn();
     const {
       name,
       netsuite_internal_id,
@@ -193,6 +204,7 @@ router.post("/locations", async (req, res) => {
       distribution_location_id,
       petty_cash_account,
       current_account,
+      store_manager,
 
       // existing + new
       email,                 // legacy
@@ -222,6 +234,7 @@ router.post("/locations", async (req, res) => {
           distribution_location_id,
           petty_cash_account,
           current_account,
+          store_manager,
 
           email,
           location_phone_number,
@@ -233,8 +246,8 @@ router.post("/locations", async (req, res) => {
           postcode
         )
        VALUES (
-          $1,$2,$3,$4,$5,$6,$7,$8,
-          $9,$10,$11,$12,$13,$14,$15,$16
+          $1,$2,$3,$4,$5,$6,$7,$8,$9,
+          $10,$11,$12,$13,$14,$15,$16,$17
        )`,
       [
         name,
@@ -245,6 +258,7 @@ router.post("/locations", async (req, res) => {
         distribution_location_id || null,
         petty_cash_account || null,
         current_account || null,
+        store_manager || null,
 
         email || null,                     // legacy
         location_phone_number || null,
@@ -268,6 +282,7 @@ router.post("/locations", async (req, res) => {
 // Update existing location
 router.put("/locations/:id", async (req, res) => {
   try {
+    await ensureLocationStoreManagerColumn();
     const {
       name,
       netsuite_internal_id,
@@ -277,6 +292,7 @@ router.put("/locations/:id", async (req, res) => {
       distribution_location_id,
       petty_cash_account,
       current_account,
+      store_manager,
 
       // existing + new
       email,                 // legacy
@@ -305,16 +321,17 @@ router.put("/locations/:id", async (req, res) => {
              distribution_location_id = $6,
              petty_cash_account = $7,
              current_account = $8,
+             store_manager = $9,
 
-             email = $9,
-             location_phone_number = $10,
-             location_email = $11,
-             vat_number = $12,
-             company_number = $13,
-             address_line_1 = $14,
-             address_line_2 = $15,
-             postcode = $16
-       WHERE id = $17`,
+             email = $10,
+             location_phone_number = $11,
+             location_email = $12,
+             vat_number = $13,
+             company_number = $14,
+             address_line_1 = $15,
+             address_line_2 = $16,
+             postcode = $17
+       WHERE id = $18`,
       [
         name,
         netsuite_internal_id || null,
@@ -324,6 +341,7 @@ router.put("/locations/:id", async (req, res) => {
         distribution_location_id || null,
         petty_cash_account || null,
         current_account || null,
+        store_manager || null,
 
         email || null,                     // legacy
         location_phone_number || null,

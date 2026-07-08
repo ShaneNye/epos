@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/js/browserLogFilter.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>SuiteQL Studio</title>
+  <link rel="stylesheet" href="/css/home.css">
+  <link rel="stylesheet" href="/css/csWorkflows.css">
+  <script src="/js/storage.js"></script>
+  <script defer src="/js/csSuiteQlStudio.js"></script>
+</head>
+<body class="suiteql-studio-popup-body">
+  <main class="suiteql-studio-popup">
+    <header class="suiteql-studio-popup-header">
+      <div>
+        <h1>SuiteQL Studio</h1>
+        <p>Run SuiteQL and inspect the response before applying it to a workflow field.</p>
+      </div>
+      <div class="suiteql-studio-run-controls">
+        <label>
+          Max rows
+          <select id="suiteQlStudioMaxRows">
+            <option value="1000">1,000</option>
+            <option value="2000">2,000</option>
+            <option value="5000">5,000</option>
+          </select>
+        </label>
+        <button id="runSuiteQlStudioBtn" type="button" class="btn-primary">Run SuiteQL</button>
+      </div>
+    </header>
+
+    <div class="suiteql-studio-layout">
+      <label class="suiteql-studio-query">
+        SuiteQL Query
+        <textarea id="suiteQlStudioQuery" spellcheck="false">SELECT
+  id,
+  entitytitle AS name
+FROM
+  customer
+WHERE
+  isinactive = 'F'
+ORDER BY
+  entitytitle</textarea>
+      </label>
+      <div class="suiteql-studio-output">
+        <div class="suiteql-studio-output-head">
+          <h3>Response</h3>
+          <span id="suiteQlStudioMeta" class="workflow-status">Not run yet.</span>
+        </div>
+        <div id="suiteQlStudioTable" class="suiteql-studio-table-wrap" hidden></div>
+        <pre id="suiteQlStudioOutput" class="suiteql-studio-json">{}</pre>
+      </div>
+    </div>
+  </main>
+</body>
+</html>

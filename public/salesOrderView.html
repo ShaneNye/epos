@@ -368,28 +368,39 @@
                 <button class="btn-secondary" id="printBtn">🖨 Print Receipt</button>
             </div>
 
+            <div class="sales-bottom-panel-row">
+                <section id="depositsSection" class="form-section order-items-section sales-bottom-panel">
+                    <div class="section-header-flex">
+                        <h3>Customer Deposits</h3>
+                        <button id="addDepositBtn" class="btn-secondary">+ Make Payment</button>
+                        <span id="depositSpinner" class="hidden"
+                            style="font-size:0.85em; color:#0078d4; display:inline-flex; align-items:center;">
+                            <span class="deposit-spinner"></span> Creating&nbsp;Deposit…
+                        </span>
+                    </div>
 
-            <section id="depositsSection" class="form-section order-items-section" style="margin-top:20px;">
-                <div class="section-header-flex">
-                    <h3>Customer Deposits</h3>
-                    <button id="addDepositBtn" class="btn-secondary">+ Make Payment</button>
-                    <span id="depositSpinner" class="hidden"
-                        style="font-size:0.85em; color:#0078d4; display:inline-flex; align-items:center;">
-                        <span class="deposit-spinner"></span> Creating&nbsp;Deposit…
-                    </span>
-                </div>
+                    <table id="depositsTable" class="styled-table">
+                        <thead>
+                            <tr>
+                                <th>Deposit #</th>
+                                <th>Method</th>
+                                <th>Amount</th>
+                            </tr>
+                        </thead>
+                        <tbody></tbody>
+                    </table>
+                </section>
 
-                <table id="depositsTable" class="styled-table">
-                    <thead>
-                        <tr>
-                            <th>Deposit #</th>
-                            <th>Method</th>
-                            <th>Amount</th>
-                        </tr>
-                    </thead>
-                    <tbody></tbody>
-                </table>
-            </section>
+                <section id="customerServiceSection" class="form-section sales-bottom-panel customer-service-panel">
+                    <div class="section-header-flex">
+                        <h3>Customer Service</h3>
+                    </div>
+                    <button id="raiseCaseBtn" class="btn-secondary" type="button">Raise Case</button>
+                    <div id="customerServiceCases" class="customer-service-cases" aria-live="polite">
+                        <p class="customer-service-empty">Loading cases...</p>
+                    </div>
+                </section>
+            </div>
 
 
 

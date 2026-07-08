@@ -41,6 +41,202 @@ const lineOptionsProgress = new Map();
 const SALES_ORDER_PENDING_APPROVAL_STATUS = { id: "A" };
 const TRANSFER_ORDER_APPROVED_STATUS = { id: "B" };
 const SALES_ORDER_PENDING_APPROVAL_LEGACY_STATUS = "A";
+const AI_CASE_SUMMARY_KEY = "ai.cases.summary.enabled";
+
+let appSettingsTableReady = false;
+
+async function ensureAppSettingsTable() {
+  if (appSettingsTableReady) return;
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  appSettingsTableReady = true;
+}
+
+function settingBool(value, fallback = false) {
+  if (value === undefined || value === null || value === "") return fallback;
+  if (typeof value === "boolean") return value;
+  const text = String(value).trim().toLowerCase();
+  if (["true", "1", "yes", "on"].includes(text)) return true;
+  if (["false", "0", "no", "off"].includes(text)) return false;
+  return fallback;
+}
+
+async function isAiCaseSummaryEnabled() {
+  await ensureAppSettingsTable();
+  const result = await pool.query("SELECT value FROM app_settings WHERE key = $1 LIMIT 1", [AI_CASE_SUMMARY_KEY]);
+  return settingBool(result.rows[0]?.value, false);
+}
+
+function openAIConfig() {
+  return {
+    apiKey: process.env.OPENAI_API_KEY || "",
+    model:
+      process.env.OPENAI_CASE_SUMMARY_MODEL ||
+      process.env.OPENAI_VSA_MODEL ||
+      process.env.OPENAI_SUITEPIM_MODEL ||
+      "gpt-4.1-mini",
+  };
+}
+
+function parseJsonText(text) {
+  try {
+    return JSON.parse(String(text || ""));
+  } catch {
+    return null;
+  }
+}
+
+function parseAiJsonObject(text) {
+  const cleaned = String(text || "")
+    .trim()
+    .replace(/^```json\s*/i, "")
+    .replace(/^```\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+  return parseJsonText(cleaned);
+}
+
+function extractOpenAIText(payload) {
+  if (typeof payload?.output_text === "string" && payload.output_text.trim()) {
+    return payload.output_text.trim();
+  }
+
+  const parts = [];
+  for (const item of payload?.output || []) {
+    for (const content of item?.content || []) {
+      if (content?.type === "output_text" && content.text) parts.push(content.text);
+      else if (typeof content?.text === "string" && content.text) parts.push(content.text);
+    }
+  }
+  return parts.join("\n").trim();
+}
+
+function extractOpenAIUsage(payload) {
+  const usage = payload?.usage || {};
+  return {
+    inputTokens: Number(usage.input_tokens || 0),
+    outputTokens: Number(usage.output_tokens || 0),
+    totalTokens: Number(usage.total_tokens || 0),
+  };
+}
+
+function normaliseCheckText(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function firstMatchingRule(text, rules) {
+  return rules.find((rule) => rule.pattern.test(text)) || null;
+}
+
+function findDraftCaseConsistencyIssues(draft = {}) {
+  const subject = normaliseCheckText(draft.subject);
+  const type = normaliseCheckText(draft.typeName);
+  const subType = normaliseCheckText(draft.subTypeName);
+  const item = normaliseCheckText(draft.itemName);
+  const salesOrderId = normaliseCheckText(draft.salesOrderId);
+  const issueText = [subject, type, subType].filter(Boolean).join(" ");
+  const selectedText = [type, subType, item].filter(Boolean).join(" ");
+  const classificationText = [type, subType].filter(Boolean).join(" ");
+  const issues = [];
+
+  const productRules = [
+    { label: "mattress", pattern: /\b(mattress|sleep surface|spring|foam|tuft|tufting)\b/ },
+    { label: "bed frame/base", pattern: /\b(bed frame|frame|base|ottoman|divan|slat|slats|side rail|rail|rails|drawer|leg)\b/ },
+    { label: "headboard", pattern: /\b(headboard)\b/ },
+    { label: "pillow/topper", pattern: /\b(pillow|topper|protector)\b/ },
+    { label: "furniture", pattern: /\b(sofa|chair|wardrobe|cabinet|table|chest|drawer unit)\b/ },
+  ];
+
+  const issueRules = [
+    {
+      label: "product fault or damage",
+      pattern: /\b(cracked|crack|broken|split|damaged|damage|fault|faulty|defect|defective|collapsed|torn|rip|ripped|stain|stained|mark|marked|missing part|rail|slat|leg)\b/,
+      expectedClassification: /\b(product|fault|damage|quality|defect|warranty|repair|replacement|manufactur|broken|crack|split|part)\b/,
+      mismatch: "Subject describes a product fault or damage, but the selected type/sub-type does not look product, quality, damage or warranty related.",
+    },
+    {
+      label: "comfort or mattress feel",
+      pattern: /\b(dipping|dip|sagging|sag|comfort|too firm|too soft|firm|soft|lumpy|lump|roll together|sleep surface)\b/,
+      expectedClassification: /\b(comfort|dipping|sag|firm|soft|mattress|quality|fault|warranty)\b/,
+      mismatch: "Subject describes a comfort or mattress feel issue, but the selected type/sub-type does not look comfort, mattress or quality related.",
+    },
+    {
+      label: "temperature or height",
+      pattern: /\b(too hot|too cold|heat|temperature|height|too high|too low|thick|thin)\b/,
+      expectedClassification: /\b(heat|temperature|height|comfort|mattress|quality)\b/,
+      mismatch: "Subject describes a temperature or height issue, but the selected type/sub-type does not reflect that.",
+    },
+    {
+      label: "delivery or logistics",
+      pattern: /\b(delivery|delivered|driver|late|missing delivery|wrong item|not received|collection|collect|courier|dispatch)\b/,
+      expectedClassification: /\b(delivery|logistic|dispatch|collection|wrong item|missing|service)\b/,
+      mismatch: "Subject describes a delivery or logistics issue, but the selected type/sub-type does not reflect that.",
+    },
+    {
+      label: "access, assembly or service",
+      pattern: /\b(access|assembly|assemble|fitting|installation|install|service|technician|inspection)\b/,
+      expectedClassification: /\b(access|assembly|fitting|install|service|inspection|technician)\b/,
+      mismatch: "Subject describes an access, assembly or service issue, but the selected type/sub-type does not reflect that.",
+    },
+    {
+      label: "payment, refund or account",
+      pattern: /\b(payment|paid|refund|invoice|finance|deposit|balance|discount|price|charged|overcharged)\b/,
+      expectedClassification: /\b(payment|refund|invoice|finance|deposit|balance|price|account|customer)\b/,
+      mismatch: "Subject describes a payment, refund or account issue, but the selected type/sub-type does not reflect that.",
+    },
+  ];
+
+  const subjectProduct = firstMatchingRule(subject, productRules);
+  const itemProduct = firstMatchingRule(item, productRules);
+  const subjectIssue = firstMatchingRule(subject, issueRules);
+
+  if (subjectProduct && item && !itemProduct) {
+    issues.push(`Subject appears ${subjectProduct.label}-related, but selected item '${draft.itemName}' does not look like a ${subjectProduct.label}.`);
+  }
+
+  if (subjectProduct && itemProduct && subjectProduct.label !== itemProduct.label) {
+    issues.push(`Subject appears ${subjectProduct.label}-related, but selected item '${draft.itemName}' looks ${itemProduct.label}-related.`);
+  }
+
+  if (subjectProduct && (type || subType) && !new RegExp(subjectProduct.pattern.source, "i").test(selectedText)) {
+    const productMentionOptionalIssue = subjectIssue && subjectIssue.expectedClassification.test(classificationText);
+    if (!productMentionOptionalIssue) {
+      issues.push(`Subject appears ${subjectProduct.label}-related, but selected type/sub-type does not look ${subjectProduct.label}-related.`);
+    }
+  }
+
+  if (subjectIssue && classificationText && !subjectIssue.expectedClassification.test(classificationText)) {
+    issues.push(subjectIssue.mismatch);
+  }
+
+  if (salesOrderId && /\bbought elsewhere\b/.test(subType)) {
+    issues.push("Sub-type says 'Bought Elsewhere', but this case is being raised from an existing sales order.");
+  }
+
+  if (salesOrderId && /\b(customer supplied|own item|not purchased|not bought|third party|bought elsewhere)\b/.test(subType)) {
+    issues.push("Sub-type suggests the item was not bought from us, but this case is being raised from an existing sales order.");
+  }
+
+  if (subjectIssue && subjectIssue.label !== "payment, refund or account" && (type === "customer" || /\bcustomer issue\b/.test(type))) {
+    issues.push(`Subject describes a ${subjectIssue.label} issue, but the selected type is customer-related.`);
+  }
+
+  [
+    ["subject", "Subject is missing."],
+    ["typeName", "Type is missing."],
+    ["subTypeName", "Sub-type is missing."],
+    ["itemName", "Item is missing."],
+  ].forEach(([key, message]) => {
+    if (!String(draft[key] || "").trim()) issues.push(message);
+  });
+
+  return issues.filter((issue, index, list) => list.indexOf(issue) === index);
+}
 
 function setLineOptionsProgress(requestId, stage, error = "") {
   const key = String(requestId || "").trim();
@@ -644,6 +840,2766 @@ async function fetchSalesOrderLineSuiteQl(id, userId) {
       "sb"
     );
   }
+}
+
+async function getSalesOrderSupportCases(salesOrderId, userId) {
+  const numericId = Number(salesOrderId);
+  if (!Number.isFinite(numericId) || numericId <= 0) return [];
+
+  const mapRows = (result) => (Array.isArray(result?.items) ? result.items : []).map((row) => ({
+    id: String(row.id || row.ID || "").trim(),
+    caseNumber: String(row.caseNumber || row.casenumber || row.CASENUMBER || "").trim(),
+    title: String(row.title || row.TITLE || "").trim(),
+    status: String(row.statusName || row.statusname || row.STATUSNAME || row.status || row.STATUS || "").trim(),
+    priority: String(row.priorityName || row.priorityname || row.PRIORITYNAME || row.priority || row.PRIORITY || "").trim(),
+    assignedTo: String(row.assignedName || row.assignedname || row.ASSIGNEDNAME || row.assigned || row.ASSIGNED || "").trim(),
+    startDate: String(row.startDate || row.startdate || row.STARTDATE || "").trim(),
+    createdDate: String(row.createdDate || row.createddate || row.CREATEDDATE || "").trim(),
+    lastModifiedDate: String(row.lastModifiedDate || row.lastmodifieddate || row.LASTMODIFIEDDATE || "").trim(),
+    type: String(row.supportCaseTypeName || row.supportcasetypename || row.SUPPORTCASETYPENAME || row.custevent_sb_support_case_type || "").trim(),
+    subType: String(row.caseSubTypeName || row.casesubtypename || row.CASESUBTYPENAME || row.custevent_sb_casesubtype || "").trim(),
+  })).filter((row) => row.id || row.caseNumber || row.title);
+
+  const detailedQuery = `
+    SELECT
+      id,
+      caseNumber,
+      title,
+      status,
+      BUILTIN.DF(status) AS statusName,
+      priority,
+      BUILTIN.DF(priority) AS priorityName,
+      assigned,
+      BUILTIN.DF(assigned) AS assignedName,
+      startDate,
+      createdDate,
+      lastModifiedDate,
+      custevent_sb_casesubtype,
+      BUILTIN.DF(custevent_sb_casesubtype) AS caseSubTypeName,
+      custevent_sb_support_case_type,
+      BUILTIN.DF(custevent_sb_support_case_type) AS supportCaseTypeName
+    FROM supportCase
+    WHERE custevent_sb_relatedsalesorder = ${numericId}
+    ORDER BY id DESC
+  `;
+
+  try {
+    return mapRows(await nsPostRaw(suiteQlUrl(), { q: detailedQuery }, userId));
+  } catch (err) {
+    console.warn("Support case detail query failed; falling back to case number and title only.", err.message);
+  }
+
+  const fallbackQuery = `
+    SELECT
+      id,
+      caseNumber,
+      title
+    FROM supportCase
+    WHERE custevent_sb_relatedsalesorder = ${numericId}
+    ORDER BY id DESC
+  `;
+
+  return mapRows(await nsPostRaw(suiteQlUrl(), { q: fallbackQuery }, userId));
+}
+
+async function generateSupportCaseDraftSummary({ draft }) {
+  const openai = openAIConfig();
+  if (!openai.apiKey) throw new Error("Missing OPENAI_API_KEY");
+  const consistencyIssues = findDraftCaseConsistencyIssues(draft);
+
+  const input = [
+    "Draft support case currently being raised:",
+    JSON.stringify(draft, null, 2),
+    "System-detected consistency issues:",
+    consistencyIssues.length ? consistencyIssues.map((issue) => `- ${issue}`).join("\n") : "None detected.",
+  ].join("\n\n");
+
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${openai.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: openai.model,
+      instructions: [
+        "You summarise the current draft support case for a retail EPOS user before it is created.",
+        "Return valid JSON only with keys summary and pleaseCheck.",
+        "summary must be a conversational paragraph, not a list.",
+        "pleaseCheck must be an array of short strings.",
+        "Be concise and factual. Mention the customer, store, subject, status, assignee, incident date, type, sub-type and item when present.",
+        "Actively check whether the selected type, sub-type and item are consistent with the subject.",
+        "Infer the broad issue category from the subject: product fault/damage, comfort/mattress feel, heat/height, delivery/logistics, access/assembly/service, or payment/account.",
+        "Infer the broad product family from the subject and item: mattress, bed frame/base, headboard, pillow/topper, or furniture.",
+        "The selected type and sub-type should align with the inferred issue category, and the selected item should align with the inferred product family.",
+        "If the draft has a salesOrderId, treat sub-types suggesting the customer bought elsewhere, supplied their own item, used a third party, or did not buy from us as inconsistent unless the draft clearly explains why.",
+        "If the subject describes a product fault or damage, customer/admin classifications are usually inconsistent unless the type/sub-type also clearly indicates product, quality, damage, warranty, repair or replacement.",
+        "Treat the system-detected consistency issues as important unless the draft clearly disproves them.",
+        "If anything looks inconsistent, put each inconsistent datapoint in pleaseCheck.",
+        "If important details are missing, include them in pleaseCheck too.",
+        "If everything looks consistent and complete, return an empty pleaseCheck array.",
+        "Do not invent facts. Use British English.",
+      ].join(" "),
+      input,
+      max_output_tokens: 220,
+    }),
+  });
+
+  const payload = parseJsonText(await response.text());
+  if (!response.ok) {
+    throw new Error(payload?.error?.message || `OpenAI request failed: ${response.status}`);
+  }
+
+  const text = extractOpenAIText(payload);
+  if (!text) throw new Error("OpenAI did not return a draft case summary");
+
+  const parsed = parseAiJsonObject(text);
+  const summary = String(parsed?.summary || text).trim();
+  const modelIssues = Array.isArray(parsed?.pleaseCheck)
+    ? parsed.pleaseCheck.map((issue) => String(issue || "").trim()).filter(Boolean)
+    : [];
+  const pleaseCheck = [...modelIssues, ...consistencyIssues]
+    .filter(Boolean)
+    .filter((issue, index, list) => list.indexOf(issue) === index);
+
+  return {
+    text: summary,
+    pleaseCheck,
+    model: openai.model,
+    usage: extractOpenAIUsage(payload),
+  };
+}
+
+function cleanDraftValue(value) {
+  if (value === undefined || value === null) return "";
+  return String(value).trim();
+}
+
+function refId(value) {
+  if (value && typeof value === "object") {
+    return cleanDraftValue(value.id || value.internalId || value.value);
+  }
+  return cleanDraftValue(value);
+}
+
+function refName(value) {
+  if (value && typeof value === "object") {
+    return cleanDraftValue(value.refName || value.name || value.text || value.value);
+  }
+  return "";
+}
+
+function normaliseDateInputValue(value) {
+  const text = cleanDraftValue(value);
+  if (!text) return "";
+  if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+  const gb = text.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+  if (gb) {
+    const [, day, month, year] = gb;
+    return `${year}-${month.padStart(2, "0")}-${day.padStart(2, "0")}`;
+  }
+  const parsed = new Date(text);
+  if (!Number.isNaN(parsed.getTime())) return parsed.toISOString().slice(0, 10);
+  return "";
+}
+
+function nsRef(id) {
+  const clean = cleanDraftValue(id);
+  return clean ? { id: clean } : null;
+}
+
+function addRefField(target, fieldId, id) {
+  const ref = nsRef(id);
+  if (ref) target[fieldId] = ref;
+}
+
+function appendQueryParams(url, params = {}) {
+  const cleanUrl = cleanDraftValue(url);
+  if (!cleanUrl) return "";
+  const query = new URLSearchParams();
+  Object.entries(params).forEach(([key, value]) => {
+    const clean = cleanDraftValue(value);
+    if (clean) query.set(key, clean);
+  });
+  if (!query.toString()) return cleanUrl;
+  return `${cleanUrl}${cleanUrl.includes("?") ? "&" : "?"}${query.toString()}`;
+}
+
+function supportCaseRestletUrl() {
+  return cleanDraftValue(process.env.SUPPORT_CASE_RESTLET_URL || process.env.CASE_RESTLET_URL);
+}
+
+function buildSupportCasePayload(draft = {}) {
+  const salesOrderId = cleanDraftValue(draft.salesOrderId);
+  const subject = cleanDraftValue(draft.subject);
+  const customerId = cleanDraftValue(draft.customerId);
+
+  if (!salesOrderId) throw new Error("Sales order ID is required to raise a case");
+  if (!subject) throw new Error("Subject is required to raise a case");
+  if (!customerId) throw new Error("Customer is required to raise a case");
+
+  const payload = {
+    title: subject,
+  };
+
+  addRefField(payload, "company", customerId);
+  addRefField(payload, "status", draft.statusId);
+  addRefField(payload, "assigned", draft.assignedToId);
+  addRefField(payload, "category", draft.typeId);
+  addRefField(payload, "item", draft.itemId);
+  addRefField(payload, "custevent_sb_casesubtype", draft.subTypeId);
+  addRefField(payload, "custevent_sb_relatedsalesorder", salesOrderId);
+
+  const incidentDate = cleanDraftValue(draft.incidentDate);
+  if (incidentDate) payload.startDate = incidentDate;
+
+  const storeName = cleanDraftValue(draft.storeName);
+  if (storeName) payload.custevent_sb_cas_showroom = storeName;
+
+  const caseStoreId =
+    cleanDraftValue(draft.storeNetSuiteId) ||
+    cleanDraftValue(draft.storeDistributionLocationId);
+  if (caseStoreId) addRefField(payload, "custevent1", caseStoreId);
+
+  return payload;
+}
+
+async function createSupportCaseFromDraft(draft, userId) {
+  const payload = buildSupportCasePayload(draft);
+  const created = await nsPost("/supportCase", payload, userId);
+  const id = created?.id || "";
+  const salesOrderId = cleanDraftValue(draft.salesOrderId);
+  let attachResult = { ok: false, skipped: true, reason: "support-case-restlet-not-configured" };
+
+  let caseNumber = "";
+  if (id) {
+    attachResult = await attachSupportCaseToTransaction(id, salesOrderId, userId).catch((err) => ({
+      ok: false,
+      error: err.message || "Failed to attach support case to sales order",
+      details: err.responseBody || null,
+    }));
+
+    try {
+      const record = await nsGet(`/supportCase/${encodeURIComponent(id)}?fields=caseNumber,title`, userId);
+      caseNumber = cleanDraftValue(record?.caseNumber || record?.casenumber);
+    } catch (err) {
+      console.warn("Created support case but could not read case number:", err.message);
+    }
+  }
+
+  return {
+    id,
+    caseNumber,
+    payload,
+    attachResult,
+    location: created?._location || "",
+  };
+}
+
+async function updateSupportCaseFromDraft(caseId, draft, userId) {
+  const id = cleanDraftValue(caseId);
+  if (!/^\d+$/.test(id)) throw new Error("Valid case ID is required");
+
+  const payload = buildSupportCasePayload(draft);
+  await nsPatch(`/supportCase/${encodeURIComponent(id)}`, payload, userId);
+
+  let caseNumber = "";
+  try {
+    const record = await nsGet(`/supportCase/${encodeURIComponent(id)}?fields=caseNumber,title`, userId);
+    caseNumber = cleanDraftValue(record?.caseNumber || record?.casenumber);
+  } catch (err) {
+    console.warn("Updated support case but could not read case number:", err.message);
+  }
+
+  return {
+    id,
+    caseNumber,
+    payload,
+  };
+}
+
+async function attachSupportCaseToTransaction(caseId, transactionId, userId) {
+  const url = supportCaseRestletUrl();
+  if (!url) return { ok: false, skipped: true, reason: "support-case-restlet-not-configured" };
+
+  const result = await nsRestlet(
+    url,
+    {
+      action: "attachTransaction",
+      caseId,
+      transactionId,
+      salesOrderId: transactionId,
+    },
+    userId,
+    "POST"
+  );
+
+  if (result?.ok === false) {
+    throw new Error(result.error || "Support case attach RESTlet failed");
+  }
+
+  return result || { ok: true };
+}
+
+function normaliseSupportCaseRecord(record = {}) {
+  const salesOrderRef = record.custevent_sb_relatedsalesorder;
+  const customerRef = record.company || record.companyid || record.customer;
+  const statusRef = record.status;
+  const assignedRef = record.assigned;
+  const typeRef = record.category;
+  const subTypeRef = record.custevent_sb_casesubtype;
+  const itemRef = record.item;
+  const storeRef = record.custevent1 || record.custevent_sb_case_store;
+
+  return {
+    id: cleanDraftValue(record.id),
+    caseNumber: cleanDraftValue(record.caseNumber || record.casenumber || record.eventnumber || record.origCaseNumber),
+    subject: cleanDraftValue(record.title),
+    salesOrderId: refId(salesOrderRef),
+    customerId: refId(customerRef),
+    customerName: refName(customerRef) || cleanDraftValue(record.companyName || record.companyname),
+    statusId: refId(statusRef),
+    statusName: refName(statusRef),
+    assignedToId: refId(assignedRef),
+    assignedToName: refName(assignedRef),
+    incidentDate: normaliseDateInputValue(record.startDate || record.startdate),
+    typeId: refId(typeRef),
+    typeName: refName(typeRef),
+    subTypeId: refId(subTypeRef),
+    subTypeName: refName(subTypeRef),
+    itemId: refId(itemRef),
+    itemName: refName(itemRef),
+    storeNetSuiteId: refId(storeRef),
+    storeName: cleanDraftValue(record.custevent_sb_cas_showroom),
+  };
+}
+
+async function getSupportCaseDetail(caseId, userId) {
+  const id = cleanDraftValue(caseId);
+  if (!/^\d+$/.test(id)) throw new Error("Valid case ID is required");
+
+  const fields = [
+    "id",
+    "caseNumber",
+    "title",
+    "company",
+    "companyName",
+    "status",
+    "assigned",
+    "startDate",
+    "category",
+    "custevent_sb_casesubtype",
+    "item",
+    "custevent1",
+    "custevent_sb_cas_showroom",
+    "custevent_sb_relatedsalesorder",
+  ].join(",");
+
+  const record = await nsGet(`/supportCase/${encodeURIComponent(id)}?fields=${encodeURIComponent(fields)}`, userId);
+  return normaliseSupportCaseRecord(record);
+}
+
+function workflowCheckFieldLabel(fieldId) {
+  return ({
+    quantity: "Quantity",
+    quantitycommitted: "Quantity Committed",
+    location: "Where is this being fulfilled from",
+    item: "Item",
+    rate: "Rate",
+    amount: "Amount",
+    expectedshipdate: "Expected Ship Date",
+    custcol_sb_lot_details: "Lot Details",
+  })[fieldId] || fieldId;
+}
+
+function workflowCheckLineValue(row = {}, fieldId = "") {
+  const key = String(fieldId || "").toLowerCase();
+  const absoluteNumber = (value) => {
+    const num = Number(value);
+    return Number.isFinite(num) ? Math.abs(num) : value;
+  };
+  const valueMap = {
+    quantity: absoluteNumber(row.quantity ?? row.QUANTITY),
+    quantitycommitted: absoluteNumber(row.quantitycommitted ?? row.QUANTITYCOMMITTED),
+    quantityfulfilled: absoluteNumber(row.quantityfulfilled ?? row.QUANTITYFULFILLED),
+    quantitybackordered: absoluteNumber(row.quantitybackordered ?? row.QUANTITYBACKORDERED),
+    location: row.fulfilmentlocationname || row.FULFILMENTLOCATIONNAME || row.custcol_sb_fulfilmentlocation || row.CUSTCOL_SB_FULFILMENTLOCATION,
+    item: row.itemname || row.ITEMNAME || row.item || row.ITEM,
+    rate: row.rate ?? row.RATE,
+    amount: row.amount ?? row.AMOUNT ?? row.netamount ?? row.NETAMOUNT,
+    expectedshipdate: row.expectedshipdate ?? row.EXPECTEDSHIPDATE,
+    custcol_sb_lot_details: row.custcol_sb_lot_details ?? row.CUSTCOL_SB_LOT_DETAILS,
+  };
+  return valueMap[key] ?? row[fieldId] ?? row[key] ?? "";
+}
+
+function normaliseWorkflowLineQuantities(row = {}) {
+  const output = { ...row };
+  ["quantity", "quantitycommitted", "quantityfulfilled", "quantitybackordered"].forEach((key) => {
+    const upperKey = key.toUpperCase();
+    const value = output[key] ?? output[upperKey];
+    const num = Number(value);
+    if (!Number.isFinite(num)) return;
+    output[key] = Math.abs(num);
+    if (upperKey in output) output[upperKey] = Math.abs(num);
+  });
+  return output;
+}
+
+function compareWorkflowCheckValues(left, operator, right) {
+  const leftText = String(left ?? "").trim();
+  const rightText = String(right ?? "").trim();
+  const leftNum = Number(leftText);
+  const rightNum = Number(rightText);
+  const bothNumeric = Number.isFinite(leftNum) && Number.isFinite(rightNum);
+
+  if (operator === "isSet") return leftText !== "";
+  if (operator === "isNotSet") return leftText === "";
+  if (operator === "notEquals") return bothNumeric ? leftNum !== rightNum : leftText.toLowerCase() !== rightText.toLowerCase();
+  if (operator === "greaterThan") return bothNumeric ? leftNum > rightNum : leftText > rightText;
+  if (operator === "lessThan") return bothNumeric ? leftNum < rightNum : leftText < rightText;
+  return bothNumeric ? leftNum === rightNum : leftText.toLowerCase() === rightText.toLowerCase();
+}
+
+async function getPairedIntercompanySalesOrderId(salesOrderId, userId) {
+  const result = await nsPostRaw(
+    suiteQlUrl(),
+    {
+      q: `
+        SELECT
+          custbody_sb_pairedsalesorder,
+          BUILTIN.DF(custbody_sb_pairedsalesorder) AS pairedsalesordername
+        FROM transaction
+        WHERE id = ${salesOrderId}
+      `,
+    },
+    userId
+  );
+  const row = Array.isArray(result?.items) ? result.items[0] : null;
+  const pairedId = Number(row?.custbody_sb_pairedsalesorder ?? row?.CUSTBODY_SB_PAIREDSALESORDER);
+  if (!Number.isFinite(pairedId) || pairedId <= 0) {
+    throw new Error("Related sales order does not have a paired intercompany sales order");
+  }
+  return {
+    id: pairedId,
+    name: String(row?.pairedsalesordername || row?.PAIREDSALESORDERNAME || "").trim(),
+  };
+}
+
+async function getSalesOrderDocumentInfo(salesOrderId, userId) {
+  const id = Number(salesOrderId);
+  if (!Number.isFinite(id) || id <= 0) return { id: String(salesOrderId || ""), documentNumber: "", url: "" };
+  let documentNumber = "";
+  let documentName = "";
+
+  try {
+    const record = await nsGet(
+      `/salesOrder/${encodeURIComponent(id)}?fields=${encodeURIComponent("tranId")}`,
+      userId
+    );
+    documentNumber = normaliseTransactionDocumentNumber(
+      record?.tranId || record?.tranid || record?.tranID || record?.transactionNumber,
+      ""
+    );
+    documentName = cleanDraftValue(record?.tranId || record?.tranid || record?.tranID || documentNumber);
+  } catch (err) {
+    console.warn("[workflow-actions] Could not read Sales Order document number via REST record:", {
+      salesOrderId: id,
+      error: err.message || String(err),
+    });
+  }
+
+  if (!documentNumber || documentNumber === String(id)) {
+    const result = await nsPostRaw(
+      suiteQlUrl(),
+      {
+        q: `
+          SELECT
+            id,
+            tranid,
+            BUILTIN.DF(id) AS documentname
+          FROM transaction
+          WHERE id = ${id}
+        `,
+      },
+      userId
+    );
+    const row = Array.isArray(result?.items) ? result.items[0] : null;
+    documentNumber = normaliseTransactionDocumentNumber(
+      rowValue(row, "tranid", "tran_id", "documentnumber", "documentname", "name"),
+      id
+    );
+    documentName = cleanDraftValue(rowValue(row, "documentname", "name") || documentNumber);
+  }
+
+  return {
+    id: String(id),
+    documentNumber,
+    name: documentName || documentNumber,
+    url: salesOrderNetSuiteUrl(id),
+  };
+}
+
+function buildAffectedItemWorkflowLineSuiteQl(salesOrderId, itemId, { includeLotDetails = true, includeCreatePo = false } = {}) {
+  const lotDetailsSelect = includeLotDetails
+    ? "tl.custcol_sb_lot_details,"
+    : "NULL AS custcol_sb_lot_details,";
+  const createPoSelect = includeCreatePo
+    ? "tl.createdpo AS createpo, BUILTIN.DF(tl.createdpo) AS createponame,"
+    : "NULL AS createpo, NULL AS createponame,";
+
+  return `
+    SELECT
+      tl.id AS lineid,
+      tl.item,
+      BUILTIN.DF(tl.item) AS itemname,
+      tl.quantity,
+      tl.quantitycommitted,
+      tl.quantityshiprecv AS quantityfulfilled,
+      tl.quantitybackordered,
+      tl.rate,
+      tl.netamount AS amount,
+      tl.expectedshipdate,
+      ${createPoSelect}
+      tl.custcol_sb_fulfilmentlocation,
+      BUILTIN.DF(tl.custcol_sb_fulfilmentlocation) AS fulfilmentlocationname,
+      ${lotDetailsSelect}
+      tl.custcol_sb_taken_from_store,
+      BUILTIN.DF(tl.custcol_sb_taken_from_store) AS takenfromstorename,
+      tl.linesequencenumber
+    FROM transactionline tl
+    WHERE tl.transaction = ${salesOrderId}
+      AND tl.item = ${itemId}
+      AND tl.mainline = 'F'
+      AND tl.taxline = 'F'
+    ORDER BY tl.linesequencenumber
+  `;
+}
+
+async function loadAffectedItemSalesOrderLineForCase(caseId, userId, source = "storeSalesOrder") {
+  const supportCase = await getSupportCaseDetail(caseId, userId);
+  const salesOrderId = Number(supportCase.salesOrderId);
+  const itemId = Number(supportCase.itemId);
+  if (!Number.isFinite(salesOrderId) || salesOrderId <= 0) {
+    throw new Error("Case does not have a related sales order");
+  }
+  if (!Number.isFinite(itemId) || itemId <= 0) {
+    throw new Error("Case does not have an affected item");
+  }
+
+  const sourceKey = source === "intercompanySalesOrder" ? "intercompanySalesOrder" : "storeSalesOrder";
+  const targetOrder = sourceKey === "intercompanySalesOrder"
+    ? await getPairedIntercompanySalesOrderId(salesOrderId, userId)
+    : { id: salesOrderId, name: "" };
+  const targetDocument = await getSalesOrderDocumentInfo(targetOrder.id, userId);
+
+  let result;
+  try {
+    result = await nsPostRaw(
+      suiteQlUrl(),
+      { q: buildAffectedItemWorkflowLineSuiteQl(targetOrder.id, itemId) },
+      userId
+    );
+  } catch (err) {
+    if (!isUnknownSuiteQlIdentifierError(err, "custcol_sb_lot_details")) throw err;
+    console.warn("custcol_sb_lot_details is not available in SuiteQL; evaluating workflow check without it.");
+    result = await nsPostRaw(
+      suiteQlUrl(),
+      { q: buildAffectedItemWorkflowLineSuiteQl(targetOrder.id, itemId, { includeLotDetails: false }) },
+      userId
+    );
+  }
+  const line = Array.isArray(result?.items) ? result.items[0] : null;
+  if (!line) {
+    throw new Error(
+      sourceKey === "intercompanySalesOrder"
+        ? "Affected item was not found on the paired intercompany sales order"
+        : "Affected item was not found on the related sales order"
+    );
+  }
+  return {
+    supportCase,
+    line: normaliseWorkflowLineQuantities(line),
+    source: {
+      type: sourceKey,
+      storeSalesOrderId: salesOrderId,
+      checkedSalesOrderId: targetOrder.id,
+      checkedSalesOrderName: targetDocument.documentNumber || targetOrder.name,
+      checkedSalesOrderDocumentNumber: targetDocument.documentNumber,
+      checkedSalesOrderUrl: targetDocument.url,
+    },
+  };
+}
+
+async function loadInputItemSalesOrderLineForCase(caseId, itemIdValue, userId, source = "storeSalesOrder") {
+  const supportCase = await getSupportCaseDetail(caseId, userId);
+  const salesOrderId = Number(supportCase.salesOrderId);
+  const itemId = Number(itemIdValue);
+  if (!Number.isFinite(salesOrderId) || salesOrderId <= 0) {
+    throw new Error("Case does not have a related sales order");
+  }
+  if (!Number.isFinite(itemId) || itemId <= 0) {
+    throw new Error("Selected input is not a valid sales order item");
+  }
+
+  const sourceKey = source === "intercompanySalesOrder" ? "intercompanySalesOrder" : "storeSalesOrder";
+  const targetOrder = sourceKey === "intercompanySalesOrder"
+    ? await getPairedIntercompanySalesOrderId(salesOrderId, userId)
+    : { id: salesOrderId, name: "" };
+  const targetDocument = await getSalesOrderDocumentInfo(targetOrder.id, userId);
+
+  let result;
+  try {
+    result = await nsPostRaw(
+      suiteQlUrl(),
+      { q: buildAffectedItemWorkflowLineSuiteQl(targetOrder.id, itemId) },
+      userId
+    );
+  } catch (err) {
+    if (!isUnknownSuiteQlIdentifierError(err, "custcol_sb_lot_details")) throw err;
+    console.warn("custcol_sb_lot_details is not available in SuiteQL; evaluating workflow input item check without it.");
+    result = await nsPostRaw(
+      suiteQlUrl(),
+      { q: buildAffectedItemWorkflowLineSuiteQl(targetOrder.id, itemId, { includeLotDetails: false }) },
+      userId
+    );
+  }
+  const line = Array.isArray(result?.items) ? result.items[0] : null;
+  if (!line) {
+    throw new Error(
+      sourceKey === "intercompanySalesOrder"
+        ? "Selected input item was not found on the paired intercompany sales order"
+        : "Selected input item was not found on the related sales order"
+    );
+  }
+  return {
+    supportCase,
+    line: normaliseWorkflowLineQuantities(line),
+    source: {
+      type: "inputSalesOrderItem",
+      inputSource: sourceKey,
+      storeSalesOrderId: salesOrderId,
+      checkedSalesOrderId: targetOrder.id,
+      checkedSalesOrderName: targetDocument.documentNumber || targetOrder.name,
+      checkedSalesOrderDocumentNumber: targetDocument.documentNumber,
+      checkedSalesOrderUrl: targetDocument.url,
+      itemId,
+      itemName: String(line.itemname || line.ITEMNAME || "").trim(),
+    },
+  };
+}
+
+function evaluateWorkflowLineRules(rules = [], line = {}) {
+  return rules.map((rule) => {
+    const actualValue = workflowCheckLineValue(line, rule.field);
+    const expectedValue = rule.compareType === "static"
+      ? rule.staticValue
+      : workflowCheckLineValue(line, rule.compareField);
+    const passed = compareWorkflowCheckValues(actualValue, rule.operator || "equals", expectedValue);
+    return {
+      field: rule.field,
+      fieldLabel: workflowCheckFieldLabel(rule.field),
+      operator: rule.operator || "equals",
+      compareType: rule.compareType || "field",
+      compareField: rule.compareField,
+      compareFieldLabel: workflowCheckFieldLabel(rule.compareField),
+      staticValue: rule.staticValue || "",
+      actualValue,
+      expectedValue,
+      passed,
+    };
+  });
+}
+
+function safeSuiteQlIdentifier(value = "") {
+  const clean = String(value || "").trim();
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(clean)) {
+    throw new Error(`Invalid SuiteQL field identifier '${clean}'`);
+  }
+  return clean;
+}
+
+function workflowRecordCriteriaTable(source = "case") {
+  return source === "case" ? "supportCase" : "transaction";
+}
+
+function workflowCriteriaSourceLabel(source = "case") {
+  return ({
+    case: "Case",
+    salesOrder: "Sales Order",
+    intercompanySalesOrder: "Intercompany Sales Order",
+  })[source] || "Case";
+}
+
+function workflowCriteriaValue(row = {}, fieldId = "") {
+  const key = String(fieldId || "");
+  const raw = rowValue(row, key, key.toLowerCase(), key.toUpperCase());
+  const display = rowValue(row, `${key}_display`, `${key.toLowerCase()}_display`, `${key.toUpperCase()}_DISPLAY`);
+  if (raw && typeof raw === "object") {
+    return {
+      raw: refId(raw) || cleanDraftValue(raw.id || raw.value),
+      display: refName(raw) || cleanDraftValue(raw.name || raw.text || raw.refName),
+    };
+  }
+  return {
+    raw: cleanDraftValue(raw),
+    display: cleanDraftValue(display),
+  };
+}
+
+function workflowCriteriaComparable(value = {}) {
+  return [value.raw, value.display].map((item) => String(item ?? "").trim()).filter(Boolean);
+}
+
+function compareWorkflowCriteriaValues(actual, operator, expected) {
+  if (operator === "isSet") return workflowCriteriaComparable(actual).length > 0;
+  if (operator === "isNotSet") return workflowCriteriaComparable(actual).length === 0;
+  const actualValues = workflowCriteriaComparable(actual);
+  const expectedValues = workflowCriteriaComparable(expected);
+  if (!expectedValues.length) expectedValues.push("");
+  if (!actualValues.length) actualValues.push("");
+  if (operator === "notEquals") {
+    return actualValues.every((left) => expectedValues.every((right) => compareWorkflowCheckValues(left, "notEquals", right)));
+  }
+  if (operator === "greaterThan" || operator === "lessThan") {
+    return compareWorkflowCheckValues(actualValues[0], operator, expectedValues[0]);
+  }
+  return actualValues.some((left) => expectedValues.some((right) => compareWorkflowCheckValues(left, "equals", right)));
+}
+
+async function loadWorkflowCriteriaRecord({ caseId, source, fields }, userId) {
+  const supportCase = await getSupportCaseDetail(caseId, userId);
+  let recordId = Number(caseId);
+  let table = workflowRecordCriteriaTable(source);
+  if (source === "salesOrder" || source === "intercompanySalesOrder") {
+    const salesOrderId = Number(supportCase.salesOrderId);
+    if (!Number.isFinite(salesOrderId) || salesOrderId <= 0) throw new Error("Case does not have a related sales order");
+    recordId = source === "intercompanySalesOrder"
+      ? Number((await getPairedIntercompanySalesOrderId(salesOrderId, userId)).id)
+      : salesOrderId;
+  }
+  if (!Number.isFinite(recordId) || recordId <= 0) throw new Error(`Could not resolve ${workflowCriteriaSourceLabel(source)} record`);
+
+  const safeFields = Array.from(new Set(fields.filter(Boolean))).map(safeSuiteQlIdentifier);
+  if (!safeFields.length) return { supportCase, recordId, row: {}, source };
+  const selectFields = safeFields.flatMap((field) => [
+    field,
+    `BUILTIN.DF(${field}) AS ${field}_display`,
+  ]);
+  const result = await nsPostRaw(
+    suiteQlUrl(),
+    {
+      q: `
+        SELECT
+          ${selectFields.join(",\n          ")}
+        FROM ${table}
+        WHERE id = ${recordId}
+      `,
+    },
+    userId
+  );
+  return {
+    supportCase,
+    recordId,
+    row: Array.isArray(result?.items) ? result.items[0] || {} : {},
+    source,
+  };
+}
+
+async function evaluateWorkflowCriteria({ caseId, criteria }, userId) {
+  const rules = Array.isArray(criteria) ? criteria : [];
+  if (!rules.length) return { available: true, results: [] };
+
+  const grouped = new Map();
+  rules.forEach((rule) => {
+    const source = ["case", "salesOrder", "intercompanySalesOrder"].includes(rule?.source) ? rule.source : "case";
+    const fields = grouped.get(source) || new Set();
+    if (rule?.field) fields.add(rule.field);
+    if (rule?.compareType === "field" && rule?.compareField) fields.add(rule.compareField);
+    grouped.set(source, fields);
+  });
+
+  const records = {};
+  for (const [source, fields] of grouped.entries()) {
+    records[source] = await loadWorkflowCriteriaRecord({ caseId, source, fields: Array.from(fields) }, userId);
+  }
+
+  const results = rules.map((rule) => {
+    const source = ["case", "salesOrder", "intercompanySalesOrder"].includes(rule?.source) ? rule.source : "case";
+    const record = records[source] || {};
+    const actual = workflowCriteriaValue(record.row || {}, rule.field || "");
+    const expected = rule.compareType === "field"
+      ? workflowCriteriaValue(record.row || {}, rule.compareField || "")
+      : { raw: cleanDraftValue(rule.staticValue), display: cleanDraftValue(rule.staticValueLabel) };
+    return {
+      source,
+      sourceLabel: workflowCriteriaSourceLabel(source),
+      recordId: record.recordId ? String(record.recordId) : "",
+      field: rule.field || "",
+      operator: rule.operator || "equals",
+      compareType: rule.compareType || "static",
+      compareField: rule.compareField || "",
+      staticValue: rule.staticValue || "",
+      staticValueLabel: rule.staticValueLabel || "",
+      actualValue: actual.raw,
+      actualDisplay: actual.display,
+      expectedValue: expected.raw,
+      expectedDisplay: expected.display,
+      passed: compareWorkflowCriteriaValues(actual, rule.operator || "equals", expected),
+    };
+  });
+
+  return {
+    available: results.every((result) => result.passed),
+    results,
+  };
+}
+
+async function evaluateWorkflowCheck({ caseId, node, inputValue, inputLabel, inputSource }, userId) {
+  const config = node?.checkConfig || {};
+  const recordType = config.recordType || "affectedItem";
+  const affectedItemSource = config.affectedItemSource || "storeSalesOrder";
+  const rules = Array.isArray(config.rules) ? config.rules : [];
+  if (!rules.length) {
+    return {
+      result: "Fail",
+      recordType,
+      affectedItemSource,
+      message: "No check rules configured",
+      checks: [],
+      data: {},
+    };
+  }
+
+  if (recordType === "input" && inputSource === "salesOrderItems") {
+    const { supportCase, line, source } = await loadInputItemSalesOrderLineForCase(caseId, inputValue, userId, affectedItemSource);
+    const checks = evaluateWorkflowLineRules(rules, line);
+    return {
+      result: checks.every((check) => check.passed) ? "Pass" : "Fail",
+      recordType,
+      affectedItemSource,
+      source: {
+        ...source,
+        inputNodeId: config.inputNodeId || "",
+        label: inputLabel || "Input",
+      },
+      case: {
+        id: supportCase.id,
+        caseNumber: supportCase.caseNumber,
+        salesOrderId: supportCase.salesOrderId,
+        itemId: source.itemId,
+        itemName: source.itemName,
+      },
+      data: line,
+      checks,
+    };
+  }
+
+  if (recordType !== "affectedItem") {
+    return {
+      result: "Fail",
+      recordType,
+      affectedItemSource,
+      message: `${recordType} checks are framework-only and not wired yet`,
+      checks: rules.map((rule) => ({ ...rule, passed: false, note: "Not wired yet" })),
+      data: {},
+    };
+  }
+
+  const { supportCase, line, source } = await loadAffectedItemSalesOrderLineForCase(caseId, userId, affectedItemSource);
+  const checks = evaluateWorkflowLineRules(rules, line);
+
+  return {
+    result: checks.every((check) => check.passed) ? "Pass" : "Fail",
+    recordType,
+    affectedItemSource,
+    source,
+    case: {
+      id: supportCase.id,
+      caseNumber: supportCase.caseNumber,
+      salesOrderId: supportCase.salesOrderId,
+      itemId: supportCase.itemId,
+      itemName: supportCase.itemName,
+    },
+    data: line,
+    checks,
+  };
+}
+
+function workflowActionTypeLabel(type = "") {
+  return ({
+    setCaseStatus: "Set Case Status",
+    itemLineAction: "Item Line Action",
+    closeSalesLine: "Close Sales Line",
+    closeIntercompanyLine: "Close Intercompany Line",
+    closeSupplierPurchaseOrderLine: "Close Supplier Purchase Order Line",
+    createRecord: "Create Record",
+  })[type] || "Action message only";
+}
+
+const CREATE_RECORD_ENDPOINTS = {
+  salesOrder: { endpoint: "/salesOrder", recordType: "salesOrder", documentPath: "/app/accounting/transactions/salesord.nl" },
+  customerDeposit: { endpoint: "/customerDeposit", recordType: "customerDeposit", documentPath: "/app/accounting/transactions/custdep.nl" },
+  customerRefund: { endpoint: "/customerRefund", recordType: "customerRefund", documentPath: "/app/accounting/transactions/custrfnd.nl" },
+  returnAuthorization: { endpoint: "/returnAuthorization", recordType: "returnAuthorization", documentPath: "/app/accounting/transactions/rtnauth.nl" },
+};
+
+function createRecordConfig(targetRecord = "") {
+  return CREATE_RECORD_ENDPOINTS[targetRecord] || null;
+}
+
+function fieldTypeUsesRef(fieldType = "") {
+  const clean = String(fieldType || "").trim().toLowerCase();
+  return clean === "list/record" || clean === "multiple select";
+}
+
+function fieldTypeUsesCheckbox(fieldType = "") {
+  const clean = String(fieldType || "").trim().toLowerCase();
+  return clean === "checkbox" || clean === "boolean";
+}
+
+function coerceCheckboxValue(value) {
+  const raw = cleanDraftValue(value);
+  if (/^(true|t|yes|y|1|checked|check|on)$/i.test(raw)) return true;
+  if (/^(false|f|no|n|0|unchecked|uncheck|off)$/i.test(raw)) return false;
+  return raw ? true : false;
+}
+
+function fieldTypeUsesDecimal(fieldType = "") {
+  const clean = String(fieldType || "").trim().toLowerCase();
+  return ["decimal", "currency", "integer", "number", "float"].includes(clean);
+}
+
+function coerceDecimalValue(value) {
+  const raw = cleanDraftValue(value).replace(/,/g, "");
+  if (!raw) return "";
+  const numeric = Number(raw);
+  return Number.isFinite(numeric) ? numeric : raw;
+}
+
+function coerceMappedValueForTarget(value, mapping = {}) {
+  const clean = cleanDraftValue(value);
+  if (value === undefined || value === null || clean === "") return "";
+  const cast = cleanDraftValue(mapping.valueCast).toLowerCase();
+  if (cast === "checkbox") return coerceCheckboxValue(clean);
+  if (cast === "decimal") return coerceDecimalValue(clean);
+  if (cast === "reference") return { id: clean };
+  if (cast === "text") return clean;
+  if (fieldTypeUsesCheckbox(mapping.targetFieldType)) return coerceCheckboxValue(clean);
+  if (fieldTypeUsesDecimal(mapping.targetFieldType)) return coerceDecimalValue(clean);
+  if (fieldTypeUsesRef(mapping.targetFieldType)) return { id: clean };
+  return clean;
+}
+
+function setNestedRecordValue(target, fieldId, value) {
+  const cleanField = cleanDraftValue(fieldId);
+  if (!cleanField || value === "") return;
+  target[cleanField] = value;
+}
+
+function workflowAnswerValue(answers = [], inputNodeId = "", inputFieldId = "", valueMode = "id") {
+  const step = (Array.isArray(answers) ? answers : []).find((item) => String(item.questionId) === String(inputNodeId));
+  if (!step) return "";
+  const key = inputFieldId || "answer";
+  if (valueMode === "name" && step.answerLabels && Object.prototype.hasOwnProperty.call(step.answerLabels, key)) {
+    return cleanDraftValue(step.answerLabels[key]);
+  }
+  if (step.answers && Object.prototype.hasOwnProperty.call(step.answers, key)) return cleanDraftValue(step.answers[key]);
+  return cleanDraftValue(step.answer);
+}
+
+function workflowAnswerValueByLabel(answers = [], labelPattern) {
+  const matcher = labelPattern instanceof RegExp ? labelPattern : new RegExp(String(labelPattern || ""), "i");
+  for (const step of Array.isArray(answers) ? answers : []) {
+    const answerText = cleanDraftValue(step.answer);
+    const labels = step.answerLabels && typeof step.answerLabels === "object" ? step.answerLabels : {};
+    const values = step.answers && typeof step.answers === "object" ? step.answers : {};
+
+    const answerParts = answerText.split(";").map((part) => part.trim()).filter(Boolean);
+    for (const part of answerParts) {
+      const match = part.match(/^([^:]+):\s*(.*)$/);
+      if (!match || !matcher.test(match[1])) continue;
+      const displayValue = cleanDraftValue(match[2]);
+      const key = Object.keys(labels).find((itemKey) => cleanDraftValue(labels[itemKey]) === displayValue);
+      if (key && cleanDraftValue(values[key])) return cleanDraftValue(values[key]);
+      if (displayValue) return displayValue;
+    }
+
+    for (const [key, displayValue] of Object.entries(labels)) {
+      if (matcher.test(key) || matcher.test(displayValue)) {
+        return cleanDraftValue(values[key] || displayValue);
+      }
+    }
+  }
+  return "";
+}
+
+function recordValueByMode(record = {}, fieldId = "", valueMode = "id") {
+  const value = record?.[fieldId] ?? record?.[String(fieldId).toLowerCase()] ?? record?.[String(fieldId).toUpperCase()];
+  if (valueMode === "name") return refName(value) || cleanDraftValue(value);
+  return refId(value) || cleanDraftValue(value);
+}
+
+async function loadRecordFieldValue(recordType, recordId, fieldId, valueMode, userId) {
+  const cleanType = cleanDraftValue(recordType);
+  const cleanId = cleanDraftValue(recordId);
+  const cleanField = cleanDraftValue(fieldId);
+  if (!cleanType || !cleanId || !cleanField) return "";
+  const record = await nsGet(`/${cleanType}/${encodeURIComponent(cleanId)}?fields=${encodeURIComponent(cleanField)}`, userId);
+  return recordValueByMode(record, cleanField, valueMode);
+}
+
+async function resolveCreateRecordMappingValue(mapping = {}, context = {}, userId) {
+  if (mapping.mode === "static") return cleanDraftValue(mapping.staticValue);
+  if (mapping.mode === "calculation") return resolveWorkflowCalculation(mapping, context, userId);
+  if (mapping.sourceType === "workflowInput") {
+    return workflowAnswerValue(context.answers, mapping.sourceInputId, mapping.sourceInputFieldId, mapping.valueMode);
+  }
+
+  const sourceField = cleanDraftValue(mapping.sourceField);
+  if (!sourceField) return "";
+
+  let sourceRecord = null;
+  let parentValue = "";
+  if (context.sourceRecord === "case") {
+    sourceRecord = context.caseDetail || {};
+    parentValue = recordValueByMode(sourceRecord, sourceField, mapping.valueMode);
+  } else {
+    const salesOrderId = context.sourceRecord === "intercompanySalesOrder"
+      ? context.intercompanySalesOrderId
+      : context.salesOrderId;
+    if (!salesOrderId) return "";
+    sourceRecord = await nsGet(`/salesOrder/${encodeURIComponent(salesOrderId)}?fields=${encodeURIComponent(sourceField)}`, userId);
+    parentValue = recordValueByMode(sourceRecord, sourceField, mapping.valueMode);
+  }
+
+  if (mapping.sourceChildField && mapping.sourceChildRecord) {
+    const parentId = recordValueByMode(sourceRecord, sourceField, "id") || parentValue;
+    return loadRecordFieldValue(mapping.sourceChildRecord, parentId, mapping.sourceChildField, mapping.valueMode, userId);
+  }
+  return parentValue;
+}
+
+function calculationNumber(value, options = {}) {
+  if (typeof value === "number") {
+    if (!Number.isFinite(value)) return 0;
+    return options.absolute ? Math.abs(value) : value;
+  }
+  if (typeof value === "boolean") return value ? 1 : 0;
+  const raw = cleanDraftValue(value).replace(/,/g, "");
+  const match = raw.match(/-?\d+(\.\d+)?/);
+  if (!match) return 0;
+  const numeric = Number(match[0]);
+  if (!Number.isFinite(numeric)) return 0;
+  return options.absolute ? Math.abs(numeric) : numeric;
+}
+
+function isAmountLikeLineField(fieldId = "") {
+  const clean = cleanDraftValue(fieldId).toLowerCase();
+  return [
+    "amount",
+    "grossamt",
+    "grossamount",
+    "netamount",
+    "rate",
+    "price",
+    "taxamount",
+    "tax1amt",
+  ].includes(clean);
+}
+
+function lineCalculationValue(line = {}, fieldId = "") {
+  const cleanField = cleanDraftValue(fieldId);
+  const direct = rowValue(line, cleanField, cleanField.toLowerCase(), cleanField.toUpperCase());
+  if (cleanDraftValue(direct) !== "") return direct;
+
+  const clean = cleanField.toLowerCase();
+  if (["grossamt", "grossamount"].includes(clean)) {
+    return rowValue(
+      line,
+      "grossamt",
+      "grossAmt",
+      "grossamount",
+      "grossAmount",
+      "amountgrossline",
+      "amountGrossLine",
+      "salegrossline",
+      "saleGrossLine",
+      "grosssaleprice",
+      "grossSaleprice",
+      "amount",
+      "AMOUNT",
+      "netamount",
+      "NETAMOUNT"
+    );
+  }
+  if (["amount", "netamount"].includes(clean)) {
+    return rowValue(
+      line,
+      "amount",
+      "AMOUNT",
+      "netamount",
+      "NETAMOUNT",
+      "grossamt",
+      "grossAmt",
+      "grossamount",
+      "grossAmount"
+    );
+  }
+  return direct;
+}
+
+async function resolveCalculationToken(token = "", mapping = {}, context = {}, userId) {
+  const cleanToken = cleanDraftValue(token);
+  const lower = cleanToken.toLowerCase();
+  if (lower === "wf.input") {
+    return calculationNumber(workflowAnswerValue(context.answers, mapping.sourceInputId, mapping.sourceInputFieldId, "id"));
+  }
+  if (lower.startsWith("wf.")) {
+    const fieldId = cleanToken.slice(3);
+    return calculationNumber(workflowAnswerValue(context.answers, mapping.sourceInputId, fieldId, "id"));
+  }
+  if (lower.startsWith("line.")) {
+    const fieldId = cleanToken.slice(5);
+    const line = context.line || {};
+    return calculationNumber(
+      lineCalculationValue(line, fieldId),
+      { absolute: isAmountLikeLineField(fieldId) }
+    );
+  }
+  if (lower.startsWith("source.") || lower.startsWith("record.")) {
+    const path = cleanToken.slice(cleanToken.indexOf(".") + 1).split(".").filter(Boolean);
+    const fieldId = path[0] || "";
+    const childFieldId = path[1] || "";
+    const childSource = (Array.isArray(context.records) ? context.records : [])
+      .flatMap((record) => record?.fields || [])
+      .find((field) => String(field.internalId) === String(fieldId));
+    return calculationNumber(await resolveCreateRecordMappingValue({
+      ...mapping,
+      mode: "source",
+      sourceType: "record",
+      sourceField: fieldId,
+      sourceChildField: childFieldId,
+      sourceChildRecord: childFieldId ? cleanDraftValue(childSource?.listRecord || childSource?.listRecordId || childSource?.recordType || childSource?.sourceRecord) : "",
+      sourceFieldPath: childFieldId ? [fieldId, childFieldId] : [],
+    }, context, userId));
+  }
+  return 0;
+}
+
+async function resolveWorkflowCalculation(mapping = {}, context = {}, userId) {
+  const expression = cleanDraftValue(mapping.calculationExpression);
+  if (!expression) return "";
+  let resolved = expression;
+  const tokens = [...expression.matchAll(/\{([^}]+)\}/g)];
+  const resolvedTokens = [];
+  for (const match of tokens) {
+    const value = await resolveCalculationToken(match[1], mapping, context, userId);
+    resolvedTokens.push({ token: match[1], value });
+    resolved = resolved.replace(match[0], String(value));
+  }
+  if (!/^[\d+\-*/().\s]+$/.test(resolved)) {
+    throw new Error(`Calculation contains unsupported values: ${expression}`);
+  }
+  let result;
+  try {
+    result = Function(`"use strict"; return (${resolved});`)();
+  } catch {
+    throw new Error(`Calculation could not be evaluated: ${expression}`);
+  }
+  if (!Number.isFinite(Number(result))) {
+    throw new Error(`Calculation did not return a numeric value: ${expression}`);
+  }
+  console.log("[workflow-calculation] resolved", {
+    expression,
+    resolved,
+    tokens: resolvedTokens,
+    result: Number(result),
+  });
+  return Number(result);
+}
+
+async function buildCreateRecordPayload(action = {}, context = {}, userId) {
+  const createRecord = action.createRecord && typeof action.createRecord === "object" ? action.createRecord : {};
+  const mappings = Array.isArray(createRecord.mappings) ? createRecord.mappings : [];
+  const body = {};
+  const sublistRows = new Map();
+  const debugMappings = [];
+  for (const mapping of mappings) {
+    const value = await resolveCreateRecordMappingValue(mapping, context, userId);
+    debugMappings.push({
+      targetField: mapping.targetSublist ? `${mapping.targetSublist}.${mapping.targetField}` : mapping.targetField,
+      sourceType: mapping.sourceType || "record",
+      sourceField: mapping.sourceType === "workflowInput" ? `${mapping.sourceInputId || ""}:${mapping.sourceInputFieldId || ""}` : mapping.sourceField || "",
+      value,
+      valueMode: mapping.valueMode || "id",
+    });
+    const coerced = coerceMappedValueForTarget(value, mapping);
+    if (coerced === "") continue;
+    if (mapping.targetSublist) {
+      const key = cleanDraftValue(mapping.targetSublist);
+      const row = sublistRows.get(key) || {};
+      setNestedRecordValue(row, mapping.targetField, coerced);
+      sublistRows.set(key, row);
+    } else {
+      setNestedRecordValue(body, mapping.targetField, coerced);
+    }
+  }
+  for (const [sublistId, row] of sublistRows.entries()) {
+    body[sublistId] = { items: [row] };
+  }
+  Object.defineProperty(body, "__debugMappings", {
+    value: debugMappings,
+    enumerable: false,
+    configurable: true,
+  });
+  return body;
+}
+
+function cloneJson(value) {
+  return JSON.parse(JSON.stringify(value || {}));
+}
+
+function safeWorkflowDebugJson(value) {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function logCreateRecordDebug(label, data = {}) {
+  console.warn(`[workflow-create-record] ${label}`, safeWorkflowDebugJson(data));
+}
+
+function isSublistPayload(value) {
+  return !!value && typeof value === "object" && Array.isArray(value.items);
+}
+
+function splitCustomerRefundCreatePayload(payload = {}) {
+  const initial = {};
+  const deferred = {};
+  Object.entries(payload || {}).forEach(([key, value]) => {
+    if (isSublistPayload(value)) deferred[key] = cloneJson(value);
+    else initial[key] = cloneJson(value);
+  });
+  return { initial, deferred };
+}
+
+function netSuiteErrorText(err = {}) {
+  const details = err.responseBody?.["o:errorDetails"];
+  if (Array.isArray(details)) return details.map((item) => item.detail || item.message || "").join(" ");
+  return cleanDraftValue(err.message || err.responseBody?.message || "");
+}
+
+function isMissingRefundMethodError(err = {}) {
+  return /refund method/i.test(netSuiteErrorText(err));
+}
+
+function customerRefundMethodIdFromPayload(payload = {}) {
+  const candidates = [
+    payload.paymentMethod,
+    payload.paymentOption,
+    payload.paymentoption,
+    payload.paymentmethod,
+    payload.refundmethod,
+    payload.refundMethod,
+  ];
+  for (const candidate of candidates) {
+    const id = refId(candidate);
+    if (id) return id;
+  }
+  return "";
+}
+
+function customerRefundMethodInteger(value) {
+  const id = refId(value);
+  if (!/^\d+$/.test(id)) return null;
+  const numericId = Number(id);
+  return Number.isSafeInteger(numericId) ? numericId : null;
+}
+
+function stripCustomerRefundMethodAliases(payload = {}) {
+  const output = cloneJson(payload);
+  ["paymentmethod", "paymentMethod", "paymentoption", "paymentOption", "refundmethod", "refundMethod"].forEach((key) => {
+    delete output[key];
+  });
+  return output;
+}
+
+async function postCustomerRefundWithRefundMethodFallback(config, createPayload, userId) {
+  const refundMethodId = customerRefundMethodIdFromPayload(createPayload);
+  if (!refundMethodId) return nsPost(config.endpoint, createPayload, userId);
+
+  const basePayload = stripCustomerRefundMethodAliases(createPayload);
+  const refundMethodInteger = customerRefundMethodInteger(refundMethodId);
+  const attempts = [
+    ...(refundMethodInteger == null ? [] : [{ field: "paymentMethod", value: refundMethodInteger }]),
+    { field: "paymentMethod", value: refundMethodId },
+    { field: "paymentOption", value: { id: refundMethodId } },
+    { field: "paymentOption", value: refundMethodId },
+    { field: "paymentmethod", value: refundMethodId },
+    { field: "paymentmethod", value: { id: refundMethodId } },
+    { field: "paymentoption", value: { id: refundMethodId } },
+    { field: "paymentoption", value: refundMethodId },
+  ];
+  let lastErr = null;
+  for (const attempt of attempts) {
+    const payload = { ...cloneJson(basePayload), [attempt.field]: attempt.value };
+    logCreateRecordDebug("posting customer refund attempt", {
+      endpoint: config.endpoint,
+      refundMethodField: attempt.field,
+      payload,
+    });
+    try {
+      const created = await nsPost(config.endpoint, payload, userId);
+      Object.keys(createPayload).forEach((key) => delete createPayload[key]);
+      Object.assign(createPayload, payload);
+      return created;
+    } catch (err) {
+      lastErr = err;
+      logCreateRecordDebug("customer refund attempt failed", {
+        refundMethodField: attempt.field,
+        error: err.message || String(err),
+        responseBody: err.responseBody || null,
+      });
+      if (!isMissingRefundMethodError(err)) throw err;
+    }
+  }
+  throw lastErr || new Error("Customer Refund creation failed.");
+}
+
+function workflowRestletUrl() {
+  return `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
+}
+
+async function getCustomerDepositCandidatesForRefund({ salesOrderId, customerId }, userId) {
+  const salesOrderNumeric = Number(salesOrderId);
+  const customerNumeric = Number(customerId);
+  const filters = [];
+  if (Number.isFinite(salesOrderNumeric) && salesOrderNumeric > 0) {
+    filters.push(`tl.createdfrom = ${salesOrderNumeric}`);
+  }
+  if (Number.isFinite(customerNumeric) && customerNumeric > 0) {
+    filters.push(`t.entity = ${customerNumeric}`);
+  }
+  if (!filters.length) return [];
+
+  const query = `
+    SELECT DISTINCT
+      t.id,
+      t.tranid,
+      t.entity,
+      tl.createdfrom,
+      ABS(t.foreigntotal) AS total,
+      ABS(t.total) AS base_total
+    FROM transaction t
+    JOIN transactionline tl ON tl.transaction = t.id
+    WHERE t.recordtype = 'customerdeposit'
+      AND (${filters.join(" OR ")})
+    ORDER BY t.id DESC
+  `;
+
+  try {
+    const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId);
+    return (Array.isArray(result?.items) ? result.items : []).map((row) => ({
+      id: cleanDraftValue(row.id || row.ID),
+      tranId: cleanDraftValue(row.tranid || row.TRANID),
+      customerId: cleanDraftValue(row.entity || row.ENTITY),
+      salesOrderId: cleanDraftValue(row.createdfrom || row.CREATEDFROM),
+      total: cleanDraftValue(row.total || row.TOTAL || row.base_total || row.BASE_TOTAL),
+    })).filter((row) => row.id);
+  } catch (err) {
+    console.warn("[workflow-create-record] Customer Deposit candidate lookup failed:", err.message || err);
+    return [];
+  }
+}
+
+async function createCustomerRefundViaRestlet(payload, userId, context = {}) {
+  const restletUrl = workflowRestletUrl();
+  const result = await nsRestlet(restletUrl, {
+    action: "createCustomerRefund",
+    payload,
+    salesOrderId: cleanDraftValue(context.salesOrderId),
+    refundAmount: cleanDraftValue(context.refundAmount),
+    candidateDeposits: Array.isArray(context.candidateDeposits) ? context.candidateDeposits : [],
+  }, userId, "POST");
+  if (!result || result.ok === false) {
+    const err = new Error(result?.error || result?.message || "Customer Refund RESTlet create failed.");
+    err.responseBody = result || null;
+    throw err;
+  }
+  return {
+    id: result.id || "",
+    tranId: result.tranId || result.tranid || "",
+    _restlet: result,
+  };
+}
+
+function selectedDepositAllocations(context = {}) {
+  return (Array.isArray(context.depositAllocations) ? context.depositAllocations : [])
+    .map((allocation) => ({
+      id: cleanDraftValue(allocation.id || allocation.depositId || allocation.doc),
+      tranId: cleanDraftValue(allocation.tranId || allocation.refNum || allocation.refnum),
+      amount: cleanDraftValue(allocation.amount),
+    }))
+    .filter((allocation) => allocation.id && Number(allocation.amount) > 0);
+}
+
+function uniqueDepositCandidates(candidates = []) {
+  const seen = new Set();
+  return (Array.isArray(candidates) ? candidates : [])
+    .filter((deposit) => {
+      const id = cleanDraftValue(deposit.id);
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+}
+
+async function createRecordWithOptionalStaging(config, payload, targetRecord, userId, context = {}) {
+  if (targetRecord !== "customerRefund") {
+    logCreateRecordDebug("posting record", {
+      targetRecord,
+      endpoint: config.endpoint,
+      payload,
+    });
+    return { created: await nsPost(config.endpoint, payload, userId), createPayload: payload, deferredPayload: null };
+  }
+
+  const candidateDeposits = uniqueDepositCandidates(context.candidateDeposits);
+  const allocations = selectedDepositAllocations(context);
+  const expectedRefundAmount = Number(String(context.refundAmount || "").replace(/,/g, ""));
+  if (candidateDeposits.length > 1 && !allocations.length) {
+    return {
+      created: {
+        ok: false,
+        needsInput: "customerDepositAllocation",
+        message: "Select which customer deposit(s) to refund.",
+        expectedAmount: Number.isFinite(expectedRefundAmount) ? expectedRefundAmount : null,
+        deposits: candidateDeposits,
+      },
+      createPayload: payload,
+      deferredPayload: null,
+      needsInput: true,
+    };
+  }
+  const totalAllocated = allocations.reduce((sum, allocation) => sum + Number(allocation.amount || 0), 0);
+  if (allocations.length && Number.isFinite(expectedRefundAmount) && expectedRefundAmount > 0 && totalAllocated - expectedRefundAmount > 0.0001) {
+    return {
+      created: {
+        ok: false,
+        needsInput: "customerDepositAllocation",
+        message: "The selected refund allocation exceeds the workflow refund amount.",
+        expectedAmount: expectedRefundAmount,
+        deposits: candidateDeposits,
+        allocations,
+      },
+      createPayload: payload,
+      deferredPayload: null,
+      needsInput: true,
+    };
+  }
+
+  logCreateRecordDebug("posting customer refund via RESTlet", {
+    payload,
+    restletContext: {
+      salesOrderId: cleanDraftValue(context.salesOrderId),
+      refundAmount: cleanDraftValue(context.refundAmount),
+      candidateDeposits,
+      depositAllocations: allocations,
+    },
+  });
+  const created = await createCustomerRefundViaRestlet(payload, userId, {
+    ...context,
+    candidateDeposits,
+    depositAllocations: allocations,
+  });
+  return { created, createPayload: payload, deferredPayload: null };
+}
+
+async function executeCreateRecordAction({ caseId, action, checks = [], answers = [] }, userId) {
+  const createRecord = action.createRecord && typeof action.createRecord === "object" ? action.createRecord : {};
+  const config = createRecordConfig(createRecord.targetRecord);
+  if (!config) throw new Error(`Create Record target is not supported: ${createRecord.targetRecord || "(blank)"}`);
+  console.warn("[workflow-create-record] action start", {
+    caseId,
+    nodeId: action.nodeId || "",
+    targetRecord: createRecord.targetRecord || "",
+    mappingCount: Array.isArray(createRecord.mappings) ? createRecord.mappings.length : 0,
+    answerCount: Array.isArray(answers) ? answers.length : 0,
+  });
+  const caseDetail = await getSupportCaseDetail(caseId, userId);
+  const salesOrderId = caseDetail.salesOrderId;
+  const intercompany = salesOrderId ? await getPairedIntercompanySalesOrderId(salesOrderId, userId).catch(() => null) : null;
+  const payload = await buildCreateRecordPayload(action, {
+    caseDetail,
+    salesOrderId,
+    intercompanySalesOrderId: intercompany?.id || "",
+    sourceRecord: createRecord.sourceRecord || "storeSalesOrder",
+    checks,
+    answers,
+  }, userId);
+  if (createRecord.targetRecord === "customerRefund" && !payload.customer && caseDetail.customerId) {
+    payload.customer = { id: caseDetail.customerId };
+  }
+  if (
+    createRecord.targetRecord === "customerRefund" &&
+    !payload.paymentOption &&
+    !payload.paymentoption &&
+    !payload.paymentmethod &&
+    !payload.paymentMethod
+  ) {
+    const refundMethodId = workflowAnswerValueByLabel(answers, /refund method/i);
+    if (refundMethodId) {
+      payload.paymentMethod = customerRefundMethodInteger(refundMethodId) ?? refundMethodId;
+    }
+  }
+  const mappingDebug = payload.__debugMappings || [];
+  logCreateRecordDebug("resolved mappings", {
+    caseId,
+    actionNodeId: action.nodeId || "",
+    targetRecord: createRecord.targetRecord || "",
+    sourceRecord: createRecord.sourceRecord || "",
+    answers,
+    mappings: mappingDebug,
+  });
+  logCreateRecordDebug("payload before staging", payload);
+  let created;
+  let createPayload = payload;
+  let deferredPayload = null;
+  try {
+    const candidateDeposits = createRecord.targetRecord === "customerRefund"
+      ? await getCustomerDepositCandidatesForRefund({
+        salesOrderId,
+        customerId: caseDetail.customerId,
+      }, userId)
+      : [];
+    const createResult = await createRecordWithOptionalStaging(config, payload, createRecord.targetRecord, userId, {
+      salesOrderId,
+      refundAmount: workflowAnswerValueByLabel(answers, /refund amount/i),
+      candidateDeposits,
+      depositAllocations: action.depositAllocations,
+    });
+    created = createResult.created;
+    createPayload = createResult.createPayload || payload;
+    deferredPayload = createResult.deferredPayload || null;
+    logCreateRecordDebug("staged payloads", {
+      targetRecord: createRecord.targetRecord || "",
+      createPayload,
+      deferredPayload,
+      created,
+    });
+  } catch (err) {
+    logCreateRecordDebug("failed payloads", {
+      targetRecord: createRecord.targetRecord || "",
+      payload,
+      createPayload,
+      deferredPayload,
+      error: err.message || String(err),
+      responseBody: err.responseBody || null,
+      mappings: mappingDebug,
+    });
+    err.workflowDebug = {
+      ...(err.workflowDebug || {}),
+      createRecordTarget: createRecord.targetRecord || "",
+      payload,
+      createPayload,
+      deferredPayload,
+      mappings: mappingDebug,
+    };
+    throw err;
+  }
+  const id = cleanDraftValue(created.id);
+  if (created.needsInput) {
+    return {
+      created,
+      payload,
+      mappingDebug,
+      createPayload,
+      deferredPayload,
+      needsInput: created.needsInput,
+      document: { id: "", number: "", url: "" },
+    };
+  }
+  let documentNumber = cleanDraftValue(created.tranId || created.tranid) || id;
+  if (id) {
+    if (createRecord.targetRecord === "salesOrder") {
+      const doc = await getSalesOrderDocumentInfo(id, userId).catch(() => null);
+      documentNumber = doc?.documentNumber || documentNumber || id;
+    }
+  }
+  return {
+    created,
+    payload,
+    mappingDebug,
+    createPayload,
+    deferredPayload,
+    document: {
+      id,
+      number: documentNumber,
+      url: id ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}${config.documentPath}?id=${encodeURIComponent(id)}` : "",
+    },
+  };
+}
+
+async function updateSupportCaseStatus(caseId, statusId, userId) {
+  const id = cleanDraftValue(caseId);
+  const cleanStatusId = cleanDraftValue(statusId);
+  if (!/^\d+$/.test(id)) throw new Error("Valid case ID is required");
+  if (!cleanStatusId) throw new Error("Case status is required");
+  const payload = {};
+  addRefField(payload, "status", cleanStatusId);
+  await nsPatch(`/supportCase/${encodeURIComponent(id)}`, payload, userId);
+  return { id, statusId: cleanStatusId };
+}
+
+function latestWorkflowActionItemId(checks = []) {
+  const list = Array.isArray(checks) ? checks.slice().reverse() : [];
+  for (const check of list) {
+    const sourceItem = check?.source?.itemId;
+    const caseItem = check?.case?.itemId;
+    const itemId = Number(sourceItem || caseItem);
+    if (Number.isFinite(itemId) && itemId > 0) return itemId;
+  }
+  return null;
+}
+
+async function resolveWorkflowActionLine({ caseId, actionType, checks }, userId) {
+  const source = actionType === "closeIntercompanyLine" ? "intercompanySalesOrder" : "storeSalesOrder";
+  const itemId = latestWorkflowActionItemId(checks);
+  if (itemId) return loadInputItemSalesOrderLineForCase(caseId, itemId, userId, source);
+  return loadAffectedItemSalesOrderLineForCase(caseId, userId, source);
+}
+
+function workflowAnswerPrimaryValue(answers = [], inputNodeId = "") {
+  const step = (Array.isArray(answers) ? answers : []).find((item) => String(item.questionId) === String(inputNodeId));
+  if (!step) return "";
+  const values = step.answers && typeof step.answers === "object" ? Object.values(step.answers) : [];
+  return cleanDraftValue(values.find((value) => cleanDraftValue(value)) || step.answer);
+}
+
+function coerceWorkflowLineValue(value) {
+  if (typeof value === "number" || typeof value === "boolean") return value;
+  const raw = cleanDraftValue(value);
+  if (/^-?\d+(\.\d+)?$/.test(raw)) return Number(raw);
+  if (/^(true|t|yes|y|checked|check|on)$/i.test(raw)) return true;
+  if (/^(false|f|no|n|unchecked|uncheck|off)$/i.test(raw)) return false;
+  return raw;
+}
+
+async function itemLinePatchFromMappings(mappings = [], context = {}, userId) {
+  const patch = {};
+  for (const mapping of Array.isArray(mappings) ? mappings : []) {
+    const field = cleanDraftValue(mapping.field || mapping.targetField);
+    if (!field) continue;
+    const value = mapping.sourceType || mapping.mode
+      ? await resolveCreateRecordMappingValue(mapping, context, userId)
+      : (mapping.value ?? mapping.staticValue);
+    const coerced = coerceMappedValueForTarget(value, mapping);
+    if (coerced === "") continue;
+    let finalValue = typeof coerced === "object" && coerced && Object.prototype.hasOwnProperty.call(coerced, "id")
+      ? coerced
+      : coerceWorkflowLineValue(coerced);
+    if (isAmountLikeLineField(field) && typeof finalValue === "number") {
+      finalValue = Math.abs(finalValue);
+    }
+    patch[field] = finalValue;
+  }
+  return patch;
+}
+
+async function patchSalesOrderItemLineFields(salesOrderId, targetLine, patch, userId) {
+  const cleanSalesOrderId = cleanDraftValue(salesOrderId);
+  if (!cleanSalesOrderId) throw new Error("Missing Sales Order ID for item line action.");
+  if (!patch || !Object.keys(patch).length) throw new Error("No item line field mappings were configured.");
+
+  const line = targetLine && typeof targetLine === "object" ? targetLine : {};
+  const wantedLineId = cleanDraftValue(line.lineId || line.lineid);
+  const wantedItemId = cleanDraftValue(line.itemId || line.item);
+  const wantedLineUniqueKey = cleanDraftValue(line.lineUniqueKey || line.lineuniquekey);
+  const wantedSequence = Number(rowValue(line, "linesequencenumber", "LINESEQUENCENUMBER", "sequence"));
+  const wantedIndex = Number.isFinite(Number(line.index))
+    ? Number(line.index)
+    : Number.isFinite(wantedSequence) && wantedSequence > 0
+      ? wantedSequence - 1
+      : null;
+
+  if (!wantedLineId && !wantedItemId && wantedIndex === null && !wantedLineUniqueKey) {
+    throw new Error("Missing Sales Order line details for item line action.");
+  }
+
+  const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
+  const buildRestletHeaders = async () => ({
+    ...(await getAuthHeader(restletUrl, "POST", userId, "sb")),
+    "Content-Type": "application/json",
+  });
+  const payload = {
+    id: cleanSalesOrderId,
+    recordType: "salesOrder",
+    optionsOnly: true,
+    commit: false,
+    lines: [
+      {
+        ...patch,
+        lineId: wantedLineId,
+        suiteQlLineId: wantedLineId,
+        lineUniqueKey: wantedLineUniqueKey,
+        lineIndex: wantedIndex,
+        itemId: wantedItemId,
+      },
+    ],
+    deletedLineIds: [],
+    headerUpdates: {},
+  };
+
+  const { response, text, data } = await postRestletWithRecordChangedRetry(
+    restletUrl,
+    buildRestletHeaders,
+    JSON.stringify(payload),
+    "Patch Sales Order line",
+    { maxAttempts: 5, baseDelayMs: 750 }
+  );
+
+  if (!response.ok || !data?.ok) {
+    const failure = Array.isArray(data?.failures) ? data.failures[0] : null;
+    const err = new Error(failure?.error || data?.error || text || "NetSuite RESTlet failed to update Sales Order line.");
+    err.responseBody = data || text;
+    throw err;
+  }
+
+  const updatedLine = Array.isArray(data.updatedLines) ? data.updatedLines[0] : null;
+  cacheDeleteSalesOrder(cleanSalesOrderId);
+  return {
+    result: data,
+    endpoint: "RESTlet salesOrder optionsOnly",
+    patch,
+    matchedRestLine: updatedLine || null,
+  };
+}
+
+async function patchPurchaseOrderItemLineFields(purchaseOrderId, targetLine, patch, userId) {
+  const cleanPurchaseOrderId = String(purchaseOrderId || "").trim();
+  const line = targetLine && typeof targetLine === "object"
+    ? targetLine
+    : { lineId: String(targetLine || "").trim() };
+  const wantedLineId = String(line.lineId || line.lineid || "").trim();
+  const wantedItemId = String(line.itemId || line.item || "").trim();
+  const wantedLineUniqueKey = String(line.lineUniqueKey || line.lineuniquekey || "").trim();
+  const wantedSequence = Number(line.linesequencenumber || line.sequence || "");
+  const wantedIndex = Number.isFinite(Number(line.index))
+    ? Number(line.index)
+    : Number.isFinite(wantedSequence) && wantedSequence > 0
+      ? wantedSequence - 1
+      : null;
+
+  if (!cleanPurchaseOrderId || (!wantedLineId && !wantedItemId && wantedIndex === null)) {
+    throw new Error("Missing Purchase Order line details for item line action.");
+  }
+  if (!patch || !Object.keys(patch).length) {
+    throw new Error("No item line field mappings were configured.");
+  }
+
+  const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
+  const buildRestletHeaders = async () => ({
+    ...(await getAuthHeader(restletUrl, "POST", userId, "sb")),
+    "Content-Type": "application/json",
+  });
+  const payload = {
+    id: cleanPurchaseOrderId,
+    recordType: "purchaseOrder",
+    optionsOnly: true,
+    commit: false,
+    lines: [
+      {
+        ...patch,
+        lineId: wantedLineId,
+        suiteQlLineId: wantedLineId,
+        lineUniqueKey: wantedLineUniqueKey,
+        lineIndex: wantedIndex,
+        itemId: wantedItemId,
+      },
+    ],
+    deletedLineIds: [],
+    headerUpdates: {},
+  };
+
+  const { response, text, data } = await postRestletWithRecordChangedRetry(
+    restletUrl,
+    buildRestletHeaders,
+    JSON.stringify(payload),
+    "Patch Purchase Order line",
+    { maxAttempts: 5, baseDelayMs: 750 }
+  );
+
+  if (!response.ok || !data?.ok) {
+    const failure = Array.isArray(data?.failures) ? data.failures[0] : null;
+    throw new Error(failure?.error || data?.error || text || "NetSuite RESTlet failed to update Purchase Order line.");
+  }
+
+  const updatedLine = Array.isArray(data.updatedLines) ? data.updatedLines[0] : null;
+  return {
+    result: data,
+    endpoint: "RESTlet purchaseOrder optionsOnly",
+    lineId: wantedLineId || updatedLine?.lineId || "",
+    itemId: wantedItemId || updatedLine?.itemId || "",
+    matchedRestLine: updatedLine,
+    patch,
+  };
+}
+
+async function executeItemLineAction({ caseId, action, checks = [], answers = [] }, userId) {
+  const config = action.itemLineAction && typeof action.itemLineAction === "object" ? action.itemLineAction : {};
+  const target = ["intercompanySalesOrder", "supplierPurchaseOrder"].includes(config.target || config.source)
+    ? (config.target || config.source)
+    : "storeSalesOrder";
+  const inputItemId = config.itemSource === "input" ? workflowAnswerPrimaryValue(answers, config.inputNodeId) : "";
+  const caseDetail = await getSupportCaseDetail(caseId, userId);
+  const salesOrderId = cleanDraftValue(caseDetail.salesOrderId);
+  const intercompanySalesOrder = await getPairedIntercompanySalesOrderId(Number(salesOrderId), userId).catch(() => null);
+  const mappingContext = {
+    caseDetail,
+    salesOrderId,
+    intercompanySalesOrderId: intercompanySalesOrder?.id || "",
+    sourceRecord: config.sourceRecord || "storeSalesOrder",
+    answers,
+  };
+
+  if (target === "supplierPurchaseOrder") {
+    const resolved = await loadSupplierPurchaseOrderLineForCase(caseId, userId, checks, inputItemId);
+    const patch = await itemLinePatchFromMappings(config.mappings, { ...mappingContext, line: resolved.line }, userId);
+    console.log("[workflow-item-line-action] resolved patch", {
+      caseId,
+      nodeId: action.nodeId || "",
+      target,
+      itemSource: config.itemSource || "caseAffectedItem",
+      inputItemId,
+      patch,
+      mappings: Array.isArray(config.mappings)
+        ? config.mappings.map((mapping) => ({
+          targetField: mapping.targetField || mapping.field || "",
+          targetFieldType: mapping.targetFieldType || "",
+          valueCast: mapping.valueCast || "",
+          mode: mapping.mode || "",
+          staticValue: mapping.staticValue,
+          calculationExpression: mapping.calculationExpression,
+          sourceType: mapping.sourceType || "",
+          sourceField: mapping.sourceField || "",
+        }))
+        : [],
+    });
+    const patchResult = await patchPurchaseOrderItemLineFields(resolved.source.supplierPurchaseOrderId, resolved.line, patch, userId);
+    return {
+      patchResult,
+      source: resolved.source,
+      line: resolved.line,
+      patch,
+      document: resolved.document,
+    };
+  }
+
+  const resolved = inputItemId
+    ? await loadInputItemSalesOrderLineForCase(caseId, inputItemId, userId, target)
+    : await loadAffectedItemSalesOrderLineForCase(caseId, userId, target);
+  const patch = await itemLinePatchFromMappings(config.mappings, { ...mappingContext, line: resolved.line }, userId);
+  console.log("[workflow-item-line-action] resolved patch", {
+    caseId,
+    nodeId: action.nodeId || "",
+    target,
+    itemSource: config.itemSource || "caseAffectedItem",
+    inputItemId,
+    patch,
+    mappings: Array.isArray(config.mappings)
+      ? config.mappings.map((mapping) => ({
+        targetField: mapping.targetField || mapping.field || "",
+        targetFieldType: mapping.targetFieldType || "",
+        valueCast: mapping.valueCast || "",
+        mode: mapping.mode || "",
+        staticValue: mapping.staticValue,
+        calculationExpression: mapping.calculationExpression,
+        sourceType: mapping.sourceType || "",
+        sourceField: mapping.sourceField || "",
+      }))
+      : [],
+  });
+  const patchResult = await patchSalesOrderItemLineFields(resolved.source.checkedSalesOrderId, resolved.line, patch, userId);
+  const document = await getSalesOrderDocumentInfo(resolved.source.checkedSalesOrderId, userId);
+  return {
+    patchResult,
+    source: resolved.source,
+    line: resolved.line,
+    patch,
+    document,
+  };
+}
+
+async function getPurchaseOrderDocumentInfo(purchaseOrderId, userId) {
+  const id = Number(purchaseOrderId);
+  if (!Number.isFinite(id) || id <= 0) return { id: String(purchaseOrderId || ""), documentNumber: "", url: "" };
+  const result = await nsPostRaw(
+    suiteQlUrl(),
+    {
+      q: `
+        SELECT
+          id,
+          tranid,
+          BUILTIN.DF(id) AS documentname
+        FROM transaction
+        WHERE id = ${id}
+      `,
+    },
+    userId
+  );
+  const row = Array.isArray(result?.items) ? result.items[0] : null;
+  const documentNumber = normaliseTransactionDocumentNumber(
+    rowValue(row, "tranid", "documentnumber", "documentname", "name"),
+    id
+  );
+  return {
+    id: String(id),
+    documentNumber,
+    name: cleanDraftValue(rowValue(row, "documentname", "name") || documentNumber),
+    url: `${netSuiteAppBaseUrl().replace(/\/$/, "")}/app/accounting/transactions/purchord.nl?id=${encodeURIComponent(id)}`,
+  };
+}
+
+async function closePurchaseOrderLineViaRestlet(purchaseOrderId, targetLine, userId) {
+  const cleanPurchaseOrderId = String(purchaseOrderId || "").trim();
+  const line = targetLine && typeof targetLine === "object"
+    ? targetLine
+    : { lineId: String(targetLine || "").trim() };
+  const wantedLineId = String(line.lineId || line.lineid || "").trim();
+  const wantedItemId = String(line.itemId || line.item || "").trim();
+  const wantedLineUniqueKey = String(line.lineUniqueKey || line.lineuniquekey || "").trim();
+  const wantedSequence = Number(line.linesequencenumber || line.sequence || "");
+  const wantedIndex = Number.isFinite(Number(line.index))
+    ? Number(line.index)
+    : Number.isFinite(wantedSequence) && wantedSequence > 0
+      ? wantedSequence - 1
+      : null;
+
+  if (!cleanPurchaseOrderId || (!wantedLineId && !wantedItemId && wantedIndex === null)) {
+    throw new Error("Missing Purchase Order line details for close line action.");
+  }
+
+  const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
+  const buildRestletHeaders = async () => ({
+    ...(await getAuthHeader(restletUrl, "POST", userId, "sb")),
+    "Content-Type": "application/json",
+  });
+  const payload = {
+    id: cleanPurchaseOrderId,
+    recordType: "purchaseOrder",
+    optionsOnly: true,
+    commit: false,
+    lines: [
+      {
+        lineId: wantedLineId,
+        suiteQlLineId: wantedLineId,
+        lineUniqueKey: wantedLineUniqueKey,
+        lineIndex: wantedIndex,
+        itemId: wantedItemId,
+        closed: true,
+      },
+    ],
+    deletedLineIds: [],
+    headerUpdates: {},
+  };
+
+  const { response, text, data } = await postRestletWithRecordChangedRetry(
+    restletUrl,
+    buildRestletHeaders,
+    JSON.stringify(payload),
+    "Close Purchase Order line",
+    { maxAttempts: 5, baseDelayMs: 750 }
+  );
+
+  if (!response.ok || !data?.ok) {
+    const failure = Array.isArray(data?.failures) ? data.failures[0] : null;
+    throw new Error(failure?.error || data?.error || text || "NetSuite RESTlet failed to close Purchase Order line.");
+  }
+
+  const updatedLine = Array.isArray(data.updatedLines) ? data.updatedLines[0] : null;
+  if (!updatedLine) {
+    throw new Error("NetSuite did not confirm which Purchase Order line was closed.");
+  }
+
+  return {
+    result: data,
+    endpoint: "RESTlet purchaseOrder optionsOnly",
+    lineId: wantedLineId || updatedLine.lineId || "",
+    itemId: wantedItemId || updatedLine.itemId || "",
+    matchedRestLine: updatedLine,
+    patch: { closed: true },
+  };
+}
+
+function purchaseOrderIdFromCreatePo(line = {}) {
+  const value = rowValue(line, "createpo", "CREATEPO");
+  const numeric = Number(refId(value) || value);
+  return Number.isFinite(numeric) && numeric > 0 ? numeric : null;
+}
+
+function suiteQlString(value = "") {
+  return `'${String(value || "").replace(/'/g, "''")}'`;
+}
+
+async function resolvePurchaseOrderFromCreatePoValue(value, userId) {
+  const raw = cleanDraftValue(refId(value) || value);
+  const display = cleanDraftValue(refName(value));
+  const numeric = Number(raw || display);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return { id: numeric, name: display || raw };
+  }
+
+  const candidates = Array.from(new Set([
+    raw,
+    display,
+    normaliseTransactionDocumentNumber(raw),
+    normaliseTransactionDocumentNumber(display),
+  ].map(cleanDraftValue).filter(Boolean)));
+  if (!candidates.length) return null;
+
+  const where = candidates.map((candidate) => {
+    const valueSql = suiteQlString(candidate);
+    return `UPPER(t.tranid) = UPPER(${valueSql}) OR UPPER(BUILTIN.DF(t.id)) = UPPER(${valueSql})`;
+  }).join(" OR ");
+  const result = await nsPostRaw(
+    suiteQlUrl(),
+    {
+      q: `
+        SELECT
+          t.id,
+          t.tranid,
+          BUILTIN.DF(t.id) AS documentname
+        FROM transaction t
+        WHERE t.type = 'PurchOrd'
+          AND (${where})
+        ORDER BY t.id DESC
+      `,
+    },
+    userId
+  );
+  const row = Array.isArray(result?.items) ? result.items[0] : null;
+  const id = Number(rowValue(row, "id", "ID"));
+  if (!Number.isFinite(id) || id <= 0) return null;
+  return {
+    id,
+    name: cleanDraftValue(rowValue(row, "tranid", "documentname", "name") || candidates[0]),
+  };
+}
+
+async function loadCreatePoForSalesOrderLine({ salesOrderId, line, itemId }, userId) {
+  const numericSalesOrderId = Number(salesOrderId);
+  const numericItemId = Number(itemId || rowValue(line, "item", "ITEM"));
+  const numericLineId = Number(rowValue(line, "lineid", "LINEID", "id", "ID"));
+  if (!Number.isFinite(numericSalesOrderId) || numericSalesOrderId <= 0) {
+    throw new Error("Could not resolve the paired Sales Order for Supplier Purchase Order lookup.");
+  }
+  if (!Number.isFinite(numericItemId) || numericItemId <= 0) {
+    throw new Error("Could not resolve the item for Supplier Purchase Order lookup.");
+  }
+  const lineFilter = Number.isFinite(numericLineId) && numericLineId > 0
+    ? `AND tl.id = ${numericLineId}`
+    : `AND tl.item = ${numericItemId}`;
+  const result = await nsPostRaw(
+    suiteQlUrl(),
+    {
+      q: `
+        SELECT
+          tl.createdpo AS createpo,
+          BUILTIN.DF(tl.createdpo) AS createponame
+        FROM transactionline tl
+        WHERE tl.transaction = ${numericSalesOrderId}
+          ${lineFilter}
+          AND tl.mainline = 'F'
+          AND tl.taxline = 'F'
+        ORDER BY tl.linesequencenumber
+      `,
+    },
+    userId
+  );
+  const row = Array.isArray(result?.items) ? result.items[0] : null;
+  const purchaseOrder = await resolvePurchaseOrderFromCreatePoValue(
+    rowValue(row, "createpo", "CREATEPO") || rowValue(row, "createponame", "CREATEPONAME"),
+    userId
+  );
+  if (!purchaseOrder?.id) {
+    throw new Error("The matching paired Sales Order line does not have a Supplier Purchase Order in createpo.");
+  }
+  return {
+    id: purchaseOrder.id,
+    name: purchaseOrder.name || cleanDraftValue(rowValue(row, "createponame", "CREATEPONAME")),
+  };
+}
+
+function normaliseItemMatchText(value = "") {
+  return String(value || "")
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function workflowPoLineFromRestLine(line = {}) {
+  const raw = line.raw || {};
+  const itemValue = raw.item && typeof raw.item === "object" ? raw.item : {};
+  return {
+    lineid: line.lineId || line.line || line.lineUniqueKey || "",
+    item: line.itemId || itemValue.id || raw.itemId || raw.itemid || "",
+    itemname: itemValue.refName || itemValue.name || raw.itemName || raw.itemname || raw.displayName || raw.displayname || "",
+    quantity: raw.quantity ?? raw.QUANTITY ?? "",
+    rate: raw.rate ?? raw.RATE ?? "",
+    amount: raw.amount ?? raw.AMOUNT ?? raw.netamount ?? raw.NETAMOUNT ?? "",
+    linesequencenumber: Number.isFinite(Number(line.index)) ? Number(line.index) + 1 : "",
+    index: line.index,
+    endpoint: line.endpoint,
+    lineId: line.lineId,
+    itemId: line.itemId,
+    raw,
+  };
+}
+
+function decodeXmlText(value = "") {
+  return String(value || "")
+    .replace(/<!\[CDATA\[([\s\S]*?)\]\]>/g, "$1")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&amp;/g, "&")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'");
+}
+
+function xmlTagValue(xml = "", tag = "") {
+  const match = String(xml || "").match(new RegExp(`<${tag}>([\\s\\S]*?)<\\/${tag}>`, "i"));
+  return match ? decodeXmlText(match[1]).trim() : "";
+}
+
+function parsePurchaseOrderXmlItemLines(xml = "") {
+  const machineMatch = String(xml || "").match(/<machine\b[^>]*name=["']item["'][^>]*>([\s\S]*?)<\/machine>/i);
+  if (!machineMatch) return [];
+  const lines = [];
+  const lineRegex = /<line>([\s\S]*?)<\/line>/gi;
+  let match;
+  while ((match = lineRegex.exec(machineMatch[1]))) {
+    const lineXml = match[1];
+    lines.push({
+      lineid: xmlTagValue(lineXml, "id"),
+      lineuniquekey: xmlTagValue(lineXml, "lineuniquekey"),
+      item: xmlTagValue(lineXml, "item"),
+      itemname: xmlTagValue(lineXml, "item_display") || xmlTagValue(lineXml, "custcol_sb_itemdisplayname") || xmlTagValue(lineXml, "custcol_sb_parentitemname"),
+      quantity: xmlTagValue(lineXml, "quantity"),
+      rate: xmlTagValue(lineXml, "rate"),
+      amount: xmlTagValue(lineXml, "amount"),
+      linesequencenumber: xmlTagValue(lineXml, "line"),
+      isclosed: xmlTagValue(lineXml, "isclosed"),
+      rawXml: lineXml,
+    });
+  }
+  return lines;
+}
+
+async function getPurchaseOrderXmlItemLines(purchaseOrderId, userId) {
+  const id = String(purchaseOrderId || "").trim();
+  if (!id) return [];
+  const base = netSuiteAppBaseUrl().replace(/\/$/, "");
+  const url = `${base}/app/accounting/transactions/purchord.nl?id=${encodeURIComponent(id)}&xml=t`;
+  try {
+    const headers = await getAuthHeader(url, "GET", userId);
+    const response = await fetch(url, { method: "GET", headers });
+    const text = await response.text();
+    if (!response.ok) {
+      console.warn("[workflow-actions] Purchase Order XML fallback failed:", response.status, text.slice(0, 300));
+      return [];
+    }
+    const lines = parsePurchaseOrderXmlItemLines(text);
+    if (!lines.length) {
+      console.warn("[workflow-actions] Purchase Order XML fallback returned no item machine lines.", {
+        purchaseOrderId: id,
+        hasItemMachine: /<machine\b[^>]*name=["']item["']/i.test(text),
+      });
+    }
+    return lines;
+  } catch (err) {
+    console.warn("[workflow-actions] Purchase Order XML fallback failed:", err.message || err);
+    return [];
+  }
+}
+
+function extractRestItemSublistLines(record = {}) {
+  const candidates = [
+    record?.item?.items,
+    record?.item,
+    record?.items,
+    record?.itemList?.items,
+    record?.itemList,
+    record?.sublists?.item?.items,
+    record?.sublists?.item,
+  ];
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+  return [];
+}
+
+async function getExpandedRestTransactionItemLines(recordType, transactionId, userId) {
+  const cleanRecordType = String(recordType || "").trim();
+  const cleanTransactionId = String(transactionId || "").trim();
+  if (!cleanRecordType || !cleanTransactionId) return [];
+  const record = await nsGet(
+    `/${cleanRecordType}/${encodeURIComponent(cleanTransactionId)}?expandSubResources=true`,
+    userId
+  ).catch((err) => {
+    console.warn(`[workflow-actions] Expanded ${cleanRecordType} item lines fallback failed:`, err.message || err);
+    return null;
+  });
+  const lines = extractRestItemSublistLines(record);
+  return lines.map((line, index) => ({
+    raw: line,
+    index,
+    endpoint: sublistLineSelfEndpoint(line) || `/${cleanRecordType}/${encodeURIComponent(cleanTransactionId)}/item/${encodeURIComponent(line?.id || index)}`,
+    itemId: String(
+      line?.item?.id ||
+        line?.item ||
+        line?.itemId ||
+        line?.itemid ||
+        ""
+    ).trim(),
+    lineId: String(line?.id || line?.line || line?.lineuniquekey || line?.lineUniqueKey || "").trim(),
+    line: String(line?.line || "").trim(),
+    lineUniqueKey: String(line?.lineuniquekey || line?.lineUniqueKey || "").trim(),
+  }));
+}
+
+async function loadPurchaseOrderItemLinesForWorkflow(purchaseOrderId, userId) {
+  const id = Number(purchaseOrderId);
+  if (!Number.isFinite(id) || id <= 0) return [];
+  const queries = [
+    `
+      SELECT
+        tl.id AS lineid,
+        tl.item,
+        BUILTIN.DF(tl.item) AS itemname,
+        tl.quantity,
+        tl.rate,
+        tl.netamount AS amount,
+        tl.linesequencenumber
+      FROM transactionline tl
+      WHERE tl.transaction = ${id}
+        AND tl.item IS NOT NULL
+      ORDER BY tl.linesequencenumber
+    `,
+    `
+      SELECT
+        tl.id AS lineid,
+        tl.item,
+        BUILTIN.DF(tl.item) AS itemname,
+        tl.quantity,
+        tl.rate,
+        tl.netamount AS amount,
+        tl.linesequencenumber
+      FROM transactionline tl
+      WHERE tl.transaction = ${id}
+        AND tl.mainline = 'F'
+        AND tl.taxline = 'F'
+      ORDER BY tl.linesequencenumber
+    `,
+    `
+      SELECT
+        tl.id AS lineid,
+        tl.item,
+        BUILTIN.DF(tl.item) AS itemname,
+        tl.quantity,
+        tl.rate,
+        tl.netamount AS amount,
+        tl.linesequencenumber,
+        tl.custcol521
+      FROM transactionline tl
+      WHERE tl.custcol521 = ${id}
+        AND tl.item IS NOT NULL
+      ORDER BY tl.linesequencenumber
+    `,
+  ];
+
+  for (const query of queries) {
+    try {
+      const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId);
+      const rows = Array.isArray(result?.items) ? result.items : [];
+      if (rows.length) return rows;
+    } catch (err) {
+      console.warn("[workflow-actions] Purchase Order line SuiteQL fallback failed:", err.message || err);
+    }
+  }
+
+  const restLines = await getRestTransactionItemLines("purchaseOrder", id, userId).catch((err) => {
+    console.warn("[workflow-actions] Purchase Order REST item lines fallback failed:", err.message || err);
+    return [];
+  });
+  if (restLines.length) return restLines.map(workflowPoLineFromRestLine);
+
+  const expandedRestLines = await getExpandedRestTransactionItemLines("purchaseOrder", id, userId);
+  if (expandedRestLines.length) return expandedRestLines.map(workflowPoLineFromRestLine);
+
+  return getPurchaseOrderXmlItemLines(id, userId);
+}
+
+function findWorkflowPurchaseOrderLine(lines = [], { targetItemId = "", targetItemName = "" } = {}) {
+  const wantedId = String(targetItemId || "").trim();
+  const wantedName = normaliseItemMatchText(targetItemName);
+  const exactId = lines.find((line) => String(rowValue(line, "item", "ITEM") || line.itemId || "").trim() === wantedId);
+  if (exactId) return exactId;
+  if (!wantedName) return null;
+  return lines.find((line) => {
+    const itemName = normaliseItemMatchText(rowValue(line, "itemname", "ITEMNAME") || line.itemName || "");
+    return itemName === wantedName || itemName.includes(wantedName) || wantedName.includes(itemName);
+  }) || null;
+}
+
+async function loadSupplierPurchaseOrderLineForCase(caseId, userId, checks = [], selectedItemId = "") {
+  const itemId = cleanDraftValue(selectedItemId) || latestWorkflowActionItemId(checks);
+  const { line: pairedLine, source } = itemId
+    ? await loadInputItemSalesOrderLineForCase(caseId, itemId, userId, "intercompanySalesOrder")
+    : await loadAffectedItemSalesOrderLineForCase(caseId, userId, "intercompanySalesOrder");
+  const purchaseOrder = await loadCreatePoForSalesOrderLine({
+    salesOrderId: source.checkedSalesOrderId,
+    line: pairedLine,
+    itemId: rowValue(pairedLine, "item", "ITEM") || source.itemId || itemId,
+  }, userId);
+  const purchaseOrderId = purchaseOrder.id;
+
+  const targetItemId = String(rowValue(pairedLine, "item", "ITEM") || source.itemId || itemId || "").trim();
+  const targetItemNumber = Number(targetItemId);
+  if (!Number.isFinite(targetItemNumber) || targetItemNumber <= 0) {
+    throw new Error("Could not resolve the item to match on the Supplier Purchase Order.");
+  }
+  const targetItemName = source.itemName || cleanDraftValue(rowValue(pairedLine, "itemname", "ITEMNAME"));
+  const purchaseOrderLines = await loadPurchaseOrderItemLinesForWorkflow(purchaseOrderId, userId);
+  const purchaseOrderLine = findWorkflowPurchaseOrderLine(purchaseOrderLines, {
+    targetItemId,
+    targetItemName,
+  });
+  if (!purchaseOrderLine) {
+    const document = await getPurchaseOrderDocumentInfo(purchaseOrderId, userId);
+    const availableItems = purchaseOrderLines.map((row) => ({
+      lineId: cleanDraftValue(rowValue(row, "lineid", "LINEID")),
+      lineUniqueKey: cleanDraftValue(rowValue(row, "lineuniquekey", "LINEUNIQUEKEY")),
+      isClosed: cleanDraftValue(rowValue(row, "isclosed", "ISCLOSED")),
+      itemId: cleanDraftValue(rowValue(row, "item", "ITEM")),
+      itemName: cleanDraftValue(rowValue(row, "itemname", "ITEMNAME")),
+      quantity: cleanDraftValue(rowValue(row, "quantity", "QUANTITY")),
+      amount: cleanDraftValue(rowValue(row, "amount", "AMOUNT")),
+      lineSequenceNumber: cleanDraftValue(rowValue(row, "linesequencenumber", "LINESEQUENCENUMBER")),
+    }));
+    const err = new Error("Matching item was not found on the Supplier Purchase Order.");
+    err.workflowDebug = {
+      supplierPurchaseOrder: {
+        id: String(purchaseOrderId),
+        documentNumber: document.documentNumber || purchaseOrder.name || String(purchaseOrderId),
+        url: document.url,
+      },
+      expectedItem: {
+        id: targetItemId,
+        name: targetItemName,
+      },
+      pairedSalesOrder: {
+        id: String(source.checkedSalesOrderId || ""),
+        documentNumber: String(source.checkedSalesOrderDocumentNumber || source.checkedSalesOrderName || ""),
+        lineId: cleanDraftValue(rowValue(pairedLine, "lineid", "LINEID")),
+      },
+      availableItems,
+    };
+    throw err;
+  }
+  const document = await getPurchaseOrderDocumentInfo(purchaseOrderId, userId);
+  return {
+    line: normaliseWorkflowLineQuantities(purchaseOrderLine),
+    source: {
+      ...source,
+      type: "supplierPurchaseOrder",
+      supplierPurchaseOrderId: purchaseOrderId,
+      supplierPurchaseOrderDocumentNumber: document.documentNumber,
+      supplierPurchaseOrderUrl: document.url,
+      supplierPurchaseOrderName: document.name,
+      pairedSalesOrderLine: pairedLine,
+      itemId: targetItemId,
+      itemName: String(rowValue(purchaseOrderLine, "itemname", "ITEMNAME") || source.itemName || "").trim(),
+    },
+    document,
+  };
+}
+
+async function executeWorkflowActions({ caseId, actions = [], approvals = [], checks = [], answers = [] }, userId) {
+  const approvedActions = (Array.isArray(actions) ? actions : [])
+    .filter((action, index) => approvals[index] === true || approvals[index] === "true")
+    .filter((action) => ["setCaseStatus", "itemLineAction", "closeSalesLine", "closeIntercompanyLine", "closeSupplierPurchaseOrderLine", "createRecord"].includes(action.actionType));
+
+  const results = [];
+  for (const action of approvedActions) {
+    try {
+      if (action.actionType === "setCaseStatus") {
+        const statusResult = await updateSupportCaseStatus(caseId, action.statusId, userId);
+        results.push({
+          ok: true,
+          nodeId: action.nodeId || "",
+          label: action.label || workflowActionTypeLabel(action.actionType),
+          actionType: action.actionType,
+          message: `Case status changed to ${action.statusName || action.statusId}.`,
+          result: statusResult,
+        });
+        continue;
+      }
+
+      if (action.actionType === "createRecord") {
+        const createResult = await executeCreateRecordAction({ caseId, action, checks, answers }, userId);
+        if (createResult.needsInput) {
+          results.push({
+            ok: false,
+            needsInput: createResult.needsInput,
+            nodeId: action.nodeId || "",
+            label: action.label || workflowActionTypeLabel(action.actionType),
+            actionType: action.actionType,
+            message: createResult.created?.message || "More information is needed before this action can run.",
+            deposits: createResult.created?.deposits || [],
+            expectedAmount: createResult.created?.expectedAmount ?? null,
+            allocations: createResult.created?.allocations || [],
+            debug: {
+              payload: createResult.payload,
+              createPayload: createResult.createPayload || createResult.payload,
+              mappings: createResult.mappingDebug || [],
+            },
+          });
+          continue;
+        }
+        results.push({
+          ok: true,
+          nodeId: action.nodeId || "",
+          label: action.label || workflowActionTypeLabel(action.actionType),
+          actionType: action.actionType,
+          message: `${workflowActionTypeLabel(action.actionType)} created ${createResult.document.number || createResult.document.id || "record"}.`,
+          document: createResult.document,
+          result: createResult.created,
+          debug: {
+            payload: createResult.payload,
+            createPayload: createResult.createPayload || createResult.payload,
+            deferredPayload: createResult.deferredPayload || null,
+            mappings: createResult.mappingDebug || [],
+          },
+        });
+        continue;
+      }
+
+      if (action.actionType === "itemLineAction") {
+        const lineResult = await executeItemLineAction({ caseId, action, checks, answers }, userId);
+        const documentNumber = lineResult.document?.number || lineResult.document?.documentNumber || lineResult.document?.id || "";
+        results.push({
+          ok: true,
+          nodeId: action.nodeId || "",
+          label: action.label || workflowActionTypeLabel(action.actionType),
+          actionType: action.actionType,
+          message: `Item line updated for item ${lineResult.source.itemName || lineResult.source.itemId || ""} on order ${documentNumber}.`,
+          document: {
+            id: String(lineResult.document?.id || lineResult.source?.supplierPurchaseOrderId || lineResult.source?.checkedSalesOrderId || ""),
+            number: String(documentNumber || ""),
+            url: lineResult.document?.url || lineResult.source?.supplierPurchaseOrderUrl || lineResult.source?.checkedSalesOrderUrl || "",
+          },
+          result: lineResult.patchResult,
+          debug: {
+            patch: lineResult.patch,
+            source: lineResult.source,
+            matchedRestLine: lineResult.patchResult?.matchedRestLine || null,
+          },
+        });
+        continue;
+      }
+
+      const supplierPoAction = action.actionType === "closeSupplierPurchaseOrderLine";
+      const { line, source, document } = supplierPoAction
+        ? await loadSupplierPurchaseOrderLineForCase(caseId, userId, checks)
+        : await resolveWorkflowActionLine({ caseId, actionType: action.actionType, checks }, userId);
+      const closeResult = supplierPoAction
+        ? await closePurchaseOrderLineViaRestlet(source.supplierPurchaseOrderId, line, userId)
+        : await closeSalesOrderLineViaRestlet(source.checkedSalesOrderId, line, userId);
+      const documentNumber = supplierPoAction
+        ? document.documentNumber || source.supplierPurchaseOrderDocumentNumber || source.supplierPurchaseOrderId
+        : source.checkedSalesOrderDocumentNumber || source.checkedSalesOrderName || source.checkedSalesOrderId;
+      const documentUrl = supplierPoAction
+        ? document.url || source.supplierPurchaseOrderUrl
+        : source.checkedSalesOrderUrl || salesOrderNetSuiteUrl(source.checkedSalesOrderId);
+      results.push({
+        ok: true,
+        nodeId: action.nodeId || "",
+        label: action.label || workflowActionTypeLabel(action.actionType),
+        actionType: action.actionType,
+        message: `${workflowActionTypeLabel(action.actionType)} executed for item ${source.itemName || source.itemId || closeResult.itemId || ""} on order ${documentNumber}.`,
+        document: {
+          id: String(supplierPoAction ? source.supplierPurchaseOrderId || "" : source.checkedSalesOrderId || ""),
+          number: String(documentNumber || ""),
+          url: documentUrl,
+        },
+        source,
+        result: closeResult,
+      });
+    } catch (err) {
+      console.warn("[workflow-actions] Action failed", {
+        caseId,
+        nodeId: action.nodeId || "",
+        actionType: action.actionType,
+        error: err.message || "Action failed",
+        details: err.responseBody || null,
+      });
+      results.push({
+        ok: false,
+        nodeId: action.nodeId || "",
+        label: action.label || workflowActionTypeLabel(action.actionType),
+        actionType: action.actionType,
+        message: `${workflowActionTypeLabel(action.actionType)} failed.`,
+        error: err.message || "Action failed",
+        details: err.responseBody || null,
+        debug: err.workflowDebug || null,
+      });
+    }
+  }
+
+  return { results };
+}
+
+function normaliseCaseNote(row = {}) {
+  return {
+    id: cleanDraftValue(row.id || row.ID || row.internalid),
+    "Internal ID": cleanDraftValue(row["Internal ID"] || row.internalId || row.activity || row.Activity),
+    date: cleanDraftValue(row.Date || row.date || row.noteDate || row.notedate || row.NOTEDATE),
+    author: cleanDraftValue(row.Author || row.authorName || row.authorname || row.AUTHORNAME || row.author || row.AUTHOR),
+    title: cleanDraftValue(row.Title || row.title || row.TITLE),
+    memo: cleanDraftValue(row.Memo || row.memo || row.Note || row.note || row.NOTE),
+  };
+}
+
+async function enrichCaseNotes(notes = [], userId) {
+  const output = [];
+
+  for (const note of notes) {
+    if ((note.title && note.memo) || !note.id) {
+      output.push(note);
+      continue;
+    }
+
+    try {
+      const record = await nsGet(
+        `/note/${encodeURIComponent(note.id)}?fields=${encodeURIComponent("id,title,note,notedate,author")}`,
+        userId
+      );
+      output.push({
+        ...note,
+        ...normaliseCaseNote(record),
+      });
+    } catch (err) {
+      console.warn(`Could not enrich support case note ${note.id}:`, err.message);
+      output.push(note);
+    }
+  }
+
+  return output;
+}
+
+function dedupeCaseNotes(notes = []) {
+  const seen = new Set();
+  const output = [];
+  for (const note of notes) {
+    const key = cleanDraftValue(note.id || `${note.date}|${note.author}|${note.title}|${note.memo}`);
+    if (key && seen.has(key)) continue;
+    if (key) seen.add(key);
+    output.push(note);
+  }
+  return output;
+}
+
+async function getSupportCaseNotes(caseId, userId) {
+  const id = cleanDraftValue(caseId);
+  if (!/^\d+$/.test(id)) throw new Error("Valid case ID is required");
+  const restletUrl = supportCaseRestletUrl();
+  if (restletUrl) {
+    try {
+      const result = await nsRestlet(
+        appendQueryParams(restletUrl, { action: "getNotes", caseId: id, activityId: id }),
+        null,
+        userId,
+        "GET"
+      );
+      if (result?.ok !== false && Array.isArray(result?.results)) {
+        return enrichCaseNotes(result.results.map(normaliseCaseNote), userId);
+      }
+      if (result?.ok === false) throw new Error(result.error || "Support case notes RESTlet failed");
+    } catch (restletErr) {
+      console.error("Error fetching support case notes via RESTlet:", restletErr.message || restletErr);
+    }
+  }
+
+  const suiteletBase = process.env.USER_NOTES_URL;
+  const suiteletToken = process.env.USER_NOTES;
+  let suiteletNotes = [];
+
+  if (suiteletBase && suiteletToken) {
+    try {
+      const suiteletUrl = `${suiteletBase}&token=${suiteletToken}`;
+      const resp = await fetch(suiteletUrl);
+      const text = await resp.text();
+      if (!text.startsWith("<")) {
+        const data = JSON.parse(text);
+        if (data.ok && Array.isArray(data.results)) {
+          suiteletNotes = data.results
+            .filter((note) => {
+              const linkedId =
+                note["Internal ID"] ||
+                note["Activity"] ||
+                note["Activity ID"] ||
+                note.activity ||
+                note.activityId ||
+                note.record ||
+                note.recordId;
+              return String(linkedId || "") === id;
+            })
+            .map(normaliseCaseNote);
+        }
+      }
+    } catch (suiteletErr) {
+      console.error("Error fetching support case notes via Suitelet:", suiteletErr);
+    }
+  }
+
+  const queries = [
+    `
+      SELECT
+        id,
+        title,
+        note AS memo
+      FROM Note
+      WHERE activity = ${id}
+      ORDER BY id DESC
+    `,
+    `
+      SELECT
+        id,
+        note AS memo
+      FROM Note
+      WHERE activity = ${id}
+      ORDER BY id DESC
+    `,
+    `
+      SELECT
+        id
+      FROM Note
+      WHERE activity = ${id}
+      ORDER BY id DESC
+    `,
+  ];
+
+  let lastError = null;
+  for (const query of queries) {
+    try {
+      const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId);
+      return enrichCaseNotes(dedupeCaseNotes([
+        ...suiteletNotes,
+        ...(Array.isArray(result?.items) ? result.items : []).map(normaliseCaseNote),
+      ]), userId);
+    } catch (err) {
+      lastError = err;
+      console.warn("Support case notes query failed; trying next candidate.", err.message);
+    }
+  }
+
+  if (suiteletNotes.length) return enrichCaseNotes(dedupeCaseNotes(suiteletNotes), userId);
+  if (lastError) {
+    console.warn("Support case notes unavailable via SuiteQL; returning empty Suitelet result.", lastError.message);
+  }
+  return [];
+}
+
+async function createSupportCaseNote(caseId, payload = {}, userId) {
+  const id = cleanDraftValue(caseId);
+  const memo = cleanDraftValue(payload.memo || payload.note);
+  const title = cleanDraftValue(payload.title) || "Case Note";
+
+  if (!/^\d+$/.test(id)) throw new Error("Valid case ID is required");
+  if (!memo) throw new Error("Note is required");
+
+  const restletUrl = supportCaseRestletUrl() || process.env.MEMO_RESTLET_URL;
+  if (!restletUrl) throw new Error("SUPPORT_CASE_RESTLET_URL or MEMO_RESTLET_URL is not configured");
+
+  const body = {
+    action: "createNote",
+    caseId: id,
+    activityId: id,
+    title,
+    type: cleanDraftValue(payload.type) || "In-Person",
+    note: memo,
+    memo,
+  };
+
+  const created = await nsRestlet(restletUrl, body, userId, "POST");
+  if (created?.ok === false) throw new Error(created.error || "Failed to create support case note");
+  return {
+    id: created?.id || "",
+    title,
+    memo,
+    location: created?._location || "",
+  };
+}
+
+async function getSupportCaseStatuses(userId) {
+  const query = `
+    SELECT
+      id,
+      name
+    FROM supportCaseStatus
+    WHERE isInactive = 'F'
+    ORDER BY sortOrder, name
+  `;
+
+  const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId);
+  return (Array.isArray(result?.items) ? result.items : []).map((row) => ({
+    id: String(row.id || row.ID || "").trim(),
+    name: String(row.name || row.NAME || "").trim(),
+  })).filter((row) => row.id && row.name);
+}
+
+async function getSupportCaseTypes(userId) {
+  const query = `
+    SELECT
+      id,
+      name
+    FROM supportCaseType
+    WHERE isInactive = 'F'
+    ORDER BY sortOrder, name
+  `;
+
+  const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId);
+  return (Array.isArray(result?.items) ? result.items : []).map((row) => ({
+    id: String(row.id || row.ID || "").trim(),
+    name: String(row.name || row.NAME || "").trim(),
+  })).filter((row) => row.id && row.name);
+}
+
+async function getSupportCaseSubTypes(userId, caseTypeId = "") {
+  const numericCaseTypeId = Number(caseTypeId);
+  const parentFilter = Number.isFinite(numericCaseTypeId) && numericCaseTypeId > 0
+    ? `AND custrecord_cst_parenttype = ${numericCaseTypeId}`
+    : "";
+  const query = `
+    SELECT
+      id,
+      name,
+      custrecord_cst_parenttype
+    FROM customrecord_sb_casesubtype
+    WHERE isInactive = 'F'
+      ${parentFilter}
+    ORDER BY name
+  `;
+
+  const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId);
+  return (Array.isArray(result?.items) ? result.items : []).map((row) => ({
+    id: String(row.id || row.ID || "").trim(),
+    name: String(row.name || row.NAME || "").trim(),
+  })).filter((row) => row.id && row.name);
 }
 
 async function resolveDistributionLocationIdByName(name) {
@@ -1572,6 +4528,19 @@ function netSuiteAppBaseUrl() {
   return getNetSuiteAppBaseUrl();
 }
 
+function salesOrderNetSuiteUrl(id) {
+  const base = netSuiteAppBaseUrl().replace(/\/$/, "");
+  return base && id ? `${base}/app/accounting/transactions/salesord.nl?id=${encodeURIComponent(id)}` : "";
+}
+
+function normaliseTransactionDocumentNumber(value, fallback = "") {
+  const raw = cleanDraftValue(value);
+  if (!raw) return cleanDraftValue(fallback);
+  const hashMatch = raw.match(/#\s*([A-Za-z0-9._/-]+)\s*$/);
+  if (hashMatch) return hashMatch[1];
+  return raw;
+}
+
 function normalizeCustomerEmail(value) {
   return String(value || "").trim();
 }
@@ -1987,7 +4956,7 @@ async function getRestTransactionItemLines(recordType, transactionId, userId) {
   return items.map((line, index) => ({
     raw: line,
     index,
-    endpoint: sublistLineSelfEndpoint(line),
+    endpoint: sublistLineSelfEndpoint(line) || `/${cleanRecordType}/${encodeURIComponent(cleanTransactionId)}/item/${encodeURIComponent(line?.id || index)}`,
     itemId: String(
       line?.item?.id ||
         line?.item ||
@@ -1995,7 +4964,9 @@ async function getRestTransactionItemLines(recordType, transactionId, userId) {
         line?.itemid ||
         ""
     ).trim(),
-    lineId: String(line?.id || line?.line || line?.lineuniquekey || "").trim(),
+    lineId: String(line?.id || line?.line || line?.lineuniquekey || line?.lineUniqueKey || "").trim(),
+    line: String(line?.line || "").trim(),
+    lineUniqueKey: String(line?.lineuniquekey || line?.lineUniqueKey || "").trim(),
   }));
 }
 
@@ -2284,6 +5255,89 @@ async function saveSalesOrderLineOptionsViaRestlet(salesOrderId, targetLine, opt
     itemId: String(line.itemId || "").trim(),
     matchedRestLine: updatedLine,
   };
+}
+
+async function closeSalesOrderLineViaRestlet(salesOrderId, targetLine, userId) {
+  const cleanSalesOrderId = String(salesOrderId || "").trim();
+  const line = targetLine && typeof targetLine === "object"
+    ? targetLine
+    : { lineId: String(targetLine || "").trim() };
+
+  if (!cleanSalesOrderId || !String(line.lineid || line.lineId || "").trim()) {
+    throw new Error("Missing Sales Order line details for close line action.");
+  }
+
+  const wantedLineId = String(line.lineId || line.lineid || "").trim();
+  const wantedItemId = String(line.itemId || line.item || "").trim();
+  const wantedLineUniqueKey = String(line.lineUniqueKey || line.lineuniquekey || "").trim();
+  const wantedSequence = Number(line.linesequencenumber || line.sequence || "");
+  const wantedIndex = Number.isFinite(Number(line.index))
+    ? Number(line.index)
+    : Number.isFinite(wantedSequence) && wantedSequence > 0
+      ? wantedSequence - 1
+      : null;
+  const restLines = await getRestTransactionItemLines("salesOrder", cleanSalesOrderId, userId);
+  const restLine =
+    restLines.find((candidate) => candidate.lineId && candidate.lineId === wantedLineId) ||
+    restLines.find((candidate) => wantedLineId && candidate.line === wantedLineId) ||
+    restLines.find((candidate) => wantedLineId && candidate.lineUniqueKey === wantedLineId) ||
+    restLines.find((candidate) => wantedLineUniqueKey && candidate.lineUniqueKey === wantedLineUniqueKey) ||
+    restLines.find((candidate) => wantedIndex !== null && Number(candidate.index) === wantedIndex) ||
+    restLines.find((candidate) => wantedItemId && candidate.itemId === wantedItemId);
+
+  if (!restLine?.endpoint) {
+    console.warn("[workflow-actions] Could not resolve Sales Order item line endpoint", {
+      salesOrderId: cleanSalesOrderId,
+      wantedLineId,
+      wantedItemId,
+      wantedLineUniqueKey,
+      wantedSequence,
+      wantedIndex,
+      targetLine: line,
+      restLineCount: restLines.length,
+      restLines: restLines.map((candidate) => ({
+        index: candidate.index,
+        endpoint: candidate.endpoint,
+        itemId: candidate.itemId,
+        lineId: candidate.lineId,
+        line: candidate.line,
+        lineUniqueKey: candidate.lineUniqueKey,
+        rawKeys: Object.keys(candidate.raw || {}),
+      })),
+    });
+    throw new Error("Could not resolve the NetSuite Sales Order item line endpoint.");
+  }
+
+  const patchAttempts = [
+    { isclosed: true },
+    { isClosed: true },
+    { closed: true },
+  ];
+  let lastErr = null;
+  for (const body of patchAttempts) {
+    try {
+      const result = await nsPatch(restLine.endpoint, body, userId);
+      cacheDeleteSalesOrder(cleanSalesOrderId);
+      return {
+        result,
+        endpoint: restLine.endpoint,
+        lineId: wantedLineId,
+        itemId: wantedItemId || restLine.itemId,
+        matchedRestLine: {
+          index: restLine.index,
+          itemId: restLine.itemId,
+          lineId: restLine.lineId,
+        },
+        patch: body,
+      };
+    } catch (err) {
+      lastErr = err;
+      const text = `${err.message || ""} ${JSON.stringify(err.responseBody || {})}`;
+      if (!/invalid|unknown|field/i.test(text)) break;
+    }
+  }
+
+  throw lastErr || new Error("NetSuite REST line patch failed to close Sales Order line.");
 }
 
 async function getSalesOrderRelatedRecords(salesOrderId, userId) {
@@ -3496,6 +6550,299 @@ router.get("/:id/deposits", async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: err.message || "Failed to fetch deposits",
+    });
+  }
+});
+
+/* =====================================================
+   === GET SALES ORDER SUPPORT CASES ===================
+   ===================================================== */
+router.get("/:id/cases", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const { id } = req.params;
+    const userId = await resolveUserIdFromRequest(req);
+    const cases = await getSalesOrderSupportCases(id, userId);
+
+    return res.json({ ok: true, salesOrderId: id, cases });
+  } catch (err) {
+    console.error("❌ GET /salesorder/:id/cases error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to fetch support cases",
+    });
+  }
+});
+
+/* =====================================================
+   === GET SUPPORT CASE DETAIL =========================
+   ===================================================== */
+router.get("/cases/:caseId/notes", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const userId = await resolveUserIdFromRequest(req);
+    const notes = await getSupportCaseNotes(req.params.caseId, userId);
+    return res.json({ ok: true, notes });
+  } catch (err) {
+    console.error("❌ GET /salesorder/cases/:caseId/notes error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to fetch support case notes",
+      details: err.responseBody || null,
+    });
+  }
+});
+
+router.post("/cases/:caseId/notes", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const userId = await resolveUserIdFromRequest(req);
+    const note = await createSupportCaseNote(req.params.caseId, req.body || {}, userId);
+    return res.json({ ok: true, note });
+  } catch (err) {
+    console.error("❌ POST /salesorder/cases/:caseId/notes error:", err.message);
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to create support case note",
+      details: err.responseBody || null,
+    });
+  }
+});
+
+router.post("/cases/:caseId/workflow-check", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const userId = await resolveUserIdFromRequest(req);
+    const node = req.body?.node || req.body?.check || req.body || {};
+    const result = await evaluateWorkflowCheck({
+      caseId: req.params.caseId,
+      node,
+      inputValue: req.body?.inputValue,
+      inputLabel: req.body?.inputLabel,
+      inputSource: req.body?.inputSource,
+    }, userId);
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("❌ POST /salesorder/cases/:caseId/workflow-check error:", err.message);
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to evaluate workflow check",
+      details: err.responseBody || null,
+    });
+  }
+});
+
+router.post("/cases/:caseId/workflow-criteria", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const userId = await resolveUserIdFromRequest(req);
+    const result = await evaluateWorkflowCriteria({
+      caseId: req.params.caseId,
+      criteria: req.body?.criteria || [],
+    }, userId);
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("❌ POST /salesorder/cases/:caseId/workflow-criteria error:", err.message);
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to evaluate workflow criteria",
+      details: err.responseBody || null,
+    });
+  }
+});
+
+router.post("/cases/:caseId/workflow-actions/execute", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const userId = await resolveUserIdFromRequest(req);
+    const result = await executeWorkflowActions({
+      caseId: req.params.caseId,
+      actions: req.body?.actions || [],
+      approvals: req.body?.approvals || [],
+      checks: req.body?.checks || [],
+      answers: req.body?.answers || [],
+    }, userId);
+    return res.json({ ok: true, ...result });
+  } catch (err) {
+    console.error("❌ POST /salesorder/cases/:caseId/workflow-actions/execute error:", err.message);
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to execute workflow actions",
+      details: err.responseBody || null,
+    });
+  }
+});
+
+router.get("/cases/:caseId", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const userId = await resolveUserIdFromRequest(req);
+    const supportCase = await getSupportCaseDetail(req.params.caseId, userId);
+    return res.json({ ok: true, case: supportCase });
+  } catch (err) {
+    console.error("❌ GET /salesorder/cases/:caseId error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to fetch support case",
+      details: err.responseBody || null,
+    });
+  }
+});
+
+router.patch("/cases/:caseId", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const userId = await resolveUserIdFromRequest(req);
+    const draft = req.body?.case || req.body?.draft || req.body || {};
+    const updated = await updateSupportCaseFromDraft(req.params.caseId, draft, userId);
+
+    return res.json({
+      ok: true,
+      id: updated.id,
+      caseNumber: updated.caseNumber,
+    });
+  } catch (err) {
+    console.error("❌ PATCH /salesorder/cases/:caseId error:", err.message);
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to update support case",
+      details: err.responseBody || null,
+    });
+  }
+});
+
+/* =====================================================
+   === CREATE SUPPORT CASE =============================
+   ===================================================== */
+router.post("/cases", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const userId = await resolveUserIdFromRequest(req);
+    const draft = req.body?.case || req.body?.draft || req.body || {};
+    const created = await createSupportCaseFromDraft(draft, userId);
+
+    return res.json({
+      ok: true,
+      id: created.id,
+      caseNumber: created.caseNumber,
+      location: created.location,
+      attachResult: created.attachResult,
+    });
+  } catch (err) {
+    console.error("❌ POST /salesorder/cases error:", err.message);
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to create support case",
+      details: err.responseBody || null,
+    });
+  }
+});
+
+/* =====================================================
+   === GENERATE AI DRAFT CASE SUMMARY ==================
+   ===================================================== */
+router.post("/case-draft-summary", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const enabled = await isAiCaseSummaryEnabled();
+    if (!enabled) {
+      return res.json({ ok: true, enabled: false, summary: "" });
+    }
+
+    const draft = req.body?.draft || {};
+    const hasDraftData = [
+      draft.subject,
+      draft.storeName,
+      draft.customerName,
+      draft.statusName,
+      draft.assignedToName,
+      draft.incidentDate,
+      draft.typeName,
+      draft.subTypeName,
+      draft.itemName,
+    ].some((value) => String(value || "").trim());
+
+    if (!hasDraftData) {
+      return res.json({
+        ok: true,
+        enabled: true,
+        summary: "Start filling in the case details to generate a summary.",
+        generated: false,
+      });
+    }
+
+    const generated = await generateSupportCaseDraftSummary({ draft });
+    return res.json({
+      ok: true,
+      enabled: true,
+      summary: generated.text,
+      pleaseCheck: generated.pleaseCheck || [],
+      model: generated.model,
+      usage: generated.usage,
+      generated: true,
+    });
+  } catch (err) {
+    console.error("❌ POST /salesorder/case-draft-summary error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to generate draft support case summary",
+    });
+  }
+});
+
+/* =====================================================
+   === GET SUPPORT CASE STATUSES =======================
+   ===================================================== */
+router.get("/case-statuses", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const userId = await resolveUserIdFromRequest(req);
+    const statuses = await getSupportCaseStatuses(userId);
+
+    return res.json({ ok: true, statuses });
+  } catch (err) {
+    console.error("❌ GET /salesorder/case-statuses error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to fetch support case statuses",
+    });
+  }
+});
+
+/* =====================================================
+   === GET SUPPORT CASE TYPES ==========================
+   ===================================================== */
+router.get("/case-types", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const userId = await resolveUserIdFromRequest(req);
+    const types = await getSupportCaseTypes(userId);
+
+    return res.json({ ok: true, types });
+  } catch (err) {
+    console.error("❌ GET /salesorder/case-types error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to fetch support case types",
+    });
+  }
+});
+
+/* =====================================================
+   === GET SUPPORT CASE SUB-TYPES ======================
+   ===================================================== */
+router.get("/case-sub-types", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const userId = await resolveUserIdFromRequest(req);
+    const subTypes = await getSupportCaseSubTypes(userId, req.query.caseTypeId);
+
+    return res.json({ ok: true, subTypes });
+  } catch (err) {
+    console.error("❌ GET /salesorder/case-sub-types error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to fetch support case sub-types",
     });
   }
 });

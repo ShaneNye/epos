@@ -67,6 +67,33 @@ function escapeHtml(value) {
     .replace(/'/g, "&#39;");
 }
 
+function removeCustomerServicePanel() {
+  const panel = document.getElementById("customerServiceSection");
+  const row = panel?.closest(".sales-bottom-panel-row");
+  panel?.remove();
+  row?.classList.add("single-panel");
+}
+
+async function applyCustomerServiceReleaseVisibility(headers) {
+  try {
+    const response = await fetch("/api/releases/settings", {
+      headers,
+      cache: "no-store",
+    });
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok || data?.ok === false) {
+      throw new Error(data?.error || `Release settings request failed: ${response.status}`);
+    }
+
+    if (data.settings?.customerServiceVisible === false) {
+      removeCustomerServicePanel();
+    }
+  } catch (err) {
+    console.warn("Could not load release settings; leaving Customer Service panel visible.", err.message || err);
+  }
+}
+
 function resolveCustomerNameParts(entity = {}, displayName = "") {
   const firstName = String(entity.firstName ?? entity.firstname ?? "").trim();
   const lastName = String(entity.lastName ?? entity.lastname ?? "").trim();
@@ -667,6 +694,258 @@ async function loadSalesOrderDeposits(headers, tranId) {
   }
 }
 
+function renderCustomerServiceCases(cases = [], state = "") {
+  const container = document.getElementById("customerServiceCases");
+  if (!container) return;
+
+  if (state === "loading") {
+    container.innerHTML = '<p class="customer-service-empty">Loading cases...</p>';
+    return;
+  }
+
+  if (state === "error") {
+    container.innerHTML = '<p class="customer-service-empty">Unable to load cases.</p>';
+    return;
+  }
+
+  const rows = Array.isArray(cases) ? cases : [];
+  if (!rows.length) {
+    container.innerHTML = '<p class="customer-service-empty">No cases found.</p>';
+    return;
+  }
+
+  container.innerHTML = `
+    <table class="styled-table customer-service-cases-table">
+      <thead>
+        <tr>
+          <th>Case #</th>
+          <th>Title</th>
+          <th>Action</th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map((item) => `
+          <tr>
+            <td>${escapeHtml(item.caseNumber || item.id || "-")}</td>
+            <td>${escapeHtml(item.title || "-")}</td>
+            <td>
+              <button
+                class="btn-secondary open-case-btn"
+                type="button"
+                data-case-id="${escapeHtml(item.id || "")}"
+                data-case-number="${escapeHtml(item.caseNumber || "")}"
+              >Open</button>
+            </td>
+          </tr>
+        `).join("")}
+      </tbody>
+    </table>
+  `;
+}
+
+async function loadCustomerServiceCases(headers, salesOrderId) {
+  const section = document.getElementById("customerServiceSection");
+  if (!section) return [];
+
+  const id = String(salesOrderId || "").trim();
+  if (!/^\d+$/.test(id)) {
+    renderCustomerServiceCases([]);
+    return [];
+  }
+
+  renderCustomerServiceCases([], "loading");
+  try {
+    const res = await fetch(
+      `/api/netsuite/salesorder/${encodeURIComponent(id)}/cases?_=${Date.now()}`,
+      { headers, cache: "no-store" }
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+
+    const cases = Array.isArray(data.cases) ? data.cases : [];
+    renderCustomerServiceCases(cases);
+    return cases;
+  } catch (err) {
+    console.warn("⚠️ Could not load customer service cases:", err.message || err);
+    renderCustomerServiceCases([], "error");
+    return [];
+  }
+}
+
+function salesViewCustomerInfo(so = window._currentSalesOrder || {}) {
+  const entity = so.entityFull || so.entity || {};
+  const displayName =
+    so.entityFull?.companyName ||
+    so.entityFull?.companyname ||
+    so.entityFull?.altName ||
+    so.entityFull?.altname ||
+    so.entity?.refName ||
+    so.entity?.name ||
+    "";
+  const parts = resolveCustomerNameParts(so.entityFull || {}, displayName);
+  const name = [parts.firstName, parts.lastName].filter(Boolean).join(" ") || String(displayName || "").trim();
+  return {
+    id: String(so.entityFull?.id || so.entity?.id || entity.id || "").trim(),
+    name,
+  };
+}
+
+function salesViewStoreInfo(so = window._currentSalesOrder || {}) {
+  const storeId = String(so.store || "").trim();
+  const storeSelect = document.getElementById("store");
+  const selectedStoreOption = storeSelect?.options?.[storeSelect.selectedIndex] || null;
+  const selectedStoreId = String(storeSelect?.value || "").trim();
+  const selectedStoreName = String(
+    selectedStoreOption?.dataset?.storeName ||
+    selectedStoreOption?.textContent ||
+    ""
+  ).trim();
+  const selectedStoreNetSuiteId = String(
+    selectedStoreOption?.dataset?.netsuiteId ||
+    selectedStoreOption?.dataset?.netsuiteInternalId ||
+    ""
+  ).trim();
+  const selectedDistributionLocationId = String(selectedStoreOption?.dataset?.distributionLocationId || "").trim();
+  const selectedStoreManager = String(selectedStoreOption?.dataset?.storeManager || "").trim();
+  const locations = Array.isArray(window._salesLocations) ? window._salesLocations : [];
+  const wantedStoreId = storeId || selectedStoreId;
+  const match = locations.find((location) => {
+    const id = String(location.id || location.locationId || location.location_id || "").trim();
+    return id && id === wantedStoreId;
+  });
+
+  return {
+    id: wantedStoreId,
+    name: String(match?.name || match?.storeName || match?.store_name || so.storeName || selectedStoreName || "").trim(),
+    netSuiteId: String(
+      match?.netsuiteInternalId ||
+      match?.netsuite_internal_id ||
+      match?.netsuiteId ||
+      match?.netsuiteid ||
+      selectedStoreNetSuiteId ||
+      ""
+    ).trim(),
+    distributionLocationId: String(
+      match?.distributionLocationId ||
+      match?.distribution_location_id ||
+      selectedDistributionLocationId ||
+      ""
+    ).trim(),
+    storeManager: String(match?.store_manager || match?.storeManager || selectedStoreManager || "").trim(),
+  };
+}
+
+function currentSalesViewCaseItems() {
+  return [...document.querySelectorAll("#orderItemsBody tr.order-line")]
+    .map((row) => {
+      const id = String(row.querySelector(".item-internal-id")?.value || row.dataset.itemId || "").trim();
+      const itemCell = row.cells?.[1] || null;
+      const itemCellDirectText = itemCell
+        ? [...itemCell.childNodes]
+            .filter((node) => node.nodeType === Node.TEXT_NODE)
+            .map((node) => node.textContent || "")
+            .join(" ")
+            .trim()
+        : "";
+      const name = String(
+        row.querySelector(".item-search")?.value ||
+        row.querySelector(".item-search")?.textContent ||
+        itemCellDirectText ||
+        ""
+      ).replace(/\s+/g, " ").trim();
+      return { id, name };
+    })
+    .filter((item) => item.id && item.name)
+    .filter((item, index, list) => list.findIndex((next) => next.id === item.id) === index);
+}
+
+function openRaiseCasePopup() {
+  const customer = salesViewCustomerInfo();
+  const so = window._currentSalesOrder || {};
+  const store = salesViewStoreInfo(so);
+  window._raiseCaseItems = currentSalesViewCaseItems();
+  const params = new URLSearchParams({
+    salesOrderId: String(so.id || so.internalId || so.internalid || ""),
+    customerId: customer.id || "",
+    customerName: customer.name || "",
+    store: store.id || "",
+    storeName: store.name || "",
+    storeNetSuiteId: store.netSuiteId || "",
+    storeDistributionLocationId: store.distributionLocationId || "",
+    storeManager: store.storeManager || "",
+  });
+  const popup = window.open(
+    `${window.location.origin}/raiseCase.html?${params.toString()}`,
+    "RaiseCase",
+    "width=780,height=620,resizable=yes,scrollbars=yes"
+  );
+  if (popup) popup.focus();
+  else alert("Please allow popups for this site to raise a case.");
+}
+
+function openExistingCasePopup(caseId) {
+  const cleanCaseId = String(caseId || "").trim();
+  if (!cleanCaseId) return;
+
+  const customer = salesViewCustomerInfo();
+  const so = window._currentSalesOrder || {};
+  const store = salesViewStoreInfo(so);
+  window._raiseCaseItems = currentSalesViewCaseItems();
+  const params = new URLSearchParams({
+    caseId: cleanCaseId,
+    salesOrderId: String(so.id || so.internalId || so.internalid || ""),
+    customerId: customer.id || "",
+    customerName: customer.name || "",
+    store: store.id || "",
+    storeName: store.name || "",
+    storeNetSuiteId: store.netSuiteId || "",
+    storeDistributionLocationId: store.distributionLocationId || "",
+    storeManager: store.storeManager || "",
+  });
+  const popup = window.open(
+    `${window.location.origin}/raiseCase.html?${params.toString()}`,
+    "RaiseCase",
+    "width=780,height=620,resizable=yes,scrollbars=yes"
+  );
+  if (popup) popup.focus();
+  else alert("Please allow popups for this site to open a case.");
+}
+
+function bindRaiseCasePopup() {
+  const button = document.getElementById("raiseCaseBtn");
+  if (!button || button.dataset.bound === "1") return;
+
+  button.dataset.bound = "1";
+  button.addEventListener("click", openRaiseCasePopup);
+}
+
+function bindOpenCasePopup() {
+  if (window._openCasePopupBound) return;
+  window._openCasePopupBound = true;
+
+  document.addEventListener("click", (event) => {
+    const button = event.target.closest(".open-case-btn");
+    if (!button) return;
+    openExistingCasePopup(button.dataset.caseId);
+  });
+}
+
+function bindSupportCaseCreatedRefresh() {
+  if (window._supportCaseCreatedRefreshBound) return;
+  window._supportCaseCreatedRefreshBound = true;
+
+  window.addEventListener("message", (event) => {
+    if (event.origin !== window.location.origin) return;
+    if (event.data?.action !== "support-case-created") return;
+
+    const saved = typeof storageGet === "function" ? storageGet() : null;
+    const headers = saved?.token ? { Authorization: `Bearer ${saved.token}` } : {};
+    const so = window._currentSalesOrder || {};
+    const salesOrderId = so.id || so.internalId || so.internalid || "";
+    loadCustomerServiceCases(headers, salesOrderId);
+  });
+}
+
 document.addEventListener("click", (event) => {
   const link = event.target.closest(".related-popup-link");
   if (!link) return;
@@ -821,6 +1100,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     Authorization: `Bearer ${saved.token}`,
   };
 
+  await applyCustomerServiceReleaseVisibility(headers);
+  bindRaiseCasePopup();
+  bindOpenCasePopup();
+  bindSupportCaseCreatedRefresh();
+
   const mePromise = fetch("/api/me", { headers })
     .then((res) => res.json())
     .catch((err) => {
@@ -907,6 +1191,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             opt.dataset.netsuiteInternalId = loc.netsuite_internal_id || "";
             opt.dataset.invoiceLocationId = loc.invoice_location_id || "";
             opt.dataset.distributionLocationId = loc.distribution_location_id || "";
+            opt.dataset.storeManager = loc.store_manager || "";
             opt.dataset.distributionStore = isDistributionStoreName(loc.name)
               ? "true"
               : "false";
@@ -982,6 +1267,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     renderRelatedRecords(so);
 
     await loadRelatedRecords(headers, so, salesOrderInternalIdForCustomFields);
+    loadCustomerServiceCases(headers, salesOrderInternalIdForCustomFields);
     loadOrderManagementRow(headers, so, salesOrderInternalIdForCustomFields).then((orderManagementRow) => {
       if (orderManagementRow) renderRelatedRecords(so, orderManagementRow);
     }).catch((err) => {
@@ -989,6 +1275,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     const locations = locJson.locations || locJson.data || [];
+    window._salesLocations = locations;
 
     const users = userJson.users || userJson.data || [];
     window._salesUsers = users;
@@ -1506,6 +1793,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           el.classList.remove("locked-input");
         } else if (
           el.id === "newMemoBtn" ||
+          el.id === "raiseCaseBtn" ||
           el.id === "printBtn" ||
           el.id === "manageIntercompanyBtn" ||
           el.classList.contains("open-inventory") ||
