@@ -463,6 +463,82 @@ function collectEditableQuoteLines() {
 
 window.collectEditableQuoteLines = collectEditableQuoteLines;
 
+function validateQuoteItemsBeforeSave() {
+  const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
+  const errors = [];
+
+  rows.forEach((row) => {
+    row.classList.remove("row-error");
+    row.querySelectorAll(".field-error").forEach((el) => el.classList.remove("field-error"));
+  });
+
+  const dirtyEmptyRows = rows.filter((row) => {
+    const itemId = (row.querySelector(".item-internal-id")?.value || "").trim();
+    if (itemId) return false;
+
+    const itemText = (row.querySelector(".item-search")?.value || "").trim();
+    const amount = parseMoneyInput(row.querySelector(".item-amount")?.value);
+    const sale = parseMoneyInput(row.querySelector(".item-saleprice")?.value);
+    const discount = parseFloat(row.querySelector(".item-discount")?.value || "0") || 0;
+    const options = (row.querySelector(".options-summary")?.innerText || "").trim();
+    return !!(itemText || amount !== 0 || sale !== 0 || discount !== 0 || options);
+  });
+
+  dirtyEmptyRows.forEach((row) => {
+    const lineNo = row.getAttribute("data-line") || "?";
+    errors.push(`Line ${lineNo}: Select a valid item from the item search.`);
+    row.classList.add("row-error");
+    row.querySelector(".item-search")?.classList.add("field-error");
+  });
+
+  const itemRows = rows.filter((row) =>
+    (row.querySelector(".item-internal-id")?.value || "").trim()
+  );
+
+  if (itemRows.length === 0) {
+    alert("Please add at least one item to the quote before saving.");
+    return false;
+  }
+
+  itemRows.forEach((row, idx) => {
+    const lineNo = row.getAttribute("data-line") || String(idx + 1);
+    const qtyEl = row.querySelector(".item-qty");
+    const quantity = parseFloat(qtyEl?.value || "0") || 0;
+
+    if (quantity <= 0) {
+      errors.push(`Line ${lineNo}: Quantity must be greater than zero.`);
+      row.classList.add("row-error");
+      qtyEl?.classList.add("field-error");
+    }
+
+    const trialSelect = row.querySelector(".sixty-night-select");
+    const trialVisible =
+      trialSelect &&
+      trialSelect.offsetParent !== null &&
+      trialSelect.closest(".sixty-night-cell")?.style.display !== "none";
+
+    if (trialVisible && !(trialSelect.value || "").trim()) {
+      errors.push(`Line ${lineNo}: 60 Night Trial is required.`);
+      row.classList.add("row-error");
+      trialSelect.classList.add("field-error");
+    }
+  });
+
+  if (errors.length) {
+    alert("Please fix the following before saving:\n\n" + errors.join("\n"));
+    return false;
+  }
+
+  return true;
+}
+
+function normaliseQuoteTrialOptionValue(value) {
+  const text = String(value || "").trim().toLowerCase();
+  if (text === "1" || text === "yes" || text === "accepted") return "Accepted";
+  if (text === "2" || text === "no" || text === "declined") return "Declined";
+  return "";
+}
+
 function wireEditableQuoteRow(tr, line, idx) {
   const itemId = String(line.item?.id || "");
   const itemName = line.item?.refName || line.itemName || "—";
@@ -622,7 +698,14 @@ function wireEditableQuoteRow(tr, line, idx) {
       <span class="vat-free-placeholder"></span>
     </td>
 
-    <td class="sixty-night-cell" style="display:none;"></td>
+    <td class="sixty-night-cell" style="display:none;">
+      <select class="sixty-night-select" style="display:none;">
+        <option value="">Select...</option>
+        <option value="Accepted">Accepted</option>
+        <option value="Declined">Declined</option>
+      </select>
+      <span class="sixty-night-placeholder">—</span>
+    </td>
 
     <td>
       <button type="button" class="delete-row btn-secondary small-btn">🗑</button>
@@ -656,6 +739,20 @@ function wireEditableQuoteRow(tr, line, idx) {
 
   if (typeof window.update60NightTrialColumnVisibility === "function") {
     window.update60NightTrialColumnVisibility();
+  }
+
+  const trialSelect = tr.querySelector(".sixty-night-select");
+  const existingTrialValue =
+    line.custcol_sb_30nighttrialoption?.refName ||
+    line.custcol_sb_30nighttrialoption?.text ||
+    line.custcol_sb_30nighttrialoption?.id ||
+    line.custcol_sb_30nighttrialoption ||
+    line.trialOption ||
+    "";
+
+  if (trialSelect) {
+    trialSelect.value = normaliseQuoteTrialOptionValue(existingTrialValue);
+    if (trialSelect.value) trialSelect.dataset.userEdited = "1";
   }
 
   const recalcVat = () => {
@@ -834,6 +931,7 @@ function buildQuoteSavePayload() {
       discount: discountPct,
       options: optionsText || "",
       trialOption: i.trialOption || null,
+      ...(i.trialOption ? { custcol_sb_30nighttrialoption: i.trialOption } : {}),
       taxCode: i.taxCode || "",
     };
   });
@@ -981,6 +1079,8 @@ function updateActionButtonForQuote() {
       showConvertSpinner(true, "Saving quote...");
       showToast?.("⏳ Saving quote...", "success");
 
+      if (!validateQuoteItemsBeforeSave()) return;
+
       const payload = buildQuoteSavePayload();
       console.log("🧾 Quote save payload summary:", {
         updates: payload.updates?.length || 0,
@@ -1115,6 +1215,31 @@ function updateActionButtonForQuote() {
     closeBtn?.classList.add("locked-input");
 
     try {
+      if (!validateQuoteItemsBeforeSave()) return;
+
+      showConvertSpinner(true, "Saving quote before conversion...");
+      showToast?.("Saving quote before conversion...", "success");
+
+      const payload = buildQuoteSavePayload();
+      const signature = stableSaveSignature(payload);
+      if (signature !== window._lastQuoteSaveSignature) {
+        const saveRes = await fetch(
+          `/api/netsuite/quote/${encodeURIComponent(quoteIdOrTran)}/save`,
+          {
+            method: "POST",
+            headers,
+            body: JSON.stringify(payload),
+          }
+        );
+
+        const saveData = await saveRes.json();
+        if (!saveRes.ok || !saveData.ok) {
+          throw new Error(saveData?.error || `Save failed (HTTP ${saveRes.status})`);
+        }
+
+        window._lastQuoteSaveSignature = stableSaveSignature(buildQuoteSavePayload());
+      }
+
       showConvertSpinner(true, "Converting quote to sales order...");
       showToast?.("⏳ Converting quote...", "success");
 

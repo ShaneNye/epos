@@ -475,6 +475,18 @@ function ensure60NightTrialCell(row) {
       <span class="sixty-night-placeholder">—</span>
     `;
   } else {
+    if (!td.querySelector("select")) {
+      td.insertAdjacentHTML(
+        "afterbegin",
+        `
+      <select class="sixty-night-select">
+        <option value="">Select...</option>
+        <option value="Accepted">Accepted</option>
+        <option value="Declined">Declined</option>
+      </select>
+    `
+      );
+    }
     if (!td.querySelector(".sixty-night-placeholder")) {
       const span = document.createElement("span");
       span.className = "sixty-night-placeholder";

@@ -33,6 +33,18 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     return code === "10" || code.indexOf("vat free") !== -1 || code.indexOf("zero") !== -1;
   }
 
+  function normaliseTrialOptionId(value) {
+    const raw =
+      value && typeof value === "object"
+        ? value.id || value.value || value.refName || value.text || ""
+        : value;
+    const trial = String(raw || "").trim().toLowerCase();
+    if (trial === "accepted" || trial === "yes" || trial === "1") return "1";
+    if (trial === "declined" || trial === "no" || trial === "2") return "2";
+    if (trial === "n/a" || trial === "na" || trial === "3") return "3";
+    return "";
+  }
+
   function syncPairedSalesOrderMemo(soRec, memo) {
     const pairedSalesOrderId = soRec.getValue({
       fieldId: "custbody_sb_pairedsalesorder",
@@ -1210,6 +1222,19 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
         "custcol_sb_itemoptionsdisplay",
         String(optionsValue || "")
       );
+    }
+
+    if (hasOwn(u, "custcol_sb_30nighttrialoption") || hasOwn(u, "trialOption")) {
+      const trialOptionId = normaliseTrialOptionId(
+        hasOwn(u, "custcol_sb_30nighttrialoption")
+          ? u.custcol_sb_30nighttrialoption
+          : u.trialOption
+      );
+      if (trialOptionId) {
+        setCurrentIfDefined(soRec, "custcol_sb_30nighttrialoption", trialOptionId);
+      } else {
+        clearCurrentField(soRec, "custcol_sb_30nighttrialoption");
+      }
     }
 
     if (u.inventoryDetail !== undefined) {

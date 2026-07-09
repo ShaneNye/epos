@@ -292,6 +292,7 @@
                             <th>Tax (20%)</th> <!-- 🆕 added -->
                             <th>Sale Price</th>
                             <th id="vatFreeHeader" style="display:none;">Vat Free</th>
+                            <th id="60ntheader" style="display:none;">60 Night Trial</th>
                             <th></th>
                         </tr>
                     </thead>
@@ -315,6 +316,14 @@
                             <td class="vat-free-cell" style="display:none;">
                                 <input type="checkbox" class="vat-free-checkbox" aria-label="Vat Free" style="display:none;" />
                                 <span class="vat-free-placeholder"></span>
+                            </td>
+                            <td class="sixty-night-cell" style="display:none;">
+                                <select class="sixty-night-select" style="display:none;">
+                                    <option value="">Select...</option>
+                                    <option value="Accepted">Accepted</option>
+                                    <option value="Declined">Declined</option>
+                                </select>
+                                <span class="sixty-night-placeholder">—</span>
                             </td>
                             <td>
                                 <select name="fulfilmentMethod" class="item-fulfilment">

@@ -49,6 +49,36 @@ function isVatFreeTaxCode(value) {
   return code === "10" || code.includes("vat free") || code.includes("zero");
 }
 
+function mapTrialOptionValue(raw) {
+  const value =
+    raw && typeof raw === "object"
+      ? raw.id || raw.value || raw.refName || raw.text || ""
+      : raw;
+  const trial = String(value || "").trim().toLowerCase();
+  if (trial === "accepted" || trial === "yes" || trial === "1") return { id: "1" };
+  if (trial === "declined" || trial === "no" || trial === "2") return { id: "2" };
+  if (trial === "n/a" || trial === "na" || trial === "3") return { id: "3" };
+  return null;
+}
+
+function trialOptionDisplay(raw) {
+  const value =
+    raw && typeof raw === "object"
+      ? raw.id || raw.value || raw.refName || raw.text || ""
+      : raw;
+  const trial = String(value || "").trim().toLowerCase();
+  if (trial === "1" || trial === "accepted" || trial === "yes") {
+    return { id: "1", refName: "Accepted" };
+  }
+  if (trial === "2" || trial === "declined" || trial === "no") {
+    return { id: "2", refName: "Declined" };
+  }
+  if (trial === "3" || trial === "n/a" || trial === "na") {
+    return { id: "3", refName: "N/A" };
+  }
+  return { id: null, refName: "" };
+}
+
 function sendNoStore(res) {
   res.set({
     "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
@@ -336,15 +366,7 @@ router.post("/create", async (req, res) => {
           const qty = Number(i.quantity) || 1;
           const netLineTotal = +(grossToSave / (isVatFreeTaxCode(i.taxCode) ? 1 : 1.2)).toFixed(2);
           const netUnitRate = qty > 0 ? +(netLineTotal / qty).toFixed(2) : 0;
-          const trial = String(i.trialOption || "").trim().toLowerCase();
-          const trialField =
-            trial === "accepted" || trial === "yes" || trial === "1"
-              ? { id: "1" }
-              : trial === "declined" || trial === "no" || trial === "2"
-                ? { id: "2" }
-                : trial === "n/a" || trial === "na" || trial === "3"
-                  ? { id: "3" }
-                  : null;
+          const trialField = mapTrialOptionValue(i.trialOption);
 
           return {
             item: { id: String(i.item) },
@@ -512,7 +534,8 @@ router.get("/:id", async (req, res) => {
         t.rate,
         t.taxcode,
         t.custcol_sb_itemoptionsdisplay AS options,
-        t.custcol_sb_fulfilmentlocation
+        t.custcol_sb_fulfilmentlocation,
+        t.custcol_sb_30nighttrialoption
       FROM transactionline t
       LEFT JOIN item i ON i.id = t.item
       WHERE t.transaction = ${id}
@@ -605,6 +628,7 @@ router.get("/:id", async (req, res) => {
           taxCode: r.taxcode ? String(r.taxcode) : "",
           custcol_sb_itemoptionsdisplay: r.options || "",
           custcol_sb_fulfilmentlocation: r.custcol_sb_fulfilmentlocation || null,
+          custcol_sb_30nighttrialoption: trialOptionDisplay(r.custcol_sb_30nighttrialoption),
         };
       });
 
@@ -698,6 +722,9 @@ router.post("/:id/save", async (req, res) => {
           : retailGrossLine > 0
             ? Math.max(0, ((retailGrossLine - saleGrossLine) / retailGrossLine) * 100)
             : 0;
+      const trialField = mapTrialOptionValue(
+        line.trialOption || line.custcol_sb_30nighttrialoption
+      );
 
       return {
         ...line,
@@ -709,6 +736,7 @@ router.post("/:id/save", async (req, res) => {
         grossAmount: retailGrossLine,
         discountPct,
         discount: discountPct,
+        ...(trialField ? { custcol_sb_30nighttrialoption: trialField.id } : {}),
       };
     });
 
@@ -833,7 +861,8 @@ router.patch("/:id", async (req, res) => {
         t.item,
         t.taxcode,
         t.custcol_sb_itemoptionsdisplay AS options,
-        t.custcol_sb_fulfilmentlocation
+        t.custcol_sb_fulfilmentlocation,
+        t.custcol_sb_30nighttrialoption
       FROM transactionline t
       WHERE t.transaction = ${id}
         AND t.mainline = 'F'
@@ -866,6 +895,9 @@ router.patch("/:id", async (req, res) => {
       options: line.options || "",
       fulfilmentMethod: line.custcol_sb_fulfilmentlocation
         ? String(line.custcol_sb_fulfilmentlocation)
+        : "",
+      trialOption: line.custcol_sb_30nighttrialoption
+        ? String(line.custcol_sb_30nighttrialoption)
         : "",
     }));
 
@@ -919,6 +951,7 @@ router.patch("/:id", async (req, res) => {
             i.options !== undefined
               ? i.options
               : existingLine?.options || "";
+          const trialField = mapTrialOptionValue(i.trialOption || existingLine?.trialOption);
 
           return {
             item: { id: String(i.item) },
@@ -930,6 +963,7 @@ router.patch("/:id", async (req, res) => {
               taxCode: { id: String(lineTaxCode) },
             }),
             custcol_sb_itemoptionsdisplay: optionsValue || "",
+            ...(trialField ? { custcol_sb_30nighttrialoption: trialField } : {}),
             ...(fulfilmentMethod && {
               custcol_sb_fulfilmentlocation: { id: String(fulfilmentMethod) },
             }),
