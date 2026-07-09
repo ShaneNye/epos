@@ -563,12 +563,36 @@ body.cs-workflow-nav-open .cs-workflow-side-tab {
   align-items: flex-start;
 }
 
+.record-sublist-toggle {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.5rem;
+  text-align: left;
+}
+
+.record-sublist-chevron {
+  display: inline-grid;
+  width: 1.15rem;
+  height: 1.15rem;
+  place-items: center;
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(15, 23, 42, 0.06);
+  font-size: 0.8rem;
+  line-height: 1;
+}
+
+.record-sublist-body {
+  margin-top: 0.7rem;
+}
+
 .record-sublist-config {
   display: none;
   grid-template-columns: repeat(3, minmax(0, 1fr)) auto;
   gap: 0.55rem;
   align-items: end;
-  margin: 0.7rem 0;
+  margin: 0 0 0.7rem;
 }
 
 .record-sublist-card.expanded .record-sublist-config {
@@ -1123,6 +1147,8 @@ button {
   stroke: #64748b;
   stroke-width: 2;
   fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
   pointer-events: stroke;
   cursor: pointer;
 }
@@ -1167,6 +1193,25 @@ button {
   font-size: 12px;
   font-weight: 700;
   pointer-events: none;
+}
+
+.workflow-edge-anchor {
+  fill: #fff;
+  stroke: var(--brand);
+  stroke-width: 2;
+  cursor: move;
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.18));
+}
+
+.workflow-edge-anchor.placing {
+  fill: #e0f2fe;
+  stroke: #0284c7;
+}
+
+.workflow-edge-anchor.selected {
+  fill: #fff7ed;
+  stroke: #f59e0b;
+  stroke-width: 3;
 }
 
 .workflow-node {
@@ -2356,6 +2401,23 @@ body.cs-workflow-dark .workflow-edge.selected {
 body.cs-workflow-dark .workflow-edge-preview,
 body.cs-workflow-dark .workflow-edge.debug-path {
   stroke: #fbbf24;
+}
+
+body.cs-workflow-dark .workflow-edge-anchor {
+  fill: #0b1722;
+  stroke: #2bb9df;
+  filter: drop-shadow(0 0 5px rgba(43, 185, 223, 0.3));
+}
+
+body.cs-workflow-dark .workflow-edge-anchor.placing {
+  fill: #12354a;
+  stroke: #7dd3fc;
+}
+
+body.cs-workflow-dark .workflow-edge-anchor.selected {
+  fill: #3a2a12;
+  stroke: #fbbf24;
+  filter: drop-shadow(0 0 6px rgba(251, 191, 36, 0.38));
 }
 
 body.cs-workflow-dark .toolbox-item,

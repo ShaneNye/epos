@@ -3,6 +3,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const NODE_HEIGHT = 88;
   const MIN_SURFACE_WIDTH = 1600;
   const MIN_SURFACE_HEIGHT = 1000;
+  const EDGE_NODE_CLEARANCE = 18;
 
   const state = {
     workflows: [],
@@ -12,13 +13,16 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedRecordFieldId: "",
     expandedRecordId: "",
     expandedSublistId: "",
+    suiteQlEditTarget: null,
     currentId: "",
     nodes: [],
     edges: [],
     selectedNodeId: "",
     selectedEdgeId: "",
+    selectedAnchor: null,
     drag: null,
     portDrag: null,
+    edgeAnchorDrag: null,
     pathPreview: null,
     pan: null,
     suppressClick: false,
@@ -275,6 +279,7 @@ document.addEventListener("DOMContentLoaded", () => {
       edges: state.edges,
       selectedNodeId: state.selectedNodeId,
       selectedEdgeId: state.selectedEdgeId,
+      selectedAnchor: state.selectedAnchor,
       settings: state.settings,
       criteria: state.criteria,
     });
@@ -287,6 +292,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.edges = Array.isArray(next.edges) ? next.edges : [];
     state.selectedNodeId = next.selectedNodeId || "";
     state.selectedEdgeId = next.selectedEdgeId || "";
+    state.selectedAnchor = next.selectedAnchor || null;
     state.settings = normaliseWorkflowSettings(next.settings);
     state.criteria = normaliseWorkflowCriteria(next.criteria);
     renderWorkflowSettings();
@@ -385,6 +391,13 @@ document.addEventListener("DOMContentLoaded", () => {
   function selectedRecordField() {
     const record = selectedRecord();
     return (record?.fields || []).find((field) => String(field.id) === String(state.selectedRecordFieldId)) || null;
+  }
+
+  function selectedSublistField(sublistId = "", fieldId = "") {
+    const record = selectedRecord();
+    const sublist = (record?.sublists || []).find((item) => String(item.id) === String(sublistId));
+    const field = (sublist?.fields || []).find((item) => String(item.id) === String(fieldId));
+    return { sublist, field };
   }
 
   function fieldUsesListQuery(fieldType = "") {
@@ -510,60 +523,75 @@ document.addEventListener("DOMContentLoaded", () => {
     if (el.addSublist) el.addSublist.disabled = !record;
     if (el.sublistsList) {
       el.sublistsList.innerHTML = record?.sublists?.length
-        ? record.sublists.map((sublist) => `
-          <article class="record-sublist-card${String(sublist.id) === String(state.expandedSublistId) ? " expanded" : ""}" data-sublist-id="${escapeHtml(sublist.id)}">
+        ? record.sublists.map((sublist) => {
+          const expanded = String(sublist.id) === String(state.expandedSublistId);
+          return `
+          <article class="record-sublist-card${expanded ? " expanded" : ""}" data-sublist-id="${escapeHtml(sublist.id)}">
             <div class="record-sublist-head">
-              <button type="button" class="workflow-record-select" data-toggle-sublist="${escapeHtml(sublist.id)}">
-                <strong>${escapeHtml(sublist.label || "Sublist")}</strong>
-                <small>${escapeHtml(sublist.internalId || "sublistId")} - ${(sublist.fields || []).length} field${(sublist.fields || []).length === 1 ? "" : "s"}</small>
+              <button type="button" class="workflow-record-select record-sublist-toggle" data-toggle-sublist="${escapeHtml(sublist.id)}" aria-expanded="${expanded ? "true" : "false"}">
+                <span class="record-sublist-chevron" aria-hidden="true">${expanded ? "▾" : "▸"}</span>
+                <span>
+                  <strong>${escapeHtml(sublist.label || "Sublist")}</strong>
+                  <small>${escapeHtml(sublist.internalId || "sublistId")} - ${(sublist.fields || []).length} field${(sublist.fields || []).length === 1 ? "" : "s"}</small>
+                </span>
               </button>
               <button type="button" class="btn-secondary" data-add-sublist-field="${escapeHtml(sublist.id)}">Add Field</button>
             </div>
-            <div class="record-sublist-config">
-              <label>
-                Label
-                <input data-sublist-label="${escapeHtml(sublist.id)}" value="${escapeHtml(sublist.label)}" placeholder="e.g. Items">
-              </label>
-              <label>
-                Sublist ID
-                <input data-sublist-internal-id="${escapeHtml(sublist.id)}" value="${escapeHtml(sublist.internalId)}" placeholder="e.g. item">
-              </label>
-              <label>
-                Sort Order
-                <input data-sublist-sort-order="${escapeHtml(sublist.id)}" type="number" step="1" value="${escapeHtml(sublist.sortOrder ?? 0)}">
-              </label>
-              <div class="record-inline-actions">
-                <button type="button" class="btn-secondary" data-save-sublist="${escapeHtml(sublist.id)}">Save Sublist</button>
-                <button type="button" class="btn-danger" data-delete-sublist="${escapeHtml(sublist.id)}">Delete Sublist</button>
+            <div class="record-sublist-body" ${expanded ? "" : "hidden"}>
+              <div class="record-sublist-config">
+                <label>
+                  Label
+                  <input data-sublist-label="${escapeHtml(sublist.id)}" value="${escapeHtml(sublist.label)}" placeholder="e.g. Items">
+                </label>
+                <label>
+                  Sublist ID
+                  <input data-sublist-internal-id="${escapeHtml(sublist.id)}" value="${escapeHtml(sublist.internalId)}" placeholder="e.g. item">
+                </label>
+                <label>
+                  Sort Order
+                  <input data-sublist-sort-order="${escapeHtml(sublist.id)}" type="number" step="1" value="${escapeHtml(sublist.sortOrder ?? 0)}">
+                </label>
+                <div class="record-inline-actions">
+                  <button type="button" class="btn-secondary" data-save-sublist="${escapeHtml(sublist.id)}">Save Sublist</button>
+                  <button type="button" class="btn-danger" data-delete-sublist="${escapeHtml(sublist.id)}">Delete Sublist</button>
+                </div>
               </div>
-            </div>
-            <table class="record-fields-table record-sublist-fields-table">
-              <thead>
-                <tr>
-                  <th aria-label="Reorder"></th>
-                  <th>Label</th>
-                  <th>Internal ID</th>
-                  <th>Field Type</th>
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${(sublist.fields || []).length ? sublist.fields.map((field) => `
-                  <tr data-sublist-field-id="${escapeHtml(field.id)}" data-sublist-parent-id="${escapeHtml(sublist.id)}">
-                    <td class="field-drag-cell"><button type="button" class="field-drag-handle" draggable="true" data-sublist-field-drag="${escapeHtml(field.id)}" aria-label="Drag to reorder">...</button></td>
-                    <td><input data-sublist-field-label="${escapeHtml(field.id)}" value="${escapeHtml(field.label)}" placeholder="e.g. Quantity"></td>
-                    <td><input data-sublist-field-internal-id="${escapeHtml(field.id)}" value="${escapeHtml(field.internalId)}" placeholder="e.g. quantity"></td>
-                    <td><select data-sublist-field-type="${escapeHtml(field.id)}">${typeOptions(field.fieldType)}</select></td>
-                    <td class="record-row-actions">
-                      <button type="button" class="btn-secondary" data-save-sublist-field="${escapeHtml(field.id)}">Save</button>
-                      <button type="button" class="btn-danger" data-delete-sublist-field="${escapeHtml(field.id)}">Delete</button>
-                    </td>
+              <table class="record-fields-table record-sublist-fields-table">
+                <thead>
+                  <tr>
+                    <th aria-label="Reorder"></th>
+                    <th>Label</th>
+                    <th>Internal ID</th>
+                    <th>Field Type</th>
+                    <th>SuiteQL</th>
+                    <th>Actions</th>
                   </tr>
-                `).join("") : '<tr class="workflow-record-field-empty"><td colspan="5">No fields configured for this sublist.</td></tr>'}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  ${(sublist.fields || []).length ? sublist.fields.map((field) => `
+                    <tr data-sublist-field-id="${escapeHtml(field.id)}" data-sublist-parent-id="${escapeHtml(sublist.id)}">
+                      <td class="field-drag-cell"><button type="button" class="field-drag-handle" draggable="true" data-sublist-field-drag="${escapeHtml(field.id)}" aria-label="Drag to reorder">...</button></td>
+                      <td><input data-sublist-field-label="${escapeHtml(field.id)}" value="${escapeHtml(field.label)}" placeholder="e.g. Quantity"></td>
+                      <td><input data-sublist-field-internal-id="${escapeHtml(field.id)}" value="${escapeHtml(field.internalId)}" placeholder="e.g. quantity"></td>
+                      <td><select data-sublist-field-type="${escapeHtml(field.id)}">${typeOptions(field.fieldType)}</select></td>
+                      <td class="record-suiteql-cell">
+                        ${fieldUsesListQuery(field.fieldType)
+                          ? `<button type="button" class="btn-secondary record-suiteql-edit" data-edit-sublist-field-suiteql="${escapeHtml(field.id)}">${field.listValuesQuery ? "Edit SuiteQL" : "Add SuiteQL"}</button>
+                             ${field.listValuesQuery ? '<span class="record-suiteql-state is-set">Query set</span>' : '<span class="record-suiteql-state">Not set</span>'}`
+                          : '<span class="record-suiteql-state">Not applicable</span>'}
+                      </td>
+                      <td class="record-row-actions">
+                        <button type="button" class="btn-secondary" data-save-sublist-field="${escapeHtml(field.id)}">Save</button>
+                        <button type="button" class="btn-danger" data-delete-sublist-field="${escapeHtml(field.id)}">Delete</button>
+                      </td>
+                    </tr>
+                  `).join("") : '<tr class="workflow-record-field-empty"><td colspan="6">No fields configured for this sublist.</td></tr>'}
+                </tbody>
+              </table>
+            </div>
           </article>
-        `).join("")
+        `;
+        }).join("")
         : '<p class="workflow-status">No sublists configured for this record.</p>';
     }
   };
@@ -1037,6 +1065,155 @@ document.addEventListener("DOMContentLoaded", () => {
     return { x: node.x + NODE_WIDTH, y: node.y + t * NODE_HEIGHT };
   }
 
+  function nodeObstacleRects(edge = {}) {
+    return state.nodes
+      .filter((node) => node.id !== edge.from && node.id !== edge.to)
+      .map((node) => ({
+        id: node.id,
+        x: Number(node.x) - EDGE_NODE_CLEARANCE,
+        y: Number(node.y) - EDGE_NODE_CLEARANCE,
+        width: NODE_WIDTH + EDGE_NODE_CLEARANCE * 2,
+        height: NODE_HEIGHT + EDGE_NODE_CLEARANCE * 2,
+      }));
+  }
+
+  function pointInRect(point = {}, rect = {}) {
+    return point.x >= rect.x && point.x <= rect.x + rect.width && point.y >= rect.y && point.y <= rect.y + rect.height;
+  }
+
+  function segmentsIntersect(a, b, c, d) {
+    const cross = (p, q, r) => (q.x - p.x) * (r.y - p.y) - (q.y - p.y) * (r.x - p.x);
+    const between = (p, q, r) =>
+      Math.min(p.x, q.x) <= r.x && r.x <= Math.max(p.x, q.x) &&
+      Math.min(p.y, q.y) <= r.y && r.y <= Math.max(p.y, q.y);
+    const c1 = cross(a, b, c);
+    const c2 = cross(a, b, d);
+    const c3 = cross(c, d, a);
+    const c4 = cross(c, d, b);
+    if (c1 === 0 && between(a, b, c)) return true;
+    if (c2 === 0 && between(a, b, d)) return true;
+    if (c3 === 0 && between(c, d, a)) return true;
+    if (c4 === 0 && between(c, d, b)) return true;
+    return (c1 > 0) !== (c2 > 0) && (c3 > 0) !== (c4 > 0);
+  }
+
+  function segmentIntersectsRect(from, to, rect) {
+    if (pointInRect(from, rect) || pointInRect(to, rect)) return true;
+    const left = rect.x;
+    const right = rect.x + rect.width;
+    const top = rect.y;
+    const bottom = rect.y + rect.height;
+    if (Math.max(from.x, to.x) < left || Math.min(from.x, to.x) > right || Math.max(from.y, to.y) < top || Math.min(from.y, to.y) > bottom) return false;
+    return [
+      [{ x: left, y: top }, { x: right, y: top }],
+      [{ x: right, y: top }, { x: right, y: bottom }],
+      [{ x: right, y: bottom }, { x: left, y: bottom }],
+      [{ x: left, y: bottom }, { x: left, y: top }],
+    ].some(([a, b]) => segmentsIntersect(from, to, a, b));
+  }
+
+  function routeCollisions(points, obstacles) {
+    let count = 0;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      obstacles.forEach((rect) => {
+        if (segmentIntersectsRect(points[index], points[index + 1], rect)) count += 1;
+      });
+    }
+    return count;
+  }
+
+  function polylineLength(points) {
+    return points.slice(1).reduce((total, point, index) => total + Math.hypot(point.x - points[index].x, point.y - points[index].y), 0);
+  }
+
+  function dedupeRoutePoints(points) {
+    return points.filter((point, index) => {
+      if (!index) return true;
+      const previous = points[index - 1];
+      return Math.abs(point.x - previous.x) > 0.5 || Math.abs(point.y - previous.y) > 0.5;
+    });
+  }
+
+  function detourAroundRect(from, to, rect, obstacles) {
+    const lanes = [
+      [from, { x: from.x, y: rect.y - 8 }, { x: to.x, y: rect.y - 8 }, to],
+      [from, { x: from.x, y: rect.y + rect.height + 8 }, { x: to.x, y: rect.y + rect.height + 8 }, to],
+      [from, { x: rect.x - 8, y: from.y }, { x: rect.x - 8, y: to.y }, to],
+      [from, { x: rect.x + rect.width + 8, y: from.y }, { x: rect.x + rect.width + 8, y: to.y }, to],
+    ].map(dedupeRoutePoints);
+    return lanes
+      .map((points) => ({
+        points,
+        score: routeCollisions(points, obstacles) * 100000 + polylineLength(points),
+      }))
+      .sort((a, b) => a.score - b.score)[0].points;
+  }
+
+  function autoRouteEdgePoints(edge, points) {
+    const obstacles = nodeObstacleRects(edge);
+    if (!obstacles.length || points.length < 2) return points;
+    let routed = dedupeRoutePoints(points);
+    for (let pass = 0; pass < 8; pass += 1) {
+      let changed = false;
+      const next = [routed[0]];
+      for (let index = 0; index < routed.length - 1; index += 1) {
+        const from = routed[index];
+        const to = routed[index + 1];
+        const obstacle = obstacles.find((rect) => segmentIntersectsRect(from, to, rect));
+        if (!obstacle) {
+          next.push(to);
+          continue;
+        }
+        const detour = detourAroundRect(from, to, obstacle, obstacles);
+        next.push(...detour.slice(1));
+        changed = true;
+      }
+      routed = dedupeRoutePoints(next);
+      if (!changed) break;
+    }
+    return routed;
+  }
+
+  function routePath(points) {
+    if (!Array.isArray(points) || !points.length) return "";
+    if (points.length === 1) return `M ${points[0].x} ${points[0].y}`;
+    if (points.length === 2) {
+      const [start, end] = points;
+      const midX = (start.x + end.x) / 2;
+      return `M ${start.x} ${start.y} C ${midX} ${start.y}, ${midX} ${end.y}, ${end.x} ${end.y}`;
+    }
+
+    const radius = 24;
+    const commands = [`M ${points[0].x} ${points[0].y}`];
+    for (let index = 1; index < points.length - 1; index += 1) {
+      const previous = points[index - 1];
+      const current = points[index];
+      const next = points[index + 1];
+      const incoming = Math.hypot(current.x - previous.x, current.y - previous.y);
+      const outgoing = Math.hypot(next.x - current.x, next.y - current.y);
+      const bend = Math.min(radius, incoming / 2, outgoing / 2);
+      if (!bend || incoming < 1 || outgoing < 1) {
+        commands.push(`L ${current.x} ${current.y}`);
+        continue;
+      }
+
+      const inPoint = {
+        x: current.x - ((current.x - previous.x) / incoming) * bend,
+        y: current.y - ((current.y - previous.y) / incoming) * bend,
+      };
+      const outPoint = {
+        x: current.x + ((next.x - current.x) / outgoing) * bend,
+        y: current.y + ((next.y - current.y) / outgoing) * bend,
+      };
+      commands.push(`L ${inPoint.x} ${inPoint.y}`);
+      commands.push(`Q ${current.x} ${current.y}, ${outPoint.x} ${outPoint.y}`);
+    }
+
+    const last = points[points.length - 1];
+    commands.push(`L ${last.x} ${last.y}`);
+    return commands.join(" ");
+  }
+
   function renderNodePorts(node) {
     if (node.type === "question" || node.type === "check") {
       const options = Array.isArray(node.options) ? node.options.filter((option) => option?.label) : [];
@@ -1122,8 +1299,13 @@ document.addEventListener("DOMContentLoaded", () => {
       const y1 = start.y;
       const x2 = end.x;
       const y2 = end.y;
-      const midX = (x1 + x2) / 2;
-      const pathD = `M ${x1} ${y1} C ${midX} ${y1}, ${midX} ${y2}, ${x2} ${y2}`;
+      const anchorPoints = (Array.isArray(edge.anchors) ? edge.anchors : [])
+        .map((anchor) => ({ x: Number(anchor.x), y: Number(anchor.y) }))
+        .filter((anchor) => Number.isFinite(anchor.x) && Number.isFinite(anchor.y));
+      const points = [start, ...anchorPoints, end];
+      const routedPoints = autoRouteEdgePoints(edge, points);
+      const pathD = routePath(routedPoints);
+      const labelPoint = edgeLabelPoint(routedPoints.length > 1 ? routedPoints : points);
       const hitPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
       const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
       const debugEdge = state.debug && String(state.debug.workflowId || "") === String(state.currentId || "") && debugEdgeIds.has(String(edge.id));
@@ -1142,16 +1324,56 @@ document.addEventListener("DOMContentLoaded", () => {
       hitPath.addEventListener("pointerdown", (event) => event.stopPropagation());
       hitPath.addEventListener("click", onEdgeClick);
       el.edges.appendChild(hitPath);
+      if (edge.id === state.selectedEdgeId || state.edgeAnchorDrag?.edgeId === edge.id || state.selectedAnchor?.edgeId === edge.id) {
+        anchorPoints.forEach((anchor, index) => {
+          const anchorSelected = state.selectedAnchor?.edgeId === edge.id && Number(state.selectedAnchor?.anchorIndex) === index;
+          const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+          circle.setAttribute("class", `workflow-edge-anchor${anchorSelected ? " selected" : ""}${state.edgeAnchorDrag?.edgeId === edge.id && state.edgeAnchorDrag?.anchorIndex === index ? " placing" : ""}`);
+          circle.dataset.edgeId = edge.id;
+          circle.dataset.anchorIndex = String(index);
+          circle.setAttribute("cx", String(anchor.x));
+          circle.setAttribute("cy", String(anchor.y));
+          circle.setAttribute("r", "6");
+          circle.addEventListener("pointerdown", startEdgeAnchorPointerDown);
+          el.edges.appendChild(circle);
+        });
+      }
       if (edge.label && !isCheckPass && !isCheckFail) {
         const text = document.createElementNS("http://www.w3.org/2000/svg", "text");
         text.setAttribute("class", "workflow-edge-label");
-        text.setAttribute("x", String(midX - 20));
-        text.setAttribute("y", String(((y1 + y2) / 2) - 6));
+        text.setAttribute("x", String(labelPoint.x - 20));
+        text.setAttribute("y", String(labelPoint.y - 6));
         text.textContent = edge.label;
         el.edges.appendChild(text);
       }
     });
     renderPathPreview();
+  }
+
+  function edgeLabelPoint(points = []) {
+    if (!points.length) return { x: 0, y: 0 };
+    if (points.length === 1) return points[0];
+    const segments = [];
+    let total = 0;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const from = points[index];
+      const to = points[index + 1];
+      const length = Math.hypot(to.x - from.x, to.y - from.y);
+      segments.push({ from, to, length });
+      total += length;
+    }
+    let remaining = total / 2;
+    for (const segment of segments) {
+      if (remaining <= segment.length) {
+        const t = segment.length ? remaining / segment.length : 0;
+        return {
+          x: segment.from.x + (segment.to.x - segment.from.x) * t,
+          y: segment.from.y + (segment.to.y - segment.from.y) * t,
+        };
+      }
+      remaining -= segment.length;
+    }
+    return points[Math.floor(points.length / 2)] || points[0];
   }
 
   function canvasPointFromClient(clientX, clientY) {
@@ -1192,7 +1414,10 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("deleteNodeBtn").hidden = false;
     if (!node && edge) {
       el.emptyProps.hidden = false;
-      el.emptyProps.innerHTML = '<strong>Selected path</strong><p class="workflow-status">Press Delete to remove this path.</p>';
+      const anchorSelected = state.selectedAnchor?.edgeId === edge.id;
+      el.emptyProps.innerHTML = anchorSelected
+        ? '<strong>Selected anchor</strong><p class="workflow-status">Shift-drag to move this anchor. Press Delete to remove only this anchor.</p>'
+        : '<strong>Selected path</strong><p class="workflow-status">Press Delete to remove this path. Shift-click the path to add an anchor point.</p>';
       return;
     }
     el.emptyProps.innerHTML = "Select a workflow element.";
@@ -1471,7 +1696,24 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function createRecordTargetRecord(target = "salesOrder") {
-    return workflowRecordByKeys(CREATE_RECORD_TARGETS[target]?.keys || []);
+    const cleanTarget = normaliseRecordLookup(target);
+    return state.records.find((record) =>
+      String(record.id) === String(target) ||
+      normaliseRecordLookup(record.internalId) === cleanTarget ||
+      normaliseRecordLookup(record.label) === cleanTarget
+    ) || workflowRecordByKeys(CREATE_RECORD_TARGETS[target]?.keys || []);
+  }
+
+  function createRecordTargetValue(record = {}) {
+    return record.internalId || record.id || "";
+  }
+
+  function createRecordTargetOptions(selectedValue = "") {
+    if (!state.records.length) return '<option value="">No records configured</option>';
+    return state.records.map((record) => {
+      const value = createRecordTargetValue(record);
+      return `<option value="${escapeHtml(value)}" ${String(value) === String(selectedValue) ? "selected" : ""}>${escapeHtml(record.label || value)}</option>`;
+    }).join("");
   }
 
   function createRecordFieldOptions(fields = [], selectedValue = "") {
@@ -1507,7 +1749,15 @@ document.addEventListener("DOMContentLoaded", () => {
     if (el.createRecordMapWrap) el.createRecordMapWrap.hidden = !isCreateRecord;
     if (!isCreateRecord) return;
 
-    if (el.createRecordTarget) el.createRecordTarget.value = createConfig.targetRecord || "salesOrder";
+    if (el.createRecordTarget) {
+      el.createRecordTarget.innerHTML = createRecordTargetOptions(createConfig.targetRecord);
+      const values = Array.from(el.createRecordTarget.options).map((option) => option.value);
+      if (!values.includes(createConfig.targetRecord)) {
+        const matchingRecord = createRecordTargetRecord(createConfig.targetRecord);
+        createConfig.targetRecord = matchingRecord ? createRecordTargetValue(matchingRecord) : values[0] || "";
+      }
+      el.createRecordTarget.value = createConfig.targetRecord || "";
+    }
     if (el.createRecordMapButton) {
       const count = Array.isArray(createConfig.mappings) ? createConfig.mappings.length : 0;
       el.createRecordMapButton.textContent = count ? `MAP (${count})` : "MAP";
@@ -1702,6 +1952,7 @@ document.addEventListener("DOMContentLoaded", () => {
     ensureStartNode();
     state.selectedNodeId = "";
     state.selectedEdgeId = "";
+    state.selectedAnchor = null;
     el.select.value = "";
     el.name.value = "";
     el.description.value = "";
@@ -1728,16 +1979,25 @@ document.addEventListener("DOMContentLoaded", () => {
     };
     state.nodes.push(node);
     state.selectedNodeId = node.id;
+    state.selectedEdgeId = "";
+    state.selectedAnchor = null;
     switchToNodePropertiesFromWorkflowTab();
     render();
     pushHistory(before);
   }
 
   function startNodeDrag(event) {
+    if (state.edgeAnchorDrag?.placing) {
+      event.preventDefault();
+      event.stopPropagation();
+      confirmEdgeAnchorPlacement();
+      return;
+    }
     const node = state.nodes.find((item) => item.id === event.currentTarget.dataset.nodeId);
     if (!node) return;
     state.selectedNodeId = node.id;
     state.selectedEdgeId = "";
+    state.selectedAnchor = null;
     state.drag = {
       node,
       startX: event.clientX,
@@ -1753,6 +2013,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function startPortPointerDown(event) {
     event.stopPropagation();
+    if (state.edgeAnchorDrag?.placing) {
+      event.preventDefault();
+      confirmEdgeAnchorPlacement();
+      return;
+    }
     if (!event.shiftKey) return;
     event.preventDefault();
 
@@ -1762,6 +2027,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     state.selectedNodeId = node.id;
     state.selectedEdgeId = "";
+    state.selectedAnchor = null;
     state.portDrag = {
       node,
       kind: event.currentTarget.dataset.inputNode ? "input" : "output",
@@ -1806,10 +2072,16 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function startCanvasPan(event) {
     if (event.button !== 0) return;
+    if (state.edgeAnchorDrag) {
+      event.preventDefault();
+      confirmEdgeAnchorPlacement();
+      return;
+    }
     if (event.target.closest?.(".workflow-node, .workflow-output-port, .workflow-input-port, .workflow-edge, .workflow-edge-hit, .workflow-edge-label")) return;
     event.preventDefault();
     state.selectedNodeId = "";
     state.selectedEdgeId = "";
+    state.selectedAnchor = null;
     state.pan = {
       startX: event.clientX,
       startY: event.clientY,
@@ -1829,6 +2101,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const id = event.currentTarget.dataset.nodeId;
     state.selectedNodeId = id;
     state.selectedEdgeId = "";
+    state.selectedAnchor = null;
     switchToNodePropertiesFromWorkflowTab();
     render();
   }
@@ -1836,9 +2109,134 @@ document.addEventListener("DOMContentLoaded", () => {
   function onEdgeClick(event) {
     event.stopPropagation();
     event.preventDefault();
-    state.selectedEdgeId = event.currentTarget.dataset.edgeId || "";
+    const edgeId = event.currentTarget.dataset.edgeId || "";
+    if (state.edgeAnchorDrag) {
+      confirmEdgeAnchorPlacement();
+      return;
+    }
+    if (event.shiftKey) {
+      beginEdgeAnchorPlacement(edgeId, canvasPointFromClient(event.clientX, event.clientY));
+      return;
+    }
+    state.selectedEdgeId = edgeId;
     state.selectedNodeId = "";
+    state.selectedAnchor = null;
     render();
+  }
+
+  function pointToSegmentDistance(point, from, to) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const lengthSq = dx * dx + dy * dy;
+    if (!lengthSq) return Math.hypot(point.x - from.x, point.y - from.y);
+    const t = clamp(((point.x - from.x) * dx + (point.y - from.y) * dy) / lengthSq, 0, 1);
+    const x = from.x + t * dx;
+    const y = from.y + t * dy;
+    return Math.hypot(point.x - x, point.y - y);
+  }
+
+  function edgeRoutePoints(edge = {}) {
+    const from = state.nodes.find((node) => node.id === edge.from);
+    const to = state.nodes.find((node) => node.id === edge.to);
+    if (!from || !to) return [];
+    const optionIndex = Math.max(0, (from.options || []).findIndex((option) => option.label === edge.label));
+    const optionCount = Array.isArray(from.options) && from.options.length ? from.options.length : 1;
+    return [
+      portPoint(from, "output", edge.label || "", optionIndex, optionCount),
+      ...(Array.isArray(edge.anchors) ? edge.anchors : []),
+      portPoint(to, "input"),
+    ].map((point) => ({ x: Number(point.x), y: Number(point.y) }))
+      .filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y));
+  }
+
+  function edgeAnchorInsertIndex(edge = {}, point = {}) {
+    const points = edgeRoutePoints(edge);
+    if (points.length < 2) return Array.isArray(edge.anchors) ? edge.anchors.length : 0;
+    let bestIndex = 0;
+    let bestDistance = Infinity;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const distance = pointToSegmentDistance(point, points[index], points[index + 1]);
+      if (distance < bestDistance) {
+        bestDistance = distance;
+        bestIndex = index;
+      }
+    }
+    return Math.max(0, Math.min(bestIndex, Array.isArray(edge.anchors) ? edge.anchors.length : 0));
+  }
+
+  function beginEdgeAnchorPlacement(edgeId, point) {
+    const edge = state.edges.find((item) => item.id === edgeId);
+    if (!edge || !point) return;
+    const before = snapshot();
+    edge.anchors = Array.isArray(edge.anchors) ? edge.anchors : [];
+    const anchorIndex = edgeAnchorInsertIndex(edge, point);
+    edge.anchors.splice(anchorIndex, 0, { x: point.x, y: point.y });
+    state.selectedNodeId = "";
+    state.selectedEdgeId = edge.id;
+    state.selectedAnchor = { edgeId: edge.id, anchorIndex };
+    state.edgeAnchorDrag = {
+      edgeId: edge.id,
+      anchorIndex,
+      before,
+      placing: true,
+      moved: false,
+    };
+    render();
+    setStatus("Move the anchor, then click to place it.");
+  }
+
+  function startEdgeAnchorPointerDown(event) {
+    event.stopPropagation();
+    event.preventDefault();
+    const edgeId = event.currentTarget.dataset.edgeId || "";
+    const anchorIndex = Number(event.currentTarget.dataset.anchorIndex);
+    const edge = state.edges.find((item) => item.id === edgeId);
+    if (!edge || !Number.isFinite(anchorIndex)) return;
+    if (state.edgeAnchorDrag?.placing) {
+      confirmEdgeAnchorPlacement();
+      return;
+    }
+    state.selectedNodeId = "";
+    state.selectedEdgeId = edgeId;
+    state.selectedAnchor = { edgeId, anchorIndex };
+    if (!event.shiftKey) {
+      render();
+      setStatus("Anchor selected. Hold Shift and drag to move it, or press Delete to remove it.");
+      return;
+    }
+    state.edgeAnchorDrag = {
+      edgeId,
+      anchorIndex,
+      before: snapshot(),
+      placing: false,
+      moved: false,
+    };
+    setStatus("Move the path anchor.");
+  }
+
+  function updateDraggedEdgeAnchor(event) {
+    if (!state.edgeAnchorDrag) return false;
+    const edge = state.edges.find((item) => item.id === state.edgeAnchorDrag.edgeId);
+    const anchor = edge?.anchors?.[state.edgeAnchorDrag.anchorIndex];
+    if (!anchor) return false;
+    const point = canvasPointFromClient(event.clientX, event.clientY);
+    anchor.x = Math.max(0, point.x);
+    anchor.y = Math.max(0, point.y);
+    state.edgeAnchorDrag.moved = true;
+    renderEdges();
+    return true;
+  }
+
+  function confirmEdgeAnchorPlacement() {
+    if (!state.edgeAnchorDrag) return;
+    if (state.edgeAnchorDrag.moved || state.edgeAnchorDrag.placing) pushHistory(state.edgeAnchorDrag.before);
+    state.selectedAnchor = {
+      edgeId: state.edgeAnchorDrag.edgeId,
+      anchorIndex: state.edgeAnchorDrag.anchorIndex,
+    };
+    state.edgeAnchorDrag = null;
+    render();
+    setStatus("Path anchor placed.");
   }
 
   function startPathDrag(event) {
@@ -1893,6 +2291,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.pathPreview = null;
     state.selectedNodeId = path.from;
     state.selectedEdgeId = "";
+    state.selectedAnchor = null;
     render();
     pushHistory(before);
     setStatus(path.label ? `Connected "${path.label}".` : "Connected path.");
@@ -1920,6 +2319,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.addEventListener("pointermove", (event) => {
+    if (updateDraggedEdgeAnchor(event)) return;
     if (updateDraggedPort(event)) return;
 
     if (state.pan) {
@@ -1940,6 +2340,10 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   document.addEventListener("pointerup", () => {
+    if (state.edgeAnchorDrag && !state.edgeAnchorDrag.placing) {
+      confirmEdgeAnchorPlacement();
+    }
+
     if (state.portDrag) {
       if (state.portDrag.moved) pushHistory(state.portDrag.before);
       state.portDrag = null;
@@ -2373,7 +2777,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (!node || node.type !== "action") return;
     const before = snapshot();
     const createConfig = ensureActionConfig(node).createRecord;
-    createConfig.targetRecord = el.createRecordTarget.value || "salesOrder";
+    createConfig.targetRecord = el.createRecordTarget.value || "";
     createConfig.mappings = createConfig.mappings.map((mapping) => ({
       ...mapping,
       targetField: createRecordTargetRecord(createConfig.targetRecord)?.fields?.[0]?.internalId || "",
@@ -2729,13 +3133,34 @@ document.addEventListener("DOMContentLoaded", () => {
     const before = snapshot();
     state.edges = state.edges.filter((edge) => edge.id !== edgeId);
     if (state.selectedEdgeId === edgeId) state.selectedEdgeId = "";
+    if (state.selectedAnchor?.edgeId === edgeId) state.selectedAnchor = null;
     render();
     pushHistory(before);
   });
 
   function deleteSelectedWorkflowItem() {
-    if (!state.selectedNodeId && !state.selectedEdgeId) return false;
+    if (!state.selectedNodeId && !state.selectedEdgeId && !state.selectedAnchor) return false;
     const before = snapshot();
+
+    if (state.selectedAnchor) {
+      const { edgeId, anchorIndex } = state.selectedAnchor;
+      const edge = state.edges.find((item) => item.id === edgeId);
+      const index = Number(anchorIndex);
+      if (edge?.anchors?.[index]) {
+        edge.anchors.splice(index, 1);
+        if (!edge.anchors.length) delete edge.anchors;
+        state.selectedAnchor = null;
+        state.selectedEdgeId = edgeId;
+        state.edgeAnchorDrag = null;
+        render();
+        pushHistory(before);
+        setStatus("Path anchor deleted.");
+        return true;
+      }
+      state.selectedAnchor = null;
+      render();
+      return false;
+    }
 
     if (state.selectedNodeId) {
       const id = state.selectedNodeId;
@@ -2748,6 +3173,7 @@ document.addEventListener("DOMContentLoaded", () => {
       state.edges = state.edges.filter((edge) => edge.from !== id && edge.to !== id);
       state.selectedNodeId = "";
       state.selectedEdgeId = "";
+      state.selectedAnchor = null;
       render();
       pushHistory(before);
       setStatus("Node deleted.");
@@ -2757,6 +3183,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (state.selectedEdgeId) {
       state.edges = state.edges.filter((edge) => edge.id !== state.selectedEdgeId);
       state.selectedEdgeId = "";
+      state.selectedAnchor = null;
       render();
       pushHistory(before);
       setStatus("Path deleted.");
@@ -2832,6 +3259,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.edges = [];
     state.selectedNodeId = "";
     state.selectedEdgeId = "";
+    state.selectedAnchor = null;
     state.criteria = [];
     state.settings = normaliseWorkflowSettings();
     state.undo = [];
@@ -2882,6 +3310,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.debug = null;
     state.selectedNodeId = "";
     state.selectedEdgeId = "";
+    state.selectedAnchor = null;
     renderWorkflowSettings();
     renderWorkflowCriteria();
     setBuilderTab("workflow");
@@ -3100,6 +3529,37 @@ document.addEventListener("DOMContentLoaded", () => {
     state.selectedRecordFieldId = String(data.field?.id || id);
     await loadWorkflowRecords();
     setStatus("SuiteQL saved.");
+  }
+
+  async function saveSuiteQlForSelectedSublistField() {
+    const recordId = String(state.selectedRecordId || "").trim();
+    const target = state.suiteQlEditTarget || {};
+    const sublistId = String(target.sublistId || "").trim();
+    const id = String(target.fieldId || "").trim();
+    if (!recordId || !sublistId || !id) return;
+    const { field } = selectedSublistField(sublistId, id);
+    const row = el.sublistsList.querySelector(`[data-sublist-field-id="${CSS.escape(id)}"]`);
+    const rowIndex = Array.from(row?.parentElement?.querySelectorAll("[data-sublist-field-id]") || []).indexOf(row);
+    const fieldType = row?.querySelector(`[data-sublist-field-type="${CSS.escape(id)}"]`)?.value || field?.fieldType || "list/record";
+    const payload = {
+      label: row?.querySelector(`[data-sublist-field-label="${CSS.escape(id)}"]`)?.value.trim() || field?.label || "",
+      internalId: row?.querySelector(`[data-sublist-field-internal-id="${CSS.escape(id)}"]`)?.value.trim() || field?.internalId || "",
+      fieldType,
+      sortOrder: Math.max(0, rowIndex) * 10,
+      listValuesQuery: fieldUsesListQuery(fieldType) ? String(el.suiteQlEditor.value || "").trim() : "",
+    };
+    await api(`/records/${recordId}/sublists/${sublistId}/fields/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    state.expandedSublistId = sublistId;
+    await loadWorkflowRecords();
+    setStatus("SuiteQL saved.");
+  }
+
+  function resetSuiteQlEditTarget() {
+    state.suiteQlEditTarget = null;
   }
 
   async function deleteInlineField(fieldId) {
@@ -3363,6 +3823,7 @@ document.addEventListener("DOMContentLoaded", () => {
       event.preventDefault();
       event.stopPropagation();
       state.selectedRecordFieldId = suiteQlFieldId;
+      state.suiteQlEditTarget = { type: "field", fieldId: suiteQlFieldId };
       const field = selectedRecordField();
       const row = event.target.closest("[data-field-id]");
       const rowFieldType = row?.querySelector(`[data-field-type="${CSS.escape(suiteQlFieldId)}"]`)?.value || field?.fieldType || "list/record";
@@ -3432,6 +3893,24 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   el.sublistsList?.addEventListener("click", (event) => {
+    const suiteQlFieldId = event.target.closest("[data-edit-sublist-field-suiteql]")?.dataset.editSublistFieldSuiteql;
+    if (suiteQlFieldId) {
+      event.preventDefault();
+      event.stopPropagation();
+      const row = event.target.closest("[data-sublist-field-id]");
+      const sublistId = row?.dataset.sublistParentId || "";
+      const { field } = selectedSublistField(sublistId, suiteQlFieldId);
+      const rowFieldType = row?.querySelector(`[data-sublist-field-type="${CSS.escape(suiteQlFieldId)}"]`)?.value || field?.fieldType || "list/record";
+      if (!fieldUsesListQuery(rowFieldType)) {
+        setStatus("SuiteQL is only available for list/record or multiple select fields.");
+        return;
+      }
+      state.suiteQlEditTarget = { type: "sublistField", sublistId, fieldId: suiteQlFieldId };
+      state.expandedSublistId = sublistId;
+      el.suiteQlEditor.value = field?.listValuesQuery || "";
+      openSuiteQlDialogDirect();
+      return;
+    }
     const toggleId = event.target.closest("[data-toggle-sublist]")?.dataset.toggleSublist;
     if (toggleId) {
       state.expandedSublistId = String(state.expandedSublistId) === String(toggleId) ? "" : String(toggleId);
@@ -3461,6 +3940,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const deleteFieldId = event.target.closest("[data-delete-sublist-field]")?.dataset.deleteSublistField;
     if (deleteFieldId) {
       deleteInlineSublistField(deleteFieldId).catch((err) => setStatus(err.message || "Failed to delete sublist field."));
+    }
+  });
+
+  el.sublistsList?.addEventListener("change", (event) => {
+    const fieldId = event.target.dataset.sublistFieldType;
+    if (!fieldId) return;
+    const row = event.target.closest("[data-sublist-field-id]");
+    const suiteQlCell = row?.querySelector(".record-suiteql-cell");
+    if (suiteQlCell) {
+      suiteQlCell.innerHTML = fieldUsesListQuery(event.target.value)
+        ? `<button type="button" class="btn-secondary record-suiteql-edit" data-edit-sublist-field-suiteql="${escapeHtml(fieldId)}">Add SuiteQL</button> <span class="record-suiteql-state">Not set</span>`
+        : '<span class="record-suiteql-state">Not applicable</span>';
     }
   });
 
@@ -3501,6 +3992,7 @@ document.addEventListener("DOMContentLoaded", () => {
       setStatus("SuiteQL is only available for list/record or multiple select fields.");
       return;
     }
+    state.suiteQlEditTarget = { type: "field", fieldId: String(state.selectedRecordFieldId || "") };
     el.suiteQlEditor.value = el.fieldListQuery.value || "";
     openSuiteQlDialogDirect();
   }
@@ -3522,11 +4014,23 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   el.fieldSuiteQlBtn?.addEventListener("click", openSuiteQlDialog);
-  el.suiteQlClose?.addEventListener("click", closeSuiteQlDialog);
-  el.suiteQlCancel?.addEventListener("click", closeSuiteQlDialog);
+  el.suiteQlClose?.addEventListener("click", () => {
+    closeSuiteQlDialog();
+    resetSuiteQlEditTarget();
+  });
+  el.suiteQlCancel?.addEventListener("click", () => {
+    closeSuiteQlDialog();
+    resetSuiteQlEditTarget();
+  });
   el.suiteQlSave?.addEventListener("click", () => {
-    saveSuiteQlForSelectedField()
-      .then(() => closeSuiteQlDialog())
+    const save = state.suiteQlEditTarget?.type === "sublistField"
+      ? saveSuiteQlForSelectedSublistField()
+      : saveSuiteQlForSelectedField();
+    save
+      .then(() => {
+        closeSuiteQlDialog();
+        resetSuiteQlEditTarget();
+      })
       .catch((err) => setStatus(err.message || "Failed to save SuiteQL."));
   });
 

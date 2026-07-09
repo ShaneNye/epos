@@ -1692,6 +1692,137 @@ window.onInventorySaved = function onInventorySaved(itemId, detailString, lineIn
   }
 };
 
+function salesViewBooleanFieldValue(value) {
+  if (value == null) return false;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (Array.isArray(value)) return value.some(salesViewBooleanFieldValue);
+  if (typeof value === "object") {
+    return salesViewBooleanFieldValue(
+      value.value ?? value.id ?? value.refName ?? value.text ?? value.name ?? value.label
+    );
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  return ["t", "true", "1", "yes", "y", "checked", "closed"].includes(normalized);
+}
+
+function salesViewLineIsClosed(line = {}) {
+  return [
+    line.isclosed,
+    line.isClosed,
+    line.closed,
+    line._closed,
+    line.lineclosed,
+    line.lineClosed,
+    line["Is Closed"],
+    line["Line Closed"],
+    line["Closed"],
+  ].some(salesViewBooleanFieldValue);
+}
+
+function salesViewMoney(value) {
+  const number = Number(value || 0);
+  return Number.isFinite(number) ? number : 0;
+}
+
+function renderClosedSalesViewLines(lines = []) {
+  const tbody = document.getElementById("closedLinesBody");
+  const count = document.getElementById("closedLinesTabCount");
+  const tab = document.querySelector('.sales-view-tab[data-sales-tab="closedLines"]');
+  const panel = document.getElementById("salesTabClosedLines");
+  const hasClosedLines = lines.length > 0;
+
+  if (tab) {
+    tab.hidden = !hasClosedLines;
+    if (!hasClosedLines && tab.classList.contains("active")) {
+      const itemsTab = document.querySelector('.sales-view-tab[data-sales-tab="items"]');
+      const itemsPanel = document.getElementById("salesTabItems");
+      tab.classList.remove("active");
+      tab.setAttribute("aria-selected", "false");
+      if (panel) {
+        panel.hidden = true;
+        panel.classList.remove("active");
+      }
+      if (itemsTab) {
+        itemsTab.classList.add("active");
+        itemsTab.setAttribute("aria-selected", "true");
+      }
+      if (itemsPanel) {
+        itemsPanel.hidden = false;
+        itemsPanel.classList.add("active");
+      }
+    }
+  }
+
+  if (count) count.textContent = `(${lines.length})`;
+  if (!tbody) return;
+
+  tbody.innerHTML = "";
+
+  if (!lines.length) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="9" class="closed-lines-empty">No closed lines found.</td>`;
+    tbody.appendChild(tr);
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  lines.forEach((line) => {
+    const qty = Math.abs(Number(line.quantity || 1)) || 1;
+    const amount = salesViewMoney(line.amount);
+    const sale = salesViewMoney(line.saleprice ?? line.grossSaleprice ?? line.grossAmount ?? line.amount);
+    const taxCodeValues = salesViewRecordValues(line, ["taxCode", "taxcode", "tax_code", "Tax Code"]);
+    const vatFree = taxCodeValues.some(isSalesViewVatFreeTaxCode);
+    const discountBasis = vatFree ? amount / 1.2 : amount;
+    const displaySale = vatFree && sale === amount ? discountBasis : sale;
+    const discountPct = discountBasis > 0
+      ? Math.max(0, ((discountBasis - displaySale) / discountBasis) * 100)
+      : 0;
+    const taxValue = vatFree ? 0 : displaySale / 6;
+    const optionsText = line.custcol_sb_itemoptionsdisplay || line.optionsDisplay || "";
+    const fulfilment = line.custcol_sb_fulfilmentlocation?.refName || "";
+    const inventoryDetail = existingInventoryDetail(line);
+    const inventorySummary = salesViewInventoryDisplayForLine({
+      line,
+      fulfilmentName: fulfilment,
+      lotDetails: existingLotDetailsValue(line),
+      inventoryMeta: salesViewRecordValue(line, [
+        "custcol_sb_epos_inventory_meta",
+        "CUSTCOL_SB_EPOS_INVENTORY_META",
+        "inventoryMeta",
+      ]),
+      lotNumber: salesViewRecordValue(line, [
+        "custcol_sb_lotnumber",
+        "CUSTCOL_SB_LOTNUMBER",
+        "lotnumber",
+        "lotNumber",
+      ]),
+      inventoryDetail,
+      inventoryDisplay: existingInventoryDetailDisplay(line),
+    });
+
+    const tr = document.createElement("tr");
+    tr.className = "closed-order-line";
+    tr.innerHTML = `
+      <td>${escapeSalesViewHtml(line.item?.refName || "-")}</td>
+      <td>${buildOptionsSummaryHtml(optionsText) || "-"}</td>
+      <td>${qty}</td>
+      <td>&pound;${amount.toFixed(2)}</td>
+      <td>${discountPct.toFixed(1)}%</td>
+      <td>&pound;${taxValue.toFixed(2)}</td>
+      <td>&pound;${displaySale.toFixed(2)}</td>
+      <td>${escapeSalesViewHtml(fulfilment || "-")}</td>
+      <td>${escapeSalesViewHtml(inventorySummary || inventoryDetail || "-")}</td>
+    `;
+    frag.appendChild(tr);
+  });
+
+  tbody.appendChild(frag);
+}
+
+window.salesViewLineIsClosed = salesViewLineIsClosed;
+
 /* =========================================================
    Main renderer
 ========================================================= */
@@ -1726,7 +1857,9 @@ window.renderSalesViewLines = function renderSalesViewLines({
   const compactStatus = `${statusId} ${statusName}`.replace(/[^A-Z]/g, "");
   const isPendingFulfillment =
     statusId === "B" || compactStatus.includes("PENDINGFULFILLMENT") || compactStatus.includes("PENDINGFULFILMENT");
-  const lines = so?.item?.items || [];
+  const allLines = Array.isArray(so?.item?.items) ? so.item.items : [];
+  const lines = allLines.filter((line) => !salesViewLineIsClosed(line));
+  renderClosedSalesViewLines(allLines.filter(salesViewLineIsClosed));
 
   if (!lines.length) {
     if (isPending) {

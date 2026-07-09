@@ -255,6 +255,9 @@
                     <button type="button" class="sales-view-tab" data-sales-tab="related" role="tab" aria-selected="false">
                         Related Records
                     </button>
+                    <button type="button" class="sales-view-tab" data-sales-tab="closedLines" role="tab" aria-selected="false" hidden>
+                        Closed Lines <span id="closedLinesTabCount" class="sales-tab-count">(0)</span>
+                    </button>
                     <button type="button" class="sales-view-tab" data-sales-tab="customFields" role="tab" aria-selected="false">
                         Custom Fields
                     </button>
@@ -344,6 +347,29 @@
                             <tr>
                                 <th>Exported to DispatchTrack</th>
                                 <td id="relatedDispatchTrack">-</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <div id="salesTabClosedLines" class="sales-tab-panel" role="tabpanel" hidden>
+                    <table class="order-table closed-lines-table" id="closedLinesTable">
+                        <thead>
+                            <tr>
+                                <th>Item</th>
+                                <th>Options</th>
+                                <th>Quantity</th>
+                                <th>Amount</th>
+                                <th>Discount %</th>
+                                <th>Tax (20%)</th>
+                                <th>Sale Price</th>
+                                <th>Fulfilment Method</th>
+                                <th>Inventory Detail</th>
+                            </tr>
+                        </thead>
+                        <tbody id="closedLinesBody">
+                            <tr>
+                                <td colspan="9" class="closed-lines-empty">No closed lines found.</td>
                             </tr>
                         </tbody>
                     </table>

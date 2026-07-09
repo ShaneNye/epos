@@ -31,7 +31,7 @@ const { createNetSuiteCustomer } = require("../utils/netsuiteCustomerCreate");
 // ✅ In-memory cache for GET /:id sales order payloads
 // =====================================================
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
-const SO_CACHE_VERSION = "lot-details-display-v2";
+const SO_CACHE_VERSION = "closed-lines-v1";
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
 const LOCATION_FEED_TTL_MS = 10 * 60 * 1000;
 const locationFeedCache = { expiresAt: 0, rows: null, inFlight: null };
@@ -800,6 +800,7 @@ function buildSalesOrderLineSuiteQl(id, { includeLotDetails = true } = {}) {
       id AS lineid,
       item,
       quantity,
+      isclosed,
       netamount,
       rate,
       taxcode,
@@ -1814,8 +1815,19 @@ const CREATE_RECORD_ENDPOINTS = {
   returnAuthorization: { endpoint: "/returnAuthorization", recordType: "returnAuthorization", documentPath: "/app/accounting/transactions/rtnauth.nl" },
 };
 
+function normaliseRecordTypeKey(value = "") {
+  return String(value || "").toLowerCase().replace(/[^a-z0-9]/g, "");
+}
+
 function createRecordConfig(targetRecord = "") {
-  return CREATE_RECORD_ENDPOINTS[targetRecord] || null;
+  const direct = CREATE_RECORD_ENDPOINTS[targetRecord];
+  if (direct) return direct;
+  const clean = normaliseRecordTypeKey(targetRecord);
+  const canonicalKey = Object.keys(CREATE_RECORD_ENDPOINTS).find((key) => normaliseRecordTypeKey(key) === clean);
+  if (canonicalKey) return CREATE_RECORD_ENDPOINTS[canonicalKey];
+  const raw = cleanDraftValue(targetRecord);
+  if (!raw) return null;
+  return { endpoint: `/${raw}`, recordType: raw, documentPath: "" };
 }
 
 function fieldTypeUsesRef(fieldType = "") {
@@ -2510,7 +2522,7 @@ function uniqueDepositCandidates(candidates = []) {
 }
 
 async function createRecordWithOptionalStaging(config, payload, targetRecord, userId, context = {}) {
-  if (targetRecord !== "customerRefund") {
+  if (config.recordType !== "customerRefund") {
     logCreateRecordDebug("posting record", {
       targetRecord,
       endpoint: config.endpoint,
@@ -2574,6 +2586,7 @@ async function executeCreateRecordAction({ caseId, action, checks = [], answers 
   const createRecord = action.createRecord && typeof action.createRecord === "object" ? action.createRecord : {};
   const config = createRecordConfig(createRecord.targetRecord);
   if (!config) throw new Error(`Create Record target is not supported: ${createRecord.targetRecord || "(blank)"}`);
+  const targetRecordType = config.recordType || createRecord.targetRecord || "";
   console.warn("[workflow-create-record] action start", {
     caseId,
     nodeId: action.nodeId || "",
@@ -2592,11 +2605,11 @@ async function executeCreateRecordAction({ caseId, action, checks = [], answers 
     checks,
     answers,
   }, userId);
-  if (createRecord.targetRecord === "customerRefund" && !payload.customer && caseDetail.customerId) {
+  if (targetRecordType === "customerRefund" && !payload.customer && caseDetail.customerId) {
     payload.customer = { id: caseDetail.customerId };
   }
   if (
-    createRecord.targetRecord === "customerRefund" &&
+    targetRecordType === "customerRefund" &&
     !payload.paymentOption &&
     !payload.paymentoption &&
     !payload.paymentmethod &&
@@ -2621,7 +2634,7 @@ async function executeCreateRecordAction({ caseId, action, checks = [], answers 
   let createPayload = payload;
   let deferredPayload = null;
   try {
-    const candidateDeposits = createRecord.targetRecord === "customerRefund"
+    const candidateDeposits = targetRecordType === "customerRefund"
       ? await getCustomerDepositCandidatesForRefund({
         salesOrderId,
         customerId: caseDetail.customerId,
@@ -2676,7 +2689,7 @@ async function executeCreateRecordAction({ caseId, action, checks = [], answers 
   }
   let documentNumber = cleanDraftValue(created.tranId || created.tranid) || id;
   if (id) {
-    if (createRecord.targetRecord === "salesOrder") {
+    if (targetRecordType === "salesOrder") {
       const doc = await getSalesOrderDocumentInfo(id, userId).catch(() => null);
       documentNumber = doc?.documentNumber || documentNumber || id;
     }
@@ -2690,7 +2703,7 @@ async function executeCreateRecordAction({ caseId, action, checks = [], answers 
     document: {
       id,
       number: documentNumber,
-      url: id ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}${config.documentPath}?id=${encodeURIComponent(id)}` : "",
+      url: id && config.documentPath ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}${config.documentPath}?id=${encodeURIComponent(id)}` : "",
     },
   };
 }
@@ -7508,6 +7521,8 @@ router.get("/:id", async (req, res) => {
 
           return {
             lineId,
+            isclosed: r.isclosed ?? r.ISCLOSED ?? false,
+            isClosed: r.isclosed ?? r.ISCLOSED ?? false,
             item: { id: itemId, refName: itemName, class: info.class || "" },
             itemClass: info.class || "",
             quantity: qty,

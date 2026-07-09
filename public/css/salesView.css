@@ -1092,8 +1092,23 @@ textarea:focus {
   color: #0081ab;
 }
 
+.sales-tab-count {
+  color: #64748b;
+  font-weight: 600;
+}
+
 .sales-tab-panel[hidden] {
   display: none;
+}
+
+.closed-lines-empty {
+  color: #64748b;
+  padding: 14px 10px;
+  text-align: center;
+}
+
+.closed-lines-table td {
+  vertical-align: top;
 }
 
 .service-empty-cell {

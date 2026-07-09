@@ -92,7 +92,29 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function targetRecord(target = "salesOrder") {
-    return workflowRecordByKeys(TARGETS[target]?.keys || []);
+    const cleanTarget = normaliseRecordLookup(target);
+    return state.records.find((record) =>
+      String(record.id) === String(target) ||
+      normaliseRecordLookup(record.internalId) === cleanTarget ||
+      normaliseRecordLookup(record.label) === cleanTarget
+    ) || workflowRecordByKeys(TARGETS[target]?.keys || []);
+  }
+
+  function targetRecordValue(record = {}) {
+    return record.internalId || record.id || "";
+  }
+
+  function targetRecordLabel(target = "") {
+    const record = targetRecord(target);
+    return record?.label || TARGETS[target]?.label || "Target record";
+  }
+
+  function targetRecordOptions(selectedValue = "") {
+    if (!state.records.length) return '<option value="">No records configured</option>';
+    return state.records.map((record) => {
+      const value = targetRecordValue(record);
+      return `<option value="${escapeHtml(value)}" ${String(value) === String(selectedValue) ? "selected" : ""}>${escapeHtml(record.label || value)}</option>`;
+    }).join("");
   }
 
   function sourceFields() {
@@ -636,7 +658,15 @@ document.addEventListener("DOMContentLoaded", () => {
   function render() {
     const createConfig = state.createRecord;
     el.source.value = createConfig.sourceRecord || "storeSalesOrder";
-    el.target.value = createConfig.targetRecord || "salesOrder";
+    if (el.target) {
+      el.target.innerHTML = targetRecordOptions(createConfig.targetRecord);
+      const values = Array.from(el.target.options).map((option) => option.value);
+      if (!values.includes(createConfig.targetRecord)) {
+        const matchingRecord = targetRecord(createConfig.targetRecord);
+        createConfig.targetRecord = matchingRecord ? targetRecordValue(matchingRecord) : values[0] || "";
+      }
+      el.target.value = createConfig.targetRecord || "";
+    }
     let sourcePanel = ["workflowInputs", "lineFields"].includes(createConfig.sourcePanel) ? createConfig.sourcePanel : "record";
     if (sourcePanel === "lineFields" && state.mapMode !== "itemLineAction") {
       sourcePanel = "record";
@@ -650,7 +680,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const source = sourceRecord(createConfig.sourceRecord);
     const target = targetRecord(createConfig.targetRecord);
-    const targetLabel = TARGETS[createConfig.targetRecord]?.label || "Target record";
+    const targetLabel = targetRecordLabel(createConfig.targetRecord);
     document.title = state.mapMode === "itemLineAction" ? "Item Line Mapping" : "Create Record Mapping";
     document.querySelector(".mapper-header h1").textContent = state.mapMode === "itemLineAction" ? "Item Line Mapping" : "Create Record Mapping";
     document.querySelector(".mapping-panel h2").textContent = state.mapMode === "itemLineAction" ? "Line Field Mapping" : "Field Mapping";
@@ -981,7 +1011,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   el.target.addEventListener("change", () => {
-    state.createRecord.targetRecord = el.target.value || "salesOrder";
+    state.createRecord.targetRecord = el.target.value || "";
     state.createRecord.mappings = state.createRecord.mappings.map((mapping) => ({
       ...mapping,
       targetField: "",

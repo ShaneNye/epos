@@ -172,6 +172,7 @@ function setupSalesViewTabs() {
   const panels = {
     items: document.getElementById("salesTabItems"),
     related: document.getElementById("salesTabRelated"),
+    closedLines: document.getElementById("salesTabClosedLines"),
     customFields: document.getElementById("salesTabCustomFields"),
   };
 
@@ -2306,6 +2307,39 @@ function receiptCellText(row, selector, fallbackCellIndex) {
   return cell?.innerText?.trim() || cell?.textContent?.trim() || "";
 }
 
+function salesOrderViewBooleanFieldValue(value) {
+  if (value == null) return false;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value === 1;
+  if (Array.isArray(value)) return value.some(salesOrderViewBooleanFieldValue);
+  if (typeof value === "object") {
+    return salesOrderViewBooleanFieldValue(
+      value.value ?? value.id ?? value.refName ?? value.text ?? value.name ?? value.label
+    );
+  }
+
+  const normalized = String(value).trim().toLowerCase();
+  return ["t", "true", "1", "yes", "y", "checked", "closed"].includes(normalized);
+}
+
+function salesOrderViewLineIsClosed(line = {}) {
+  if (typeof window.salesViewLineIsClosed === "function") {
+    return window.salesViewLineIsClosed(line);
+  }
+
+  return [
+    line.isclosed,
+    line.isClosed,
+    line.closed,
+    line._closed,
+    line.lineclosed,
+    line.lineClosed,
+    line["Is Closed"],
+    line["Line Closed"],
+    line["Closed"],
+  ].some(salesOrderViewBooleanFieldValue);
+}
+
 function buildSalesReceiptPayloadFromDom(tranId) {
   const so = window._currentSalesOrder || {};
   const items = [...document.querySelectorAll("#orderItemsBody tr.order-line")]
@@ -2857,6 +2891,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
     );
 
     const originalLineIds = (so?.item?.items || [])
+      .filter((line) => !salesOrderViewLineIsClosed(line))
       .map((line) => String(line.lineId || "").trim())
       .filter(Boolean);
 
