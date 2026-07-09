@@ -2658,6 +2658,18 @@ function updateActionButton(orderStatusObj, tranId, so) {
     document.getElementById("commitInlineStatus")?.classList.add("hidden");
   }
 
+  function showCommitOverlay(message = "Committing Sales Order...") {
+    const overlay = document.getElementById("commitSpinner");
+    if (!overlay) return;
+    const text = overlay.querySelector("p");
+    if (text) text.textContent = message;
+    overlay.classList.remove("hidden");
+  }
+
+  function hideCommitOverlay() {
+    document.getElementById("commitSpinner")?.classList.add("hidden");
+  }
+
   const statusId =
     typeof orderStatusObj === "string"
       ? orderStatusObj.trim().toUpperCase()
@@ -2920,12 +2932,120 @@ function updateActionButton(orderStatusObj, tranId, so) {
     return JSON.stringify(payload || {});
   }
 
+  function salesOrderUiHasChanges() {
+    try {
+      const payload = buildPayloadFromUI();
+      return stableSalesSaveSignature(payload) !== window._lastSalesOrderSaveSignature;
+    } catch (err) {
+      console.warn("Could not compare Sales Order save signature:", err.message || err);
+      return true;
+    }
+  }
+
+  function salesOrderHasAnyUnsavedChanges() {
+    return salesOrderUiHasChanges() || customFieldsHaveChanges();
+  }
+
+  function refreshCommitButtonLabel() {
+    const button = document.getElementById("commitOrderBtn");
+    if (!button) return;
+    button.textContent = salesOrderHasAnyUnsavedChanges() ? "Save & Commit" : "Commit";
+  }
+
+  function bindSalesOrderDirtyTracking() {
+    if (wrapper.dataset.dirtyTrackingBound === "1") return;
+    wrapper.dataset.dirtyTrackingBound = "1";
+
+    const refresh = () => {
+      if (typeof window.requestAnimationFrame === "function") {
+        window.requestAnimationFrame(refreshCommitButtonLabel);
+      } else {
+        refreshCommitButtonLabel();
+      }
+    };
+
+    const orderRoot = document.querySelector("main") || document;
+    orderRoot.addEventListener("input", refresh);
+    orderRoot.addEventListener("change", refresh);
+    orderRoot.addEventListener("click", (event) => {
+      if (
+        event.target.closest(".delete-row") ||
+        event.target.closest("#addItemBtn") ||
+        event.target.closest(".open-inventory") ||
+        event.target.closest(".open-options")
+      ) {
+        setTimeout(refreshCommitButtonLabel, 0);
+      }
+    });
+  }
+
+  async function saveSalesOrderChanges({
+    token,
+    button = null,
+    reloadAfterSave = false,
+    showNoChangeToast = true,
+  } = {}) {
+    let payload;
+    let signature;
+    try {
+      payload = buildPayloadFromUI();
+      signature = stableSalesSaveSignature(payload);
+    } catch (err) {
+      console.error("Sales order payload build failed:", err.message || err);
+      throw err;
+    }
+
+    const hasOrderChanges = signature !== window._lastSalesOrderSaveSignature;
+    const hasCustomChanges = customFieldsHaveChanges();
+
+    if (!hasOrderChanges && !hasCustomChanges) {
+      if (showNoChangeToast) showToast?.("No order changes to save.", "success");
+      return { changed: false };
+    }
+
+    let restletResult = null;
+    if (hasOrderChanges) {
+      const res = await fetch(`/api/netsuite/salesorder/${tranId}/save`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+      });
+
+      const data = await res.json();
+      if (!res.ok || !data.ok) throw new Error(data.error || "Failed to save order");
+      restletResult = data.restletResult;
+      applySavedSalesLineIdentity(restletResult);
+      window._lastSalesOrderSaveSignature = stableSalesSaveSignature(buildPayloadFromUI());
+    }
+
+    if (hasCustomChanges) {
+      const customResult = await saveCustomFieldsForCurrentOrder({ button });
+      if (!customResult.ok) throw customResult.error || new Error("Failed to save custom fields");
+    }
+
+    refreshCommitButtonLabel();
+
+    if (reloadAfterSave) {
+      setTimeout(() => {
+        window.location.reload();
+      }, 800);
+    }
+
+    return { changed: true, restletResult };
+  }
+
   try {
     window._lastSalesOrderSaveSignature = stableSalesSaveSignature(buildPayloadFromUI());
   } catch (err) {
     console.warn("Could not create initial Sales Order save signature:", err.message || err);
     window._lastSalesOrderSaveSignature = "";
   }
+
+  bindSalesOrderDirtyTracking();
+  refreshCommitButtonLabel();
 
   const saveBtn = document.getElementById("saveOrderBtn");
   if (saveBtn) {
@@ -2944,62 +3064,20 @@ function updateActionButton(orderStatusObj, tranId, so) {
       setOrderMutationBusy(true);
       showCommitInlineLocal("Saving…");
 
-      let payload;
-      let signature;
       try {
-        payload = buildPayloadFromUI();
-        signature = stableSalesSaveSignature(payload);
-      } catch (err) {
-        console.error("Sales order payload build failed:", err.message || err);
-        showToast?.(err.message || "Could not collect order lines", "error");
-        showCommitInlineLocal("Save failed");
-        setTimeout(() => hideCommitInlineLocal(), 1500);
-        setOrderMutationBusy(false);
-        return;
-      }
-
-      if (signature === window._lastSalesOrderSaveSignature) {
-        if (customFieldsHaveChanges()) {
-          showCommitInlineLocal("Saving custom fields...");
-          const customResult = await saveCustomFieldsForCurrentOrder({ button: freshSaveBtn });
-          showCommitInlineLocal("Saved ✅");
-          setTimeout(() => hideCommitInlineLocal(), 800);
-          setOrderMutationBusy(false);
-          return;
-        }
-        showToast?.("No order changes to save.", "success");
-        showCommitInlineLocal("No changes ✅");
-        setTimeout(() => hideCommitInlineLocal(), 800);
-        setOrderMutationBusy(false);
-        return;
-      }
-
-      try {
-        const res = await fetch(`/api/netsuite/salesorder/${tranId}/save`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-          body: JSON.stringify(payload),
+        const saveResult = await saveSalesOrderChanges({
+          token,
+          button: freshSaveBtn,
+          reloadAfterSave: true,
         });
 
-        const data = await res.json();
-        if (!res.ok || !data.ok) throw new Error(data.error || "Failed to save order");
-
-        if (customFieldsHaveChanges()) {
-          const customResult = await saveCustomFieldsForCurrentOrder({ button: freshSaveBtn });
-          if (!customResult.ok) throw customResult.error || new Error("Failed to save custom fields");
+        if (saveResult.changed) {
+          showToast?.("Saved (not committed)", "success");
+          showCommitInlineLocal("Saved");
+        } else {
+          showCommitInlineLocal("No changes");
+          setTimeout(() => hideCommitInlineLocal(), 800);
         }
-
-        showToast?.("✅ Saved (not committed)", "success");
-        applySavedSalesLineIdentity(data.restletResult);
-        window._lastSalesOrderSaveSignature = stableSalesSaveSignature(buildPayloadFromUI());
-        showCommitInlineLocal("Saved ✅");
-        setTimeout(() => {
-          hideCommitInlineLocal();
-          window.location.reload();
-        }, 800);
       } catch (err) {
         console.error("❌ Save error:", err.message || err);
         showToast?.(`❌ ${err.message || err}`, "error");
@@ -3054,6 +3132,7 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
       row.dataset.invdetail = "";
       const backOrderInput = row.querySelector(".item-inv-detail");
       if (backOrderInput) backOrderInput.value = "";
+      refreshCommitButtonLabel();
       return;
     }
 
@@ -3095,6 +3174,8 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
       updateOrderSummaryFromTable();
     }
 
+    refreshCommitButtonLabel();
+
     // ✅ clear remembered target after successful writeback
     window.__salesInventoryTargetRowLine = null;
     window.__salesInventoryTargetItemId = null;
@@ -3125,9 +3206,25 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
     if (!validateSalesViewItemsBeforeSave()) return;
 
     setOrderMutationBusy(true);
-    showCommitInlineLocal("Committing…");
+    const requiresSaveFirst = salesOrderHasAnyUnsavedChanges();
+    const initialMessage = requiresSaveFirst
+      ? "Saving Sales Order..."
+      : "Committing Sales Order....";
+    showCommitInlineLocal(initialMessage);
+    showCommitOverlay(initialMessage);
 
     try {
+      if (requiresSaveFirst) {
+        await saveSalesOrderChanges({
+          token,
+          button: null,
+          showNoChangeToast: false,
+        });
+      }
+
+      showCommitInlineLocal("Committing Sales Order....");
+      showCommitOverlay("Committing Sales Order....");
+
       const payload = buildPayloadFromUI();
       const res = await fetch(`/api/netsuite/salesorder/${tranId}/commit`, {
         method: "POST",
@@ -3141,8 +3238,9 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
       const data = await res.json();
       if (!res.ok || !data.ok) throw new Error(data.error || "Failed to commit order");
 
-      showToast?.(`✅ Order ${tranId} approved!`, "success");
-      showCommitInlineLocal("Committed ✅ Refreshing…");
+      showToast?.(`Order ${tranId} approved!`, "success");
+      showCommitInlineLocal("Committed. Refreshing...");
+      showCommitOverlay("Committed. Refreshing...");
 
       setTimeout(() => {
         const refreshUrl = new URL(window.location.href);
@@ -3151,10 +3249,11 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
         window.location.replace(refreshUrl.toString());
       }, 1000);
     } catch (err) {
-      console.error("❌ Commit error:", err.message || err);
-      showToast?.(`❌ ${err.message || err}`, "error");
+      console.error("Commit error:", err.message || err);
+      showToast?.(`${err.message || err}`, "error");
 
-      showCommitInlineLocal("Commit failed ❌");
+      showCommitInlineLocal("Commit failed");
+      hideCommitOverlay();
       setTimeout(() => hideCommitInlineLocal(), 2000);
 
       setOrderMutationBusy(false);
