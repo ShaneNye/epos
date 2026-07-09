@@ -24,6 +24,37 @@
   function escapeHtml(value) {
     return String(value ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
+  function decodedHtml(value) {
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = String(value || "");
+    return textarea.value;
+  }
+  function normalizedAnchorHref(value) {
+    const href = String(value || "").trim();
+    if (!href || /[\u0000-\u001f\u007f]/.test(href)) return "";
+    const normalized = /^(?:www\.|[a-z0-9.-]+\.[a-z]{2,}(?:[/?#:]|$))/i.test(href) ? `https://${href}` : href;
+    try {
+      const url = new URL(normalized, window.location.origin);
+      return ["http:", "https:", "mailto:"].includes(url.protocol) ? normalized : "";
+    } catch {
+      return "";
+    }
+  }
+  function anchorTextHtml(value) {
+    const template = document.createElement("template");
+    template.innerHTML = decodedHtml(value);
+    const renderNode = (node) => {
+      if (node.nodeType === Node.TEXT_NODE) return escapeHtml(node.textContent || "");
+      if (node.nodeType !== Node.ELEMENT_NODE) return "";
+      const href = normalizedAnchorHref(node.getAttribute("href"));
+      if (node.tagName === "A" && href) {
+        const label = Array.from(node.childNodes).map(renderNode).join("") || escapeHtml(href);
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener" style="color:#0b7aa6; font-weight:700; text-decoration:underline;">${label}</a>`;
+      }
+      return Array.from(node.childNodes).map(renderNode).join("");
+    };
+    return Array.from(template.content.childNodes).map(renderNode).join("");
+  }
   function splitMultiValue(value) {
     if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
     return String(value || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
@@ -69,7 +100,7 @@
     state.baseline.clear();
     state.dirty.clear();
     const data = await api("/item-faqs");
-    state.rows = (data.rows || []).map((row, index) => ({ ...row, _suitepimKey: rowKey(row, index) }));
+    state.rows = (data.rows || []).map((row, index) => ({ ...row, Description: decodedHtml(row.Description), _suitepimKey: rowKey(row, index) }));
     state.rows.forEach((row) => state.baseline.set(row._suitepimKey, JSON.stringify(stripInternal(row))));
     state.activeKey = state.rows[0]?._suitepimKey || "";
     applyFilters();
@@ -298,7 +329,7 @@
         <div style="padding:10px 12px; background:#eef7fb; color:#0b7aa6; font-size:12px; font-weight:700;">Why do I need a mattress protector?</div>
       </div>`;
     }
-    return `<div style="display:grid; gap:8px;">${faqs.map((faq) => `<details style="background:#eef7fb; color:#0b7aa6; font-size:12px;"><summary style="cursor:pointer; padding:10px 12px; font-weight:700;">${escapeHtml(faq.Name || "FAQ")}</summary><div style="padding:0 12px 10px; color:#4a4a4a; line-height:1.45;">${escapeHtml(faq.Description || "No answer added yet.")}</div></details>`).join("")}</div>`;
+    return `<div style="display:grid; gap:8px;">${faqs.map((faq) => `<details style="background:#eef7fb; color:#0b7aa6; font-size:12px;"><summary style="cursor:pointer; padding:10px 12px; font-weight:700;">${escapeHtml(faq.Name || "FAQ")}</summary><div style="padding:0 12px 10px; color:#4a4a4a; line-height:1.45;">${anchorTextHtml(faq.Description || "No answer added yet.")}</div></details>`).join("")}</div>`;
   }
   function patchFaqPanel(html, faqHtml) {
     const template = document.createElement("template");

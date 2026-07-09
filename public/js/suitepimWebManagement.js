@@ -228,6 +228,44 @@
       .replace(/"/g, "&quot;");
   }
 
+  function decodedHtml(value) {
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = String(value || "");
+    return textarea.value;
+  }
+
+  function normalizedAnchorHref(value) {
+    const href = String(value || "").trim();
+    if (!href || /[\u0000-\u001f\u007f]/.test(href)) return "";
+    const normalized = /^(?:www\.|[a-z0-9.-]+\.[a-z]{2,}(?:[/?#:]|$))/i.test(href) ? `https://${href}` : href;
+    try {
+      const url = new URL(normalized, window.location.origin);
+      return ["http:", "https:", "mailto:"].includes(url.protocol) ? normalized : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function anchorTextHtml(value) {
+    const template = document.createElement("template");
+    template.innerHTML = decodedHtml(value);
+
+    const renderNode = (node) => {
+      if (node.nodeType === Node.TEXT_NODE) return escapeHtml(node.textContent || "");
+      if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+      const href = normalizedAnchorHref(node.getAttribute("href"));
+      if (node.tagName === "A" && href) {
+        const label = Array.from(node.childNodes).map(renderNode).join("") || escapeHtml(href);
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener" style="color:#0b7aa6; font-weight:700; text-decoration:underline;">${label}</a>`;
+      }
+
+      return Array.from(node.childNodes).map(renderNode).join("");
+    };
+
+    return Array.from(template.content.childNodes).map(renderNode).join("");
+  }
+
   function loadColumnWidths() {
     try {
       const parsed = JSON.parse(localStorage.getItem(columnWidthStorageKey) || "{}");
@@ -611,7 +649,7 @@
             </td>
             <td align="left" dir="ltr" style="vertical-align:top; padding:0; min-width:0; text-align:left; direction:ltr;">
               <strong align="left" dir="ltr" style="display:block; color:#16324f; margin:0 0 5px; font-size:14px; line-height:1.25; text-align:left; direction:ltr;">${escapeHtml(item.name)}</strong>
-              <div align="left" dir="ltr" style="margin:0; font-size:13px; line-height:1.45; color:#4a4a4a; text-align:left; direction:ltr;">${escapeHtml(cleanDescription(item))}</div>
+              <div align="left" dir="ltr" style="margin:0; font-size:13px; line-height:1.45; color:#4a4a4a; text-align:left; direction:ltr;">${anchorTextHtml(cleanDescription(item))}</div>
             </td>
           </tr>
         </tbody>
@@ -757,7 +795,7 @@
       : `<div style="margin:0; color:#64748b; font-size:13px;">No warranty information added yet.</div>`;
     const selectedFaqs = faqMeta(row);
     const faqHtml = selectedFaqs.length
-      ? `<div style="display:grid; gap:8px;">${selectedFaqs.map((faq) => `<details style="background:#eef7fb; color:#0b7aa6; font-size:12px;"><summary style="cursor:pointer; padding:10px 12px; font-weight:700;">${escapeHtml(faq.question)}</summary><div style="padding:0 12px 10px; color:#4a4a4a; line-height:1.45;">${escapeHtml(faq.answer || "No answer added yet.")}</div></details>`).join("")}</div>`
+      ? `<div style="display:grid; gap:8px;">${selectedFaqs.map((faq) => `<details style="background:#eef7fb; color:#0b7aa6; font-size:12px;"><summary style="cursor:pointer; padding:10px 12px; font-weight:700;">${escapeHtml(faq.question)}</summary><div style="padding:0 12px 10px; color:#4a4a4a; line-height:1.45;">${anchorTextHtml(faq.answer || "No answer added yet.")}</div></details>`).join("")}</div>`
       : `<div style="display:grid; gap:8px;">
           <div style="padding:10px 12px; background:#eef7fb; color:#0b7aa6; font-size:12px; font-weight:700;">What size mattress do I need?</div>
           <div style="padding:10px 12px; background:#eef7fb; color:#0b7aa6; font-size:12px; font-weight:700;">What does 60 night comfort trial mean?</div>

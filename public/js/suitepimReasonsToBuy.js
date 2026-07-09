@@ -53,6 +53,44 @@
       .replace(/"/g, "&quot;");
   }
 
+  function decodedHtml(value) {
+    const textarea = document.createElement("textarea");
+    textarea.innerHTML = String(value || "");
+    return textarea.value;
+  }
+
+  function normalizedAnchorHref(value) {
+    const href = String(value || "").trim();
+    if (!href || /[\u0000-\u001f\u007f]/.test(href)) return "";
+    const normalized = /^(?:www\.|[a-z0-9.-]+\.[a-z]{2,}(?:[/?#:]|$))/i.test(href) ? `https://${href}` : href;
+    try {
+      const url = new URL(normalized, window.location.origin);
+      return ["http:", "https:", "mailto:"].includes(url.protocol) ? normalized : "";
+    } catch {
+      return "";
+    }
+  }
+
+  function anchorTextHtml(value) {
+    const template = document.createElement("template");
+    template.innerHTML = decodedHtml(value);
+
+    const renderNode = (node) => {
+      if (node.nodeType === Node.TEXT_NODE) return escapeHtml(node.textContent || "");
+      if (node.nodeType !== Node.ELEMENT_NODE) return "";
+
+      const href = normalizedAnchorHref(node.getAttribute("href"));
+      if (node.tagName === "A" && href) {
+        const label = Array.from(node.childNodes).map(renderNode).join("") || escapeHtml(href);
+        return `<a href="${escapeHtml(href)}" target="_blank" rel="noreferrer noopener" style="color:#0b7aa6; font-weight:700; text-decoration:underline;">${label}</a>`;
+      }
+
+      return Array.from(node.childNodes).map(renderNode).join("");
+    };
+
+    return Array.from(template.content.childNodes).map(renderNode).join("");
+  }
+
   function valueText(value) {
     if (Array.isArray(value)) return value.join(", ");
     return String(value ?? "");
@@ -189,7 +227,7 @@
     state.dirty.clear();
 
     const data = await api("/reasons-to-buy");
-    state.rows = (data.rows || []).map((row, index) => ({ ...row, _suitepimKey: rowKey(row, index) }));
+    state.rows = (data.rows || []).map((row, index) => ({ ...row, Description: decodedHtml(row.Description), _suitepimKey: rowKey(row, index) }));
     state.rows.forEach((row) => state.baseline.set(row._suitepimKey, JSON.stringify(stripInternal(row))));
     state.activeKey = state.rows[0]?._suitepimKey || "";
     applyFilters();
@@ -674,7 +712,7 @@
             </td>
             <td align="left" dir="ltr" style="vertical-align:top; padding:0; min-width:0; text-align:left; direction:ltr;">
               <strong align="left" dir="ltr" style="display:block; color:#16324f; margin:0 0 5px; font-size:14px; line-height:1.25; text-align:left; direction:ltr;">${escapeHtml(item.name)}</strong>
-              <div align="left" dir="ltr" style="margin:0; font-size:13px; line-height:1.45; color:#4a4a4a; text-align:left; direction:ltr;">${escapeHtml(cleanDescription(item))}</div>
+              <div align="left" dir="ltr" style="margin:0; font-size:13px; line-height:1.45; color:#4a4a4a; text-align:left; direction:ltr;">${anchorTextHtml(cleanDescription(item))}</div>
             </td>
           </tr>
         </tbody>
