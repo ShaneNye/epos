@@ -27,6 +27,19 @@
     );
   }
 
+  function depositType(deposit) {
+    return String(deposit?.type || deposit?.Type || deposit?.recordType || "").trim();
+  }
+
+  function isCustomerRefund(deposit) {
+    return depositType(deposit).toLowerCase() === "customer refund";
+  }
+
+  function depositAmount(deposit) {
+    const amount = money(deposit?.amount);
+    return isCustomerRefund(deposit) ? -Math.abs(amount) : amount;
+  }
+
   function lineName(line) {
     return line?.item?.refName || line?.itemName || line?.name || "";
   }
@@ -105,7 +118,7 @@ function normaliseLine(line) {
     });
 
     summary.depositTotal = (deposits || []).reduce(
-      (sum, dep) => sum + money(dep?.amount),
+      (sum, dep) => sum + depositAmount(dep),
       0
     );
 
@@ -129,6 +142,8 @@ function normaliseLine(line) {
     formatMoney,
     hasValue,
     isNegativeValueLine,
+    isCustomerRefund,
+    depositAmount,
     normaliseLine,
     summariseLines,
   };

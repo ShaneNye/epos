@@ -568,53 +568,96 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
 .suitepim-floorplan-shell {
   display: grid;
-  gap: 12px;
+  gap: 10px;
+  min-height: calc(100vh - 178px);
+  position: relative;
+}
+
+.suitepim-floorplan-view-page .suitepim-floorplan-shell {
+  min-height: calc(100vh - 150px);
+}
+
+.suitepim-floorplan-view-page .suitepim-floorplan-topbar {
+  grid-template-columns: 88px minmax(0, 1fr) minmax(120px, auto);
+}
+
+.suitepim-floorplan-view-page .suitepim-floorplan-editor {
+  height: calc(100vh - 238px);
+  max-height: calc(100vh - 238px);
+}
+
+.suitepim-floorplan-shell.is-editing .suitepim-floorplan-editor {
+  border-color: #8fd4e7;
+  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.08);
 }
 
 .suitepim-floorplan-topbar {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
+  display: grid;
+  grid-template-columns: 88px minmax(0, 1fr) minmax(74px, auto);
   gap: 10px;
-  padding: 12px;
+  align-items: end;
+  padding: 10px 12px;
   border: 1px solid #d8e6ee;
   border-radius: 8px;
   background: #fff;
 }
 
+.suitepim-floorplan-filter-grid {
+  display: grid;
+  grid-template-columns: minmax(150px, 1.05fr) minmax(140px, 1fr) minmax(150px, 1fr) minmax(140px, 0.9fr) minmax(132px, 0.72fr) minmax(132px, 0.72fr);
+  gap: 8px;
+  align-items: end;
+  min-width: 0;
+}
+
 .suitepim-floorplan-topbar label {
+  display: grid;
+  gap: 5px;
+  min-width: 0;
   color: #385366;
-  font-size: 0.78rem;
+  font-size: 0.68rem;
   font-weight: 900;
   text-transform: uppercase;
+}
+
+.suitepim-floorplan-topbar label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .suitepim-floorplan-topbar select,
 .suitepim-floorplan-topbar input[type="date"],
 .suitepim-floorplan-editor-toolbar input {
-  min-height: 36px;
+  width: 100%;
+  min-height: 38px;
   border: 1px solid #cfdde5;
   border-radius: 6px;
   background: #fff;
   color: #1f3444;
   font: 800 0.9rem "Segoe UI", system-ui, sans-serif;
   padding: 7px 9px;
+  box-sizing: border-box;
 }
 
-.suitepim-floorplan-topbar select {
-  width: clamp(150px, 18vw, 280px);
-}
-
-.suitepim-floorplan-topbar input[type="date"] {
-  width: 150px;
+.suitepim-floorplan-topbar select:focus,
+.suitepim-floorplan-topbar input[type="date"]:focus,
+.suitepim-floorplan-editor-toolbar input:focus,
+.suitepim-floorplan-bin-search:focus {
+  border-color: #0081ab;
+  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.14);
+  outline: none;
 }
 
 .suitepim-floorplan-footfall {
   display: grid;
   gap: 2px;
-  flex: 0 0 96px;
-  border-right: 1px solid #d8e6ee;
-  padding-right: 12px;
+  align-content: center;
+  min-height: 48px;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  background: #f8fbff;
+  padding: 7px 9px;
 }
 
 .suitepim-floorplan-footfall span {
@@ -627,15 +670,50 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
 .suitepim-floorplan-footfall strong {
   color: #006d8d;
-  font-size: 1.3rem;
+  font-size: 1.22rem;
   line-height: 1;
 }
 
 .suitepim-floorplan-status {
-  flex: 1 1 120px;
-  min-height: 20px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 74px;
+  min-height: 16px;
+  max-width: 180px;
   color: #637283;
+  font-size: 0.78rem;
   font-weight: 800;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suitepim-floorplan-status[data-type="loading"] {
+  min-height: 38px;
+  max-width: none;
+  border: 1px solid #8fd4e7;
+  border-radius: 999px;
+  background: #eaf8fc;
+  color: #005f7e;
+  padding: 0 12px;
+  box-shadow: 0 6px 16px rgba(0, 129, 171, 0.12);
+}
+
+.suitepim-floorplan-status-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(0, 129, 171, 0.24);
+  border-top-color: #0081ab;
+  border-radius: 50%;
+  animation: suitepim-floorplan-spin 0.75s linear infinite;
+  flex: 0 0 auto;
+}
+
+@keyframes suitepim-floorplan-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .suitepim-floorplan-status[data-type="warning"] {
@@ -650,17 +728,98 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   color: #b42318;
 }
 
+.suitepim-floorplan-actions {
+  display: grid;
+  gap: 5px;
+  justify-items: stretch;
+  align-self: end;
+}
+
+.suitepim-floorplan-theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 38px;
+  border: 1px solid #cfdde5;
+  border-radius: 6px;
+  background: #fff;
+  color: #385366;
+  cursor: pointer;
+  font-size: 0.78rem;
+  font-weight: 900;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.suitepim-floorplan-theme-toggle input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.suitepim-floorplan-theme-toggle-track {
+  position: relative;
+  width: 38px;
+  height: 20px;
+  border: 1px solid #cbd8e5;
+  border-radius: 999px;
+  background: #edf3f8;
+  transition: background 0.16s ease, border-color 0.16s ease;
+}
+
+.suitepim-floorplan-theme-toggle-track::after {
+  content: "";
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(15, 23, 42, 0.22);
+  transition: transform 0.16s ease;
+}
+
+.suitepim-floorplan-theme-toggle input:checked + .suitepim-floorplan-theme-toggle-track {
+  border-color: #42c8ef;
+  background: #0081ab;
+}
+
+.suitepim-floorplan-theme-toggle input:checked + .suitepim-floorplan-theme-toggle-track::after {
+  transform: translateX(18px);
+}
+
+.suitepim-floorplan-theme-toggle input:focus-visible + .suitepim-floorplan-theme-toggle-track {
+  box-shadow: 0 0 0 3px rgba(0, 129, 171, 0.18);
+}
+
 .suitepim-floorplan-action,
 .suitepim-floorplan-new,
 .suitepim-floorplan-tools button {
-  min-height: 34px;
+  min-height: 38px;
   border: 1px solid #cfdde5;
   border-radius: 6px;
   background: #fff;
   color: #006d8d;
   cursor: pointer;
   font-weight: 900;
-  padding: 7px 11px;
+  padding: 7px 12px;
+}
+
+.suitepim-floorplan-action:hover,
+.suitepim-floorplan-new:hover,
+.suitepim-floorplan-tools button:hover {
+  border-color: #0081ab;
+  background: #f2f9fc;
+}
+
+.suitepim-floorplan-tools button:disabled,
+.suitepim-floorplan-tools input:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
 }
 
 .suitepim-floorplan-action.is-primary {
@@ -671,17 +830,29 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
 .suitepim-floorplan-workspace {
   display: grid;
-  grid-template-columns: minmax(230px, 290px) minmax(0, 1fr);
+  grid-template-columns: minmax(240px, 300px) minmax(0, 1fr) auto;
   gap: 12px;
+  align-items: stretch;
+  min-height: 0;
+}
+
+.suitepim-floorplan-view-workspace {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  min-height: 0;
   align-items: stretch;
 }
 
 .suitepim-floorplan-sidebar {
-  min-height: 560px;
+  min-height: 0;
+  max-height: calc(100vh - 260px);
   border: 1px solid #d8e6ee;
   border-radius: 8px;
   background: #fff;
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
 .suitepim-floorplan-sidebar.is-collapsed {
@@ -690,10 +861,10 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
 .suitepim-floorplan-sidebar-toggle {
   width: 100%;
-  min-height: 42px;
+  min-height: 38px;
   border: 0;
   border-bottom: 1px solid #e3edf2;
-  background: #f6fafc;
+  background: #f8fbfd;
   color: #24465a;
   cursor: pointer;
   font-weight: 900;
@@ -703,13 +874,16 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
 .suitepim-floorplan-sidebar-body {
   display: grid;
-  gap: 10px;
-  padding: 12px;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 9px;
+  padding: 10px 12px 12px;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .suitepim-floorplan-sidebar-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(0, 1fr));
   gap: 4px;
   padding: 3px;
   border: 1px solid #d7e6ed;
@@ -735,21 +909,38 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
 .suitepim-floorplan-new {
   width: 100%;
+  margin-bottom: 2px;
 }
 
 .suitepim-floorplan-list {
   display: grid;
   gap: 8px;
+  align-content: start;
+  overflow-y: auto;
+  max-height: min(420px, calc(100vh - 392px));
+  padding-right: 2px;
 }
 
+.suitepim-floorplan-list > button,
 .suitepim-floorplan-list-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 6px;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
   border: 1px solid #e1ebf0;
   border-radius: 8px;
   background: #fff;
+  color: #10283a;
+  cursor: pointer;
   overflow: hidden;
+  padding: 10px 11px;
+  text-align: left;
+}
+
+.suitepim-floorplan-list-row {
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 6px;
+  padding: 0;
 }
 
 .suitepim-floorplan-list-row button {
@@ -767,10 +958,19 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   text-align: left;
 }
 
-.suitepim-floorplan-list-row.active,
-.suitepim-floorplan-list-row:hover {
+.suitepim-floorplan-list > button.active,
+.suitepim-floorplan-list > button:hover,
+.suitepim-floorplan-list > button:focus-visible,
+.suitepim-floorplan-list-row:has([data-floorplan-id].active),
+.suitepim-floorplan-list-row:hover,
+.suitepim-floorplan-list-row:focus-within {
   border-color: #0081ab;
   background: #f3f9fb;
+  outline: none;
+}
+
+.suitepim-floorplan-list > button.active {
+  box-shadow: inset 3px 0 0 #0081ab;
 }
 
 .suitepim-floorplan-delete {
@@ -786,14 +986,60 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   background: #fff1f0;
 }
 
+.suitepim-floorplan-list-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
 .suitepim-floorplan-list strong {
   font-size: 0.92rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.suitepim-floorplan-list-title strong {
+  min-width: 0;
+}
+
+.suitepim-floorplan-current-badge {
+  flex: 0 0 auto;
+  border: 1px solid #8fd4e7;
+  border-radius: 999px;
+  background: #eaf8fc;
+  color: #006d8d;
+  font-size: 0.64rem;
+  font-weight: 900;
+  line-height: 1;
+  padding: 4px 6px;
+  text-transform: uppercase;
 }
 
 .suitepim-floorplan-list small,
+.suitepim-floorplan-bins small {
+  color: #637283;
+  font-weight: 800;
+}
+
+.suitepim-floorplan-list small {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .suitepim-floorplan-empty {
   color: #637283;
   font-weight: 800;
+  border: 1px dashed #d8e6ee;
+  border-radius: 8px;
+  background: #f8fbfd;
+  padding: 14px;
+  text-align: center;
 }
 
 .suitepim-floorplan-bin-search {
@@ -817,12 +1063,20 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 .suitepim-floorplan-bins {
   display: grid;
   gap: 8px;
+  align-content: start;
+  min-height: 0;
 }
 
 .suitepim-floorplan-bins {
-  max-height: min(520px, calc(100vh - 360px));
+  max-height: min(520px, calc(100vh - 368px));
   overflow-y: auto;
   padding-right: 4px;
+}
+
+.suitepim-floorplan-assets {
+  overflow-y: auto;
+  max-height: min(520px, calc(100vh - 324px));
+  padding-right: 2px;
 }
 
 .suitepim-floorplan-assets button,
@@ -855,9 +1109,12 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 }
 
 .suitepim-floorplan-assets button:hover,
-.suitepim-floorplan-bins button:hover {
+.suitepim-floorplan-bins button:hover,
+.suitepim-floorplan-assets button:focus-visible,
+.suitepim-floorplan-bins button:focus-visible {
   border-color: #0081ab;
   background: #f6fbfd;
+  outline: none;
 }
 
 .suitepim-floorplan-asset-preview {
@@ -885,9 +1142,78 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   font-weight: 800;
 }
 
+.suitepim-floorplan-analytics {
+  display: grid;
+  gap: 10px;
+}
+
+.suitepim-floorplan-analytics-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
+.suitepim-floorplan-analytics-grid div,
+.suitepim-floorplan-highlight-card {
+  border: 1px solid #d8e6ee;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px;
+}
+
+.suitepim-floorplan-analytics-grid span {
+  display: block;
+  color: #637283;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+.suitepim-floorplan-analytics-grid strong {
+  display: block;
+  margin-top: 3px;
+  color: #10283a;
+  font-size: 1rem;
+}
+
+.suitepim-floorplan-analytics-grid.is-compact {
+  gap: 7px;
+  margin-top: 10px;
+}
+
+.suitepim-floorplan-highlight-card h3 {
+  margin: 0 0 5px;
+  color: #10283a;
+  font-size: 0.95rem;
+}
+
+.suitepim-floorplan-highlight-card p,
+.suitepim-floorplan-analytics-note {
+  margin: 0;
+  color: #637283;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.35;
+}
+
+.suitepim-floorplan-analytics-note {
+  border: 1px dashed #d8e6ee;
+  border-radius: 8px;
+  background: #f8fbfd;
+  padding: 10px;
+}
+
+.suitepim-floorplan-analytics-note.is-error {
+  border-color: #fecaca;
+  background: #fef2f2;
+  color: #b42318;
+}
+
 .suitepim-floorplan-editor {
   min-width: 0;
-  min-height: 650px;
+  min-height: 560px;
+  height: calc(100vh - 260px);
+  max-height: calc(100vh - 260px);
   display: flex;
   flex-direction: column;
   border: 1px solid #d8e6ee;
@@ -898,31 +1224,34 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
 .suitepim-floorplan-editor-toolbar {
   display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(260px, 1fr) auto;
   gap: 10px;
   align-items: center;
-  padding: 12px;
+  padding: 9px 12px;
   border-bottom: 1px solid #e3edf2;
   background: #fbfdfe;
 }
 
 .suitepim-floorplan-tools {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, auto) auto auto auto;
   align-items: center;
-  flex-wrap: wrap;
-  gap: 8px;
+  gap: 7px;
   justify-content: flex-end;
+  min-width: 0;
 }
 
 .suitepim-floorplan-tools button.active {
   border-color: #006d8d;
   background: #eaf6fa;
+  color: #004e68;
+  box-shadow: inset 0 0 0 1px rgba(0, 109, 141, 0.2);
 }
 
 .suitepim-floorplan-zoom-controls {
   display: inline-flex;
   align-items: center;
-  min-height: 34px;
+  min-height: 38px;
   border: 1px solid #cfdde5;
   border-radius: 6px;
   background: #fff;
@@ -931,7 +1260,7 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
 .suitepim-floorplan-zoom-controls button {
   min-width: 34px;
-  min-height: 32px;
+  min-height: 36px;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -949,25 +1278,350 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 .suitepim-floorplan-tools label {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
+  justify-content: center;
+  gap: 8px;
+  min-height: 38px;
+  border: 1px solid #cfdde5;
+  border-radius: 6px;
+  background: #fff;
   color: #385366;
+  cursor: pointer;
   font-weight: 900;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+
+.suitepim-floorplan-tools label:hover {
+  border-color: #0081ab;
+  background: #f2f9fc;
+}
+
+.suitepim-floorplan-tools label input {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  margin: 0;
+  accent-color: #0081ab;
 }
 
 .suitepim-floorplan-canvas-wrap {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: #f7f8f8;
+  overscroll-behavior: contain;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.025) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(0, 0, 0, 0.025) 1px, transparent 1px),
+    #f7f8f8;
+  background-size: 24px 24px;
+  cursor: grab;
+}
+
+.suitepim-floorplan-canvas-wrap.panning {
+  cursor: grabbing;
+}
+
+.suitepim-floorplan-canvas-wrap.is-editing {
+  cursor: crosshair;
 }
 
 .suitepim-floorplan-canvas {
   display: block;
-  cursor: default;
+  cursor: inherit;
+  user-select: none;
+}
+
+.suitepim-floorplan-data-panel {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 360px);
+  width: 402px;
+  min-height: 0;
+  max-height: calc(100vh - 260px);
+  border: 1px solid #cfe2ec;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: none;
+  overflow: hidden;
+}
+
+.suitepim-floorplan-data-panel[hidden] {
+  display: none;
+}
+
+.suitepim-floorplan-data-panel.is-collapsed {
+  width: 42px;
+  grid-template-columns: 42px 0;
+}
+
+.suitepim-floorplan-view-page .suitepim-floorplan-data-panel {
+  max-height: calc(100vh - 238px);
+}
+
+.suitepim-floorplan-data-panel-toggle {
+  display: grid;
+  place-items: center;
+  width: 42px;
+  min-width: 42px;
+  border: 0;
+  border-right: 1px solid #dce9ef;
+  background: #eaf8fc;
+  color: #006d8d;
+  cursor: pointer;
+  font-weight: 900;
+}
+
+.suitepim-floorplan-data-panel-toggle span {
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  letter-spacing: 0;
+}
+
+.suitepim-floorplan-data-panel-body {
+  min-width: 0;
+  overflow: hidden;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+
+.suitepim-floorplan-data-panel.is-collapsed .suitepim-floorplan-data-panel-body {
+  display: none;
+}
+
+.suitepim-floorplan-data-panel-body header {
+  border-bottom: 1px solid #e1edf3;
+  padding: 12px 14px 10px;
+}
+
+.suitepim-floorplan-data-panel-body h2 {
+  margin: 0;
+  color: #10283a;
+  font-size: 1rem;
+}
+
+.suitepim-floorplan-data-panel-body p {
+  margin: 4px 0 0;
+  color: #637283;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+#suitepimFloorPlanDataPanelContent {
+  min-height: 0;
+  overflow: auto;
+  padding: 10px;
+}
+
+.suitepim-floorplan-data-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid #8fd4e7;
+  border-radius: 999px;
+  background: #eaf8fc;
+  color: #005f7e;
+  font-weight: 900;
+  padding: 9px 12px;
+}
+
+.suitepim-floorplan-data-note {
+  margin: 0 0 8px;
+  color: #637283;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.suitepim-floorplan-data-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.76rem;
+}
+
+.suitepim-floorplan-data-table th,
+.suitepim-floorplan-data-table td {
+  border-bottom: 1px solid #e2edf3;
+  padding: 7px 6px;
+  text-align: left;
+  vertical-align: top;
+}
+
+.suitepim-floorplan-data-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: #f6fafc;
+  color: #385366;
+  font-size: 0.68rem;
+  font-weight: 900;
+  text-transform: uppercase;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-view-page,
+body.suitepim-floorplan-dark .suitepim-dashboard-panel.suitepim-floorplan-panel {
+  background: #0b1520;
+  color: #dbe8f3;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-view-page .suitepim-header {
+  border-color: #27465a;
+  background: #122230;
+  color: #eff8ff;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-view-page .suitepim-header h1,
+body.suitepim-floorplan-dark .suitepim-floorplan-view-page .suitepim-kicker {
+  color: #eff8ff;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-topbar,
+body.suitepim-floorplan-dark .suitepim-floorplan-sidebar,
+body.suitepim-floorplan-dark .suitepim-floorplan-editor,
+body.suitepim-floorplan-dark .suitepim-floorplan-data-panel,
+body.suitepim-floorplan-dark .suitepim-floorplan-sidebar-tabs,
+body.suitepim-floorplan-dark .suitepim-floorplan-analytics-grid div,
+body.suitepim-floorplan-dark .suitepim-floorplan-highlight-card {
+  border-color: #27465a;
+  background: #122230;
+  color: #dbe8f3;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-editor-toolbar,
+body.suitepim-floorplan-dark .suitepim-floorplan-sidebar-toggle,
+body.suitepim-floorplan-dark .suitepim-floorplan-data-panel-body header,
+body.suitepim-floorplan-dark .suitepim-floorplan-data-table th {
+  border-color: #27465a;
+  background: #172b3b;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-topbar label,
+body.suitepim-floorplan-dark .suitepim-floorplan-footfall span,
+body.suitepim-floorplan-dark .suitepim-floorplan-status,
+body.suitepim-floorplan-dark .suitepim-floorplan-list small,
+body.suitepim-floorplan-dark .suitepim-floorplan-bins small,
+body.suitepim-floorplan-dark .suitepim-floorplan-analytics-grid span,
+body.suitepim-floorplan-dark .suitepim-floorplan-highlight-card p,
+body.suitepim-floorplan-dark .suitepim-floorplan-data-panel-body p,
+body.suitepim-floorplan-dark .suitepim-floorplan-data-note {
+  color: #9fb5c8;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-topbar select,
+body.suitepim-floorplan-dark .suitepim-floorplan-topbar input[type="date"],
+body.suitepim-floorplan-dark .suitepim-floorplan-editor-toolbar input,
+body.suitepim-floorplan-dark .suitepim-floorplan-bin-search,
+body.suitepim-floorplan-dark .suitepim-floorplan-action,
+body.suitepim-floorplan-dark .suitepim-floorplan-new,
+body.suitepim-floorplan-dark .suitepim-floorplan-tools button,
+body.suitepim-floorplan-dark .suitepim-floorplan-tools label,
+body.suitepim-floorplan-dark .suitepim-floorplan-theme-toggle,
+body.suitepim-floorplan-dark .suitepim-floorplan-zoom-controls {
+  border-color: #31566d;
+  background: #0e1b27;
+  color: #dbe8f3;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-filter-grid select,
+body.suitepim-floorplan-dark .suitepim-floorplan-filter-grid input[type="date"],
+body.suitepim-floorplan-dark .suitepim-floorplan-topbar .suitepim-floorplan-filter-grid select,
+body.suitepim-floorplan-dark .suitepim-floorplan-topbar .suitepim-floorplan-filter-grid input[type="date"] {
+  color-scheme: dark;
+  border-color: #3b6680 !important;
+  background-color: #07131d !important;
+  color: #eef7ff !important;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-filter-grid select option {
+  background: #07131d;
+  color: #eef7ff;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-filter-grid input[type="date"]::-webkit-calendar-picker-indicator {
+  filter: invert(1) brightness(1.6);
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-action.is-primary {
+  border-color: #2bb9df;
+  background: #0081ab;
+  color: #fff;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-footfall,
+body.suitepim-floorplan-dark .suitepim-floorplan-data-panel-toggle,
+body.suitepim-floorplan-dark .suitepim-floorplan-sidebar-tabs button.active,
+body.suitepim-floorplan-dark .suitepim-floorplan-list > button.active {
+  border-color: #31566d;
+  background: #10283a;
+  color: #78d9f5;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-footfall strong,
+body.suitepim-floorplan-dark .suitepim-floorplan-list strong,
+body.suitepim-floorplan-dark .suitepim-floorplan-analytics-grid strong,
+body.suitepim-floorplan-dark .suitepim-floorplan-highlight-card h3,
+body.suitepim-floorplan-dark .suitepim-floorplan-data-panel-body h2 {
+  color: #eff8ff;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-canvas-wrap {
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04) 1px, transparent 1px),
+    #0b1218;
+  background-size: 24px 24px;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-bg {
+  fill: #101922;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-grid .subminor {
+  stroke: #1b2a34;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-grid .minor {
+  stroke: #2a3d48;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-grid .major {
+  stroke: #476170;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-grid .meter-label {
+  fill: #8aa3b4;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-heatmap-layer {
+  mix-blend-mode: normal;
+  opacity: 0.78;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-wall-core,
+body.suitepim-floorplan-dark .suitepim-floorplan-wall-edge {
+  stroke: #d5e4ec;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-dimension text,
+body.suitepim-floorplan-dark .suitepim-floorplan-asset-size-label,
+body.suitepim-floorplan-dark .suitepim-floorplan-asset-bin-main {
+  fill: #0b1520;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-data-table th,
+body.suitepim-floorplan-dark .suitepim-floorplan-data-table td {
+  border-color: #27465a;
+}
+
+body.suitepim-floorplan-dark .suitepim-floorplan-data-table td {
+  color: #dbe8f3;
 }
 
 .suitepim-floorplan-canvas.is-editing {
   cursor: crosshair;
+}
+
+.suitepim-floorplan-canvas:not(.is-editing) .suitepim-floorplan-placed-asset rect,
+.suitepim-floorplan-canvas:not(.is-editing) .suitepim-floorplan-placed-asset circle {
+  cursor: zoom-in;
 }
 
 .suitepim-floorplan-bg {
@@ -1005,6 +1659,40 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 .suitepim-floorplan-heatmap-cell {
   stroke: none;
   shape-rendering: crispEdges;
+}
+
+.suitepim-floorplan-movement-layer {
+  pointer-events: none;
+}
+
+.suitepim-floorplan-movement-path path {
+  fill: none;
+  opacity: 0.86;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  filter: drop-shadow(0 1px 1px rgba(15, 23, 42, 0.2));
+}
+
+.suitepim-floorplan-movement-path text {
+  fill: #10283a;
+  font-size: 8px;
+  font-weight: 900;
+  paint-order: stroke;
+  stroke: rgba(255, 255, 255, 0.9);
+  stroke-width: 3px;
+  text-anchor: middle;
+}
+
+.suitepim-floorplan-movement-arrow-head {
+  fill: #0f7492;
+}
+
+.suitepim-floorplan-highlight-area {
+  fill: rgba(0, 129, 171, 0.14);
+  stroke: #0081ab;
+  stroke-width: 1.4;
+  stroke-dasharray: 5 3;
+  pointer-events: none;
 }
 
 .suitepim-floorplan-element {
@@ -1093,7 +1781,8 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   dominant-baseline: middle;
 }
 
-.suitepim-floorplan-placed-asset rect {
+.suitepim-floorplan-placed-asset rect,
+.suitepim-floorplan-placed-asset circle {
   fill: rgba(253, 253, 251, 0.94);
   stroke: #1b1f21;
   stroke-width: 1.1;
@@ -1127,13 +1816,15 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   font-size: 5.3px;
 }
 
-.suitepim-floorplan-placed-asset.is-selected rect {
+.suitepim-floorplan-placed-asset.is-selected rect,
+.suitepim-floorplan-placed-asset.is-selected circle {
   stroke: #0081ab;
   stroke-width: 2;
   filter: drop-shadow(0 0 2px rgba(0, 129, 171, 0.35));
 }
 
-.suitepim-floorplan-canvas.is-editing .suitepim-floorplan-placed-asset rect {
+.suitepim-floorplan-canvas.is-editing .suitepim-floorplan-placed-asset rect,
+.suitepim-floorplan-canvas.is-editing .suitepim-floorplan-placed-asset circle {
   cursor: move;
 }
 
@@ -3612,12 +4303,64 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
   .suitepim-reasons-toolbar,
   .suitepim-reasons-layout,
   .suitepim-dashboard-controls,
-  .suitepim-floorplan-topbar,
   .suitepim-floorplan-workspace,
+  .suitepim-floorplan-view-workspace,
   .suitepim-floorplan-editor-toolbar,
   .suitepim-hub-grid,
   .suitepim-hub-hero {
     grid-template-columns: 1fr;
+  }
+
+  .suitepim-floorplan-shell {
+    min-height: 0;
+  }
+
+  .suitepim-floorplan-topbar {
+    grid-template-columns: 1fr;
+  }
+
+  .suitepim-floorplan-actions {
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    align-items: center;
+  }
+
+  .suitepim-floorplan-filter-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+
+  .suitepim-floorplan-sidebar,
+  .suitepim-floorplan-editor,
+  .suitepim-floorplan-data-panel {
+    max-height: none;
+  }
+
+  .suitepim-floorplan-data-panel,
+  .suitepim-floorplan-data-panel.is-collapsed {
+    width: 100%;
+    grid-template-columns: 1fr;
+  }
+
+  .suitepim-floorplan-data-panel-toggle {
+    width: 100%;
+    min-width: 0;
+    min-height: 38px;
+    border-right: 0;
+    border-bottom: 1px solid #dce9ef;
+  }
+
+  .suitepim-floorplan-data-panel-toggle span {
+    writing-mode: horizontal-tb;
+    transform: none;
+  }
+
+  .suitepim-floorplan-sidebar-body {
+    overflow: visible;
+  }
+
+  .suitepim-floorplan-list,
+  .suitepim-floorplan-assets,
+  .suitepim-floorplan-bins {
+    max-height: 320px;
   }
 
   .suitepim-reasons-list {
@@ -3638,6 +4381,68 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
     align-items: stretch;
   }
 
+}
+
+@media (max-width: 760px) {
+  .suitepim-floorplan-topbar {
+    padding: 8px;
+  }
+
+  .suitepim-floorplan-status {
+    white-space: normal;
+  }
+
+  .suitepim-floorplan-filter-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .suitepim-floorplan-editor-toolbar {
+    gap: 8px;
+  }
+
+  .suitepim-floorplan-tools {
+    justify-content: flex-start;
+  }
+
+  .suitepim-floorplan-canvas-wrap {
+    min-height: 520px;
+  }
+}
+
+@media (max-width: 540px) {
+  .suitepim-floorplan-filter-grid,
+  .suitepim-floorplan-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .suitepim-floorplan-actions {
+    justify-content: stretch;
+  }
+
+  .suitepim-floorplan-actions .suitepim-floorplan-action {
+    flex: 1 1 auto;
+  }
+
+  .suitepim-floorplan-sidebar-tabs {
+    grid-template-columns: 1fr;
+  }
+
+  .suitepim-floorplan-tools {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .suitepim-floorplan-tools button,
+  .suitepim-floorplan-zoom-controls,
+  .suitepim-floorplan-tools label {
+    width: 100%;
+  }
+
+  .suitepim-floorplan-zoom-controls,
+  .suitepim-floorplan-tools label {
+    grid-column: 1 / -1;
+  }
 }
 
 .suitepim-settings-tabs {

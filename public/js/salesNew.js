@@ -16,6 +16,12 @@ if (window.location.pathname.includes("/sales/view/")) {
     if (typeof window.updateOrderSummary === "function") window.updateOrderSummary();
   };
 
+  function signedDepositAmount(deposit) {
+    const amount = parseFloat(deposit?.amount || 0) || 0;
+    const type = String(deposit?.type || deposit?.Type || "").trim().toLowerCase();
+    return type === "customer refund" ? -Math.abs(amount) : amount;
+  }
+
   function renderDeposits() {
     const section = document.getElementById("depositsSection");
     const tbody = document.querySelector("#depositsTable tbody");
@@ -25,8 +31,9 @@ if (window.location.pathname.includes("/sales/view/")) {
 
     tbody.innerHTML = "";
     deposits.forEach((d) => {
+      const amount = signedDepositAmount(d);
       const tr = document.createElement("tr");
-      tr.innerHTML = `<td>${d.name || d.method || ""}</td><td>£${parseFloat(d.amount).toFixed(2)}</td>`;
+      tr.innerHTML = `<td>${d.name || d.method || d.type || ""}</td><td>£${amount.toFixed(2)}</td>`;
       tbody.appendChild(tr);
     });
 
@@ -391,10 +398,7 @@ window.updateOrderSummary = function () {
   netTotal = Number(netTotal.toFixed(2));
   taxTotal = Number(taxTotal.toFixed(2));
 
-  const totalDeposits = deposits.reduce(
-    (sum, d) => sum + (parseFloat(d.amount) || 0),
-    0
-  );
+  const totalDeposits = deposits.reduce((sum, d) => sum + signedDepositAmount(d), 0);
 
   const outstandingBalance = Number((grossTotal - totalDeposits).toFixed(2));
 

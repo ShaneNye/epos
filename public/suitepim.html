@@ -126,42 +126,64 @@
       data-suitepim-dashboard-panel="floor-plans"
       hidden>
       <div class="suitepim-floorplan-shell" id="suitepimFloorPlanApp">
-        <div class="suitepim-floorplan-topbar">
+        <div class="suitepim-floorplan-topbar" aria-label="Floor plan controls">
           <div class="suitepim-floorplan-footfall" aria-live="polite">
             <span>Footfall</span>
             <strong id="suitepimFloorPlanFootfallTotal">-</strong>
           </div>
-          <label for="suitepimFloorPlanLocation">Location</label>
-          <select id="suitepimFloorPlanLocation"></select>
-          <label for="suitepimFloorPlanDateRange">Date range</label>
-          <select id="suitepimFloorPlanDateRange">
-            <option value="today">Today</option>
-            <option value="yesterday">Yesterday</option>
-            <option value="thisMonth" selected>This Month</option>
-            <option value="lastMonth">Last Month</option>
-            <option value="thisYear">This Year</option>
-            <option value="lastYear">Last Year</option>
-            <option value="custom">Custom</option>
-          </select>
-          <label for="suitepimFloorPlanHeatmap">Heat map</label>
-          <select id="suitepimFloorPlanHeatmap">
-            <option value="none" selected>- None -</option>
-            <option value="inventory">Inventory Count</option>
-            <option value="sold">Items Sold</option>
-            <option value="revenue">Revenue</option>
-          </select>
-          <label for="suitepimFloorPlanHeatmapScope">Heat map type</label>
-          <select id="suitepimFloorPlanHeatmapScope">
-            <option value="bin" selected>By Bin</option>
-            <option value="squareFootage">By Square Footage</option>
-          </select>
-          <label for="suitepimFloorPlanStartDate">Start date</label>
-          <input id="suitepimFloorPlanStartDate" type="date">
-          <label for="suitepimFloorPlanEndDate">End date</label>
-          <input id="suitepimFloorPlanEndDate" type="date">
-          <span id="suitepimFloorPlanStatus" class="suitepim-floorplan-status" aria-live="polite"></span>
-          <button id="suitepimFloorPlanEdit" class="suitepim-floorplan-action" type="button">Edit</button>
-          <button id="suitepimFloorPlanSave" class="suitepim-floorplan-action is-primary" type="button" hidden>Save</button>
+          <div class="suitepim-floorplan-filter-grid">
+            <label for="suitepimFloorPlanLocation">
+              <span>Location</span>
+              <select id="suitepimFloorPlanLocation"></select>
+            </label>
+            <label for="suitepimFloorPlanDateRange">
+              <span>Date range</span>
+              <select id="suitepimFloorPlanDateRange">
+                <option value="today">Today</option>
+                <option value="yesterday">Yesterday</option>
+                <option value="thisMonth" selected>This Month</option>
+                <option value="lastMonth">Last Month</option>
+                <option value="thisYear">This Year</option>
+                <option value="lastYear">Last Year</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
+            <label for="suitepimFloorPlanHeatmap">
+              <span>Heat map</span>
+              <select id="suitepimFloorPlanHeatmap">
+                <option value="none" selected>- None -</option>
+                <option value="inventory">Inventory Count</option>
+                <option value="sold">Items Sold</option>
+                <option value="revenue">Revenue</option>
+                <option value="movement">Inventory Movement</option>
+              </select>
+            </label>
+            <label id="suitepimFloorPlanHeatmapScopeLabel" for="suitepimFloorPlanHeatmapScope">
+              <span>Heat map type</span>
+              <select id="suitepimFloorPlanHeatmapScope">
+                <option value="bin">By Bin</option>
+                <option value="squareFootage" selected>By Square Footage</option>
+              </select>
+            </label>
+            <label for="suitepimFloorPlanStartDate">
+              <span>Start date</span>
+              <input id="suitepimFloorPlanStartDate" type="date">
+            </label>
+            <label for="suitepimFloorPlanEndDate">
+              <span>End date</span>
+              <input id="suitepimFloorPlanEndDate" type="date">
+            </label>
+          </div>
+          <div class="suitepim-floorplan-actions">
+            <span id="suitepimFloorPlanStatus" class="suitepim-floorplan-status" aria-live="polite"></span>
+            <label class="suitepim-floorplan-theme-toggle" title="Toggle dark mode">
+              <span>Dark</span>
+              <input id="suitepimFloorPlanDarkMode" class="suitepim-floorplan-dark-mode-toggle" type="checkbox" aria-label="Toggle dark mode">
+              <span class="suitepim-floorplan-theme-toggle-track" aria-hidden="true"></span>
+            </label>
+            <button id="suitepimFloorPlanEdit" class="suitepim-floorplan-action" type="button">Edit</button>
+            <button id="suitepimFloorPlanSave" class="suitepim-floorplan-action is-primary" type="button" hidden>Save</button>
+          </div>
         </div>
 
         <div class="suitepim-floorplan-workspace">
@@ -171,9 +193,10 @@
             </button>
             <div id="suitepimFloorPlanSidebarBody" class="suitepim-floorplan-sidebar-body">
               <div class="suitepim-floorplan-sidebar-tabs" role="tablist" aria-label="Floor plan sidebar">
-                <button class="active" type="button" role="tab" aria-selected="true" aria-controls="suitepimFloorPlanFilesTab" data-floorplan-sidebar-tab="files">Floor Plans</button>
-                <button type="button" role="tab" aria-selected="false" aria-controls="suitepimFloorPlanAssetsTab" data-floorplan-sidebar-tab="assets">Assets</button>
-                <button type="button" role="tab" aria-selected="false" aria-controls="suitepimFloorPlanBinsTab" data-floorplan-sidebar-tab="bins">Bins</button>
+                <button class="active" type="button" role="tab" aria-selected="true" aria-controls="suitepimFloorPlanFilesTab" data-floorplan-sidebar-tab="files" data-floorplan-tab-mode="all">Floor Plans</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="suitepimFloorPlanAnalyticsTab" data-floorplan-sidebar-tab="analytics" data-floorplan-tab-mode="view">Analytics</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="suitepimFloorPlanAssetsTab" data-floorplan-sidebar-tab="assets" data-floorplan-tab-mode="edit">Assets</button>
+                <button type="button" role="tab" aria-selected="false" aria-controls="suitepimFloorPlanBinsTab" data-floorplan-sidebar-tab="bins" data-floorplan-tab-mode="edit">Bins</button>
               </div>
               <section id="suitepimFloorPlanFilesTab" data-floorplan-sidebar-panel="files">
                 <button id="suitepimFloorPlanNew" class="suitepim-floorplan-new" type="button">Create new floorplan</button>
@@ -186,6 +209,9 @@
                 <input id="suitepimFloorPlanBinSearch" class="suitepim-floorplan-bin-search" type="search" placeholder="Search bins..." aria-label="Search bins">
                 <div id="suitepimFloorPlanBins" class="suitepim-floorplan-bins"></div>
               </section>
+              <section id="suitepimFloorPlanAnalyticsTab" data-floorplan-sidebar-panel="analytics" hidden>
+                <div id="suitepimFloorPlanAnalytics" class="suitepim-floorplan-analytics"></div>
+              </section>
             </div>
           </aside>
 
@@ -193,9 +219,9 @@
             <div class="suitepim-floorplan-editor-toolbar">
               <input id="suitepimFloorPlanName" type="text" value="Untitled floor plan" aria-label="Floor plan name" disabled>
               <div class="suitepim-floorplan-tools" role="toolbar" aria-label="Floor plan drawing tools">
-                <button type="button" data-floorplan-tool="line" class="active">Wall</button>
-                <button type="button" data-floorplan-tool="door">Door</button>
-                <button type="button" data-floorplan-tool="window">Window</button>
+                <button type="button" data-floorplan-tool="line" class="active" title="Wall" aria-label="Wall">Wall</button>
+                <button type="button" data-floorplan-tool="door" title="Door" aria-label="Door">Door</button>
+                <button type="button" data-floorplan-tool="window" title="Window" aria-label="Window">Window</button>
                 <div class="suitepim-floorplan-zoom-controls" aria-label="Floor plan zoom controls">
                   <button id="suitepimFloorPlanZoomOut" type="button" aria-label="Zoom out">-</button>
                   <span id="suitepimFloorPlanZoomLabel">100%</span>
@@ -204,6 +230,10 @@
                 <label>
                   <input id="suitepimFloorPlanLockGrid" type="checkbox" checked>
                   Lock to grid
+                </label>
+                <label>
+                  <input id="suitepimFloorPlanCurrent" type="checkbox">
+                  Current
                 </label>
               </div>
               <div id="suitepimFloorPlanRotationControls" class="suitepim-floorplan-rotation-controls" hidden aria-label="Asset rotation controls">
@@ -217,6 +247,18 @@
               <svg id="suitepimFloorPlanCanvas" class="suitepim-floorplan-canvas" role="img" aria-label="Measured floor plan drawing area"></svg>
             </div>
           </section>
+          <aside id="suitepimFloorPlanDataPanel" class="suitepim-floorplan-data-panel is-collapsed" hidden>
+            <button id="suitepimFloorPlanDataPanelToggle" class="suitepim-floorplan-data-panel-toggle" type="button" aria-expanded="false">
+              <span>Data</span>
+            </button>
+            <div class="suitepim-floorplan-data-panel-body">
+              <header>
+                <h2 id="suitepimFloorPlanDataPanelTitle">Heat map data</h2>
+                <p id="suitepimFloorPlanDataPanelSummary"></p>
+              </header>
+              <div id="suitepimFloorPlanDataPanelContent"></div>
+            </div>
+          </aside>
         </div>
       </div>
     </section>

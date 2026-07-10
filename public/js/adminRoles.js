@@ -23,6 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
     { value: "logistics", label: "Logistics" },
     { value: "rota", label: "Rota" },
     { value: "suitepim", label: "SuitePim" },
+    { value: "floor-plans", label: "Floor Plans" },
     { value: "systems-processes", label: "Systems & Processes" },
     { value: "cs-workflows", label: "CS Workflows" },
     { value: "promotions", label: "Promotions" },

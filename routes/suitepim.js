@@ -24,7 +24,8 @@ const BIN_NUMBER_CACHE_TTL_MS = Number(process.env.SUITEPIM_BIN_NUMBER_CACHE_TTL
 const FLOOR_PLAN_SALES_CACHE_TTL_MS = Number(process.env.SUITEPIM_FLOOR_PLAN_SALES_CACHE_TTL_MS || 3 * 60 * 60 * 1000);
 const FLOOR_PLAN_INVENTORY_CACHE_TTL_MS = Number(process.env.SUITEPIM_FLOOR_PLAN_INVENTORY_CACHE_TTL_MS || 10 * 60 * 1000);
 const FLOOR_PLAN_CACHE_STALE_MS = Number(process.env.SUITEPIM_FLOOR_PLAN_CACHE_STALE_MS || 24 * 60 * 60 * 1000);
-const FLOOR_PLAN_SALES_CACHE_VERSION = "v3-compact-display-parent";
+const FLOOR_PLAN_SALES_CACHE_VERSION = "v9-suiteql-sales-tranid";
+const FLOOR_PLAN_INVENTORY_CACHE_VERSION = "v3-suiteql-inventory-parent";
 const REASONS_TO_BUY_RECORD_TYPE = "customrecord_sb_reasons_to_buy";
 const REASONS_TO_BUY_ICON_RECORD_TYPE =
   process.env.SUITEPIM_REASONS_TO_BUY_ICONS_RECORD_TYPE || "customrecord_sb_reasons_to_buy_icons";
@@ -146,6 +147,16 @@ function envConfig(env) {
       process.env[`SUITEPIM_${upper}_FLOOR_PLAN_SALES_DATA`] ||
       process.env[`FLOOR_PLAN_SALES_DATA_${upper}`] ||
       process.env.FLOOR_PLAN_SALES_DATA ||
+      "",
+    floorPlanBinTransferUrl:
+      process.env[`SUITEPIM_${upper}_FLOOR_PLAN_BT_URL`] ||
+      process.env[`FLOOR_PLAN_BT_${upper}_URL`] ||
+      process.env.FLOOR_PLAN_BT_URL ||
+      "",
+    floorPlanBinTransferToken:
+      process.env[`SUITEPIM_${upper}_FLOOR_PLAN_BT`] ||
+      process.env[`FLOOR_PLAN_BT_${upper}`] ||
+      process.env.FLOOR_PLAN_BT ||
       "",
     inventoryBalanceUrl:
       process.env[`SUITEPIM_${upper}_INVENTORY_BALANCE_URL`] ||
@@ -343,13 +354,21 @@ async function ensureSuitePimFloorPlanTables() {
       location_id INTEGER NOT NULL REFERENCES locations(id) ON DELETE CASCADE,
       name TEXT NOT NULL,
       data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      is_current BOOLEAN NOT NULL DEFAULT FALSE,
       created_by TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
 
+    ALTER TABLE suitepim_floor_plans
+      ADD COLUMN IF NOT EXISTS is_current BOOLEAN NOT NULL DEFAULT FALSE;
+
     CREATE INDEX IF NOT EXISTS idx_suitepim_floor_plans_location_updated
       ON suitepim_floor_plans(location_id, updated_at DESC);
+
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_suitepim_floor_plans_one_current_location
+      ON suitepim_floor_plans(location_id)
+      WHERE is_current;
 
     CREATE TABLE IF NOT EXISTS suitepim_floor_plan_sales_cache (
       cache_key TEXT PRIMARY KEY,
@@ -1954,6 +1973,10 @@ function normalizePerformanceRows(payload) {
 
 function sqlString(value) {
   return String(value || "").replace(/'/g, "''");
+}
+
+function sqlLikeContains(value) {
+  return sqlString(normalizeLocationCompare(value).toUpperCase().replace(/\s+/g, "%"));
 }
 
 async function fetchSuiteQLRows(cfg, userId, query) {
@@ -4050,6 +4073,7 @@ router.get("/bins", async (req, res) => {
   try {
     const env = normalizeEnvironment(req.query.environment);
     const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
     const locationId = Number(req.query.locationId || 0);
     if (!Number.isInteger(locationId) || locationId <= 0) {
       return res.status(400).json({ ok: false, error: "Invalid location id" });
@@ -4059,8 +4083,7 @@ router.get("/bins", async (req, res) => {
     if (!locationResult.rowCount) return res.status(404).json({ ok: false, error: "Location not found" });
 
     const locationName = locationResult.rows[0].name || "";
-    const bins = (await fetchBinRows(cfg))
-      .filter((bin) => locationNamesMatch(bin.location, locationName))
+    const bins = binsFromInventoryRows(await fetchFloorPlanInventoryRows(cfg, locationName, userId))
       .sort((a, b) => a.number.localeCompare(b.number, "en-GB", { numeric: true, sensitivity: "base" }));
 
     res.json({
@@ -4126,6 +4149,7 @@ router.get("/floor-plan-sales-data", async (req, res) => {
   try {
     const env = normalizeEnvironment(req.query.environment);
     const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
     const locationId = Number(req.query.locationId || 0);
     if (!Number.isInteger(locationId) || locationId <= 0) {
       return res.status(400).json({ ok: false, error: "Invalid location id" });
@@ -4143,7 +4167,7 @@ router.get("/floor-plan-sales-data", async (req, res) => {
     if (!locationResult.rowCount) return res.status(404).json({ ok: false, error: "Location not found" });
 
     const locationName = locationResult.rows[0].name || "";
-    const salesPayload = await fetchFloorPlanSalesRows(cfg, rangeStart, rangeEnd);
+    const salesPayload = await fetchFloorPlanSalesRows(cfg, rangeStart, rangeEnd, userId, locationName);
     const rows = salesPayload.rows.filter((row) => {
       const rowDate = parseFloorPlanDate(row.date);
       return rowDate &&
@@ -4174,6 +4198,7 @@ router.post("/floor-plan-heatmap-values", async (req, res) => {
   try {
     const env = normalizeEnvironment(req.query.environment || req.body?.environment);
     const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
     const locationId = Number(req.body?.locationId || 0);
     if (!Number.isInteger(locationId) || locationId <= 0) {
       return res.status(400).json({ ok: false, error: "Invalid location id" });
@@ -4191,10 +4216,10 @@ router.post("/floor-plan-heatmap-values", async (req, res) => {
     if (!locationResult.rowCount) return res.status(404).json({ ok: false, error: "Location not found" });
 
     const locationName = locationResult.rows[0].name || "";
-    const inventoryRows = await fetchFloorPlanInventoryRows(cfg, locationName);
+    const inventoryRows = await fetchFloorPlanInventoryRows(cfg, locationName, userId);
     const salesPayload = mode === "inventory"
       ? { aggregate: {}, cache: { status: "not-used" } }
-      : await fetchFloorPlanSalesRows(cfg, startDate, endDate);
+      : await fetchFloorPlanSalesRows(cfg, startDate, endDate, userId, locationName);
     const aggregate = mode === "inventory" ? {} : aggregateFloorPlanSales(salesPayload.rows.filter((row) => {
       const rowDate = parseFloorPlanDate(row.date);
       const rangeStart = startDate <= endDate ? startDate : endDate;
@@ -4213,9 +4238,14 @@ router.post("/floor-plan-heatmap-values", async (req, res) => {
       const rows = inventoryRows.filter((row) => normalizeInventoryFilterLocal(inventoryFieldValue(row, [
         "Bin Number", "Bin", "bin", "binNumber", "binnumber", "Bin Name",
       ])) === normalizeInventoryFilterLocal(binNumber));
+      const countedSalesKeys = new Set();
       values[assetId] = rows.reduce((sum, row) => {
         if (mode === "inventory") return sum + numericInventoryField(row, ["On Hand", "onHand", "OnHand", "Quantity On Hand"]);
         const sales = findSalesForInventoryServer(row, aggregate);
+        if (sales.matchKey) {
+          if (countedSalesKeys.has(sales.matchKey)) return sum;
+          countedSalesKeys.add(sales.matchKey);
+        }
         return sum + (mode === "revenue" ? Number(sales.revenue || 0) : Number(sales.quantity || 0));
       }, 0);
     });
@@ -4234,6 +4264,84 @@ router.post("/floor-plan-heatmap-values", async (req, res) => {
   } catch (err) {
     console.error("SuitePim floor plan heatmap load failed:", err);
     res.status(500).json({ ok: false, error: err.message || "Failed to load heatmap data" });
+  }
+});
+
+router.get("/floor-plan-inventory-movement", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const locationId = Number(req.query.locationId || 0);
+    if (!Number.isInteger(locationId) || locationId <= 0) {
+      return res.status(400).json({ ok: false, error: "Invalid location id" });
+    }
+
+    const startDate = parseFloorPlanDate(req.query.startDate);
+    const endDate = parseFloorPlanDate(req.query.endDate);
+    if (!startDate || !endDate) {
+      return res.status(400).json({ ok: false, error: "Invalid date range" });
+    }
+
+    const locationResult = await pool.query("SELECT id, name FROM locations WHERE id = $1", [locationId]);
+    if (!locationResult.rowCount) return res.status(404).json({ ok: false, error: "Location not found" });
+
+    const locationName = locationResult.rows[0].name || "";
+    const rangeStart = startDate <= endDate ? startDate : endDate;
+    const rangeEnd = endDate >= startDate ? endDate : startDate;
+    const rows = await fetchFloorPlanBinTransferRows(cfg, rangeStart, rangeEnd, locationName);
+    const paired = pairFloorPlanBinTransfers(rows, rangeStart, rangeEnd, locationName);
+    const movements = aggregateFloorPlanBinMovements(paired);
+
+    res.json({
+      ok: true,
+      locationId,
+      locationName,
+      startDate: formatIsoDate(rangeStart),
+      endDate: formatIsoDate(rangeEnd),
+      count: paired.length,
+      movements,
+      rows: req.query.includeRows === "1" ? paired : [],
+    });
+  } catch (err) {
+    console.error("SuitePim floor plan inventory movement load failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to load inventory movement" });
+  }
+});
+
+router.get("/floor-plan-bin-inventory", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const locationId = Number(req.query.locationId || 0);
+    if (!Number.isInteger(locationId) || locationId <= 0) {
+      return res.status(400).json({ ok: false, error: "Invalid location id" });
+    }
+
+    const binNumber = String(req.query.bin || req.query.binNumber || "").trim();
+    if (!binNumber) return res.status(400).json({ ok: false, error: "Bin number is required" });
+
+    const locationResult = await pool.query("SELECT id, name FROM locations WHERE id = $1", [locationId]);
+    if (!locationResult.rowCount) return res.status(404).json({ ok: false, error: "Location not found" });
+
+    const locationName = locationResult.rows[0].name || "";
+    const inventoryRows = await fetchFloorPlanInventoryRows(cfg, locationName, userId);
+    const rows = inventoryRows.filter((row) => normalizeInventoryFilterLocal(inventoryFieldValue(row, [
+      "Bin Number", "Bin", "bin", "binNumber", "binnumber", "Bin Name",
+    ])) === normalizeInventoryFilterLocal(binNumber));
+
+    res.json({
+      ok: true,
+      locationId,
+      locationName,
+      bin: binNumber,
+      count: rows.length,
+      rows,
+      cache: inventoryRows.cache || null,
+    });
+  } catch (err) {
+    console.error("SuitePim floor plan bin inventory load failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to load bin inventory" });
   }
 });
 
@@ -4267,15 +4375,40 @@ function normalizeFootfallRow(row) {
   };
 }
 
+function rowValue(row, keys) {
+  for (const key of keys) {
+    const value = row?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+  }
+  const lowerMap = new Map(Object.entries(row || {}).map(([key, value]) => [String(key).toLowerCase(), value]));
+  for (const key of keys) {
+    const value = lowerMap.get(String(key).toLowerCase());
+    if (value !== undefined && value !== null && String(value).trim() !== "") return value;
+  }
+  return "";
+}
+
 function normalizeFloorPlanSalesRow(row) {
-  const date = String(row.Date || row.date || row.trandate || "").trim();
-  const store = String(row.Store || row.store || row.Location || row.location || "").trim();
-  const internalId = String(row["Internal ID"] || row.internalId || row.itemInternalId || row.id || "").trim();
-  const parentId = String(row["Parent ID"] || row["Parent Internal ID"] || row.parentId || row.parentid || row.parentInternalId || "").trim();
-  const item = String(row.Item || row.item || row.Name || row.name || "").trim();
-  const displayName = String(row["Display Name"] || row.displayName || row.displayname || row.DisplayName || "").trim();
-  const quantity = Number(String(row.Quantity || row.quantity || 0).replace(/,/g, "")) || 0;
-  const revenue = Number(String(row["Amount (Gross)"] || row.amountGross || row.amount || 0).replace(/,/g, "")) || 0;
+  const date = String(rowValue(row, ["Date", "date", "trandate"])).trim();
+  const store = String(rowValue(row, ["Store", "store", "Location", "location", "subsidiary"])).trim();
+  const internalId = String(rowValue(row, ["Internal ID", "internalId", "itemInternalId", "item_id", "itemId", "id"])).trim();
+  const parentId = String(rowValue(row, ["Parent ID", "Parent Internal ID", "parent_id", "parentId", "parentid", "parentInternalId"])).trim();
+  const item = String(rowValue(row, ["Item", "item", "item_name", "itemName", "Name", "name"])).trim();
+  const displayName = String(rowValue(row, ["Display Name", "displayName", "displayname", "DisplayName", "item_name", "itemName"])).trim();
+  const saleId = String(rowValue(row, ["Sales Order ID", "sale_id", "saleId", "transaction", "transactionId"])).trim();
+  const saleTranid = String(rowValue(row, [
+    "Sales Order Number",
+    "sale_tranid",
+    "SALE_TRANID",
+    "saleTranid",
+    "tranid",
+    "Tran ID",
+    "tranId",
+    "Document Number",
+    "documentNumber",
+  ])).trim();
+  const quantity = Number(String(rowValue(row, ["Quantity", "quantity"]) || 0).replace(/,/g, "")) || 0;
+  const revenue = Number(String(rowValue(row, ["Amount (Gross)", "amountGross", "line_amount", "lineAmount", "amount"]) || 0).replace(/,/g, "")) || 0;
   return {
     date,
     store,
@@ -4283,9 +4416,48 @@ function normalizeFloorPlanSalesRow(row) {
     parentId,
     item,
     displayName,
+    saleId,
+    saleTranid,
     quantity,
     revenue,
   };
+}
+
+function floorPlanSalesSuiteQl(dateFrom, dateTo, locationName = "") {
+  const locationPattern = sqlLikeContains(locationName);
+  return `
+    SELECT
+      TO_CHAR(t.trandate, 'DD/MM/YYYY') AS "Date",
+      tl.item AS "item_id",
+      i.parent AS "parent_id",
+      t.id AS "sale_id",
+      t.tranid AS "sale_tranid",
+      BUILTIN.DF(t.subsidiary) AS "subsidiary",
+      BUILTIN.DF(t.subsidiary) AS "Store",
+      BUILTIN.DF(tl.item) AS "item_name",
+      ABS(tl.quantity) AS "Quantity",
+      ABS(tl.netamount) AS "line_amount"
+    FROM
+      Transaction t
+    INNER JOIN
+      TransactionLine tl
+        ON tl.transaction = t.id
+    INNER JOIN
+      Item i
+        ON i.id = tl.item
+    WHERE
+      t.type = 'SalesOrd'
+      AND t.trandate >= TO_DATE('${sqlString(dateFrom)}', 'YYYY-MM-DD')
+      AND t.trandate <= TO_DATE('${sqlString(dateTo)}', 'YYYY-MM-DD')
+      AND tl.mainline = 'F'
+      AND tl.taxline = 'F'
+      AND tl.item IS NOT NULL
+      AND NVL(i.class, 0) <> 205
+      ${locationPattern ? `AND UPPER(BUILTIN.DF(t.subsidiary)) LIKE '%${locationPattern}%'` : ""}
+    ORDER BY
+      t.tranid,
+      tl.linesequencenumber
+  `;
 }
 
 function salesAggregateKey(value) {
@@ -4315,8 +4487,12 @@ function aggregateFloorPlanSales(rows) {
       row.displayName ? [byFamily, salesFamilyKey(row.displayName)] : null,
       row.item ? [byFamily, salesFamilyKey(row.item)] : null,
     ].filter(Boolean);
+    const seenTargets = new Set();
     targets.forEach(([bucket, key]) => {
       if (!key) return;
+      const targetId = `${key}:${bucket === byInternalId ? "internal" : bucket === byParentId ? "parent" : bucket === byItem ? "item" : bucket === byDisplayName ? "display" : "family"}`;
+      if (seenTargets.has(targetId)) return;
+      seenTargets.add(targetId);
       if (!bucket[key]) bucket[key] = { quantity: 0, revenue: 0, displayName: row.displayName || row.item || "" };
       bucket[key].quantity += Number(row.quantity) || 0;
       bucket[key].revenue += Number(row.revenue) || 0;
@@ -4327,7 +4503,7 @@ function aggregateFloorPlanSales(rows) {
 }
 
 function stripFootfallStorePrefix(value) {
-  return String(value || "").replace(/^\s*holdings\s+ltd\s*:\s*/i, "").trim();
+  return String(value || "").replace(/^\s*[^:]+ltd\s*:\s*/i, "").trim();
 }
 
 function parseFloorPlanDate(value) {
@@ -4346,6 +4522,10 @@ function formatIsoDate(date) {
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function formatUkDate(date) {
+  return `${String(date.getDate()).padStart(2, "0")}/${String(date.getMonth() + 1).padStart(2, "0")}/${date.getFullYear()}`;
 }
 
 function normalizeCompare(value) {
@@ -4445,33 +4625,191 @@ function numericInventoryField(row, keys) {
   return Number(String(inventoryFieldValue(row, keys) || "0").replace(/,/g, "")) || 0;
 }
 
+function floorPlanMovementValue(row, keys) {
+  return String(inventoryFieldValue(row, keys) || "").trim();
+}
+
+async function fetchFloorPlanBinTransferRows(cfg, startDate, endDate, locationName = "") {
+  if (!cfg.floorPlanBinTransferUrl) throw new Error("FLOOR_PLAN_BT_URL is not configured");
+  const url = new URL(withSuiteletToken(cfg.floorPlanBinTransferUrl, cfg.floorPlanBinTransferToken));
+  url.searchParams.delete("location");
+  if (!url.searchParams.has("dateFrom")) url.searchParams.set("dateFrom", formatUkDate(startDate));
+  if (!url.searchParams.has("dateTo")) url.searchParams.set("dateTo", formatUkDate(endDate));
+  if (!url.searchParams.has("dateField")) url.searchParams.set("dateField", "trandate");
+
+  const response = await fetch(url.toString());
+  const payload = parseJson(await response.text());
+  if (!response.ok || payload.ok === false) {
+    throw new Error(payload.error || `Bin transfer feed returned ${response.status}`);
+  }
+  return Array.isArray(payload.results)
+    ? payload.results
+    : Array.isArray(payload.rows)
+      ? payload.rows
+      : Array.isArray(payload)
+        ? payload
+        : [];
+}
+
+function floorPlanBinTransferPairKey(row) {
+  return [
+    floorPlanMovementValue(row, ["Document Number", "documentNumber", "document_number", "tranid", "Tran ID", "tranId"]),
+    floorPlanMovementValue(row, ["Internal ID", "internalId", "Item Internal ID", "itemId"]),
+    floorPlanMovementValue(row, ["Item", "item"]),
+    floorPlanMovementValue(row, ["Number", " Number", "Inventory Number", "inventoryNumber", "Lot Number"]),
+  ].map(normalizeInventoryFilterLocal).join("|");
+}
+
+function pairFloorPlanBinTransfers(rows, startDate, endDate, locationName = "") {
+  const grouped = new Map();
+  rows.forEach((row) => {
+    const rowDate = parseFloorPlanDate(floorPlanMovementValue(row, ["Date", "date", "trandate"]));
+    if (!rowDate || rowDate < startDate || rowDate > endDate) return;
+    const rowLocation = stripFootfallStorePrefix(floorPlanMovementValue(row, ["Location", "location"]));
+    if (locationName && !locationNamesMatch(rowLocation, locationName)) return;
+
+    const key = floorPlanBinTransferPairKey(row);
+    if (!key.replace(/\|/g, "")) return;
+    const group = grouped.get(key) || [];
+    group.push(row);
+    grouped.set(key, group);
+  });
+
+  return [...grouped.values()].map((group) => {
+    const sorted = group.slice().sort((a, b) => {
+      const aLine = Number(floorPlanMovementValue(a, ["Line ID", "lineId", "line"]));
+      const bLine = Number(floorPlanMovementValue(b, ["Line ID", "lineId", "line"]));
+      return aLine - bLine;
+    });
+    const from = sorted.find((row) => floorPlanMovementValue(row, ["Line ID", "lineId", "line"]) === "1") || sorted[0];
+    const to = sorted.find((row) => floorPlanMovementValue(row, ["Line ID", "lineId", "line"]) === "2") || sorted[1];
+    const fromBin = floorPlanMovementValue(from, ["Bin Number", "binNumber", "Bin", "bin"]);
+    const toBin = floorPlanMovementValue(to, ["Bin Number", "binNumber", "Bin", "bin"]);
+    if (!from || !to || !fromBin || !toBin || normalizeInventoryFilterLocal(fromBin) === normalizeInventoryFilterLocal(toBin)) return null;
+    return {
+      date: floorPlanMovementValue(from, ["Date", "date", "trandate"]),
+      documentNumber: floorPlanMovementValue(from, ["Document Number", "documentNumber", "document_number", "tranid", "Tran ID", "tranId"]),
+      tranid: floorPlanMovementValue(from, ["tranid", "Tran ID", "tranId", "Document Number", "documentNumber", "document_number"]),
+      internalId: floorPlanMovementValue(from, ["Internal ID", "internalId", "Item Internal ID", "itemId"]),
+      item: floorPlanMovementValue(from, ["Item", "item"]),
+      inventoryNumber: floorPlanMovementValue(from, ["Number", " Number", "Inventory Number", "inventoryNumber", "Lot Number"]),
+      createdBy: floorPlanMovementValue(from, ["Created By", "createdBy"]),
+      fromBin,
+      toBin,
+    };
+  }).filter(Boolean);
+}
+
+function aggregateFloorPlanBinMovements(pairs) {
+  const bucket = new Map();
+  pairs.forEach((pair) => {
+    const key = `${normalizeInventoryFilterLocal(pair.fromBin)}|${normalizeInventoryFilterLocal(pair.toBin)}`;
+    const current = bucket.get(key) || {
+      fromBin: pair.fromBin,
+      toBin: pair.toBin,
+      count: 0,
+      documents: [],
+      items: [],
+    };
+    current.count += 1;
+    if (pair.documentNumber && !current.documents.includes(pair.documentNumber)) current.documents.push(pair.documentNumber);
+    if (pair.item && !current.items.includes(pair.item)) current.items.push(pair.item);
+    bucket.set(key, current);
+  });
+  return [...bucket.values()]
+    .map((movement) => ({
+      ...movement,
+      documents: movement.documents.slice(0, 8),
+      items: movement.items.slice(0, 8),
+    }))
+    .sort((a, b) => b.count - a.count || a.fromBin.localeCompare(b.fromBin, "en-GB", { numeric: true }));
+}
+
 function isOutboundInventoryRow(row) {
   return /outbound/i.test(String(inventoryFieldValue(row, ["Bin Number", "Bin", "bin", "binNumber", "binnumber", "Bin Name"])));
 }
 
 function compactInventoryRow(row) {
   return {
+    "Bin ID": String(inventoryFieldValue(row, ["Bin ID", "binId", "bin_id", "binnumber"]) || "").trim(),
     "Bin Number": String(inventoryFieldValue(row, ["Bin Number", "Bin", "bin", "binNumber", "binnumber", "Bin Name"])).trim(),
     Location: String(inventoryFieldValue(row, ["Location", "location", "Store", "Warehouse", "Inventory Location"])).trim(),
     "Internal ID": String(inventoryFieldValue(row, ["Internal ID", "internalId", "Item Internal ID", "itemInternalId", "Item ID", "itemId"])).trim(),
     "Parent ID": String(inventoryFieldValue(row, ["Parent ID", "parentId", "parentid", "Parent Internal ID", "parentInternalId"])).trim(),
     Item: String(inventoryFieldValue(row, ["Item", "item", "Item Name", "itemName", "Name"])).trim(),
     "Display Name": String(inventoryFieldValue(row, ["Display Name", "displayName", "displayname", "DisplayName"])).trim(),
+    "Inventory Number": String(inventoryFieldValue(row, ["Inventory Number", "inventoryNumber", "inventorynumber", "Lot Number", "lotNumber", "Lot", "Serial/Lot Number"])).trim(),
     "On Hand": numericInventoryField(row, ["On Hand", "onHand", "OnHand", "Quantity On Hand"]),
   };
 }
 
-async function fetchFloorPlanInventoryRows(cfg, locationName) {
-  if (!cfg.inventoryBalanceUrl || !cfg.inventoryBalanceToken) throw new Error("Missing inventory balance env vars");
+function normalizeSuiteQlInventoryBalanceRow(row) {
+  return compactInventoryRow({
+    ...row,
+    "Bin Number": row.bin_label || row.binLabel || row.binnumber || row.bin_id || row.binId,
+    Location: row.location_label || row.locationLabel || row.location || row.location_id || row.locationId,
+    "Internal ID": row.item_id || row.itemId || row.ITEM,
+    "Parent ID": row.parent_id || row.parentId || row.parentid,
+    Item: row.item_label || row.itemLabel || row.ITEM,
+    "Display Name": row.item_label || row.itemLabel || row.ITEM,
+    "Inventory Number": row.inventorynumber_label || row.inventoryNumberLabel || row.inventorynumber,
+    "On Hand": row.quantityonhand || row.quantityOnHand || row.QuantityOnHand,
+  });
+}
+
+function binsFromInventoryRows(rows) {
+  const binsById = new Map();
+  (Array.isArray(rows) ? rows : []).forEach((row) => {
+    const id = String(inventoryFieldValue(row, ["Bin ID", "binId", "bin_id"]) || "").trim();
+    const number = String(inventoryFieldValue(row, ["Bin Number", "Bin", "bin", "binNumber", "binnumber", "Bin Name"])).trim();
+    if (!number) return;
+    const key = id || normalizeInventoryFilterLocal(number);
+    if (binsById.has(key)) return;
+    binsById.set(key, {
+      id: id || number,
+      number,
+      location: String(inventoryFieldValue(row, ["Location", "location", "Store", "Warehouse", "Inventory Location"])).trim(),
+      zone: "",
+      raw: row,
+    });
+  });
+  return Array.from(binsById.values());
+}
+
+function floorPlanInventorySuiteQl(locationName) {
+  const locationPattern = sqlLikeContains(locationName);
+  return `
+    SELECT
+      ib.binnumber AS "bin_id",
+      ib.ITEM AS "item_id",
+      i.parent AS "parent_id",
+      ib.inventorynumber AS "inventorynumber_id",
+      ib.location AS "location_id",
+      BUILTIN.DF(ib.binnumber) AS "bin_label",
+      BUILTIN.DF(ib.ITEM) AS "item_label",
+      BUILTIN.DF(ib.inventorynumber) AS "inventorynumber_label",
+      BUILTIN.DF(ib.location) AS "location_label",
+      ib.quantityOnHand AS "quantityOnHand"
+    FROM
+      InventoryBalance ib
+    INNER JOIN
+      Item i
+        ON i.id = ib.ITEM
+    WHERE
+      UPPER(BUILTIN.DF(ib.location)) LIKE '%${locationPattern}%'
+  `;
+}
+
+async function fetchFloorPlanInventoryRows(cfg, locationName, userId) {
   await ensureSuitePimFloorPlanTables();
-  const sourceHash = crypto.createHash("sha256").update(cfg.inventoryBalanceUrl).digest("hex");
+  const sourceHash = crypto.createHash("sha256").update(`${FLOOR_PLAN_INVENTORY_CACHE_VERSION}:suiteql:InventoryBalance`).digest("hex");
   const cacheKey = `${cfg.env}:${sourceHash}:${normalizeLocationCompare(locationName)}`;
   const cached = floorPlanInventoryCache.get(cacheKey);
   const now = Date.now();
   if (cached?.rows) {
     if (cached.expiresAt > now) return withInventoryCacheMeta(cached.rows, cached, "hit");
     if (cached.loadedAt && now - cached.loadedAt < FLOOR_PLAN_CACHE_STALE_MS) {
-      refreshFloorPlanInventoryRows(cacheKey, cfg, sourceHash, locationName, cached).catch((err) => {
+      refreshFloorPlanInventoryRows(cacheKey, cfg, sourceHash, locationName, userId, cached).catch((err) => {
         console.warn("SuitePim floor plan inventory background refresh failed:", err.message);
       });
       return withInventoryCacheMeta(cached.rows, cached, "stale");
@@ -4489,7 +4827,7 @@ async function fetchFloorPlanInventoryRows(cfg, locationName) {
   if (dbCached?.rows) {
     floorPlanInventoryCache.set(cacheKey, { ...dbCached, inFlight: null });
     if (dbCached.expiresAt <= now) {
-      refreshFloorPlanInventoryRows(cacheKey, cfg, sourceHash, locationName, dbCached).catch((err) => {
+      refreshFloorPlanInventoryRows(cacheKey, cfg, sourceHash, locationName, userId, dbCached).catch((err) => {
         console.warn("SuitePim floor plan inventory background refresh failed:", err.message);
       });
       return withInventoryCacheMeta(dbCached.rows, dbCached, "db-stale");
@@ -4497,7 +4835,7 @@ async function fetchFloorPlanInventoryRows(cfg, locationName) {
     return withInventoryCacheMeta(dbCached.rows, dbCached, "db-hit");
   }
 
-  const inFlight = refreshFloorPlanInventoryRows(cacheKey, cfg, sourceHash, locationName, cached);
+  const inFlight = refreshFloorPlanInventoryRows(cacheKey, cfg, sourceHash, locationName, userId, cached);
 
   try {
     const rows = await inFlight;
@@ -4518,27 +4856,13 @@ function withInventoryCacheMeta(rows, entry, status) {
   return next;
 }
 
-async function refreshFloorPlanInventoryRows(cacheKey, cfg, sourceHash, locationName, cached = null) {
+async function refreshFloorPlanInventoryRows(cacheKey, cfg, sourceHash, locationName, userId, cached = null) {
   if (cached?.inFlight) return cached.inFlight;
   const inFlight = (async () => {
-    const response = await fetch(withSuiteletToken(cfg.inventoryBalanceUrl, cfg.inventoryBalanceToken));
-    const payload = parseJson(await response.text());
-    if (!response.ok || payload.ok === false) {
-      throw new Error(payload.error || `Inventory balance feed returned ${response.status}`);
-    }
-    const allRows = Array.isArray(payload.results)
-      ? payload.results
-      : Array.isArray(payload.rows)
-        ? payload.rows
-        : Array.isArray(payload)
-          ? payload
-          : [];
+    const allRows = await fetchSuiteQLRows(cfg, userId, floorPlanInventorySuiteQl(locationName));
     const rows = allRows
-      .filter((row) =>
-        !isOutboundInventoryRow(row) &&
-        locationNamesMatch(inventoryFieldValue(row, ["Location", "location", "Store", "Warehouse", "Inventory Location"]), locationName)
-      )
-      .map(compactInventoryRow);
+      .map(normalizeSuiteQlInventoryBalanceRow)
+      .filter((row) => !isOutboundInventoryRow(row));
     const loadedAt = Date.now();
     const expiresAt = loadedAt + FLOOR_PLAN_INVENTORY_CACHE_TTL_MS;
     floorPlanInventoryCache.set(cacheKey, { rows, loadedAt, expiresAt, inFlight: null });
@@ -4563,18 +4887,23 @@ function findSalesForInventoryServer(row, aggregate = {}) {
   const item = inventoryFieldValue(row, ["Item", "item", "Item Name", "itemName", "Name"]);
   const parentId = inventoryFieldValue(row, ["Parent ID", "parentId", "parentid", "Parent Internal ID", "parentInternalId"]);
   const displayName = inventoryFieldValue(row, ["Display Name", "displayName", "displayname", "DisplayName"]);
-  return (aggregate.byParentId || {})[salesAggregateKey(parentId)] ||
-    (aggregate.byDisplayName || {})[salesAggregateKey(displayName)] ||
-    (aggregate.byFamily || {})[salesFamilyKey(displayName)] ||
-    (aggregate.byFamily || {})[salesFamilyKey(item)] ||
-    (aggregate.byInternalId || {})[salesAggregateKey(internalId)] ||
-    (aggregate.byItem || {})[salesAggregateKey(item)] ||
-    { quantity: 0, revenue: 0, displayName: displayName || item };
+  const matches = [
+    ["parent", salesAggregateKey(parentId), (aggregate.byParentId || {})[salesAggregateKey(parentId)]],
+    ["display", salesAggregateKey(displayName), (aggregate.byDisplayName || {})[salesAggregateKey(displayName)]],
+    ["family", salesFamilyKey(displayName), (aggregate.byFamily || {})[salesFamilyKey(displayName)]],
+    ["family", salesFamilyKey(item), (aggregate.byFamily || {})[salesFamilyKey(item)]],
+    ["internal", salesAggregateKey(internalId), (aggregate.byInternalId || {})[salesAggregateKey(internalId)]],
+    ["item", salesAggregateKey(item), (aggregate.byItem || {})[salesAggregateKey(item)]],
+  ];
+  const found = matches.find(([, key, match]) => key && match);
+  if (!found) return { quantity: 0, revenue: 0, displayName: displayName || item, matchKey: "" };
+  const [source, key, match] = found;
+  return { ...match, matchKey: `${source}:${key}` };
 }
 
-async function fetchFloorPlanSalesRows(cfg, startDate, endDate) {
+async function fetchFloorPlanSalesRows(cfg, startDate, endDate, userId, locationName = "") {
   const ranges = floorPlanSalesCacheRanges(startDate, endDate);
-  const payloads = await Promise.all(ranges.map((range) => fetchFloorPlanSalesChunk(cfg, range.start, range.end)));
+  const payloads = await Promise.all(ranges.map((range) => fetchFloorPlanSalesChunk(cfg, range.start, range.end, userId, locationName)));
   return {
     rows: payloads.flatMap((payload) => payload.rows),
     cache: {
@@ -4607,14 +4936,13 @@ function floorPlanSalesCacheRanges(startDate, endDate) {
   return ranges;
 }
 
-async function fetchFloorPlanSalesChunk(cfg, startDate, endDate) {
-  if (!cfg.floorPlanSalesDataUrl) throw new Error("Missing FLOOR_PLAN_SALES_DATA_URL");
+async function fetchFloorPlanSalesChunk(cfg, startDate, endDate, userId, locationName = "") {
   await ensureSuitePimFloorPlanTables();
   pruneFloorPlanSalesCache();
   const dateFrom = formatIsoDate(startDate);
   const dateTo = formatIsoDate(endDate);
-  const sourceHash = crypto.createHash("sha256").update(`${FLOOR_PLAN_SALES_CACHE_VERSION}:${cfg.floorPlanSalesDataUrl}`).digest("hex");
-  const cacheKey = `${cfg.env}:${sourceHash}:${dateFrom}:${dateTo}`;
+  const sourceHash = crypto.createHash("sha256").update(`${FLOOR_PLAN_SALES_CACHE_VERSION}:suiteql:TransactionLine`).digest("hex");
+  const cacheKey = `${cfg.env}:${sourceHash}:${normalizeLocationCompare(locationName)}:${dateFrom}:${dateTo}`;
   const cached = floorPlanSalesCache.get(cacheKey);
   const now = Date.now();
   if (cached?.rows) {
@@ -4629,7 +4957,7 @@ async function fetchFloorPlanSalesChunk(cfg, startDate, endDate) {
       };
     }
     if (cached.loadedAt && now - cached.loadedAt < FLOOR_PLAN_CACHE_STALE_MS) {
-      refreshFloorPlanSalesChunk(cacheKey, cfg, sourceHash, dateFrom, dateTo, cached).catch((err) => {
+      refreshFloorPlanSalesChunk(cacheKey, cfg, sourceHash, dateFrom, dateTo, userId, locationName, cached).catch((err) => {
         console.warn("SuitePim floor plan sales background refresh failed:", err.message);
       });
       return {
@@ -4655,7 +4983,7 @@ async function fetchFloorPlanSalesChunk(cfg, startDate, endDate) {
       inFlight: null,
     });
     if (dbCached.expiresAt <= now) {
-      refreshFloorPlanSalesChunk(cacheKey, cfg, sourceHash, dateFrom, dateTo, dbCached).catch((err) => {
+      refreshFloorPlanSalesChunk(cacheKey, cfg, sourceHash, dateFrom, dateTo, userId, locationName, dbCached).catch((err) => {
         console.warn("SuitePim floor plan sales background refresh failed:", err.message);
       });
       return {
@@ -4690,7 +5018,7 @@ async function fetchFloorPlanSalesChunk(cfg, startDate, endDate) {
     };
   }
 
-  const inFlight = refreshFloorPlanSalesChunk(cacheKey, cfg, sourceHash, dateFrom, dateTo, cached);
+  const inFlight = refreshFloorPlanSalesChunk(cacheKey, cfg, sourceHash, dateFrom, dateTo, userId, locationName, cached);
 
   try {
     const rows = await inFlight;
@@ -4744,27 +5072,10 @@ function writeFloorPlanCacheInBackground(kind, cacheKey, writeFn) {
     .catch((err) => warnFloorPlanCacheWrite(kind, cacheKey, err));
 }
 
-async function refreshFloorPlanSalesChunk(cacheKey, cfg, sourceHash, dateFrom, dateTo, cached = null) {
+async function refreshFloorPlanSalesChunk(cacheKey, cfg, sourceHash, dateFrom, dateTo, userId, locationName = "", cached = null) {
   if (cached?.inFlight) return cached.inFlight;
   const inFlight = (async () => {
-    const url = withSuiteletToken(cfg.floorPlanSalesDataUrl, cfg.floorPlanSalesDataToken);
-    const parsed = new URL(url);
-    parsed.searchParams.set("dateFrom", dateFrom);
-    parsed.searchParams.set("dateTo", dateTo);
-    parsed.searchParams.set("dateField", "trandate");
-
-    const response = await fetch(parsed.toString());
-    const payload = parseJson(await response.text());
-    if (!response.ok || payload.ok === false) {
-      throw new Error(payload.error || `Floor plan sales feed returned ${response.status}`);
-    }
-    const rows = Array.isArray(payload.results)
-      ? payload.results
-      : Array.isArray(payload.rows)
-        ? payload.rows
-        : Array.isArray(payload)
-          ? payload
-          : [];
+    const rows = await fetchSuiteQLRows(cfg, userId, floorPlanSalesSuiteQl(dateFrom, dateTo, locationName));
     const normalizedRows = rows.map(normalizeFloorPlanSalesRow).filter((row) => row.date && row.store);
     const loadedAt = Date.now();
     const expiresAt = loadedAt + FLOOR_PLAN_SALES_CACHE_TTL_MS;
@@ -4904,11 +5215,31 @@ function mapFloorPlanRow(row) {
     locationName: row.location_name || "",
     name: row.name,
     data: row.data || {},
+    isCurrent: row.is_current === true,
     createdBy: row.created_by || "",
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
 }
+
+router.get("/floor-plan-current-locations", async (req, res) => {
+  try {
+    await ensureSuitePimFloorPlanTables();
+    const result = await pool.query(
+      `
+        SELECT DISTINCT l.id, l.name
+          FROM locations l
+          JOIN suitepim_floor_plans fp ON fp.location_id = l.id
+         WHERE fp.is_current = TRUE
+         ORDER BY l.name ASC
+      `
+    );
+    res.json({ ok: true, locations: result.rows });
+  } catch (err) {
+    console.error("SuitePim current floor plan locations failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to load floor plan locations" });
+  }
+});
 
 router.get("/floor-plans", async (req, res) => {
   try {
@@ -4920,11 +5251,11 @@ router.get("/floor-plans", async (req, res) => {
 
     const result = await pool.query(
       `
-        SELECT fp.id, fp.location_id, l.name AS location_name, fp.name, fp.data, fp.created_by, fp.created_at, fp.updated_at
+        SELECT fp.id, fp.location_id, l.name AS location_name, fp.name, fp.data, fp.is_current, fp.created_by, fp.created_at, fp.updated_at
           FROM suitepim_floor_plans fp
           JOIN locations l ON l.id = fp.location_id
          WHERE fp.location_id = $1
-         ORDER BY fp.updated_at DESC, fp.name ASC
+         ORDER BY fp.is_current DESC, fp.updated_at DESC, fp.name ASC
       `,
       [locationId]
     );
@@ -4944,7 +5275,7 @@ router.get("/floor-plans/:id", async (req, res) => {
 
     const result = await pool.query(
       `
-        SELECT fp.id, fp.location_id, l.name AS location_name, fp.name, fp.data, fp.created_by, fp.created_at, fp.updated_at
+        SELECT fp.id, fp.location_id, l.name AS location_name, fp.name, fp.data, fp.is_current, fp.created_by, fp.created_at, fp.updated_at
           FROM suitepim_floor_plans fp
           JOIN locations l ON l.id = fp.location_id
          WHERE fp.id = $1
@@ -4966,20 +5297,35 @@ router.post("/floor-plans", async (req, res) => {
     const locationId = Number(req.body?.locationId);
     const name = cleanFloorPlanName(req.body?.name) || "Untitled floor plan";
     const data = cleanFloorPlanData(req.body?.data);
+    const isCurrent = req.body?.isCurrent === true;
     const createdBy = String(req.eposSession?.email || req.eposSession?.username || req.eposSession?.user_id || "").slice(0, 160);
 
     if (!Number.isInteger(locationId) || locationId <= 0) {
       return res.status(400).json({ ok: false, error: "Invalid location id" });
     }
 
-    const result = await pool.query(
-      `
-        INSERT INTO suitepim_floor_plans (location_id, name, data, created_by)
-        VALUES ($1, $2, $3::jsonb, $4)
-        RETURNING id, location_id, name, data, created_by, created_at, updated_at
-      `,
-      [locationId, name, JSON.stringify(data), createdBy || null]
-    );
+    const client = await pool.connect();
+    let result;
+    try {
+      await client.query("BEGIN");
+      if (isCurrent) {
+        await client.query("UPDATE suitepim_floor_plans SET is_current = FALSE WHERE location_id = $1", [locationId]);
+      }
+      result = await client.query(
+        `
+          INSERT INTO suitepim_floor_plans (location_id, name, data, is_current, created_by)
+          VALUES ($1, $2, $3::jsonb, $4, $5)
+          RETURNING id, location_id, name, data, is_current, created_by, created_at, updated_at
+        `,
+        [locationId, name, JSON.stringify(data), isCurrent, createdBy || null]
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
 
     res.status(201).json({ ok: true, floorPlan: mapFloorPlanRow(result.rows[0]) });
   } catch (err) {
@@ -4994,21 +5340,42 @@ router.put("/floor-plans/:id", async (req, res) => {
     const id = Number(req.params.id);
     const name = cleanFloorPlanName(req.body?.name) || "Untitled floor plan";
     const data = cleanFloorPlanData(req.body?.data);
+    const isCurrent = req.body?.isCurrent === true;
     if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ ok: false, error: "Invalid floor plan id" });
 
-    const result = await pool.query(
-      `
-        UPDATE suitepim_floor_plans
-           SET name = $2,
-               data = $3::jsonb,
-               updated_at = NOW()
-         WHERE id = $1
-        RETURNING id, location_id, name, data, created_by, created_at, updated_at
-      `,
-      [id, name, JSON.stringify(data)]
-    );
+    const client = await pool.connect();
+    let result;
+    try {
+      await client.query("BEGIN");
+      const existing = await client.query("SELECT location_id FROM suitepim_floor_plans WHERE id = $1 FOR UPDATE", [id]);
+      if (!existing.rowCount) {
+        await client.query("ROLLBACK");
+        return res.status(404).json({ ok: false, error: "Floor plan not found" });
+      }
+      const locationId = existing.rows[0].location_id;
+      if (isCurrent) {
+        await client.query("UPDATE suitepim_floor_plans SET is_current = FALSE WHERE location_id = $1 AND id <> $2", [locationId, id]);
+      }
+      result = await client.query(
+        `
+          UPDATE suitepim_floor_plans
+             SET name = $2,
+                 data = $3::jsonb,
+                 is_current = $4,
+                 updated_at = NOW()
+           WHERE id = $1
+          RETURNING id, location_id, name, data, is_current, created_by, created_at, updated_at
+        `,
+        [id, name, JSON.stringify(data), isCurrent]
+      );
+      await client.query("COMMIT");
+    } catch (err) {
+      await client.query("ROLLBACK");
+      throw err;
+    } finally {
+      client.release();
+    }
 
-    if (!result.rowCount) return res.status(404).json({ ok: false, error: "Floor plan not found" });
     res.json({ ok: true, floorPlan: mapFloorPlanRow(result.rows[0]) });
   } catch (err) {
     console.error("SuitePim floor plan update failed:", err);

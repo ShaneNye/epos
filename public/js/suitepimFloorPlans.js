@@ -2,11 +2,18 @@
   const METERS_WIDE = 100;
   const METERS_HIGH = 70;
   const PX_PER_METER = 24;
+  const THEME_STORAGE_KEY = "suitepimFloorPlanTheme";
   const ASSETS = [
     { key: "single-bed", name: "Single bed", width: 0.9, height: 1.9 },
     { key: "double-bed", name: "Double bed", width: 1.35, height: 1.9 },
     { key: "king-bed", name: "King bed", width: 1.5, height: 2 },
     { key: "super-king-bed", name: "Super king bed", width: 1.8, height: 2 },
+    { key: "bedside-cabinet", name: "Bedside cabinet", width: 0.5, height: 0.45 },
+    { key: "wardrobe", name: "Wardrobe", width: 1.2, height: 0.6 },
+    { key: "chest", name: "Chest", width: 0.9, height: 0.45 },
+    { key: "stock-bin", name: "Stock bin", width: 0.8, height: 0.6 },
+    { key: "wide-display-stand", name: "Wide display stand", width: 2.4, height: 0.8 },
+    { key: "circle-coffee-table", name: "Circle coffee table", width: 0.9, height: 0.9, shape: "circle" },
     { key: "desk", name: "Desk", width: 1.2, height: 0.6 },
     { key: "sofa-small", name: "Sofa (small)", width: 1.5, height: 0.8 },
     { key: "sofa-medium", name: "Sofa (medium)", width: 2.0, height: 0.9 },
@@ -25,6 +32,8 @@
     selectedElementId: "",
     selectedAssetIds: new Set(),
     zoom: 1,
+    pan: null,
+    viewOnly: false,
     bins: [],
     binsLoadedForLocationId: "",
     binsLoading: false,
@@ -34,10 +43,24 @@
     footfallEndDate: "",
     footfallLoading: false,
     heatmapMode: "none",
-    heatmapScope: "bin",
+    heatmapScope: "squareFootage",
     heatmapLoading: false,
     heatmapValues: {},
     heatmapMax: 0,
+    movementPaths: [],
+    heatmapDetailRows: [],
+    heatmapDetailLoading: false,
+    heatmapDetailError: "",
+    dataPanelCollapsed: true,
+    analyticsLoading: false,
+    analytics: {
+      footfall: 0,
+      soldValues: {},
+      revenueValues: {},
+      error: "",
+    },
+    highlightDraft: null,
+    highlightArea: null,
     undoStack: [],
     redoStack: [],
     dirty: false,
@@ -51,10 +74,12 @@
       "suitepimFloorPlanFootfallTotal",
       "suitepimFloorPlanDateRange",
       "suitepimFloorPlanHeatmap",
+      "suitepimFloorPlanHeatmapScopeLabel",
       "suitepimFloorPlanHeatmapScope",
       "suitepimFloorPlanStartDate",
       "suitepimFloorPlanEndDate",
       "suitepimFloorPlanStatus",
+      "suitepimFloorPlanDarkMode",
       "suitepimFloorPlanEdit",
       "suitepimFloorPlanSave",
       "suitepimFloorPlanSidebar",
@@ -63,15 +88,22 @@
       "suitepimFloorPlanNew",
       "suitepimFloorPlanList",
       "suitepimFloorPlanAssets",
+      "suitepimFloorPlanAnalytics",
       "suitepimFloorPlanBinSearch",
       "suitepimFloorPlanBins",
       "suitepimFloorPlanName",
       "suitepimFloorPlanLockGrid",
+      "suitepimFloorPlanCurrent",
       "suitepimFloorPlanZoomOut",
       "suitepimFloorPlanZoomIn",
       "suitepimFloorPlanZoomLabel",
       "suitepimFloorPlanCanvasWrap",
       "suitepimFloorPlanCanvas",
+      "suitepimFloorPlanDataPanel",
+      "suitepimFloorPlanDataPanelToggle",
+      "suitepimFloorPlanDataPanelTitle",
+      "suitepimFloorPlanDataPanelSummary",
+      "suitepimFloorPlanDataPanelContent",
       "suitepimFloorPlanRotationControls",
       "suitepimFloorPlanRotateLeft",
       "suitepimFloorPlanRotateRight",
@@ -102,8 +134,21 @@
 
   function showStatus(message, type = "info") {
     if (!el.suitepimFloorPlanStatus) return;
-    el.suitepimFloorPlanStatus.textContent = message || "";
     el.suitepimFloorPlanStatus.dataset.type = type;
+    if (type === "loading" && message) {
+      el.suitepimFloorPlanStatus.innerHTML = `<span class="suitepim-floorplan-status-spinner" aria-hidden="true"></span><span>${clean(message)}</span>`;
+      return;
+    }
+    el.suitepimFloorPlanStatus.textContent = message || "";
+  }
+
+  function applyFloorPlanTheme(mode) {
+    const isDark = mode === "dark";
+    document.body.classList.toggle("suitepim-floorplan-dark", isDark);
+    document.getElementById("suitepimFloorPlanApp")?.classList.toggle("is-dark", isDark);
+    document.querySelectorAll(".suitepim-floorplan-dark-mode-toggle").forEach((toggle) => {
+      toggle.checked = isDark;
+    });
   }
 
   function clean(value) {
@@ -112,6 +157,10 @@
       .replace(/</g, "&lt;")
       .replace(/>/g, "&gt;")
       .replace(/"/g, "&quot;");
+  }
+
+  function clamp(value, min, max) {
+    return Math.min(max, Math.max(min, value));
   }
 
   function localDate(value = new Date()) {
@@ -189,6 +238,14 @@
 
   function floorPlanBinLabel(value) {
     return String(value || "").trim().replace(/^[A-Za-z]{3}\s+/, "");
+  }
+
+  function normalizeBinMatch(value) {
+    return floorPlanBinLabel(value)
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
   }
 
   function selectedAssetElements() {
@@ -272,11 +329,12 @@
     showStatus("Redone", "info");
   }
 
-  function createEmptyPlan(locationId) {
+  function createEmptyPlan(locationId, options = {}) {
     return {
       id: null,
       locationId: Number(locationId),
       name: "Untitled floor plan",
+      isCurrent: options.isCurrent === true,
       data: {
         widthMeters: METERS_WIDE,
         heightMeters: METERS_HIGH,
@@ -286,14 +344,49 @@
   }
 
   function updateEditControls() {
-    if (!el.suitepimFloorPlanEdit || !el.suitepimFloorPlanSave || !el.suitepimFloorPlanName) return;
-    el.suitepimFloorPlanEdit.hidden = state.editMode;
-    el.suitepimFloorPlanSave.hidden = !state.editMode;
-    el.suitepimFloorPlanName.disabled = !state.editMode;
+    if (state.viewOnly) state.editMode = false;
+    if (el.suitepimFloorPlanEdit) el.suitepimFloorPlanEdit.hidden = state.viewOnly || state.editMode;
+    if (el.suitepimFloorPlanSave) el.suitepimFloorPlanSave.hidden = state.viewOnly || !state.editMode;
+    if (el.suitepimFloorPlanName) el.suitepimFloorPlanName.disabled = !state.editMode;
+    if (el.suitepimFloorPlanCurrent) el.suitepimFloorPlanCurrent.disabled = !state.editMode;
+    document.getElementById("suitepimFloorPlanApp")?.classList.toggle("is-editing", state.editMode);
     el.suitepimFloorPlanCanvas.classList.toggle("is-editing", state.editMode);
+    el.suitepimFloorPlanCanvasWrap?.classList.toggle("is-editing", state.editMode);
     document.querySelectorAll("[data-floorplan-tool], #suitepimFloorPlanLockGrid").forEach((control) => {
       control.disabled = !state.editMode;
     });
+    updateSidebarMode();
+  }
+
+  function updateHeatmapControls() {
+    const movementMode = state.heatmapMode === "movement";
+    if (el.suitepimFloorPlanHeatmapScopeLabel) el.suitepimFloorPlanHeatmapScopeLabel.hidden = movementMode;
+    if (el.suitepimFloorPlanHeatmapScope) el.suitepimFloorPlanHeatmapScope.disabled = movementMode;
+  }
+
+  function activateSidebarTab(target) {
+    const visibleTabs = Array.from(document.querySelectorAll("[data-floorplan-sidebar-tab]")).filter((button) => !button.hidden);
+    const tab = visibleTabs.find((button) => button.dataset.floorplanSidebarTab === target) || visibleTabs[0];
+    if (!tab) return;
+    document.querySelectorAll("[data-floorplan-sidebar-tab]").forEach((button) => {
+      const active = button === tab;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    document.querySelectorAll("[data-floorplan-sidebar-panel]").forEach((panel) => {
+      panel.hidden = panel.dataset.floorplanSidebarPanel !== tab.dataset.floorplanSidebarTab;
+    });
+    if (tab.dataset.floorplanSidebarTab === "bins") loadBins();
+    if (tab.dataset.floorplanSidebarTab === "analytics") loadAnalytics();
+  }
+
+  function updateSidebarMode() {
+    document.querySelectorAll("[data-floorplan-sidebar-tab]").forEach((button) => {
+      const mode = button.dataset.floorplanTabMode || "all";
+      button.hidden = mode !== "all" && mode !== (state.editMode ? "edit" : "view");
+    });
+    const active = document.querySelector("[data-floorplan-sidebar-tab].active");
+    if (!active || active.hidden) activateSidebarTab("files");
   }
 
   function updateRotationControls() {
@@ -356,16 +449,20 @@
   }
 
   function renderPlanList() {
+    if (!el.suitepimFloorPlanList) return;
     if (!state.plans.length) {
-      el.suitepimFloorPlanList.innerHTML = `<div class="suitepim-floorplan-empty">No floor plans saved for this location.</div>`;
+      el.suitepimFloorPlanList.innerHTML = `<div class="suitepim-floorplan-empty">No floor plans saved for this location. Create one to start mapping bins.</div>`;
       return;
     }
 
     el.suitepimFloorPlanList.innerHTML = state.plans
       .map((plan) => `
         <button type="button" class="${state.activePlan?.id === plan.id ? "active" : ""}" data-floorplan-id="${clean(plan.id)}">
-          <strong>${clean(plan.name)}</strong>
-          <small>${plan.updatedAt ? new Date(plan.updatedAt).toLocaleDateString("en-GB") : "Unsaved"}</small>
+          <span class="suitepim-floorplan-list-title">
+            <strong>${clean(plan.name)}</strong>
+            ${plan.isCurrent ? '<span class="suitepim-floorplan-current-badge">Current</span>' : ""}
+          </span>
+          <small>${clean(plan.data?.elements?.length ? `${plan.data.elements.length} items` : "Empty")} - ${plan.updatedAt ? new Date(plan.updatedAt).toLocaleDateString("en-GB") : "Unsaved"}</small>
         </button>
       `)
       .join("");
@@ -378,8 +475,11 @@
         state.activePlan = JSON.parse(JSON.stringify(plan));
         state.editMode = false;
         state.dirty = false;
+        state.highlightArea = null;
+        state.highlightDraft = null;
         resetHistory();
         renderAll();
+        loadAnalytics();
       });
     });
   }
@@ -419,12 +519,15 @@
     });
 
     if (state.binsLoading) {
-      el.suitepimFloorPlanBins.innerHTML = `<div class="suitepim-floorplan-empty">Loading bins...</div>`;
+      el.suitepimFloorPlanBins.innerHTML = `<div class="suitepim-floorplan-empty">Loading bins for this location...</div>`;
       return;
     }
 
     if (!bins.length) {
-      el.suitepimFloorPlanBins.innerHTML = `<div class="suitepim-floorplan-empty">No bins found for this location.</div>`;
+      const message = term
+        ? "No bins match this search."
+        : "No bins found for this location.";
+      el.suitepimFloorPlanBins.innerHTML = `<div class="suitepim-floorplan-empty">${message}</div>`;
       return;
     }
 
@@ -447,6 +550,172 @@
         event.dataTransfer.setData("text/plain", `bin:${button.dataset.floorplanBin || ""}`);
       });
     });
+  }
+
+  function renderAnalytics() {
+    if (!el.suitepimFloorPlanAnalytics) return;
+    const totals = analyticsTotals();
+    const totalArea = planAreaSqFt();
+    const revenuePerSqFt = totalArea > 0 ? totals.revenue / totalArea : 0;
+    const activeHighlight = state.highlightDraft || state.highlightArea;
+    const highlightAssets = activeHighlight ? assetsInRect(activeHighlight) : [];
+    const highlightTotals = analyticsTotals(highlightAssets);
+    const highlightArea = rectAreaSqFt(activeHighlight);
+    const highlightRevenuePerSqFt = highlightArea > 0 ? highlightTotals.revenue / highlightArea : 0;
+    const loading = state.analyticsLoading ? `<div class="suitepim-floorplan-analytics-note">Loading analytics...</div>` : "";
+    const error = state.analytics.error ? `<div class="suitepim-floorplan-analytics-note is-error">${clean(state.analytics.error)}</div>` : "";
+
+    el.suitepimFloorPlanAnalytics.innerHTML = `
+      ${loading}
+      ${error}
+      <div class="suitepim-floorplan-analytics-grid">
+        <div>
+          <span>Footfall</span>
+          <strong>${number(state.analytics.footfall)}</strong>
+        </div>
+        <div>
+          <span>Items sold</span>
+          <strong>${number(totals.itemsSold, { maximumFractionDigits: 1 })}</strong>
+        </div>
+        <div>
+          <span>Revenue</span>
+          <strong>${money(totals.revenue)}</strong>
+        </div>
+        <div>
+          <span>Revenue / sq ft</span>
+          <strong>${money(revenuePerSqFt)}</strong>
+        </div>
+        <div>
+          <span>Total sq ft</span>
+          <strong>${number(totalArea, { maximumFractionDigits: 1 })}</strong>
+        </div>
+      </div>
+      <div class="suitepim-floorplan-highlight-card">
+        <h3>Highlighted area</h3>
+        <p>${activeHighlight ? `${number(highlightArea, { maximumFractionDigits: 1 })} sq ft selected` : "Hold Shift and drag on the floor plan."}</p>
+        <div class="suitepim-floorplan-analytics-grid is-compact">
+          <div>
+            <span>Items sold</span>
+            <strong>${number(highlightTotals.itemsSold, { maximumFractionDigits: 1 })}</strong>
+          </div>
+          <div>
+            <span>Revenue</span>
+            <strong>${money(highlightTotals.revenue)}</strong>
+          </div>
+          <div>
+            <span>Revenue / sq ft</span>
+            <strong>${money(highlightRevenuePerSqFt)}</strong>
+          </div>
+          <div>
+            <span>Highlighted sq ft</span>
+            <strong>${number(highlightArea, { maximumFractionDigits: 1 })}</strong>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  function heatmapDetailTitle() {
+    if (state.heatmapMode === "sold" || state.heatmapMode === "revenue") return "Sales data";
+    if (state.heatmapMode === "inventory") return "Inventory lines";
+    if (state.heatmapMode === "movement") return "Inventory movement";
+    return "Heat map data";
+  }
+
+  function setDataPanelCollapsed(collapsed) {
+    state.dataPanelCollapsed = collapsed;
+    el.suitepimFloorPlanDataPanel?.classList.toggle("is-collapsed", collapsed);
+    el.suitepimFloorPlanDataPanelToggle?.setAttribute("aria-expanded", String(!collapsed));
+  }
+
+  function renderHeatmapDataPanel() {
+    if (!el.suitepimFloorPlanDataPanel) return;
+    const active = state.heatmapMode !== "none";
+    el.suitepimFloorPlanDataPanel.hidden = !active;
+    if (!active) return;
+
+    setDataPanelCollapsed(state.dataPanelCollapsed);
+    if (el.suitepimFloorPlanDataPanelTitle) el.suitepimFloorPlanDataPanelTitle.textContent = heatmapDetailTitle();
+    if (el.suitepimFloorPlanDataPanelSummary) {
+      el.suitepimFloorPlanDataPanelSummary.textContent = state.heatmapDetailLoading
+        ? "Loading rows..."
+        : `${state.heatmapDetailRows.length.toLocaleString("en-GB")} rows`;
+    }
+    if (!el.suitepimFloorPlanDataPanelContent) return;
+    if (state.heatmapDetailLoading) {
+      el.suitepimFloorPlanDataPanelContent.innerHTML = `<div class="suitepim-floorplan-data-loading"><span class="suitepim-floorplan-status-spinner" aria-hidden="true"></span><span>Loading data</span></div>`;
+      return;
+    }
+    if (state.heatmapDetailError) {
+      el.suitepimFloorPlanDataPanelContent.innerHTML = `<div class="suitepim-floorplan-analytics-note is-error">${clean(state.heatmapDetailError)}</div>`;
+      return;
+    }
+    if (!state.heatmapDetailRows.length) {
+      el.suitepimFloorPlanDataPanelContent.innerHTML = `<div class="suitepim-floorplan-empty">No rows for the selected heat map.</div>`;
+      return;
+    }
+
+    const rowLimit = 500;
+    const rows = state.heatmapDetailRows.slice(0, rowLimit);
+    const limited = state.heatmapDetailRows.length > rowLimit
+      ? `<p class="suitepim-floorplan-data-note">Showing first ${rowLimit.toLocaleString("en-GB")} rows.</p>`
+      : "";
+    const table = state.heatmapMode === "sold" || state.heatmapMode === "revenue"
+      ? heatmapSalesRowsTable(rows)
+      : state.heatmapMode === "inventory"
+        ? heatmapInventoryRowsTable(rows)
+        : heatmapMovementRowsTable(rows);
+    el.suitepimFloorPlanDataPanelContent.innerHTML = `${limited}${table}`;
+  }
+
+  function heatmapSalesRowsTable(rows) {
+    return `
+      <table class="suitepim-floorplan-data-table">
+        <thead><tr><th>Date</th><th>Sales order</th><th>Item</th><th>Amount</th><th>Qty</th></tr></thead>
+        <tbody>${rows.map((row) => `
+          <tr>
+            <td>${clean(row.date || "")}</td>
+            <td>${clean(row.saleTranid || row.sale_tranid || row.tranid || row.salesOrder || "")}</td>
+            <td>${clean(row.displayName || row.item || "")}</td>
+            <td>${money(Math.abs(Number(row.revenue || row.amount || 0)))}</td>
+            <td>${number(Math.abs(Number(row.quantity || 0)), { maximumFractionDigits: 2 })}</td>
+          </tr>
+        `).join("")}</tbody>
+      </table>
+    `;
+  }
+
+  function heatmapInventoryRowsTable(rows) {
+    return `
+      <table class="suitepim-floorplan-data-table">
+        <thead><tr><th>Bin</th><th>Item</th><th>Lot</th><th>On hand</th></tr></thead>
+        <tbody>${rows.map((row) => `
+          <tr>
+            <td>${clean(inventoryValue(row, ["Bin Number", "Bin", "bin", "binNumber", "binnumber", "Bin Name"]))}</td>
+            <td>${clean(inventoryValue(row, ["Display Name", "displayName", "Item", "item", "Item Name", "itemName"]))}</td>
+            <td>${clean(inventoryValue(row, ["Inventory Number", "inventoryNumber", "Lot Number", "lotNumber", "Lot"]))}</td>
+            <td>${number(numericInventoryValue(row, ["On Hand", "onHand", "OnHand", "Quantity On Hand"]), { maximumFractionDigits: 2 })}</td>
+          </tr>
+        `).join("")}</tbody>
+      </table>
+    `;
+  }
+
+  function heatmapMovementRowsTable(rows) {
+    return `
+      <table class="suitepim-floorplan-data-table">
+        <thead><tr><th>Date</th><th>Document</th><th>Item</th><th>From bin</th><th>To bin</th></tr></thead>
+        <tbody>${rows.map((row) => `
+          <tr>
+            <td>${clean(row.date || "")}</td>
+            <td>${clean(row.tranid || row.documentNumber || "")}</td>
+            <td>${clean(row.item || "")}</td>
+            <td>${clean(row.fromBin || "")}</td>
+            <td>${clean(row.toBin || "")}</td>
+          </tr>
+        `).join("")}</tbody>
+      </table>
+    `;
   }
 
   async function loadBins() {
@@ -485,6 +754,49 @@
       showStatus(err.message, "error");
     } finally {
       state.footfallLoading = false;
+    }
+  }
+
+  async function loadAnalytics() {
+    if (!state.selectedLocationId || !state.footfallStartDate || !state.footfallEndDate) return;
+    const data = planData();
+    const assets = data.elements.filter((element) => element.type === "asset" && element.bin?.number);
+    state.analyticsLoading = true;
+    state.analytics.error = "";
+    renderAnalytics();
+    const bodyBase = {
+      locationId: state.selectedLocationId,
+      startDate: state.footfallStartDate,
+      endDate: state.footfallEndDate,
+      assets: assets.map((asset) => ({
+        id: asset.id,
+        bin: asset.bin,
+      })),
+    };
+    try {
+      const [footfallPayload, soldPayload, revenuePayload] = await Promise.all([
+        api(`/api/suitepim/footfall?${new URLSearchParams({
+          locationId: state.selectedLocationId,
+          startDate: state.footfallStartDate,
+          endDate: state.footfallEndDate,
+        }).toString()}`),
+        api("/api/suitepim/floor-plan-heatmap-values", {
+          method: "POST",
+          body: JSON.stringify({ ...bodyBase, mode: "sold" }),
+        }),
+        api("/api/suitepim/floor-plan-heatmap-values", {
+          method: "POST",
+          body: JSON.stringify({ ...bodyBase, mode: "revenue" }),
+        }),
+      ]);
+      state.analytics.footfall = Number(footfallPayload.total || 0);
+      state.analytics.soldValues = soldPayload.values || {};
+      state.analytics.revenueValues = revenuePayload.values || {};
+    } catch (err) {
+      state.analytics.error = err.message || "Unable to load analytics";
+    } finally {
+      state.analyticsLoading = false;
+      renderAnalytics();
     }
   }
 
@@ -603,7 +915,7 @@
     const centerX = x + w / 2;
     const centerY = y + h / 2;
     const rotationTransform = rotation !== 0 ? ` rotate(${rotation} ${centerX.toFixed(2)} ${centerY.toFixed(2)})` : "";
-    const heatmapActive = state.heatmapMode !== "none";
+    const heatmapActive = state.heatmapMode !== "none" && state.heatmapMode !== "movement";
     const heatmapByFloor = heatmapActive && state.heatmapScope === "squareFootage";
     const heatmapValue = heatmapDisplayValue(element);
     const mainColor = heatmapActive
@@ -618,12 +930,22 @@
     const title = element.note || element.bin?.number || heatmapTitle
       ? `<title>${clean([element.bin?.number, heatmapTitle, element.note].filter(Boolean).join(" - "))}</title>`
       : "";
-    return `
-      <g class="suitepim-floorplan-placed-asset${selected ? " is-selected" : ""}" data-element-id="${clean(element.id)}"${rotationTransform ? ` transform="${rotationTransform}"` : ""}>
-        ${title}
+    const shape = element.shape || asset?.shape || "";
+    const body = shape === "circle"
+      ? `
+        <circle cx="${centerX.toFixed(2)}" cy="${centerY.toFixed(2)}" r="${(Math.min(w, h) / 2).toFixed(2)}"${rectStyle} />
+        <line x1="${(centerX - w * 0.22).toFixed(2)}" y1="${(centerY - h * 0.22).toFixed(2)}" x2="${(centerX + w * 0.22).toFixed(2)}" y2="${(centerY + h * 0.22).toFixed(2)}" />
+        <line x1="${(centerX - w * 0.22).toFixed(2)}" y1="${(centerY + h * 0.22).toFixed(2)}" x2="${(centerX + w * 0.22).toFixed(2)}" y2="${(centerY - h * 0.22).toFixed(2)}" />
+      `
+      : `
         <rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" rx="1.5"${rectStyle} />
         <line x1="${(x + 4).toFixed(2)}" y1="${(y + 4).toFixed(2)}" x2="${(x + w - 4).toFixed(2)}" y2="${(y + 4).toFixed(2)}" />
         <line x1="${(x + 4).toFixed(2)}" y1="${(y + h / 2).toFixed(2)}" x2="${(x + w - 4).toFixed(2)}" y2="${(y + h / 2).toFixed(2)}" />
+      `;
+    return `
+      <g class="suitepim-floorplan-placed-asset${selected ? " is-selected" : ""}" data-element-id="${clean(element.id)}"${rotationTransform ? ` transform="${rotationTransform}"` : ""}>
+        ${title}
+        ${body}
         <text class="suitepim-floorplan-asset-bin-main" x="${(x + w / 2).toFixed(2)}" y="${(y + h / 2).toFixed(2)}"${textStyle}>${clean(mainLabel)}</text>
         <text class="suitepim-floorplan-asset-size-label" x="${(x + w / 2).toFixed(2)}" y="${(y + h - 4).toFixed(2)}"${textStyle}>${clean(label)}</text>
       </g>
@@ -766,19 +1088,20 @@
         y: ((Number(element.y) || 0) + height / 2) * PX_PER_METER,
         value: heatmapDisplayValue(element),
       };
-    });
-    const cellMeters = 1;
+    }).filter((point) => Number(point.value) > 0);
+    if (!points.length) return "";
+
+    const cellMeters = 0.75;
     const cell = PX_PER_METER * cellMeters;
-    const influence = PX_PER_METER * 7;
-    const sigma = PX_PER_METER * 2.8;
+    const influence = PX_PER_METER * 5.5;
+    const sigma = PX_PER_METER * 1.9;
     const floorCells = enclosedFloorCells(data, cellMeters);
     const sampled = floorCells.map(({ row, col }) => {
         const x = col * cell;
         const y = row * cell;
         const cx = x + cell / 2;
         const cy = y + cell / 2;
-        let weighted = 0;
-        let weight = 0;
+        let density = 0;
 
         points.forEach((point) => {
           const dx = cx - point.x;
@@ -786,15 +1109,18 @@
           const distance = Math.sqrt((dx * dx) + (dy * dy));
           if (distance > influence) return;
           const pointWeight = Math.exp(-((distance * distance) / (2 * sigma * sigma)));
-          weighted += point.value * pointWeight;
-          weight += pointWeight;
+          density += point.value * pointWeight;
         });
 
-        return { x, y, value: weight ? weighted / weight : 0 };
+        return { x, y, value: density };
     });
-    const maxValue = Math.max(1, ...sampled.map((sample) => Number(sample.value) || 0));
+    const positiveValues = sampled
+      .map((sample) => Number(sample.value) || 0)
+      .filter((value) => value > 0)
+      .sort((a, b) => a - b);
+    const maxValue = heatmapRobustMax(positiveValues);
     const cells = sampled.map(({ x, y, value }) => {
-      const color = heatmapColor(value, maxValue);
+      const color = heatmapColor(value, maxValue, 0.58);
       return `
         <rect
           class="suitepim-floorplan-heatmap-cell"
@@ -809,6 +1135,84 @@
     return `<g class="suitepim-floorplan-heatmap-layer">${cells.join("")}</g>`;
   }
 
+  function movementOverlayMarkup(data) {
+    if (state.heatmapMode !== "movement" || !state.movementPaths.length) return "";
+    const assets = data.elements.filter((element) => element.type === "asset" && element.bin?.number);
+    if (!assets.length) return "";
+
+    const assetsByBin = new Map();
+    assets.forEach((asset) => {
+      const key = normalizeBinMatch(asset.bin?.number);
+      if (key && !assetsByBin.has(key)) assetsByBin.set(key, asset);
+    });
+
+    const maxCount = Math.max(1, ...state.movementPaths.map((path) => Number(path.count) || 0));
+    const paths = state.movementPaths.map((movement, index) => {
+      const fromAsset = assetsByBin.get(normalizeBinMatch(movement.fromBin));
+      const toAsset = assetsByBin.get(normalizeBinMatch(movement.toBin));
+      if (!fromAsset || !toAsset || fromAsset.id === toAsset.id) return "";
+
+      const from = assetCenter(fromAsset);
+      const to = assetCenter(toAsset);
+      const x1 = from.x * PX_PER_METER;
+      const y1 = from.y * PX_PER_METER;
+      const x2 = to.x * PX_PER_METER;
+      const y2 = to.y * PX_PER_METER;
+      const dx = x2 - x1;
+      const dy = y2 - y1;
+      const length = Math.max(1, Math.hypot(dx, dy));
+      const normalX = -dy / length;
+      const normalY = dx / length;
+      const curveOffset = (18 + ((index % 4) * 7)) * (index % 2 ? -1 : 1);
+      const cx = (x1 + x2) / 2 + normalX * curveOffset;
+      const cy = (y1 + y2) / 2 + normalY * curveOffset;
+      const count = Number(movement.count) || 0;
+      const ratio = Math.max(0, Math.min(1, count / maxCount));
+      const strokeWidth = 2.4 + ratio * 4.2;
+      const hue = 205 - (205 * ratio);
+      const color = `hsl(${hue.toFixed(0)} 84% 44%)`;
+      const labelX = (x1 + x2 + cx) / 3;
+      const labelY = (y1 + y2 + cy) / 3;
+      const title = `${movement.fromBin} to ${movement.toBin}: ${count} movement${count === 1 ? "" : "s"}`;
+      return `
+        <g class="suitepim-floorplan-movement-path">
+          <title>${clean(title)}</title>
+          <path d="M ${x1.toFixed(2)} ${y1.toFixed(2)} Q ${cx.toFixed(2)} ${cy.toFixed(2)} ${x2.toFixed(2)} ${y2.toFixed(2)}"
+            style="stroke:${clean(color)};stroke-width:${strokeWidth.toFixed(2)}" marker-end="url(#suitepimFloorPlanMovementArrow)" />
+          <text x="${labelX.toFixed(2)}" y="${labelY.toFixed(2)}">${clean(String(count))}</text>
+        </g>
+      `;
+    }).filter(Boolean);
+
+    if (!paths.length) return "";
+    return `
+      <defs>
+        <marker id="suitepimFloorPlanMovementArrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="strokeWidth">
+          <path d="M 0 0 L 8 4 L 0 8 z" class="suitepim-floorplan-movement-arrow-head" />
+        </marker>
+      </defs>
+      <g class="suitepim-floorplan-movement-layer">${paths.join("")}</g>
+    `;
+  }
+
+  function highlightMarkup() {
+    const rect = normalRect(state.highlightDraft || state.highlightArea);
+    if (!rect) return "";
+    const x = rect.x1 * PX_PER_METER;
+    const y = rect.y1 * PX_PER_METER;
+    const width = Math.max(0, (rect.x2 - rect.x1) * PX_PER_METER);
+    const height = Math.max(0, (rect.y2 - rect.y1) * PX_PER_METER);
+    if (width <= 0 || height <= 0) return "";
+    return `
+      <rect
+        class="suitepim-floorplan-highlight-area"
+        x="${x.toFixed(2)}"
+        y="${y.toFixed(2)}"
+        width="${width.toFixed(2)}"
+        height="${height.toFixed(2)}" />
+    `;
+  }
+
   function renderCanvas() {
     if (!el.suitepimFloorPlanCanvas) return;
     const data = planData();
@@ -816,6 +1220,8 @@
     const heightPx = data.heightMeters * PX_PER_METER;
     updateHeatmapMax();
     const heatmapOverlay = heatmapFloorOverlayMarkup(data);
+    const movementOverlay = movementOverlayMarkup(data);
+    const highlightOverlay = highlightMarkup();
     const elements = data.elements.map((element) => elementMarkup(element)).join("");
     const draft = state.draft ? elementMarkup(state.draft, true) : "";
 
@@ -826,6 +1232,8 @@
       <rect class="suitepim-floorplan-bg" x="0" y="0" width="${widthPx}" height="${heightPx}"></rect>
       ${gridMarkup(data.widthMeters, data.heightMeters)}
       ${heatmapOverlay}
+      ${movementOverlay}
+      ${highlightOverlay}
       <g class="suitepim-floorplan-elements">${elements}${draft}</g>
     `;
     updateRotationControls();
@@ -834,7 +1242,8 @@
   function renderActivePlan() {
     const active = state.activePlan || createEmptyPlan(state.selectedLocationId || state.locations[0]?.id || 0);
     state.activePlan = active;
-    el.suitepimFloorPlanName.value = active.name || "Untitled floor plan";
+    if (el.suitepimFloorPlanName) el.suitepimFloorPlanName.value = active.name || "Untitled floor plan";
+    if (el.suitepimFloorPlanCurrent) el.suitepimFloorPlanCurrent.checked = active.isCurrent === true;
     renderCanvas();
     updateEditControls();
     updateRotationControls();
@@ -845,7 +1254,10 @@
     renderPlanList();
     renderAssets();
     renderBins();
+    renderAnalytics();
     renderActivePlan();
+    updateHeatmapControls();
+    renderHeatmapDataPanel();
   }
 
   function setDirty() {
@@ -860,9 +1272,44 @@
   }
 
   function setZoom(nextZoom) {
-    state.zoom = Math.min(3, Math.max(0.35, Math.round(nextZoom * 100) / 100));
+    const wrap = el.suitepimFloorPlanCanvasWrap;
+    const previousZoom = state.zoom;
+    const next = clamp(Math.round(nextZoom * 100) / 100, 0.25, 3);
+    if (next === previousZoom) return;
+
+    let anchor = null;
+    if (wrap) {
+      anchor = {
+        x: wrap.clientWidth / 2,
+        y: wrap.clientHeight / 2,
+        planX: (wrap.scrollLeft + wrap.clientWidth / 2) / previousZoom,
+        planY: (wrap.scrollTop + wrap.clientHeight / 2) / previousZoom,
+      };
+    }
+
+    state.zoom = next;
     updateZoomLabel();
     renderCanvas();
+
+    if (wrap && anchor) {
+      wrap.scrollLeft = anchor.planX * state.zoom - anchor.x;
+      wrap.scrollTop = anchor.planY * state.zoom - anchor.y;
+    }
+  }
+
+  function zoomAtPoint(nextZoom, screenX, screenY) {
+    const wrap = el.suitepimFloorPlanCanvasWrap;
+    const previousZoom = state.zoom;
+    const next = clamp(Math.round(nextZoom * 100) / 100, 0.25, 3);
+    if (!wrap || next === previousZoom) return;
+
+    const canvasX = (screenX + wrap.scrollLeft) / previousZoom;
+    const canvasY = (screenY + wrap.scrollTop) / previousZoom;
+    state.zoom = next;
+    updateZoomLabel();
+    renderCanvas();
+    wrap.scrollLeft = canvasX * state.zoom - screenX;
+    wrap.scrollTop = canvasY * state.zoom - screenY;
   }
 
   function canvasPoint(event) {
@@ -960,12 +1407,52 @@
       y: Math.round(y * 100) / 100,
       width: asset.width,
       height: asset.height,
+      shape: asset.shape || "",
       rotation: 0,
     });
     setPlanData(data);
     selectAsset(data.elements[data.elements.length - 1].id);
     setDirty();
     renderCanvas();
+  }
+
+  function startHighlightSelection(event) {
+    if (state.editMode || !event.shiftKey || event.button !== 0) return false;
+    event.preventDefault();
+    const point = canvasPoint(event);
+    state.highlightDraft = {
+      x1: point.x,
+      y1: point.y,
+      x2: point.x,
+      y2: point.y,
+    };
+    renderCanvas();
+    renderAnalytics();
+    return true;
+  }
+
+  function updateHighlightSelection(event) {
+    if (!state.highlightDraft) return false;
+    const point = canvasPoint(event);
+    state.highlightDraft.x2 = point.x;
+    state.highlightDraft.y2 = point.y;
+    renderCanvas();
+    renderAnalytics();
+    return true;
+  }
+
+  function finishHighlightSelection() {
+    if (!state.highlightDraft) return false;
+    const rect = normalRect(state.highlightDraft);
+    state.highlightDraft = null;
+    if (!rect || Math.abs(rect.x2 - rect.x1) < 0.1 || Math.abs(rect.y2 - rect.y1) < 0.1) {
+      state.highlightArea = null;
+    } else {
+      state.highlightArea = rect;
+    }
+    renderCanvas();
+    renderAnalytics();
+    return true;
   }
 
   function attachBinToAsset(binId, event) {
@@ -1068,6 +1555,38 @@
     return true;
   }
 
+  function startViewportPan(event) {
+    if (state.editMode || event.button !== 0 || event.shiftKey || !el.suitepimFloorPlanCanvasWrap) return false;
+    if (event.target.closest?.(".suitepim-floorplan-placed-asset")) return false;
+
+    event.preventDefault();
+    state.pan = {
+      startX: event.clientX,
+      startY: event.clientY,
+      scrollLeft: el.suitepimFloorPlanCanvasWrap.scrollLeft,
+      scrollTop: el.suitepimFloorPlanCanvasWrap.scrollTop,
+    };
+    el.suitepimFloorPlanCanvasWrap.classList.add("panning");
+    el.suitepimFloorPlanCanvas.setPointerCapture?.(event.pointerId);
+    return true;
+  }
+
+  function updateViewportPan(event) {
+    if (!state.pan || !el.suitepimFloorPlanCanvasWrap) return false;
+    const dx = event.clientX - state.pan.startX;
+    const dy = event.clientY - state.pan.startY;
+    el.suitepimFloorPlanCanvasWrap.scrollLeft = state.pan.scrollLeft - dx;
+    el.suitepimFloorPlanCanvasWrap.scrollTop = state.pan.scrollTop - dy;
+    return true;
+  }
+
+  function finishViewportPan() {
+    if (!state.pan) return false;
+    state.pan = null;
+    el.suitepimFloorPlanCanvasWrap?.classList.remove("panning");
+    return true;
+  }
+
   function updateAssetElements(ids, updates = {}) {
     const selectedIds = Array.isArray(ids) ? ids.filter(Boolean) : [ids].filter(Boolean);
     if (!selectedIds.length) return;
@@ -1134,12 +1653,24 @@
     return `${Number(value || 0).toFixed(1)}%`;
   }
 
-  function heatmapColor(value, max) {
-    if (!Number(value) || !Number(max)) return "#d8dee4";
-    const ratio = Math.max(0, Math.min(1, Number(value) / Number(max)));
+  function number(value, options = {}) {
+    return Number(value || 0).toLocaleString("en-GB", options);
+  }
+
+  function heatmapColor(value, max, curve = 1) {
+    if (!Number(max)) return "#d8dee4";
+    const rawRatio = Math.max(0, Math.min(1, Number(value) / Number(max)));
+    const ratio = Math.pow(rawRatio, curve);
     const hue = 205 - (205 * ratio);
     const lightness = 84 - (36 * ratio);
     return `hsl(${hue.toFixed(0)} 82% ${lightness.toFixed(0)}%)`;
+  }
+
+  function heatmapRobustMax(values) {
+    if (!values.length) return 0;
+    if (values.length < 5) return values[values.length - 1];
+    const index = Math.min(values.length - 1, Math.max(0, Math.floor((values.length - 1) * 0.94)));
+    return values[index] || values[values.length - 1] || 0;
   }
 
   function heatmapAssetAreaSqFt(element) {
@@ -1147,6 +1678,58 @@
     const width = Number(element.width) || asset?.width || 1;
     const height = Number(element.height) || asset?.height || 1;
     return Math.max(0.1, width * height * 10.7639);
+  }
+
+  function planAreaSqFt() {
+    const data = planData();
+    const cellMeters = 0.5;
+    const floorCells = enclosedFloorCells(data, cellMeters);
+    if (floorCells.length) return floorCells.length * cellMeters * cellMeters * 10.7639;
+    return Math.max(0.1, (Number(data.widthMeters) || 0) * (Number(data.heightMeters) || 0) * 10.7639);
+  }
+
+  function rectAreaSqFt(rect) {
+    if (!rect) return 0;
+    return Math.max(0, Math.abs(rect.x2 - rect.x1) * Math.abs(rect.y2 - rect.y1) * 10.7639);
+  }
+
+  function normalRect(rect) {
+    if (!rect) return null;
+    return {
+      x1: Math.min(rect.x1, rect.x2),
+      y1: Math.min(rect.y1, rect.y2),
+      x2: Math.max(rect.x1, rect.x2),
+      y2: Math.max(rect.y1, rect.y2),
+    };
+  }
+
+  function assetCenter(element) {
+    const asset = assetByKey(element.assetKey);
+    const width = Number(element.width) || asset?.width || 1;
+    const height = Number(element.height) || asset?.height || 1;
+    return {
+      x: (Number(element.x) || 0) + width / 2,
+      y: (Number(element.y) || 0) + height / 2,
+    };
+  }
+
+  function assetsInRect(rect) {
+    const bounds = normalRect(rect);
+    if (!bounds) return [];
+    return planData().elements.filter((element) => {
+      if (element.type !== "asset" || !element.bin?.number) return false;
+      const center = assetCenter(element);
+      return center.x >= bounds.x1 && center.x <= bounds.x2 && center.y >= bounds.y1 && center.y <= bounds.y2;
+    });
+  }
+
+  function analyticsTotals(assets = null) {
+    const targetAssets = assets || planData().elements.filter((element) => element.type === "asset" && element.bin?.number);
+    return targetAssets.reduce((totals, asset) => {
+      totals.itemsSold += Number(state.analytics.soldValues?.[asset.id] || 0);
+      totals.revenue += Number(state.analytics.revenueValues?.[asset.id] || 0);
+      return totals;
+    }, { itemsSold: 0, revenue: 0 });
   }
 
   function heatmapDisplayValue(element) {
@@ -1197,19 +1780,29 @@
     const byItem = aggregate.byItem || {};
     const byDisplayName = aggregate.byDisplayName || {};
     const byFamily = aggregate.byFamily || {};
-    const match = byParentId[salesAggregateKey(parentId)] ||
-      byDisplayName[salesAggregateKey(displayName)] ||
-      byFamily[salesFamilyKey(displayName)] ||
-      byFamily[salesFamilyKey(item)] ||
-      byInternalId[salesAggregateKey(internalId)] ||
-      byItem[salesAggregateKey(item)];
-    return match || { quantity: 0, revenue: 0, displayName: displayName || item };
+    const matches = [
+      ["parent", salesAggregateKey(parentId), byParentId[salesAggregateKey(parentId)]],
+      ["display", salesAggregateKey(displayName), byDisplayName[salesAggregateKey(displayName)]],
+      ["family", salesFamilyKey(displayName), byFamily[salesFamilyKey(displayName)]],
+      ["family", salesFamilyKey(item), byFamily[salesFamilyKey(item)]],
+      ["internal", salesAggregateKey(internalId), byInternalId[salesAggregateKey(internalId)]],
+      ["item", salesAggregateKey(item), byItem[salesAggregateKey(item)]],
+    ];
+    const found = matches.find(([, key, match]) => key && match);
+    if (!found) return { quantity: 0, revenue: 0, displayName: displayName || item, matchKey: "" };
+    const [source, key, match] = found;
+    return { ...match, matchKey: `${source}:${key}` };
   }
 
   async function loadHeatmapData() {
     if (state.heatmapMode === "none") {
       state.heatmapValues = {};
       state.heatmapMax = 0;
+      state.movementPaths = [];
+      state.heatmapDetailRows = [];
+      state.heatmapDetailError = "";
+      state.heatmapDetailLoading = false;
+      renderHeatmapDataPanel();
       renderCanvas();
       return;
     }
@@ -1218,12 +1811,44 @@
     if (!assets.length) {
       state.heatmapValues = {};
       state.heatmapMax = 0;
+      state.movementPaths = [];
+      state.heatmapDetailRows = [];
+      state.heatmapDetailError = "";
+      state.heatmapDetailLoading = false;
+      renderHeatmapDataPanel();
       renderCanvas();
       return;
     }
 
     state.heatmapLoading = true;
-    showStatus("Loading heat map...");
+    state.heatmapDetailLoading = true;
+    state.heatmapDetailError = "";
+    state.heatmapDetailRows = [];
+    state.dataPanelCollapsed = true;
+    renderHeatmapDataPanel();
+    showStatus("Loading heat map", "loading");
+    if (state.heatmapMode === "movement") {
+      const movementPayload = await api(`/api/suitepim/floor-plan-inventory-movement?${new URLSearchParams({
+        locationId: state.selectedLocationId,
+        startDate: state.footfallStartDate,
+        endDate: state.footfallEndDate,
+        includeRows: "1",
+      }).toString()}`).catch((err) => ({ error: err.message, movements: [] }));
+      state.heatmapValues = {};
+      state.heatmapMax = 0;
+      state.movementPaths = movementPayload.movements || [];
+      state.heatmapDetailRows = movementPayload.rows || [];
+      state.heatmapDetailError = movementPayload.error || "";
+      state.heatmapDetailLoading = false;
+      state.heatmapLoading = false;
+      renderHeatmapDataPanel();
+      renderCanvas();
+      const loadError = movementPayload.error;
+      showStatus(loadError ? `Movement loaded with limited data: ${loadError}` : "Inventory movement loaded", loadError ? "warning" : "success");
+      return;
+    }
+
+    state.movementPaths = [];
     const heatmapPayload = await api("/api/suitepim/floor-plan-heatmap-values", {
       method: "POST",
       body: JSON.stringify({
@@ -1241,10 +1866,43 @@
 
     state.heatmapValues = values;
     state.heatmapMax = Math.max(0, ...Object.values(values).map((value) => Number(value) || 0));
+    await loadHeatmapDetailRows();
     state.heatmapLoading = false;
     renderCanvas();
     const loadError = heatmapPayload.error;
     showStatus(loadError ? `Heat map loaded with limited data: ${loadError}` : "Heat map loaded", loadError ? "warning" : "success");
+  }
+
+  async function loadHeatmapDetailRows() {
+    try {
+      if (state.heatmapMode === "sold" || state.heatmapMode === "revenue") {
+        const payload = await api(`/api/suitepim/floor-plan-sales-data?${new URLSearchParams({
+          locationId: state.selectedLocationId,
+          startDate: state.footfallStartDate,
+          endDate: state.footfallEndDate,
+          includeRows: "1",
+        }).toString()}`);
+        state.heatmapDetailRows = payload.rows || [];
+        state.heatmapDetailError = payload.error || "";
+      } else if (state.heatmapMode === "inventory") {
+        const data = planData();
+        const uniqueBins = [...new Set(data.elements
+          .filter((element) => element.type === "asset" && element.bin?.number)
+          .map((element) => element.bin.number))];
+        const payloads = await mapWithConcurrency(uniqueBins, 6, (bin) => api(`/api/suitepim/floor-plan-bin-inventory?${new URLSearchParams({
+          locationId: state.selectedLocationId,
+          bin,
+        }).toString()}`).catch((err) => ({ error: err.message, rows: [] })));
+        state.heatmapDetailRows = payloads.flatMap((payload) => payload.rows || []);
+        state.heatmapDetailError = payloads.find((payload) => payload.error)?.error || "";
+      }
+    } catch (err) {
+      state.heatmapDetailRows = [];
+      state.heatmapDetailError = err.message || "Unable to load heat map data rows";
+    } finally {
+      state.heatmapDetailLoading = false;
+      renderHeatmapDataPanel();
+    }
   }
 
   async function loadAssetInventory(ids) {
@@ -1270,12 +1928,13 @@
     const groups = [];
     for (const asset of assets) {
       const params = new URLSearchParams({
-        location: asset.bin.location || locationName,
+        locationId: state.selectedLocationId,
         bin: asset.bin.number,
       });
       try {
-        const payload = await api(`/api/netsuite/inventorybalance?${params.toString()}`);
+        const payload = await api(`/api/suitepim/floor-plan-bin-inventory?${params.toString()}`);
         const rows = payload.results || payload.data || payload.inventory || payload.rows || [];
+        const countedSalesKeys = new Set();
         groups.push({
           title: asset.bin.number,
           subtitle: [asset.name, asset.bin.location || locationName, asset.bin.zone, `${state.footfallStartDate} to ${state.footfallEndDate}`].filter(Boolean).join(" - "),
@@ -1283,8 +1942,10 @@
           salesError: salesPayload.error || "",
           rows: rows.map((row) => {
             const sales = findSalesForInventoryRow(row, aggregate);
-            const sold = Number(sales.quantity || 0);
-            const revenue = Number(sales.revenue || 0);
+            const alreadyCounted = sales.matchKey && countedSalesKeys.has(sales.matchKey);
+            if (sales.matchKey) countedSalesKeys.add(sales.matchKey);
+            const sold = alreadyCounted ? 0 : Number(sales.quantity || 0);
+            const revenue = alreadyCounted ? 0 : Number(sales.revenue || 0);
             const itemName = inventoryValue(row, ["Display Name", "displayName", "displayname", "DisplayName"]) ||
               sales.displayName ||
               inventoryValue(row, ["Item", "item", "Item Name", "itemName", "Name"]);
@@ -1453,31 +2114,44 @@
   }
 
   async function loadLocations() {
-    const data = await api("/api/meta/locations", { headers: { "Content-Type": "application/json" } });
+    const path = state.viewOnly ? "/api/suitepim/floor-plan-current-locations" : "/api/meta/locations";
+    const data = await api(path, { headers: { "Content-Type": "application/json" } });
     state.locations = (data.locations || []).filter((location) => location.id && location.name);
     state.selectedLocationId = String(state.locations[0]?.id || "");
     renderLocations();
   }
 
-  async function loadPlans() {
-    if (!state.selectedLocationId) return;
+  async function loadPlans(preferredPlanId = "") {
+    if (!state.selectedLocationId) {
+      state.plans = [];
+      state.activePlan = createEmptyPlan(0);
+      renderAll();
+      showStatus(state.viewOnly ? "No locations have a current floor plan" : "", state.viewOnly ? "warning" : "info");
+      return;
+    }
     showStatus("Loading floor plans...");
     const data = await api(`/api/suitepim/floor-plans?locationId=${encodeURIComponent(state.selectedLocationId)}`);
     state.plans = data.floorPlans || [];
-    state.activePlan = state.plans[0] ? JSON.parse(JSON.stringify(state.plans[0])) : createEmptyPlan(state.selectedLocationId);
-    state.editMode = !state.activePlan.id;
+    const selectedPlan = state.plans.find((plan) => String(plan.id) === String(preferredPlanId)) ||
+      state.plans.find((plan) => plan.isCurrent) ||
+      state.plans[0];
+    state.activePlan = selectedPlan ? JSON.parse(JSON.stringify(selectedPlan)) : createEmptyPlan(state.selectedLocationId, { isCurrent: true });
+    state.editMode = state.viewOnly ? false : !state.activePlan.id;
     state.dirty = false;
     resetHistory();
     showStatus("");
     renderAll();
+    loadAnalytics();
   }
 
   async function savePlan() {
     if (!state.activePlan || !state.selectedLocationId) return;
-    state.activePlan.name = el.suitepimFloorPlanName.value.trim() || "Untitled floor plan";
+    state.activePlan.name = el.suitepimFloorPlanName?.value.trim() || "Untitled floor plan";
+    state.activePlan.isCurrent = el.suitepimFloorPlanCurrent?.checked === true;
     const payload = {
       locationId: Number(state.selectedLocationId),
       name: state.activePlan.name,
+      isCurrent: state.activePlan.isCurrent,
       data: planData(),
     };
     showStatus("Saving...");
@@ -1487,11 +2161,12 @@
     const method = state.activePlan.id ? "PUT" : "POST";
     const data = await api(path, { method, body: JSON.stringify(payload) });
     state.activePlan = data.floorPlan;
+    const savedPlanId = data.floorPlan?.id || "";
     state.editMode = false;
     state.dirty = false;
     resetHistory();
     showStatus("Saved", "success");
-    await loadPlans();
+    await loadPlans(savedPlanId);
   }
 
   function bindEvents() {
@@ -1503,10 +2178,11 @@
       if (el.suitepimFloorPlanBinSearch) el.suitepimFloorPlanBinSearch.value = "";
       loadFootfall();
       await loadPlans().catch((err) => showStatus(err.message, "error"));
+      loadAnalytics();
       if (state.heatmapMode !== "none") loadHeatmapData();
     });
 
-    el.suitepimFloorPlanSidebarToggle.addEventListener("click", () => {
+    el.suitepimFloorPlanSidebarToggle?.addEventListener("click", () => {
       const collapsed = el.suitepimFloorPlanSidebar.classList.toggle("is-collapsed");
       el.suitepimFloorPlanSidebarToggle.setAttribute("aria-expanded", String(!collapsed));
       el.suitepimFloorPlanSidebarBody.hidden = collapsed;
@@ -1514,16 +2190,7 @@
 
     document.querySelectorAll("[data-floorplan-sidebar-tab]").forEach((tab) => {
       tab.addEventListener("click", () => {
-        const target = tab.dataset.floorplanSidebarTab;
-        document.querySelectorAll("[data-floorplan-sidebar-tab]").forEach((button) => {
-          const active = button === tab;
-          button.classList.toggle("active", active);
-          button.setAttribute("aria-selected", String(active));
-        });
-        document.querySelectorAll("[data-floorplan-sidebar-panel]").forEach((panel) => {
-          panel.hidden = panel.dataset.floorplanSidebarPanel !== target;
-        });
-        if (target === "bins") loadBins();
+        activateSidebarTab(tab.dataset.floorplanSidebarTab);
       });
     });
 
@@ -1536,14 +2203,21 @@
       state.footfallRangeKey = el.suitepimFloorPlanDateRange.value || "thisMonth";
       syncFootfallDateInputs();
       loadFootfall();
+      loadAnalytics();
       if (state.heatmapMode !== "none") loadHeatmapData();
     });
 
     el.suitepimFloorPlanHeatmap?.addEventListener("change", () => {
       state.heatmapMode = el.suitepimFloorPlanHeatmap.value || "none";
+      updateHeatmapControls();
       if (state.heatmapMode === "none") {
         state.heatmapValues = {};
         state.heatmapMax = 0;
+        state.movementPaths = [];
+        state.heatmapDetailRows = [];
+        state.heatmapDetailError = "";
+        state.heatmapDetailLoading = false;
+        renderHeatmapDataPanel();
         renderCanvas();
         showStatus("");
         return;
@@ -1553,8 +2227,21 @@
 
     el.suitepimFloorPlanHeatmapScope?.addEventListener("change", () => {
       state.heatmapScope = el.suitepimFloorPlanHeatmapScope.value || "bin";
+      if (state.heatmapMode === "movement") return;
       updateHeatmapMax();
       renderCanvas();
+    });
+
+    el.suitepimFloorPlanDataPanelToggle?.addEventListener("click", () => {
+      setDataPanelCollapsed(!state.dataPanelCollapsed);
+    });
+
+    document.querySelectorAll(".suitepim-floorplan-dark-mode-toggle").forEach((toggle) => {
+      toggle.addEventListener("change", () => {
+        const mode = toggle.checked ? "dark" : "light";
+        localStorage.setItem(THEME_STORAGE_KEY, mode);
+        applyFloorPlanTheme(mode);
+      });
     });
 
     [el.suitepimFloorPlanStartDate, el.suitepimFloorPlanEndDate].forEach((input) => {
@@ -1564,12 +2251,14 @@
         state.footfallEndDate = el.suitepimFloorPlanEndDate.value;
         syncFootfallDateInputs();
         loadFootfall();
+        loadAnalytics();
         if (state.heatmapMode !== "none") loadHeatmapData();
       });
     });
 
-    el.suitepimFloorPlanNew.addEventListener("click", () => {
-      state.activePlan = createEmptyPlan(state.selectedLocationId);
+    el.suitepimFloorPlanNew?.addEventListener("click", () => {
+      if (state.viewOnly) return;
+      state.activePlan = createEmptyPlan(state.selectedLocationId, { isCurrent: !state.plans.length });
       state.editMode = true;
       state.dirty = true;
       resetHistory();
@@ -1577,18 +2266,25 @@
       renderAll();
     });
 
-    el.suitepimFloorPlanEdit.addEventListener("click", () => {
+    el.suitepimFloorPlanEdit?.addEventListener("click", () => {
+      if (state.viewOnly) return;
       state.editMode = true;
       updateEditControls();
       showStatus("Editing");
     });
 
-    el.suitepimFloorPlanSave.addEventListener("click", () => {
+    el.suitepimFloorPlanSave?.addEventListener("click", () => {
       savePlan().catch((err) => showStatus(err.message, "error"));
     });
 
-    el.suitepimFloorPlanName.addEventListener("input", setDirty);
-    el.suitepimFloorPlanLockGrid.addEventListener("change", () => {
+    el.suitepimFloorPlanName?.addEventListener("input", setDirty);
+    el.suitepimFloorPlanCurrent?.addEventListener("change", () => {
+      if (!state.activePlan) return;
+      state.activePlan.isCurrent = el.suitepimFloorPlanCurrent.checked;
+      setDirty();
+      renderPlanList();
+    });
+    el.suitepimFloorPlanLockGrid?.addEventListener("change", () => {
       state.lockGrid = el.suitepimFloorPlanLockGrid.checked;
     });
     el.suitepimFloorPlanZoomOut?.addEventListener("click", () => setZoom(state.zoom - 0.15));
@@ -1624,6 +2320,17 @@
         return;
       }
 
+      if (state.editMode && ["delete", "backspace"].includes(key)) {
+        const selectedIds = state.selectedAssetIds.size
+          ? Array.from(state.selectedAssetIds)
+          : [state.selectedElementId].filter(Boolean);
+        if (selectedIds.length) {
+          event.preventDefault();
+          deleteElements(selectedIds);
+        }
+        return;
+      }
+
       // Asset rotation shortcuts - arrow keys
       if (!state.editMode || !state.selectedElementId) return;
       const data = planData();
@@ -1654,6 +2361,7 @@
     });
 
     el.suitepimFloorPlanCanvas.addEventListener("pointerdown", (event) => {
+      if (startHighlightSelection(event)) return;
       if (!state.editMode) {
         const asset = assetAtPoint(canvasPoint(event));
         if (asset?.bin?.number) {
@@ -1664,13 +2372,22 @@
           return;
         }
       }
+      if (startViewportPan(event)) return;
       if (startAssetMove(event)) return;
       startDrawing(event);
     });
     el.suitepimFloorPlanCanvas.addEventListener("pointermove", (event) => {
+      if (updateHighlightSelection(event)) return;
+      if (updateViewportPan(event)) return;
       if (updateAssetMove(event)) return;
       updateDrawing(event);
     });
+    el.suitepimFloorPlanCanvasWrap?.addEventListener("wheel", (event) => {
+      event.preventDefault();
+      const rect = el.suitepimFloorPlanCanvasWrap.getBoundingClientRect();
+      const delta = event.deltaY > 0 ? -0.08 : 0.08;
+      zoomAtPoint(state.zoom + delta, event.clientX - rect.left, event.clientY - rect.top);
+    }, { passive: false });
     el.suitepimFloorPlanCanvas.addEventListener("dragover", (event) => {
       if (!state.editMode) return;
       event.preventDefault();
@@ -1687,6 +2404,8 @@
       addAssetToPlan(textPayload, event);
     });
     window.addEventListener("pointerup", () => {
+      if (finishHighlightSelection()) return;
+      if (finishViewportPan()) return;
       if (finishAssetMove()) return;
       finishDrawing();
     });
@@ -1695,8 +2414,12 @@
   async function init() {
     initEls();
     if (!el.suitepimFloorPlanCanvas) return;
+    state.viewOnly = document.getElementById("suitepimFloorPlanApp")?.dataset.floorplanViewOnly === "true";
+    if (state.viewOnly) state.editMode = false;
+    applyFloorPlanTheme(localStorage.getItem(THEME_STORAGE_KEY) || "light");
     bindEvents();
     updateEditControls();
+    updateHeatmapControls();
     updateZoomLabel();
     syncFootfallDateInputs();
     await loadLocations();

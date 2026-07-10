@@ -62,6 +62,29 @@ test("negative promo/trade-in lines reduce totals consistently", () => {
   assert.equal(summary.discountTotal, 0);
 });
 
+test("customer refund deposits are always treated as negative", () => {
+  const financials = loadFinancials();
+  const summary = financials.summariseLines(
+    [
+      {
+        item: { refName: "Mattress" },
+        amount: 1000,
+        saleprice: 1000,
+        vat: 166.67,
+      },
+    ],
+    [
+      { type: "Customer Deposit", amount: 300 },
+      { type: "Customer Refund", amount: 50 },
+      { Type: "Customer Refund", amount: -25 },
+    ]
+  );
+
+  assert.equal(financials.depositAmount({ type: "Customer Refund", amount: 50 }), -50);
+  assert.equal(summary.depositTotal, 225);
+  assert.equal(summary.remainingBalance, 775);
+});
+
 test("explicit zero sale price is treated as a full discount", () => {
   const financials = loadFinancials();
   const summary = financials.summariseLines([

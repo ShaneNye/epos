@@ -5907,6 +5907,28 @@ function normalizeDepositAmount(value) {
   return parseFloat(String(value || "0").replace(/[^\d.-]/g, "")) || 0;
 }
 
+function normalizeDepositType(row) {
+  return String(
+    row?.Type ||
+    row?.type ||
+    row?.["Record Type"] ||
+    row?.recordType ||
+    row?.transactionType ||
+    ""
+  ).trim();
+}
+
+function isCustomerRefundType(type) {
+  return String(type || "").trim().toLowerCase() === "customer refund";
+}
+
+function normalizeSignedDepositAmount(row) {
+  const amount = normalizeDepositAmount(row?.Amount || row?.amount || row?.total);
+  return isCustomerRefundType(normalizeDepositType(row))
+    ? -Math.abs(amount)
+    : amount;
+}
+
 function normalizeReportDeposit(row, salesOrderId) {
   return {
     link: depositDocumentNumber(row),
@@ -5925,27 +5947,46 @@ function sqlNumberList(values) {
   return ids.length ? ids.join(",") : "";
 }
 
+function sqlStringList(values) {
+  const strings = [...new Set(
+    values
+      .map((value) => String(value || "").trim())
+      .filter(Boolean)
+      .map((value) => `'${value.replace(/'/g, "''")}'`)
+  )];
+  return strings.length ? strings.join(",") : "";
+}
+
 function normalizeSuiteQlDeposit(row, salesOrderId) {
   const depositId = String(row.id || row.internalid || "").trim();
-  const amount = Math.abs(normalizeDepositAmount(
+  const recordType = String(row.recordtype || "").trim().toLowerCase();
+  const type = recordType === "customerrefund" ? "Customer Refund" : "Customer Deposit";
+  const amount = normalizeSignedDepositAmount({
+    amount: Math.abs(normalizeDepositAmount(
     row.amount || row.foreigntotal || row.total || row.fxamount
-  ));
+    )),
+    type,
+  });
   const method =
     row.paymentmethod_text ||
     row.payment_method ||
     row.paymentmethod ||
     row["Payment Method"] ||
     "-";
-  const label = row.tranid || row.documentnumber || (depositId ? `CD${depositId}` : "-");
+  const labelPrefix = recordType === "customerrefund" ? "RF" : "CD";
+  const label = row.tranid || row.documentnumber || (depositId ? `${labelPrefix}${depositId}` : "-");
+  const transactionPage = recordType === "customerrefund" ? "custrfnd.nl" : "custdep.nl";
   const link = depositId
-    ? `<a href="${netSuiteAppBaseUrl()}/app/accounting/transactions/custdep.nl?id=${encodeURIComponent(depositId)}" target="_blank">${label}</a>`
+    ? `<a href="${netSuiteAppBaseUrl()}/app/accounting/transactions/${transactionPage}?id=${encodeURIComponent(depositId)}" target="_blank">${label}</a>`
     : label;
 
   return {
     link,
     amount,
     method,
-    soId: String(row.createdfrom || salesOrderId || ""),
+    type,
+    soId: String(row.transactioncreatedfrom || row.createdfrom || salesOrderId || ""),
+    relatedRefundId: String(row.relatedrefundid || row.custbody_sb_relatedrefund || "").trim(),
   };
 }
 
@@ -6015,6 +6056,7 @@ async function fetchSuiteQlDepositsForSalesOrder(salesOrderId, userId, alternate
         t.id,
         t.tranid,
         t.trandate,
+        t.recordtype,
         tl.createdfrom,
         t.total,
         t.foreigntotal,
@@ -6032,6 +6074,7 @@ async function fetchSuiteQlDepositsForSalesOrder(salesOrderId, userId, alternate
         t.id,
         t.tranid,
         t.trandate,
+        t.recordtype,
         tl.createdfrom,
         t.total
       FROM transaction t
@@ -6042,19 +6085,169 @@ async function fetchSuiteQlDepositsForSalesOrder(salesOrderId, userId, alternate
     `,
   ];
 
+  const rows = await firstSuccessfulSuiteQlRows(queries, userId, "Customer deposit");
+  const deposits = rows.map((row) => normalizeSuiteQlDeposit(row, salesOrderId));
+  return enrichDepositsWithRelatedRefundIds(deposits, userId);
+}
+
+async function firstSuccessfulSuiteQlRows(queries, userId, label) {
   let lastError = null;
   for (const query of queries) {
     try {
       const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId, "sb");
-      const rows = Array.isArray(result?.items) ? result.items : [];
-      return rows.map((row) => normalizeSuiteQlDeposit(row, salesOrderId));
+      return Array.isArray(result?.items) ? result.items : [];
     } catch (err) {
       lastError = err;
-      console.warn("Customer deposit SuiteQL attempt failed:", err.message);
+      console.warn(`${label} SuiteQL attempt failed:`, err.message);
     }
   }
+  if (lastError) throw lastError;
+  return [];
+}
 
-  throw lastError || new Error("Customer deposit SuiteQL failed");
+async function collectSuccessfulSuiteQlRows(queries, userId, label) {
+  const rows = [];
+  let successCount = 0;
+  for (const query of queries) {
+    try {
+      const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId, "sb");
+      successCount += 1;
+      rows.push(...(Array.isArray(result?.items) ? result.items : []));
+    } catch (err) {
+      console.warn(`${label} SuiteQL attempt failed:`, err.message);
+    }
+  }
+  if (!successCount) throw new Error(`${label} SuiteQL failed`);
+  return rows;
+}
+
+function depositIds(deposits = []) {
+  return deposits
+    .map((deposit) => String(deposit?.link || "").match(/[?&]id=(\d+)/i)?.[1])
+    .filter(Boolean);
+}
+
+function relatedRefundIds(deposits = []) {
+  return [...new Set(
+    deposits
+      .map((deposit) => String(deposit?.relatedRefundId || "").trim())
+      .filter((id) => /^\d+$/.test(id))
+  )];
+}
+
+async function enrichDepositsWithRelatedRefundIds(deposits = [], userId) {
+  const idList = sqlNumberList(depositIds(deposits));
+  if (!idList) return deposits;
+
+  const queries = [
+    `
+      SELECT
+        id,
+        custbody_sb_relatedrefund AS relatedrefundid
+      FROM customerDeposit
+      WHERE id IN (${idList})
+    `,
+    `
+      SELECT
+        transactionnumber AS tranid,
+        custbody_sb_relatedrefund AS relatedrefundid
+      FROM customerDeposit
+      WHERE id IN (${idList})
+    `,
+  ];
+
+  try {
+    const rows = await firstSuccessfulSuiteQlRows(queries, userId, "Customer deposit related refund");
+    const refundByDepositId = new Map();
+    const refundByTranId = new Map();
+    rows.forEach((row) => {
+      const refundId = String(row.relatedrefundid || row.custbody_sb_relatedrefund || "").trim();
+      if (!refundId) return;
+      if (row.id) refundByDepositId.set(String(row.id).trim(), refundId);
+      if (row.tranid) refundByTranId.set(String(row.tranid).trim(), refundId);
+    });
+
+    return deposits.map((deposit) => {
+      const id = String(deposit?.link || "").match(/[?&]id=(\d+)/i)?.[1] || "";
+      const label = String(deposit?.link || "").replace(/<[^>]*>/g, "").trim();
+      const relatedRefundId =
+        deposit.relatedRefundId ||
+        refundByDepositId.get(id) ||
+        refundByTranId.get(label) ||
+        "";
+      return relatedRefundId ? { ...deposit, relatedRefundId } : deposit;
+    });
+  } catch (err) {
+    console.warn("Could not enrich deposits with related refunds:", err.message);
+    return deposits;
+  }
+}
+
+async function fetchSuiteQlRefundsForSalesOrder(salesOrderId, userId, alternateSalesOrderIds = []) {
+  const deposits = await fetchSuiteQlDepositsForSalesOrder(
+    salesOrderId,
+    userId,
+    alternateSalesOrderIds
+  );
+  const refundIdList = sqlNumberList(relatedRefundIds(deposits));
+  if (!refundIdList) return [];
+
+  const queries = [
+    `
+      SELECT
+        id,
+        transactionnumber AS tranid,
+        'customerrefund' AS recordtype,
+        custbody_sb_originalsalesorder AS transactioncreatedfrom,
+        total
+      FROM customerRefund
+      WHERE id IN (${refundIdList})
+      ORDER BY transactionnumber
+    `,
+    `
+      SELECT
+        transactionnumber AS tranid,
+        'customerrefund' AS recordtype,
+        custbody_sb_originalsalesorder AS transactioncreatedfrom,
+        total
+      FROM customerRefund
+      WHERE id IN (${refundIdList})
+      ORDER BY transactionnumber
+    `,
+  ];
+
+  const rows = await collectSuccessfulSuiteQlRows(queries, userId, "Customer refund");
+  return mergeDeposits(rows.map((row) => normalizeSuiteQlDeposit(row, salesOrderId)));
+}
+
+async function fetchAllSuiteQlRefunds(userId, limit = 100) {
+  const cappedLimit = Math.max(1, Math.min(Number(limit) || 100, 500));
+  const queries = [
+    `
+      SELECT
+        id,
+        transactionnumber AS tranid,
+        'customerrefund' AS recordtype,
+        custbody_sb_originalsalesorder AS transactioncreatedfrom,
+        total
+      FROM customerRefund
+      WHERE ROWNUM <= ${cappedLimit}
+      ORDER BY transactionnumber DESC
+    `,
+    `
+      SELECT
+        transactionnumber AS tranid,
+        'customerrefund' AS recordtype,
+        custbody_sb_originalsalesorder AS transactioncreatedfrom,
+        total
+      FROM customerRefund
+      WHERE ROWNUM <= ${cappedLimit}
+      ORDER BY transactionnumber DESC
+    `,
+  ];
+
+  const rows = await firstSuccessfulSuiteQlRows(queries, userId, "All customer refunds");
+  return rows.map((row) => normalizeSuiteQlDeposit(row, row.transactioncreatedfrom || ""));
 }
 
 async function loadSalesOrderDeposits(req, salesOrderId, {
@@ -6073,18 +6266,21 @@ async function loadSalesOrderDeposits(req, salesOrderId, {
     console.warn(`Could not fetch customer deposits via SuiteQL for SO ${salesOrderId}:`, err.message);
   }
 
+  return [];
+}
+
+async function loadSalesOrderRefunds(req, salesOrderId, {
+  userId = null,
+  alternateSalesOrderIds = [],
+} = {}) {
   try {
-    return await fetchReportDepositsForSalesOrder(
-      req,
+    return await fetchSuiteQlRefundsForSalesOrder(
       salesOrderId,
-      {
-        ...(bearerToken ? { Authorization: `Bearer ${bearerToken}` } : {}),
-        ...(prewarmHeaders || {}),
-      },
+      userId,
       alternateSalesOrderIds
     );
   } catch (err) {
-    console.warn(`Could not fetch customer deposit report for SO ${salesOrderId}:`, err.message);
+    console.warn(`Could not fetch customer refunds via SuiteQL for SO ${salesOrderId}:`, err.message);
   }
 
   return [];
@@ -6859,6 +7055,53 @@ router.get("/:id/deposits", async (req, res) => {
     return res.status(500).json({
       ok: false,
       error: err.message || "Failed to fetch deposits",
+    });
+  }
+});
+
+/* =====================================================
+   === GET SALES ORDER CUSTOMER REFUNDS ================
+   ===================================================== */
+router.get("/:id/refunds", async (req, res) => {
+  try {
+    sendNoStore(res);
+    const { id } = req.params;
+    const userId = await resolveUserIdFromRequest(req);
+    const filtered = ["1", "true", "yes"].includes(String(req.query.filtered || "").toLowerCase());
+    if (!filtered) {
+      const refunds = await fetchAllSuiteQlRefunds(userId, req.query.limit);
+      return res.json({
+        ok: true,
+        salesOrderId: id,
+        refunds,
+        debug: { unfiltered: true, count: refunds.length },
+      });
+    }
+
+    const alternateSalesOrderIds = [];
+
+    try {
+      const so = await nsGet(
+        `/salesOrder/${encodeURIComponent(id)}?fields=${encodeURIComponent("id,tranId")}`,
+        userId,
+        "sb"
+      );
+      alternateSalesOrderIds.push(so?.id, so?.tranId, so?.tranid);
+    } catch (err) {
+      console.warn(`Could not load SO ${id} identifiers for refund matching:`, err.message);
+    }
+
+    const refunds = await loadSalesOrderRefunds(req, id, {
+      userId,
+      alternateSalesOrderIds,
+    });
+
+    return res.json({ ok: true, salesOrderId: id, refunds });
+  } catch (err) {
+    console.error("❌ GET /salesorder/:id/refunds error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to fetch refunds",
     });
   }
 });

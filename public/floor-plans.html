@@ -1,0 +1,116 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <script src="/js/browserLogFilter.js"></script>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico" />
+  <title>Floor Plans</title>
+
+  <link rel="stylesheet" href="/assistant/assistant.css" />
+  <link rel="stylesheet" href="/css/home.css" />
+  <link rel="stylesheet" href="/css/suitepim.css" />
+
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/assistant/assistant.js"></script>
+  <script type="module" src="/assistant/assistantHooks.js"></script>
+  <script src="/js/suitepimFloorPlans.js" defer></script>
+</head>
+
+<body>
+  <div id="menu"></div>
+
+  <main class="content suitepim-page suitepim-floorplan-view-page">
+    <header class="suitepim-header">
+      <div>
+        <p class="suitepim-kicker">Store analytics</p>
+        <h1>Floor Plans</h1>
+      </div>
+    </header>
+
+    <section class="suitepim-floorplan-shell" id="suitepimFloorPlanApp" data-floorplan-view-only="true">
+      <div class="suitepim-floorplan-topbar" aria-label="Floor plan controls">
+        <div class="suitepim-floorplan-footfall" aria-live="polite">
+          <span>Footfall</span>
+          <strong id="suitepimFloorPlanFootfallTotal">-</strong>
+        </div>
+        <div class="suitepim-floorplan-filter-grid">
+          <label for="suitepimFloorPlanLocation">
+            <span>Location</span>
+            <select id="suitepimFloorPlanLocation"></select>
+          </label>
+          <label for="suitepimFloorPlanDateRange">
+            <span>Date range</span>
+            <select id="suitepimFloorPlanDateRange">
+              <option value="today">Today</option>
+              <option value="yesterday">Yesterday</option>
+              <option value="thisMonth" selected>This Month</option>
+              <option value="lastMonth">Last Month</option>
+              <option value="thisYear">This Year</option>
+              <option value="lastYear">Last Year</option>
+              <option value="custom">Custom</option>
+            </select>
+          </label>
+          <label for="suitepimFloorPlanHeatmap">
+            <span>Heat map</span>
+            <select id="suitepimFloorPlanHeatmap">
+              <option value="none" selected>- None -</option>
+              <option value="inventory">Inventory Count</option>
+              <option value="sold">Items Sold</option>
+              <option value="revenue">Revenue</option>
+              <option value="movement">Inventory Movement</option>
+            </select>
+          </label>
+          <label id="suitepimFloorPlanHeatmapScopeLabel" for="suitepimFloorPlanHeatmapScope">
+            <span>Heat map type</span>
+            <select id="suitepimFloorPlanHeatmapScope">
+              <option value="bin">By Bin</option>
+              <option value="squareFootage" selected>By Square Footage</option>
+            </select>
+          </label>
+          <label for="suitepimFloorPlanStartDate">
+            <span>Start date</span>
+            <input id="suitepimFloorPlanStartDate" type="date">
+          </label>
+          <label for="suitepimFloorPlanEndDate">
+            <span>End date</span>
+            <input id="suitepimFloorPlanEndDate" type="date">
+          </label>
+        </div>
+        <div class="suitepim-floorplan-actions">
+          <span id="suitepimFloorPlanStatus" class="suitepim-floorplan-status" aria-live="polite"></span>
+          <label class="suitepim-floorplan-theme-toggle" title="Toggle dark mode">
+            <span>Dark</span>
+            <input id="suitepimFloorPlanDarkMode" class="suitepim-floorplan-dark-mode-toggle" type="checkbox" aria-label="Toggle dark mode">
+            <span class="suitepim-floorplan-theme-toggle-track" aria-hidden="true"></span>
+          </label>
+        </div>
+      </div>
+
+      <div class="suitepim-floorplan-view-workspace">
+        <section class="suitepim-floorplan-editor">
+          <input id="suitepimFloorPlanName" type="hidden" value="Untitled floor plan">
+          <div id="suitepimFloorPlanCanvasWrap" class="suitepim-floorplan-canvas-wrap">
+            <svg id="suitepimFloorPlanCanvas" class="suitepim-floorplan-canvas" role="img" aria-label="Measured floor plan drawing area"></svg>
+          </div>
+        </section>
+        <aside id="suitepimFloorPlanDataPanel" class="suitepim-floorplan-data-panel is-collapsed" hidden>
+          <button id="suitepimFloorPlanDataPanelToggle" class="suitepim-floorplan-data-panel-toggle" type="button" aria-expanded="false">
+            <span>Data</span>
+          </button>
+          <div class="suitepim-floorplan-data-panel-body">
+            <header>
+              <h2 id="suitepimFloorPlanDataPanelTitle">Heat map data</h2>
+              <p id="suitepimFloorPlanDataPanelSummary"></p>
+            </header>
+            <div id="suitepimFloorPlanDataPanelContent"></div>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+</body>
+
+</html>

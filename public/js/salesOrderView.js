@@ -695,6 +695,41 @@ async function loadSalesOrderDeposits(headers, tranId) {
   }
 }
 
+async function loadSalesOrderRefunds(headers, tranId) {
+  try {
+    const res = await fetch(
+      `/api/netsuite/salesorder/${encodeURIComponent(tranId)}/refunds?filtered=1&refresh=1&_=${Date.now()}`,
+      { headers, cache: "no-store" }
+    );
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (!data.ok) throw new Error(data.error || "Refund request failed");
+
+    return Array.isArray(data.refunds) ? data.refunds : [];
+  } catch (err) {
+    console.warn("⚠️ Could not load refunds:", err.message || err);
+    return [];
+  }
+}
+
+window.debugLoadAllCustomerRefunds = async function (tranId = "", limit = 500) {
+  const saved = typeof storageGet === "function" ? storageGet() : null;
+  const token = saved?.token || "";
+  const id =
+    tranId ||
+    window._currentSalesOrder?.id ||
+    window.location.pathname.split("/").filter(Boolean).pop() ||
+    "";
+  const headers = token ? { Authorization: `Bearer ${token}` } : {};
+  const res = await fetch(
+    `/api/netsuite/salesorder/${encodeURIComponent(id)}/refunds?limit=${encodeURIComponent(limit)}&_=${Date.now()}`,
+    { headers, cache: "no-store" }
+  );
+  const data = await res.json().catch(() => null);
+  console.log("All customer refunds debug:", data);
+  return data;
+};
+
 function renderCustomerServiceCases(cases = [], state = "") {
   const container = document.getElementById("customerServiceCases");
   if (!container) return;
@@ -1238,6 +1273,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   const depositsPromise = /^\d+$/.test(String(tranId || ""))
     ? loadSalesOrderDeposits(headers, tranId)
     : Promise.resolve([]);
+  const refundsPromise = /^\d+$/.test(String(tranId || ""))
+    ? loadSalesOrderRefunds(headers, tranId)
+    : Promise.resolve([]);
 
   try {
     // ==================================================
@@ -1296,6 +1334,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     // 2️⃣ Render Deposits
     // ==================================================
     const salesOrderInternalId = so?.id || so?.internalId || so?.internalid || tranId;
+    let refunds = await refundsPromise;
     if (Array.isArray(soJson.deposits) && soJson.deposits.length) {
       window._currentDeposits = soJson.deposits;
     } else {
@@ -1308,6 +1347,14 @@ document.addEventListener("DOMContentLoaded", async () => {
         window._currentDeposits = await loadSalesOrderDeposits(headers, salesOrderInternalId);
       }
     }
+    if (
+      refunds.length === 0 &&
+      String(salesOrderInternalId || "") &&
+      String(salesOrderInternalId) !== String(tranId)
+    ) {
+      refunds = await loadSalesOrderRefunds(headers, salesOrderInternalId);
+    }
+    window._currentDeposits = [...window._currentDeposits, ...refunds];
     renderDeposits(window._currentDeposits);
 
     // ==================================================
@@ -2007,6 +2054,15 @@ function updateMemoHeader(count) {
 /* =====================================================
    Deposits rendering + totals
 ===================================================== */
+function signedDepositAmount(deposit) {
+  if (window.EposFinancials?.depositAmount) {
+    return window.EposFinancials.depositAmount(deposit);
+  }
+  const amount = parseFloat(deposit?.amount || 0) || 0;
+  const type = String(deposit?.type || deposit?.Type || "").trim().toLowerCase();
+  return type === "customer refund" ? -Math.abs(amount) : amount;
+}
+
 function renderDeposits(deposits) {
   const section = document.getElementById("depositsSection");
   const tbody = document.querySelector("#depositsTable tbody");
@@ -2033,7 +2089,7 @@ function renderDeposits(deposits) {
   const frag = document.createDocumentFragment();
 
   deposits.forEach((d) => {
-    const amount = parseFloat(d.amount || 0);
+    const amount = signedDepositAmount(d);
     totalDeposits += amount;
 
     const tr = document.createElement("tr");
@@ -2041,7 +2097,9 @@ function renderDeposits(deposits) {
     tdLink.innerHTML = d.link || "-";
 
     const tdMethod = document.createElement("td");
-    tdMethod.textContent = d.method || "-";
+    tdMethod.textContent = String(d.type || "").trim().toLowerCase() === "customer refund"
+      ? "Customer Refund"
+      : d.method || "-";
 
     const tdAmount = document.createElement("td");
     tdAmount.textContent = `£${amount.toFixed(2)}`;
@@ -2257,7 +2315,7 @@ function updateOrderSummaryFromTable() {
 
   if (typeof updateDepositTotals === "function") {
     const totalDeposits = Array.isArray(window._currentDeposits)
-      ? window._currentDeposits.reduce((sum, d) => sum + (parseFloat(d.amount) || 0), 0)
+      ? window._currentDeposits.reduce((sum, d) => sum + signedDepositAmount(d), 0)
       : 0;
 
     updateDepositTotals(totalDeposits);
