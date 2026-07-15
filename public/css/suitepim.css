@@ -1234,7 +1234,7 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
 .suitepim-floorplan-tools {
   display: grid;
-  grid-template-columns: repeat(3, auto) auto auto auto;
+  grid-template-columns: repeat(4, auto) auto auto auto;
   align-items: center;
   gap: 7px;
   justify-content: flex-end;
@@ -1324,6 +1324,16 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
 
 .suitepim-floorplan-canvas-wrap.is-editing {
   cursor: crosshair;
+}
+
+.suitepim-floorplan-canvas-wrap.is-editing.is-select-tool,
+.suitepim-floorplan-canvas.is-editing.is-select-tool {
+  cursor: grab;
+}
+
+.suitepim-floorplan-canvas-wrap.is-editing.is-select-tool:active,
+.suitepim-floorplan-canvas.is-editing.is-select-tool:active {
+  cursor: grabbing;
 }
 
 .suitepim-floorplan-canvas {
@@ -1710,6 +1720,17 @@ body.suitepim-floorplan-dark .suitepim-floorplan-data-table td {
 .suitepim-floorplan-element.is-selected .suitepim-floorplan-dimension-line,
 .suitepim-floorplan-element.is-selected .suitepim-floorplan-dimension-tick {
   stroke: #0081ab;
+}
+
+.suitepim-floorplan-structural-handles {
+  pointer-events: none;
+}
+
+.suitepim-floorplan-structural-handles circle {
+  fill: #fff;
+  stroke: #0081ab;
+  stroke-width: 2;
+  filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.35));
 }
 
 .suitepim-floorplan-wall-core {

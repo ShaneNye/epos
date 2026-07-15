@@ -6,6 +6,7 @@ document.addEventListener("DOMContentLoaded", () => {
     salesOrder: { label: "Sales Order", keys: ["salesorder", "sales_order"] },
     customerDeposit: { label: "Customer Deposit", keys: ["customerdeposit", "customer_deposit"] },
     customerRefund: { label: "Customer Refund", keys: ["customerrefund", "customer_refund"] },
+    creditMemo: { label: "Credit Memo", keys: ["creditmemo", "credit_memo", "custcred"] },
     returnAuthorization: { label: "Return Authorisation", keys: ["returnauthorization", "return_authorization", "returnauthorisation", "return_authorisation"] },
     supplierPurchaseOrder: { label: "Supplier Purchase Order", keys: ["purchaseorder", "purchase_order", "purchord"] },
   };
@@ -60,6 +61,7 @@ document.addEventListener("DOMContentLoaded", () => {
       mappings: [],
     },
     mapMode: "createRecord",
+    actionType: "",
   };
   let editorIndex = -1;
   let expandedSourceFieldId = "";
@@ -91,6 +93,13 @@ document.addEventListener("DOMContentLoaded", () => {
     return workflowRecordByKeys(["salesorder", "sales_order"]);
   }
 
+  function sourceRecordLabel(source = "storeSalesOrder") {
+    const record = sourceRecord(source);
+    if (source === "case") return record?.label || "Case";
+    if (source === "intercompanySalesOrder") return record?.label ? `Paired ${record.label}` : "Paired Sales Order";
+    return record?.label || "Sales Order";
+  }
+
   function targetRecord(target = "salesOrder") {
     const cleanTarget = normaliseRecordLookup(target);
     return state.records.find((record) =>
@@ -117,12 +126,12 @@ document.addEventListener("DOMContentLoaded", () => {
     }).join("");
   }
 
-  function sourceFields() {
-    return sourceRecord(state.createRecord.sourceRecord)?.fields || [];
+  function sourceFields(source = state.createRecord.sourceRecord) {
+    return sourceRecord(source)?.fields || [];
   }
 
-  function sourceLineFieldEntries() {
-    const record = sourceRecord(state.createRecord.sourceRecord);
+  function sourceLineFieldEntries(source = state.createRecord.sourceRecord) {
+    const record = sourceRecord(source);
     const sublist = itemSublistForRecord(record);
     return (sublist?.fields || []).map((field) => ({
       id: `${sublist.internalId}.${field.internalId}`,
@@ -135,6 +144,7 @@ document.addEventListener("DOMContentLoaded", () => {
       sourceChildRecord: "",
       sourceSublist: sublist.internalId,
       sourceSublistLabel: sublist.label,
+      sourceRecord: source || "storeSalesOrder",
     }));
   }
 
@@ -297,14 +307,15 @@ document.addEventListener("DOMContentLoaded", () => {
     mapping.targetFieldType = entry?.targetFieldType || "";
   }
 
-  function sourceFieldEntries() {
-    const recordEntries = sourceFields().flatMap((field) => {
+  function sourceFieldEntries(source = state.createRecord.sourceRecord) {
+    const recordEntries = sourceFields(source).flatMap((field) => {
       const parent = {
         id: field.internalId,
         label: field.label,
         internalId: field.internalId,
         sourceType: "record",
         field,
+        sourceRecord: source || "storeSalesOrder",
         sourceField: field.internalId,
         sourceChildField: "",
         sourceChildRecord: "",
@@ -317,6 +328,7 @@ document.addEventListener("DOMContentLoaded", () => {
         field: child,
         parentField: field,
         sourceType: "record",
+        sourceRecord: source || "storeSalesOrder",
         sourceField: field.internalId,
         sourceChildField: child.internalId,
         sourceChildRecord: related.internalId,
@@ -342,8 +354,8 @@ document.addEventListener("DOMContentLoaded", () => {
     return [...recordEntries, ...workflowInputEntries];
   }
 
-  function sourceFieldOptionEntries() {
-    return sourceFieldEntries();
+  function sourceFieldOptionEntries(source = state.createRecord.sourceRecord) {
+    return sourceFieldEntries(source);
   }
 
   function sourceOptionValue(mapping = {}) {
@@ -356,6 +368,9 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function applySourceEntryToMapping(mapping, entry) {
     mapping.sourceType = entry?.sourceType === "workflowInput" ? "workflowInput" : "record";
+    mapping.sourceRecord = mapping.sourceType === "workflowInput"
+      ? ""
+      : (entry?.sourceRecord || state.createRecord.sourceRecord || "storeSalesOrder");
     mapping.sourceInputId = entry?.inputNodeId || "";
     mapping.sourceInputFieldId = entry?.inputFieldId || "";
     mapping.sourceInputType = entry?.inputType || "";
@@ -367,27 +382,28 @@ document.addEventListener("DOMContentLoaded", () => {
     mapping.sourceFieldPath = entry?.sourceChildField ? [entry.sourceField, entry.sourceChildField] : [];
   }
 
-  function sourceFieldOptions(selectedValue = "") {
+  function sourceFieldOptions(selectedValue = "", source = state.createRecord.sourceRecord) {
     const entries = state.mapMode === "itemLineAction"
-      ? [...sourceFieldOptionEntries(), ...sourceLineFieldEntries()]
-      : sourceFieldOptionEntries();
+      ? [...sourceFieldOptionEntries(source), ...sourceLineFieldEntries(source)]
+      : sourceFieldOptionEntries(source);
     if (!entries.length) return '<option value="">No fields mapped</option>';
     return entries.map((entry) => `
       <option value="${escapeHtml(entry.id)}" ${String(entry.id) === String(selectedValue) ? "selected" : ""}>${escapeHtml(entry.label)}</option>
     `).join("");
   }
 
-  function findSourceEntry(value = "") {
+  function findSourceEntry(value = "", source = state.createRecord.sourceRecord) {
     const entries = state.mapMode === "itemLineAction"
-      ? [...sourceFieldOptionEntries(), ...sourceLineFieldEntries()]
-      : sourceFieldOptionEntries();
+      ? [...sourceFieldOptionEntries(source), ...sourceLineFieldEntries(source)]
+      : sourceFieldOptionEntries(source);
     return entries.find((entry) => String(entry.id) === String(value)) || null;
   }
 
-  function normaliseMapping(mapping = {}) {
+  function normaliseMapping(mapping = {}, fallbackSourceRecord = "") {
     const sourceFieldPath = Array.isArray(mapping.sourceFieldPath) ? mapping.sourceFieldPath : [];
     return {
       sourceType: mapping.sourceType === "workflowInput" ? "workflowInput" : "record",
+      sourceRecord: mapping.sourceType === "workflowInput" ? "" : (mapping.sourceRecord || fallbackSourceRecord || "storeSalesOrder"),
       sourceInputId: mapping.sourceInputId || "",
       sourceInputFieldId: mapping.sourceInputFieldId || "",
       sourceInputType: mapping.sourceInputType || "",
@@ -410,17 +426,19 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function normaliseConfig(config = {}) {
+    const sourceRecordId = config.sourceRecord || "storeSalesOrder";
     return {
       targetRecord: config.targetRecord || "salesOrder",
-      sourceRecord: config.sourceRecord || "storeSalesOrder",
+      sourceRecord: sourceRecordId,
       sourcePanel: ["workflowInputs", "lineFields"].includes(config.sourcePanel) ? config.sourcePanel : "record",
-      mappings: Array.isArray(config.mappings) ? config.mappings.map(normaliseMapping) : [],
+      mappings: Array.isArray(config.mappings) ? config.mappings.map((mapping) => normaliseMapping(mapping, sourceRecordId)) : [],
     };
   }
 
   function defaultMapping(seed = {}) {
     return normaliseMapping({
       sourceType: seed.sourceType || "record",
+      sourceRecord: seed.sourceRecord || state.createRecord?.sourceRecord || "storeSalesOrder",
       sourceInputId: seed.sourceInputId || "",
       sourceInputFieldId: seed.sourceInputFieldId || "",
       sourceInputType: seed.sourceInputType || "",
@@ -447,12 +465,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
       if (raw && typeof raw === "object") {
         const mapMode = raw.mapMode === "itemLineAction" ? "itemLineAction" : "createRecord";
+        const actionType = raw.actionType === "addItemLine" ? "addItemLine" : "";
         const itemLineAction = raw.itemLineAction && typeof raw.itemLineAction === "object" ? raw.itemLineAction : {};
         const itemLineTarget = itemLineAction.target || itemLineAction.source || "storeSalesOrder";
         state = {
           ...state,
           ...raw,
           mapMode,
+          actionType,
           records: Array.isArray(raw.records) ? raw.records : [],
           createRecord: normaliseConfig(mapMode === "itemLineAction"
             ? {
@@ -602,22 +622,25 @@ document.addEventListener("DOMContentLoaded", () => {
       };
     }
     if (mapping.sourceSublist) {
-      const lineEntry = sourceLineFieldEntries().find((entry) =>
+      const mappingSourceRecord = mapping.sourceRecord || state.createRecord.sourceRecord || "storeSalesOrder";
+      const lineEntry = sourceLineFieldEntries(mappingSourceRecord).find((entry) =>
         String(entry.sourceSublist) === String(mapping.sourceSublist) &&
         String(entry.sourceField) === String(mapping.sourceField)
       );
       return {
-        title: lineEntry?.label || mapping.sourceField || "Source line field",
+        title: `${sourceRecordLabel(mappingSourceRecord)} > ${lineEntry?.label || mapping.sourceField || "Source line field"}`,
         meta: `${mapping.sourceSublistLabel || mapping.sourceSublist} line field${castText}`,
       };
     }
+    const mappingSourceRecord = mapping.sourceRecord || state.createRecord.sourceRecord || "storeSalesOrder";
     const childLabel = mapping.sourceChildField
-      ? fieldLabel(relatedRecordForField(findField(sourceFields(), mapping.sourceField) || {})?.fields || [], mapping.sourceChildField, mapping.sourceChildField)
+      ? fieldLabel(relatedRecordForField(findField(sourceFields(mappingSourceRecord), mapping.sourceField) || {})?.fields || [], mapping.sourceChildField, mapping.sourceChildField)
       : "";
+    const sourceTitle = childLabel
+      ? `${fieldLabel(sourceFields(mappingSourceRecord), mapping.sourceField, mapping.sourceField)} > ${childLabel}`
+      : fieldLabel(sourceFields(mappingSourceRecord), mapping.sourceField, "Drop source field");
     return {
-      title: childLabel
-        ? `${fieldLabel(sourceFields(), mapping.sourceField, mapping.sourceField)} > ${childLabel}`
-        : fieldLabel(sourceFields(), mapping.sourceField, "Drop source field"),
+      title: mapping.sourceField ? `${sourceRecordLabel(mappingSourceRecord)} > ${sourceTitle}` : sourceTitle,
       meta: mapping.sourceField ? `Use ${mapping.valueMode === "name" ? "name/display value" : "internal ID"}${castText}` : `Source not selected${castText}`,
     };
   }
@@ -733,6 +756,7 @@ document.addEventListener("DOMContentLoaded", () => {
     event.dataTransfer.setData(DRAG_TYPE, JSON.stringify({
       side: button.dataset.fieldSide,
       sourceType,
+      sourceRecord: sourceType === "workflowInput" ? "" : (state.createRecord.sourceRecord || "storeSalesOrder"),
       fieldId: button.dataset.fieldId,
       childRecord: button.dataset.childRecord || "",
       childField: button.dataset.childField || "",
@@ -766,6 +790,7 @@ document.addEventListener("DOMContentLoaded", () => {
       } else {
         applySourceEntryToMapping(mapping, {
           sourceType: "record",
+          sourceRecord: payload.sourceRecord || state.createRecord.sourceRecord || "storeSalesOrder",
           sourceField: payload.fieldId,
           sourceChildField: payload.childField || "",
           sourceChildRecord: payload.childRecord || "",
@@ -774,7 +799,8 @@ document.addEventListener("DOMContentLoaded", () => {
         });
       }
     } else {
-      applyTargetEntryToMapping(mapping, {
+      const targetId = payload.targetSublist ? `${payload.targetSublist}.${payload.fieldId}` : payload.fieldId;
+      applyTargetEntryToMapping(mapping, findTargetEntry(targetId) || {
         targetField: payload.fieldId,
         targetSublist: payload.targetSublist || "",
         targetSublistLabel: payload.targetSublistLabel || "",
@@ -796,7 +822,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapping = state.createRecord.mappings[editorIndex];
     if (!mapping) return;
     el.editorTarget.innerHTML = targetFieldOptions(targetOptionValue(mapping));
-    el.editorSource.innerHTML = sourceFieldOptions(sourceOptionValue(mapping));
+    el.editorSource.innerHTML = sourceFieldOptions(sourceOptionValue(mapping), mapping.sourceRecord || state.createRecord.sourceRecord);
     el.editorMode.value = mapping.mode || "source";
     el.editorValueMode.value = mapping.valueMode || "id";
     el.editorValueCast.value = mapping.valueCast || "";
@@ -949,7 +975,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const mapping = state.createRecord.mappings[editorIndex];
     if (mapping && item.sourceEntry?.sourceType === "workflowInput") {
       applySourceEntryToMapping(mapping, item.sourceEntry);
-      el.editorSource.innerHTML = sourceFieldOptions(sourceOptionValue(mapping));
+      el.editorSource.innerHTML = sourceFieldOptions(sourceOptionValue(mapping), mapping.sourceRecord || state.createRecord.sourceRecord);
     }
     hideCalculationSuggestions();
   }
@@ -974,7 +1000,11 @@ document.addEventListener("DOMContentLoaded", () => {
     applyTargetEntryToMapping(mapping, findTargetEntry(el.editorTarget.value) || { targetField: el.editorTarget.value || "" });
     mapping.mode = ["static", "calculation"].includes(el.editorMode.value) ? el.editorMode.value : "source";
     if (mapping.mode === "source" || mapping.mode === "calculation") {
-      applySourceEntryToMapping(mapping, findSourceEntry(el.editorSource.value) || { sourceField: el.editorSource.value || "" });
+      const editorSourceRecord = mapping.sourceRecord || state.createRecord.sourceRecord || "storeSalesOrder";
+      applySourceEntryToMapping(mapping, findSourceEntry(el.editorSource.value, editorSourceRecord) || {
+        sourceField: el.editorSource.value || "",
+        sourceRecord: editorSourceRecord,
+      });
     }
     mapping.valueMode = el.editorValueMode.value === "name" ? "name" : "id";
     mapping.valueCast = ["text", "decimal", "checkbox", "reference"].includes(el.editorValueCast.value) ? el.editorValueCast.value : "";
@@ -986,12 +1016,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
   el.source.addEventListener("change", () => {
     state.createRecord.sourceRecord = el.source.value || "storeSalesOrder";
-    state.createRecord.mappings = state.createRecord.mappings.map((mapping) => ({
-      ...mapping,
-      sourceField: "",
-      sourceSublist: "",
-      sourceSublistLabel: "",
-    }));
     render();
   });
 
@@ -1015,6 +1039,9 @@ document.addEventListener("DOMContentLoaded", () => {
     state.createRecord.mappings = state.createRecord.mappings.map((mapping) => ({
       ...mapping,
       targetField: "",
+      targetSublist: "",
+      targetSublistLabel: "",
+      targetFieldType: "",
     }));
     render();
   });
@@ -1112,6 +1139,7 @@ document.addEventListener("DOMContentLoaded", () => {
       };
       const payload = {
         type: "cs-item-line-map-saved",
+        actionType: state.actionType === "addItemLine" ? "addItemLine" : "itemLineAction",
         nodeId: state.nodeId,
         workflowId: state.workflowId,
         itemLineAction,

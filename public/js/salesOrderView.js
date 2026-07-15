@@ -149,6 +149,7 @@ function isSalesViewLockExemptControl(el) {
       el?.id === "assistantToggle" ||
       el?.id === "updateCustomerDetailsBtn" ||
       el?.classList?.contains("auto-fulfilment-alert") ||
+      el?.closest?.("#customerServiceSection") ||
       el?.closest?.("#takenFromStoreModal, #autoFulfilmentInfoModal") ||
       el?.closest?.("#salesAssistant")
   );
@@ -873,7 +874,7 @@ function salesViewStoreInfo(so = window._currentSalesOrder || {}) {
 
 function currentSalesViewCaseItems() {
   return [...document.querySelectorAll("#orderItemsBody tr.order-line")]
-    .map((row) => {
+    .map((row, rowIndex) => {
       const id = String(row.querySelector(".item-internal-id")?.value || row.dataset.itemId || "").trim();
       const itemCell = row.cells?.[1] || null;
       const itemCellDirectText = itemCell
@@ -889,7 +890,44 @@ function currentSalesViewCaseItems() {
         itemCellDirectText ||
         ""
       ).replace(/\s+/g, " ").trim();
-      return { id, name };
+      const quantity = parseFloat(row.querySelector(".item-qty")?.value || row.querySelector(".quantity")?.textContent || "0") || 0;
+      const netAmount = parseFloat(
+        row.querySelector(".item-amount")?.value ||
+          row.querySelector(".amount")?.textContent?.replace(/[^0-9.-]/g, "") ||
+          "0"
+      ) || 0;
+      const saleGrossLine = parseFloat(
+        row.querySelector(".item-saleprice")?.value ||
+          row.querySelector(".saleprice")?.textContent?.replace(/[^0-9.-]/g, "") ||
+          "0"
+      ) || 0;
+      const discountPct = parseFloat(
+        row.querySelector(".item-discount")?.value ||
+          row.querySelector(".discount")?.textContent?.replace(/[^0-9.-]/g, "") ||
+          "0"
+      ) || 0;
+      return {
+        id,
+        itemId: id,
+        name,
+        itemName: name,
+        lineId: row.dataset.lineid || "",
+        lineIndex: Number.isFinite(Number(row.dataset.line)) ? Number(row.dataset.line) : rowIndex,
+        quantity,
+        discountPct,
+        discount: discountPct,
+        saleGrossLine,
+        grossSaleprice: saleGrossLine,
+        saleprice: saleGrossLine,
+        grossamt: saleGrossLine,
+        grossAmount: saleGrossLine,
+        amountGrossLine: saleGrossLine,
+        amount: netAmount,
+        netamount: netAmount,
+        netAmount,
+        amountNetLine: netAmount,
+        rate: quantity ? Number((netAmount / quantity).toFixed(6)) : netAmount,
+      };
     })
     .filter((item) => item.id && item.name)
     .filter((item, index, list) => list.findIndex((next) => next.id === item.id) === index);

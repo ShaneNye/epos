@@ -259,13 +259,22 @@
                 <select id="actionTypeSelect">
                   <option value="">Action message only</option>
                   <option value="itemLineAction">Item Line Action</option>
+                  <option value="addItemLine">Add Item Line</option>
+                  <option value="email">Email</option>
                   <option value="closeSupplierPurchaseOrderLine">Close Supplier Purchase Order Line</option>
+                  <option value="refundCreditMemo">Refund Credit Memo</option>
+                  <option value="creditRma">Credit RMA</option>
+                  <option value="receiveRma">Receive RMA</option>
                   <option value="createRecord">Create Record</option>
                 </select>
               </label>
               <label class="workflow-checkbox-row">
                 <input id="actionMandatoryCheckbox" type="checkbox">
                 Mandatory action
+              </label>
+              <label>
+                Response
+                <textarea id="actionResponseText" rows="3" placeholder="Message shown in workflow history after this action completes"></textarea>
               </label>
               <label id="itemLineItemWrap" hidden>
                 Item
@@ -281,7 +290,7 @@
               <label id="itemLineSourceWrap" hidden>
                 Target
                 <select id="itemLineSourceSelect">
-                  <option value="storeSalesOrder">Store Sales Order</option>
+                  <option value="storeSalesOrder">Sales Order</option>
                   <option value="intercompanySalesOrder">Paired Sales Order</option>
                   <option value="supplierPurchaseOrder">Supplier Purchase Order</option>
                 </select>
@@ -290,6 +299,17 @@
                 <button id="addItemLineMappingBtn" type="button" class="btn-secondary">MAP</button>
               </div>
               <div id="itemLineMappingsList" class="input-fields-list" hidden></div>
+              <label id="emailTargetWrap" hidden>
+                Email
+                <select id="emailTargetSelect">
+                  <option value="customer">Customer</option>
+                  <option value="supplier">Supplier</option>
+                </select>
+              </label>
+              <label id="emailMessageWrap" hidden>
+                Message
+                <textarea id="emailMessageText" rows="6"></textarea>
+              </label>
               <label id="createRecordTargetWrap" hidden>
                 Record
                 <select id="createRecordTargetSelect"></select>
@@ -316,6 +336,7 @@
                   <option value="string">string</option>
                   <option value="currency">Currency</option>
                   <option value="list">List</option>
+                  <option value="multiSelect">Multi-select</option>
                   <option value="boolean">Boolean</option>
                 </select>
               </label>

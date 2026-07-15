@@ -32,10 +32,11 @@ const {
   isPageShellPath,
   isPublicPath,
 } = require("./utils/accessControlRules");
-const { getNetSuiteHomeUrl } = require("./utils/netsuiteEnvironment");
+const { getNetSuiteAccountDash, getNetSuiteHomeUrl } = require("./utils/netsuiteEnvironment");
 const { ensureUserStatusColumn } = require("./utils/userStatus");
 const { ensureUserThemeColumns } = require("./utils/userTheme");
 const { ensureUserOfficeColumn } = require("./utils/userOffice");
+const { nsPostRaw } = require("./netsuiteClient");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -986,6 +987,208 @@ app.get("/api/netsuite/order-management", (req, res) =>
     forceRefresh: true,
   })
 );
+
+function suiteQlUrl() {
+  return `https://${getNetSuiteAccountDash()}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`;
+}
+
+function escapeSuiteQlText(value) {
+  return String(value || "").replace(/'/g, "''");
+}
+
+function normalizeBilledOrderRow(row = {}) {
+  return {
+    ID: row.id || row.ID || row.internalid || "",
+    Date: row.date || row.Date || "",
+    Name: row.customer || row.Customer || row.name || row.Name || "",
+    "Document Number": row.documentnumber || row.DocumentNumber || row["Document Number"] || "",
+    Store: row.store || row.Store || "",
+    "Order Type": row.ordertype || row.OrderType || row["Order Type"] || "",
+    Status: row.status || row.Status || "",
+    Amount: row.amount || row.Amount || "",
+  };
+}
+
+async function resolveSuiteQlDisplayValues(table, ids, userId) {
+  const numericIds = Array.from(new Set(
+    ids
+      .map((id) => Number(id))
+      .filter((id) => Number.isFinite(id) && id > 0)
+  ));
+  if (!numericIds.length) return new Map();
+
+  const query = `
+    SELECT
+      id,
+      BUILTIN.DF(id) AS name
+    FROM ${table}
+    WHERE id IN (${numericIds.join(",")})
+  `;
+  const result = await nsPostRaw(`${suiteQlUrl()}?limit=100&offset=0`, { q: query }, userId);
+  const rows = Array.isArray(result?.items) ? result.items : [];
+  return new Map(
+    rows
+      .map((row) => [String(row.id || row.ID || "").trim(), String(row.name || row.Name || "").trim()])
+      .filter(([id, name]) => id && name)
+  );
+}
+
+async function enrichSalesOrderRowsFromTransactions(rows, userId) {
+  const ids = Array.from(new Set(
+    rows
+      .map((row) => Number(row.id || row.ID))
+      .filter((id) => Number.isFinite(id) && id > 0)
+  ));
+  if (!ids.length) return rows;
+
+  const query = `
+    SELECT
+      t.id AS id,
+      TO_CHAR(t.trandate, 'DD/MM/YYYY') AS date,
+      BUILTIN.DF(t.entity) AS customer,
+      COALESCE(BUILTIN.DF(t.location), BUILTIN.DF(t.subsidiary), '') AS store,
+      BUILTIN.DF(t.customform) AS ordertype,
+      BUILTIN.DF(t.status) AS status,
+      t.total AS amount
+    FROM transaction AS t
+    WHERE t.id IN (${ids.join(",")})
+  `;
+
+  const result = await nsPostRaw(`${suiteQlUrl()}?limit=100&offset=0`, { q: query }, userId);
+  const detailRows = Array.isArray(result?.items) ? result.items : [];
+  const detailsById = new Map(
+    detailRows.map((row) => [String(row.id || row.ID || "").trim(), row])
+  );
+
+  return rows.map((row) => {
+    const id = String(row.id || row.ID || "").trim();
+    return {
+      ...row,
+      ...(detailsById.get(id) || {}),
+    };
+  });
+}
+
+app.get("/api/netsuite/order-management/billed-orders", async (req, res) => {
+  try {
+    res.set({
+      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
+      Pragma: "no-cache",
+      Expires: "0",
+    });
+
+    const search = String(req.query.q || "").trim();
+    if (search.length < 2) {
+      return res.json({ ok: true, results: [], requiresSearch: true });
+    }
+
+    const auth = req.headers.authorization || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    if (!token) return res.status(401).json({ ok: false, error: "Missing session token" });
+
+    const session = await getSession(token);
+    const userId = session?.id;
+    if (!userId) return res.status(401).json({ ok: false, error: "Invalid session" });
+
+    const term = escapeSuiteQlText(search.toUpperCase());
+    const richDirectSalesOrderQuery = `
+      SELECT
+        id,
+        tranid,
+        trandate,
+        entity,
+        location,
+        customform,
+        status
+      FROM salesOrder
+      WHERE UPPER(tranid) LIKE '%${term}%'
+    `;
+
+    const fallbackDirectSalesOrderQuery = `
+      SELECT
+        id,
+        tranid
+      FROM salesOrder
+      WHERE UPPER(tranid) LIKE '%${term}%'
+    `;
+
+    let directResult;
+    try {
+      directResult = await nsPostRaw(`${suiteQlUrl()}?limit=100&offset=0`, { q: richDirectSalesOrderQuery }, userId);
+    } catch (directErr) {
+      console.warn("Rich billed order lookup failed; retrying minimal lookup:", directErr.message || directErr);
+      directResult = await nsPostRaw(`${suiteQlUrl()}?limit=100&offset=0`, { q: fallbackDirectSalesOrderQuery }, userId);
+    }
+    const directRows = Array.isArray(directResult?.items) ? directResult.items : [];
+
+    let customerSalesOrderRows = [];
+    try {
+      const customerSalesOrderQuery = `
+        SELECT
+          id,
+          tranid,
+          trandate,
+          entity,
+          location,
+          customform,
+          status
+        FROM salesOrder
+        WHERE UPPER(BUILTIN.DF(entity)) LIKE '%${term}%'
+      `;
+      const customerSalesOrderResult = await nsPostRaw(`${suiteQlUrl()}?limit=100&offset=0`, { q: customerSalesOrderQuery }, userId);
+      customerSalesOrderRows = Array.isArray(customerSalesOrderResult?.items) ? customerSalesOrderResult.items : [];
+    } catch (customerOrderErr) {
+      console.warn("Billed orders customer sales order lookup failed:", customerOrderErr.message || customerOrderErr);
+    }
+
+    let combinedRows = [...directRows, ...customerSalesOrderRows];
+    try {
+      combinedRows = await enrichSalesOrderRowsFromTransactions(combinedRows, userId);
+    } catch (enrichErr) {
+      console.warn("Billed orders transaction enrichment failed:", enrichErr.message || enrichErr);
+    }
+
+    const [customerNames, locationNames, formNames] = await Promise.all([
+      resolveSuiteQlDisplayValues("entity", combinedRows.map((row) => row.entity), userId).catch((err) => {
+        console.warn("Billed orders customer display lookup failed:", err.message || err);
+        return new Map();
+      }),
+      resolveSuiteQlDisplayValues("location", combinedRows.map((row) => row.location), userId).catch((err) => {
+        console.warn("Billed orders store display lookup failed:", err.message || err);
+        return new Map();
+      }),
+      resolveSuiteQlDisplayValues("customTransactionForm", combinedRows.map((row) => row.customform), userId).catch((err) => {
+        console.warn("Billed orders form display lookup failed:", err.message || err);
+        return new Map();
+      }),
+    ]);
+
+    const rowsById = new Map();
+    combinedRows.forEach((row) => {
+      const id = String(row.id || row.ID || "").trim();
+      if (!id) return;
+      const entityId = String(row.entity || "").trim();
+      const locationId = String(row.location || "").trim();
+      const formId = String(row.customform || "").trim();
+      rowsById.set(id, normalizeBilledOrderRow({
+        ...row,
+        date: row.trandate || row.date,
+        customer: customerNames.get(entityId) || row.customer || row.entity,
+        store: locationNames.get(locationId) || row.store || row.location,
+        ordertype: formNames.get(formId) || row.ordertype || row.customform,
+        documentnumber: row.tranid || row.documentnumber,
+      }));
+    });
+
+    res.json({ ok: true, results: Array.from(rowsById.values()) });
+  } catch (err) {
+    console.error("Billed orders SuiteQL lookup failed:", err);
+    res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to fetch billed orders",
+    });
+  }
+});
 
 app.get("/api/netsuite/dt-system-notes", (req, res) =>
   fetchNetSuiteData("DT_SYSTEM_NOTES_URL", "DT_SYSTEM_NOTES", req, res, "Dispatch Track system notes", {

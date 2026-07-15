@@ -454,6 +454,30 @@
       font-size: 0.76rem;
     }
 
+    .workflow-history-segment {
+      display: grid;
+      gap: 0.55rem;
+      padding: 0.75rem;
+      border: 1px solid var(--line);
+      border-radius: 4px;
+      background: #fff;
+    }
+
+    .workflow-history-segment h4 {
+      margin: 0;
+      color: #101828;
+      font-size: 0.9rem;
+    }
+
+    .workflow-history-table {
+      margin: 0;
+    }
+
+    .workflow-history-checks {
+      display: grid;
+      gap: 0.45rem;
+    }
+
     .workflow-log-title {
       display: flex;
       align-items: center;
@@ -550,6 +574,117 @@
     .workflow-input-fields {
       display: grid;
       gap: 0.75rem;
+    }
+
+    .workflow-progress-banner {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 0.75rem;
+      align-items: center;
+      margin: 0.35rem 0 0.85rem;
+      padding: 0.65rem 0.75rem;
+      border: 1px solid #b8ddea;
+      border-radius: 6px;
+      background: #eef9fc;
+    }
+
+    .workflow-progress-banner strong {
+      display: block;
+      margin-bottom: 0.12rem;
+    }
+
+    .workflow-progress-banner p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 0.86rem;
+    }
+
+    .workflow-progress-list {
+      display: grid;
+      gap: 0.55rem;
+    }
+
+    .workflow-progress-item {
+      border: 1px solid #b8ddea;
+      border-radius: 6px;
+      background: #fff;
+      overflow: hidden;
+    }
+
+    .workflow-progress-item summary {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 0.65rem;
+      align-items: center;
+      padding: 0.65rem 0.75rem;
+      cursor: pointer;
+      list-style: none;
+      background: #eef9fc;
+    }
+
+    .workflow-progress-item summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .workflow-progress-status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 1.35rem;
+      height: 1.35rem;
+      border: 1px solid #98a2b3;
+      border-radius: 999px;
+      color: #475467;
+      font-weight: 800;
+      font-size: 0.82rem;
+      background: #fff;
+    }
+
+    .workflow-progress-status.complete {
+      border-color: #86efac;
+      color: #15803d;
+      background: #f0fdf4;
+    }
+
+    .workflow-progress-body {
+      padding: 0.75rem;
+    }
+
+    .workflow-select-table {
+      width: 100%;
+      max-width: none;
+      border-collapse: collapse;
+      border: 1px solid var(--line);
+      background: #fff;
+      font-size: 0.88rem;
+    }
+
+    .workflow-select-table th,
+    .workflow-select-table td {
+      padding: 0.5rem 0.6rem;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: middle;
+    }
+
+    .workflow-select-table th {
+      background: #f3f6f8;
+      color: #344054;
+    }
+
+    .workflow-select-table input[type="radio"] {
+      width: auto;
+      min-height: auto;
+    }
+
+    .workflow-select-table input[type="text"],
+    .workflow-select-table input[type="number"] {
+      min-width: 12rem;
+    }
+
+    .workflow-select-empty {
+      margin: 0;
+      color: var(--muted);
     }
 
     .workflow-item-search-field {
@@ -873,6 +1008,59 @@
       white-space: nowrap;
     }
 
+    .workflow-action-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.45rem;
+      margin-top: 0.35rem;
+      position: relative;
+      font-size: 0.76rem;
+      font-weight: 700;
+      color: #344054;
+      cursor: pointer;
+    }
+
+    .workflow-action-meta {
+      display: block;
+    }
+
+    .workflow-action-toggle input {
+      position: absolute;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .workflow-action-toggle-track {
+      width: 34px;
+      height: 18px;
+      border-radius: 999px;
+      background: #cbd5e1;
+      position: relative;
+      transition: background 0.15s ease;
+      flex: 0 0 auto;
+    }
+
+    .workflow-action-toggle-track::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #fff;
+      box-shadow: 0 1px 3px rgba(15, 23, 42, 0.25);
+      transition: transform 0.15s ease;
+    }
+
+    .workflow-action-toggle input:checked + .workflow-action-toggle-track {
+      background: var(--brand);
+    }
+
+    .workflow-action-toggle input:checked + .workflow-action-toggle-track::after {
+      transform: translateX(16px);
+    }
+
     button {
       min-height: 34px;
       padding: 0.38rem 0.75rem;
@@ -1033,6 +1221,7 @@
             <option value="">Loading workflows...</option>
           </select>
         </label>
+        <div id="caseWorkflowProgressBanner" class="workflow-progress-banner" hidden></div>
 
         <div id="caseWorkflowRunner" class="workflow-runner" aria-live="polite">
           <p class="case-status">Select a workflow to begin.</p>
@@ -1095,6 +1284,8 @@
       inputOptionsCache: new Map(),
       itemSearchItems: [],
       itemSearchLoading: null,
+      salesOrderItems: [],
+      salesOrderItemsLoading: null,
       selected: null,
       currentNodeId: "",
       started: false,
@@ -1102,6 +1293,13 @@
       answers: [],
       actions: [],
       actionApprovals: [],
+      actionEnableds: [],
+      executedActionNodeIds: [],
+      checkpoint: null,
+      progressByWorkflowId: new Map(),
+      focusedProgressWorkflowId: "",
+      pausedAtBreak: false,
+      resumeNodeId: "",
       checks: [],
       debugSessionId: `case-debug-${Date.now()}-${Math.floor(Math.random() * 10000)}`,
       debugUser: null,
@@ -1258,39 +1456,89 @@
       })[operator] || operator || "equals";
     }
 
+    function workflowCheckReviewValue(rule = {}, kind = "actual") {
+      if (kind === "expected") return rule.expectedDisplay || rule.expectedValue || rule.expectedRawValue || "";
+      return rule.actualDisplay || rule.actualValue || rule.actualRawValue || "";
+    }
+
+    function workflowFailedCheckReviewHtml(check = {}) {
+      const failedRules = (Array.isArray(check.checks) ? check.checks : []).filter((rule) => !rule.passed);
+      return `
+        <div class="workflow-run-shell">
+          <div class="workflow-question-card">
+            <h3>${escapeHtml(check.label || "Check failed")}</h3>
+            ${check.message ? `<p class="workflow-description">${escapeHtml(check.message)}</p>` : ""}
+            <p class="case-status">This check failed. Review the current and expected values before continuing.</p>
+            ${failedRules.length ? failedRules.map((rule) => `
+              <div class="workflow-check-rule">
+                <strong>${escapeHtml(rule.fieldLabel || rule.field || "Field")}</strong>
+                ${escapeHtml(workflowOperatorLabel(rule.operator))}
+                ${rule.operator === "isSet" || rule.operator === "isNotSet" ? "" : `<strong>${escapeHtml(displayWorkflowValue(workflowCheckReviewValue(rule, "expected")))}</strong>`}
+                <br>
+                Current: ${escapeHtml(displayWorkflowValue(workflowCheckReviewValue(rule, "actual")))}
+                <br>
+                Expected: ${rule.operator === "isSet" || rule.operator === "isNotSet"
+                  ? escapeHtml(workflowOperatorLabel(rule.operator))
+                  : escapeHtml(displayWorkflowValue(workflowCheckReviewValue(rule, "expected")))}
+              </div>
+            `).join("") : '<p class="case-status">No failed rule details were returned.</p>'}
+            <div class="workflow-run-actions">
+              <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
+              <button id="continueFailedCheckBtn" type="button" class="btn-primary">Continue</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }
+
     function workflowActionTypeLabel(type = "") {
       return ({
         setCaseStatus: "Set Case Status",
         itemLineAction: "Item Line Action",
+        addItemLine: "Add Item Line",
+        email: "Email",
         closeSalesLine: "Close Sales Line",
         closeIntercompanyLine: "Close Intercompany Line",
         closeSupplierPurchaseOrderLine: "Close Supplier Purchase Order Line",
+        refundCreditMemo: "Refund Credit Memo",
+        creditRma: "Credit RMA",
+        receiveRma: "Receive RMA",
         createRecord: "Create Record",
       })[type] || "Action message only";
     }
 
     function workflowActionMessageHtml(action = {}) {
       if (action.executionState === "skipped") return escapeHtml(action.executionMessage || "Skipped by user.");
+      const response = String(action.response || "").trim();
       const text = escapeHtml(action.executionMessage || action.message || "No action note was set.");
       const url = String(action.executionDocumentUrl || "").trim();
       const number = String(action.executionDocumentNumber || "").trim();
-      if (!url || !number) return text;
+      const context = response ? `<div>${escapeHtml(response)}</div>` : "";
+      if (!url || !number) return `${context}${text}`;
       const link = `<a href="${escapeHtml(url)}" class="related-popup-link" title="Open in NetSuite">${escapeHtml(number)}</a>`;
       const escapedNumber = escapeHtml(number);
-      return text.includes(escapedNumber) ? text.replace(escapedNumber, link) : `${text} ${link}`;
+      const linkedText = text.includes(escapedNumber) ? text.replace(escapedNumber, link) : `${text} ${link}`;
+      return `${context}${linkedText}`;
     }
 
     function workflowActionAllocationHtml(action = {}, index = 0) {
-      if (action.executionState !== "needsInput" || action.needsInput !== "customerDepositAllocation") return "";
-      const deposits = Array.isArray(action.depositOptions) ? action.depositOptions : [];
+      if (
+        action.executionState !== "needsInput" ||
+        !["customerDepositAllocation", "customerCreditMemoAllocation"].includes(action.needsInput)
+      ) return "";
+      const isCreditMemo = action.needsInput === "customerCreditMemoAllocation";
+      const documents = Array.isArray(action.depositOptions) ? action.depositOptions : [];
+      const title = isCreditMemo ? "Credit memo allocation" : "Customer deposit allocation";
+      const noun = isCreditMemo ? "Credit Memo" : "Deposit";
+      const empty = isCreditMemo ? "No credit memos were returned." : "No customer deposits were returned.";
       const expected = Number(action.expectedAmount || 0);
-      const rows = deposits.map((deposit, rowIndex) => {
-        const amount = Number(deposit.total || deposit.amount || 0);
+      const rows = documents.map((document, rowIndex) => {
+        const amount = Number(document.total || document.amount || 0);
         return `
           <tr>
-            <td><input type="checkbox" data-allocation-select="${index}" data-allocation-row="${rowIndex}" ${deposits.length === 1 ? "checked" : ""}></td>
-            <td>${escapeHtml(deposit.tranId || deposit.id || "-")}</td>
-            <td>${escapeHtml(deposit.total || deposit.amount || "-")}</td>
+            <td><input type="checkbox" data-allocation-select="${index}" data-allocation-row="${rowIndex}" ${documents.length === 1 ? "checked" : ""}></td>
+            <td>${escapeHtml(document.tranId || document.id || "-")}</td>
+            <td>${escapeHtml(document.total || document.amount || "-")}</td>
             <td><input type="number" step="0.01" min="0" max="${escapeHtml(String(amount || expected || ""))}" value="" data-allocation-amount="${index}" data-allocation-row="${rowIndex}"></td>
           </tr>
         `;
@@ -1298,23 +1546,123 @@
       return `
         <div class="workflow-allocation-panel" data-allocation-panel="${index}">
           <div class="workflow-allocation-head">
-            <strong>Customer deposit allocation</strong>
+            <strong>${escapeHtml(title)}</strong>
             <span class="workflow-allocation-total">Refund total: ${escapeHtml(expected ? expected.toFixed(2) : "-")}</span>
           </div>
           <table class="workflow-allocation-table">
             <thead>
               <tr>
                 <th>Use</th>
-                <th>Deposit</th>
+                <th>${escapeHtml(noun)}</th>
                 <th>Available</th>
                 <th>Refund amount</th>
               </tr>
             </thead>
-            <tbody>${rows || `<tr><td colspan="4">No customer deposits were returned.</td></tr>`}</tbody>
+            <tbody>${rows || `<tr><td colspan="4">${escapeHtml(empty)}</td></tr>`}</tbody>
           </table>
           <div class="workflow-allocation-actions">
             <span class="workflow-action-error" data-allocation-error="${index}" hidden></span>
             <button type="button" class="btn-primary" data-allocation-confirm="${index}">Continue</button>
+          </div>
+        </div>
+      `;
+    }
+
+    function workflowHistorySegmentHtml() {
+      const checkpointActions = Array.isArray(workflowRun.checkpoint?.actions) ? workflowRun.checkpoint.actions : [];
+      const completedActions = checkpointActions.filter((action) =>
+        ["success", "failed", "skipped"].includes(String(action.executionState || "").toLowerCase())
+      );
+      const checkpointChecks = Array.isArray(workflowRun.checkpoint?.checks) ? workflowRun.checkpoint.checks : [];
+      if (!completedActions.length && !checkpointChecks.length) return "";
+      const actionRows = completedActions.map((action, index) => {
+        const state = String(action.executionState || "").toLowerCase();
+        const stateLabel = state === "success" ? "Completed" : state === "failed" ? "Failed" : "Skipped";
+        return `
+          <tr>
+            <td>${index + 1}</td>
+            <td>
+              <div class="workflow-action-response">
+                <span class="workflow-action-icon ${escapeHtml(state)}"></span>
+                <div>
+                  <strong>${escapeHtml(action.label || `Action ${index + 1}`)}</strong>
+                  <span class="case-status"> ${escapeHtml(workflowActionTypeLabel(action.actionType))} - ${escapeHtml(stateLabel)}</span>
+                  <div>${workflowActionMessageHtml(action)}</div>
+                  ${action.executionError ? `<div class="workflow-action-error">${escapeHtml(action.executionError)}</div>` : ""}
+                </div>
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+      const checkRows = checkpointChecks.map((check) => {
+        const resultClass = String(check.result || "").toLowerCase() === "pass" ? "pass" : "fail";
+        return `
+          <article class="workflow-log-card">
+            <div class="workflow-log-title">
+              <span>${escapeHtml(check.label || "Check")}</span>
+              <span class="workflow-result-pill ${resultClass}">${escapeHtml(check.result || "Fail")}</span>
+            </div>
+            ${check.message ? `<p class="case-status">${escapeHtml(check.message)}</p>` : ""}
+          </article>
+        `;
+      }).join("");
+      return `
+        <section class="workflow-history-segment">
+          <h4>History</h4>
+          ${completedActions.length ? `
+            <table class="workflow-action-table workflow-history-table">
+              <thead>
+                <tr><th>Step</th><th>Completed Action</th></tr>
+              </thead>
+              <tbody>${actionRows}</tbody>
+            </table>
+          ` : ""}
+          ${checkpointChecks.length ? `<div class="workflow-history-checks">${checkRows}</div>` : ""}
+        </section>
+      `;
+    }
+
+    function workflowCheckRecordSelectionHtml(node = {}, data = {}) {
+      const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+      const label = ({
+        returnAuthorization: "Return Authorisation",
+        creditMemo: "Credit Memo",
+        customerRefund: "Customer Refund",
+        customerDeposit: "Customer Deposit",
+        salesOrder: "Sales Order",
+      })[data.recordType] || data.recordType || "record";
+      return `
+        <div class="workflow-run-shell">
+          <div class="workflow-question-card">
+            <h3>${escapeHtml(node.label || node.question || "Select record")}</h3>
+            <p class="workflow-description">${escapeHtml(data.message || `Select which ${label} to check.`)}</p>
+            <table class="workflow-allocation-table">
+              <thead>
+                <tr>
+                  <th>Choose</th>
+                  <th>${escapeHtml(label)}</th>
+                  <th>Status</th>
+                  <th>Date</th>
+                  <th>Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${candidates.map((candidate, index) => `
+                  <tr>
+                    <td><input type="radio" name="workflowCheckRecord" data-workflow-check-record="${escapeHtml(candidate.id)}" ${index === 0 ? "checked" : ""}></td>
+                    <td>${candidate.url ? `<a href="${escapeHtml(candidate.url)}" class="related-popup-link">${escapeHtml(candidate.tranId || candidate.id)}</a>` : escapeHtml(candidate.tranId || candidate.id)}</td>
+                    <td>${escapeHtml(candidate.status || "-")}</td>
+                    <td>${escapeHtml(candidate.date || "-")}</td>
+                    <td>${escapeHtml(candidate.total || "-")}</td>
+                  </tr>
+                `).join("") || '<tr><td colspan="5">No matching records were found.</td></tr>'}
+              </tbody>
+            </table>
+            <div class="workflow-run-actions">
+              <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
+              <button id="workflowCheckRecordContinueBtn" type="button" class="btn-primary" ${candidates.length ? "" : "disabled"}>Continue</button>
+            </div>
           </div>
         </div>
       `;
@@ -1364,13 +1712,17 @@
       `;
     }
 
-    function defaultWorkflowActionApproval(action = {}) {
-      return action.mandatory === false;
+    function defaultWorkflowActionApproval() {
+      return false;
+    }
+
+    function defaultWorkflowActionEnabled() {
+      return true;
     }
 
     function workflowMandatoryActionsApproved() {
       return (workflowRun.actions || []).every((action, index) =>
-        action.mandatory === false || workflowRun.actionApprovals[index]
+        action.type === "break" || workflowRun.actionApprovals[index] === true
       );
     }
 
@@ -1606,9 +1958,13 @@
     }
 
     function itemId(item = {}) {
+      const nestedItem = item.item && typeof item.item === "object" ? item.item : {};
       return String(
         item.itemId ||
-        item.item ||
+        nestedItem.id ||
+        nestedItem.value ||
+        nestedItem.internalid ||
+        (typeof item.item === "string" || typeof item.item === "number" ? item.item : "") ||
         item.id ||
         item.internalid ||
         item["Internal ID"] ||
@@ -1634,14 +1990,64 @@
 
     function currentSaleItems() {
       try {
+        if (Array.isArray(workflowRun.salesOrderItems) && workflowRun.salesOrderItems.length) {
+          return workflowRun.salesOrderItems;
+        }
         if (Array.isArray(window.opener?._raiseCaseItems) && window.opener._raiseCaseItems.length) {
           return window.opener._raiseCaseItems;
         }
         const so = window.opener?._currentSalesOrder || {};
         return Array.isArray(so.item?.items) ? so.item.items : [];
       } catch {
-        return [];
+        return Array.isArray(workflowRun.salesOrderItems) ? workflowRun.salesOrderItems : [];
       }
+    }
+
+    function normaliseWorkflowSalesOrderItem(item = {}) {
+      const id = itemId(item);
+      const saleGross = item.saleGrossLine ?? item.grossSaleprice ?? item.saleprice ?? item.grossamt ?? "";
+      const amountGross = item.amountGrossLine ?? item.grossAmount ?? item.grossamt ?? "";
+      return {
+        ...item,
+        id: item.id || id,
+        itemId: item.itemId || id,
+        itemName: item.itemName || itemName(item),
+        grossamt: item.grossamt ?? saleGross ?? amountGross,
+        grossAmount: item.grossAmount ?? saleGross ?? amountGross,
+        saleGrossLine: item.saleGrossLine ?? saleGross,
+        grossSaleprice: item.grossSaleprice ?? saleGross,
+        saleprice: item.saleprice ?? saleGross,
+        amountGrossLine: item.amountGrossLine ?? amountGross,
+        amount: item.netamount ?? item.netAmount ?? item.amountNetLine ?? item.amount ?? "",
+      };
+    }
+
+    async function loadWorkflowSalesOrderItems() {
+      const salesOrderId = String(loadedCase?.salesOrderId || params().get("salesOrderId") || "").trim();
+      if (!salesOrderId) return [];
+      if (workflowRun.salesOrderItems.length) return workflowRun.salesOrderItems;
+      if (workflowRun.salesOrderItemsLoading) return workflowRun.salesOrderItemsLoading;
+      workflowRun.salesOrderItemsLoading = fetch(`/api/netsuite/salesorder/${encodeURIComponent(salesOrderId)}?_=${Date.now()}`, {
+        headers: authHeaders(),
+        cache: "no-store",
+      })
+        .then(async (res) => {
+          const data = await res.json().catch(() => ({}));
+          if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+          const rows = Array.isArray(data.salesOrder?.item?.items) ? data.salesOrder.item.items : [];
+          workflowRun.salesOrderItems = rows.map(normaliseWorkflowSalesOrderItem);
+          populateItems();
+          return workflowRun.salesOrderItems;
+        })
+        .catch((err) => {
+          console.warn("Could not load workflow sales order items:", err.message || err);
+          workflowRun.salesOrderItems = [];
+          return [];
+        })
+        .finally(() => {
+          workflowRun.salesOrderItemsLoading = null;
+        });
+      return workflowRun.salesOrderItemsLoading;
     }
 
     function populateItems() {
@@ -1728,6 +2134,8 @@
       ensureSelectOption(document.getElementById("caseType"), loadedCase.typeId, loadedCase.typeName);
       await populateCaseSubTypes(loadedCase.typeId || "");
       ensureSelectOption(document.getElementById("caseSubType"), loadedCase.subTypeId, loadedCase.subTypeName);
+      ensureSelectOption(document.getElementById("caseItem"), loadedCase.itemId, loadedCase.itemName);
+      await loadWorkflowSalesOrderItems();
       ensureSelectOption(document.getElementById("caseItem"), loadedCase.itemId, loadedCase.itemName);
 
       populateHeaderContext();
@@ -2081,19 +2489,27 @@
       if (source.type === "inputSalesOrderItem") return `Input item - ${source.label || source.itemName || source.inputNodeId || "selected item"}`;
       if (source.type === "input") return `Input - ${source.label || source.inputNodeId || "selected answer"}`;
       if (source.type === "intercompanySalesOrder") return "Intercompany Sales Order";
+      if (source.recordId || source.documentNumber) return `${source.label || "Record"} - ${source.documentNumber || source.recordId}`;
       return "Store Sales Order";
     }
 
     function workflowInputConfig(node = {}) {
       const config = node.inputConfig && typeof node.inputConfig === "object" ? node.inputConfig : {};
-      const type = ["string", "currency", "list", "boolean"].includes(config.type) ? config.type : "string";
+      const type = ["string", "currency", "list", "select", "multiSelect", "boolean"].includes(config.type) ? config.type : "string";
       const fields = Array.isArray(config.fields) && config.fields.length
         ? config.fields.map((field, index) => ({
           id: field.id || `field_${index}`,
           label: field.label || `Response ${index + 1}`,
-          type: ["string", "currency", "list", "boolean"].includes(field.type) ? field.type : "string",
+          type: ["string", "currency", "list", "select", "multiSelect", "boolean"].includes(field.type) ? field.type : "string",
           listSource: field.listSource || "salesOrderItems",
           listField: field.listField || "",
+          selectOptions: Array.isArray(field.selectOptions) ? field.selectOptions.map((option, optionIndex) => ({
+            id: option.id || `option_${optionIndex}`,
+            label: option.label || option.value || `Option ${optionIndex + 1}`,
+            valueMode: option.valueMode === "affectedItemField" ? "affectedItemField" : "static",
+            value: option.value || "",
+            affectedItemField: option.affectedItemField || "",
+          })) : [],
         }))
         : [{
           id: "answer",
@@ -2101,6 +2517,7 @@
           type,
           listSource: config.listSource || "salesOrderItems",
           listField: config.listField || "",
+          selectOptions: [],
         }];
       return {
         type,
@@ -2136,13 +2553,13 @@
       const input = workflowCheckInputNode(node);
       if (input?.type !== "input") return false;
       const fields = workflowInputConfig(input).fields;
-      if (fields.some((field) => field.type === "list" && field.listSource === "salesOrderItems")) return true;
-      return input.inputConfig?.type === "list" && input.inputConfig?.listSource === "salesOrderItems";
+      if (fields.some((field) => ["list", "multiSelect"].includes(field.type) && field.listSource === "salesOrderItems")) return true;
+      return ["list", "multiSelect"].includes(input.inputConfig?.type) && input.inputConfig?.listSource === "salesOrderItems";
     }
 
     function workflowInputPrimaryAnswer(inputNode = {}, inputStep = {}) {
       const fields = workflowInputConfig(inputNode).fields;
-      const itemField = fields.find((field) => field.type === "list" && field.listSource === "salesOrderItems");
+      const itemField = fields.find((field) => ["list", "multiSelect"].includes(field.type) && field.listSource === "salesOrderItems");
       const firstField = itemField || fields[0];
       if (firstField && inputStep.answers && Object.prototype.hasOwnProperty.call(inputStep.answers, firstField.id)) {
         return {
@@ -2169,6 +2586,142 @@
         .map((item) => ({ id: itemId(item), name: itemName(item) }))
         .filter((item) => item.id && item.name)
         .filter((item, index, list) => list.findIndex((next) => next.id === item.id) === index);
+    }
+
+    function workflowSalesOrderItemRows() {
+      return currentSaleItems()
+        .map((item, index) => {
+          const quantity = workflowRowValue(item, "quantity");
+          const rate = workflowRowValue(item, "rate");
+          return {
+            id: itemId(item),
+            name: itemName(item),
+            quantity,
+            rate,
+            amount: workflowLineNetAmount(item, rate, quantity),
+            grossamt: workflowRowValue(item, "grossamt"),
+            lineId: item.lineId || item.line || item.lineuniquekey || String(index + 1),
+          };
+        })
+        .filter((item) => item.id && item.name);
+    }
+
+    function workflowNumber(value) {
+      if (value === undefined || value === null || value === "") return null;
+      const cleaned = String(value).replace(/[^\d.-]/g, "");
+      if (!cleaned || cleaned === "-" || cleaned === ".") return null;
+      const number = Number(cleaned);
+      return Number.isFinite(number) ? number : null;
+    }
+
+    function workflowDecimalString(value, places = 2) {
+      const number = workflowNumber(value);
+      if (number === null) return value === undefined || value === null ? "" : String(value);
+      return number.toFixed(places);
+    }
+
+    function workflowLineNetAmount(item, rate, quantity) {
+      const rateNumber = workflowNumber(rate);
+      const quantityNumber = workflowNumber(quantity);
+      if (rateNumber !== null && quantityNumber !== null) {
+        return workflowDecimalString(rateNumber * quantityNumber);
+      }
+      const explicit = workflowRowValue(item, "amount");
+      if (explicit !== "") return workflowDecimalString(explicit);
+      if (rateNumber !== null) return workflowDecimalString(rateNumber);
+      return "";
+    }
+
+    function workflowLineAmountForQuantity(rate, quantity, fallbackAmount = "", originalQuantity = "") {
+      const rateNumber = workflowNumber(rate);
+      const quantityNumber = workflowNumber(quantity);
+      if (rateNumber !== null && quantityNumber !== null) {
+        return workflowDecimalString(rateNumber * quantityNumber);
+      }
+      const fallbackNumber = workflowNumber(fallbackAmount);
+      const originalQuantityNumber = workflowNumber(originalQuantity);
+      if (fallbackNumber !== null && quantityNumber !== null && originalQuantityNumber) {
+        return workflowDecimalString((fallbackNumber / originalQuantityNumber) * quantityNumber);
+      }
+      return fallbackAmount || "";
+    }
+
+    function workflowAffectedItemRow() {
+      const wanted = String(loadedCase?.itemId || document.getElementById("caseItem")?.value || "").trim();
+      if (!wanted) return null;
+      return currentSaleItems().find((item) => String(itemId(item)) === wanted) || null;
+    }
+
+    function workflowRowValue(row = {}, fieldId = "") {
+      const wanted = String(fieldId || "").trim();
+      if (!wanted) return "";
+      const aliases = {
+        grossamt: [
+          "grossamt",
+          "grossAmt",
+          "grossamount",
+          "saleGrossLine",
+          "grossSaleprice",
+          "saleprice",
+          "grossAmount",
+          "saleGross",
+          "total",
+          "lineTotal",
+          "amountGrossLine",
+          "gross",
+          "amount",
+        ],
+        amount: [
+          "netamount",
+          "netAmount",
+          "amountNetLine",
+          "amountnetline",
+          "lineAmount",
+          "lineamount",
+          "amount",
+        ],
+        rate: ["rate", "salePrice", "saleNetPerUnit", "saleNet"],
+        quantity: ["quantity", "qty"],
+        description: ["description", "memo"],
+      };
+      const candidates = [
+        ...(aliases[wanted.toLowerCase()] || []),
+        wanted,
+        wanted.toLowerCase(),
+        wanted.toUpperCase(),
+        wanted.replace(/_/g, ""),
+        `${wanted}_display`,
+        `${wanted}display`,
+        `${wanted}Name`,
+        `${wanted}_name`,
+      ];
+      for (const key of candidates) {
+        if (row && Object.prototype.hasOwnProperty.call(row, key)) {
+          const value = row[key];
+          if (value && typeof value === "object") return value.id || value.value || value.refName || value.name || "";
+          if (value !== undefined && value !== null && String(value).trim() !== "") return String(value);
+        }
+      }
+      return "";
+    }
+
+    function workflowInputSelectOptionRows(input = {}) {
+      const affectedItem = workflowAffectedItemRow();
+      return (input.selectOptions || []).map((option, index) => {
+        const valueMode = option.valueMode === "affectedItemField" ? "affectedItemField" : "static";
+        const value = valueMode === "affectedItemField"
+          ? workflowRowValue(affectedItem, option.affectedItemField)
+          : option.value;
+        const itemLabel = affectedItem ? itemName(affectedItem) : "";
+        return {
+          id: option.id || `select_option_${index}`,
+          label: option.label || value || "Option",
+          valueMode,
+          value: value == null ? "" : String(value),
+          itemLabel,
+          affectedItemField: option.affectedItemField || "",
+        };
+      });
     }
 
     function workflowItemSearchRows() {
@@ -2259,6 +2812,58 @@
           </label>
         `;
       }
+      if (input.type === "select") {
+        const rows = workflowInputSelectOptionRows(input);
+        const fieldId = String(input.id || "");
+        const selectedIndex = rows.findIndex((row) => String(row.value) === String(answer));
+        return `
+          <div>
+            <label>${escapeHtml(label)}</label>
+            ${rows.length ? `
+              <table class="workflow-select-table">
+                <thead>
+                  <tr>
+                    <th>Choose</th>
+                    <th>Option</th>
+                    <th>Item</th>
+                    <th>Value</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map((row, index) => {
+                    const checked = selectedIndex >= 0 ? index === selectedIndex : false;
+                    return `
+                      <tr
+                        data-workflow-select-row="${escapeHtml(fieldId)}"
+                        data-workflow-select-option-id="${escapeHtml(row.id)}"
+                        data-workflow-select-mode="${escapeHtml(row.valueMode)}"
+                        data-workflow-select-label="${escapeHtml(row.label)}"
+                        data-workflow-select-value="${escapeHtml(row.value)}"
+                        data-workflow-select-item="${escapeHtml(row.itemLabel)}">
+                        <td>
+                          <input
+                            type="radio"
+                            name="workflowSelect_${escapeHtml(fieldId)}"
+                            data-workflow-select-option="${escapeHtml(fieldId)}"
+                            value="${escapeHtml(row.id)}"
+                            ${checked ? "checked" : ""}>
+                        </td>
+                        <td>${escapeHtml(row.label)}</td>
+                        <td>${row.valueMode === "affectedItemField" ? escapeHtml(row.itemLabel || "Affected item") : ""}</td>
+                        <td>
+                          ${row.valueMode === "affectedItemField"
+                            ? escapeHtml(row.value || "")
+                            : `<input data-workflow-select-static-value="${escapeHtml(fieldId)}" type="text" value="${escapeHtml(row.value)}" placeholder="Enter value">`}
+                        </td>
+                      </tr>
+                    `;
+                  }).join("")}
+                </tbody>
+              </table>
+            ` : '<p class="workflow-select-empty">No select options configured.</p>'}
+          </div>
+        `;
+      }
       if (input.type === "list") {
         const isSalesOrderItems = input.listSource === "salesOrderItems";
         const isItemSearch = input.listSource === "item";
@@ -2314,6 +2919,80 @@
               `).join("")}
             </select>
           </label>
+        `;
+      }
+      if (input.type === "multiSelect") {
+        const rows = workflowSalesOrderItemRows();
+        let selected = [];
+        try {
+          const parsed = JSON.parse(answer || "[]");
+          selected = Array.isArray(parsed) ? parsed : [];
+        } catch {
+          selected = String(answer || "").split(",").map((item) => item.trim()).filter(Boolean);
+        }
+        const selectedForRow = (row = {}) => selected.find((item) => {
+          if (item && typeof item === "object") {
+            return String(item.lineId || "") === String(row.lineId || "") ||
+              String(item.id || "") === String(row.id || "");
+          }
+          return String(item || "") === String(row.id || "");
+        }) || null;
+        return `
+          <div class="workflow-input-multiselect">
+            <strong>${escapeHtml(label)}</strong>
+            ${rows.length ? `
+              <table class="workflow-select-table">
+                <thead>
+                  <tr>
+                    <th>Use</th>
+                    <th>Item</th>
+                    <th>Qty</th>
+                    <th>Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${rows.map((row) => {
+                    const selectedRow = selectedForRow(row);
+                    const checked = !!selectedRow;
+                    const selectedQty = selectedRow && typeof selectedRow === "object" ? selectedRow.quantity : "";
+                    const quantity = selectedQty || row.quantity || 1;
+                    return `
+                    <tr
+                      data-workflow-multiselect-row="${escapeHtml(input.id)}"
+                      data-item-id="${escapeHtml(row.id)}"
+                      data-item-line-id="${escapeHtml(row.lineId)}"
+                      data-item-name="${escapeHtml(row.name)}"
+                      data-item-quantity="${escapeHtml(row.quantity || "")}"
+                      data-item-rate="${escapeHtml(row.rate || "")}"
+                      data-item-amount="${escapeHtml(row.amount || "")}"
+                      data-item-grossamt="${escapeHtml(row.grossamt || "")}">
+                      <td>
+                        <input
+                          type="checkbox"
+                          data-workflow-multiselect-option="${escapeHtml(input.id)}"
+                          value="${escapeHtml(row.id)}"
+                          ${checked ? "checked" : ""}>
+                      </td>
+                      <td>${escapeHtml(row.name)}</td>
+                      <td>
+                        <input
+                          data-workflow-multiselect-quantity="${escapeHtml(input.id)}"
+                          type="number"
+                          min="0"
+                          step="1"
+                          max="${escapeHtml(row.quantity || "")}"
+                          value="${escapeHtml(quantity)}"
+                          ${checked ? "" : "disabled"}>
+                      </td>
+                      <td><span data-workflow-multiselect-amount-display>${escapeHtml(workflowLineAmountForQuantity(row.rate, quantity, row.amount || row.grossamt || "", row.quantity))}</span></td>
+                    </tr>
+                  `;
+                  }).join("")}
+                </tbody>
+              </table>
+            ` : '<p class="workflow-select-empty">No sales order items available.</p>'}
+            <input data-workflow-input-answer="${escapeHtml(input.id)}" type="hidden" value="${escapeHtml(answer)}">
+          </div>
         `;
       }
       return `
@@ -2394,11 +3073,115 @@
       });
     }
 
+    function bindWorkflowSelectInputs(runner = document) {
+      runner.querySelectorAll("[data-workflow-select-row]").forEach((row) => {
+        const radio = row.querySelector("[data-workflow-select-option]");
+        if (!radio) return;
+        row.addEventListener("click", (event) => {
+          if (event.target.closest("a, button")) return;
+          radio.checked = true;
+        });
+      });
+      runner.querySelectorAll("[data-workflow-select-static-value]").forEach((input) => {
+        const row = input.closest("[data-workflow-select-row]");
+        const radio = row?.querySelector("[data-workflow-select-option]");
+        if (!radio) return;
+        input.addEventListener("focus", () => {
+          radio.checked = true;
+        });
+        input.addEventListener("input", () => {
+          radio.checked = true;
+        });
+      });
+    }
+
+    function bindWorkflowMultiSelectInputs(runner = document) {
+      runner.querySelectorAll("[data-workflow-multiselect-row]").forEach((row) => {
+        const checkbox = row.querySelector("[data-workflow-multiselect-option]");
+        const quantity = row.querySelector("[data-workflow-multiselect-quantity]");
+        const amountDisplay = row.querySelector("[data-workflow-multiselect-amount-display]");
+        if (!checkbox) return;
+        const syncQuantity = () => {
+          if (quantity) quantity.disabled = !checkbox.checked;
+          if (amountDisplay) {
+            amountDisplay.textContent = workflowLineAmountForQuantity(
+              row.dataset.itemRate || "",
+              quantity?.value || row.dataset.itemQuantity || 1,
+              row.dataset.itemAmount || row.dataset.itemGrossamt || "",
+              row.dataset.itemQuantity || ""
+            );
+          }
+        };
+        row.addEventListener("click", (event) => {
+          if (event.target.closest("a, button, input")) return;
+          checkbox.checked = !checkbox.checked;
+          syncQuantity();
+        });
+        checkbox.addEventListener("change", syncQuantity);
+        quantity?.addEventListener("input", syncQuantity);
+        syncQuantity();
+      });
+    }
+
     function collectWorkflowInputAnswers(node = {}, runner = document) {
       const config = workflowInputConfig(node);
       const answers = {};
       const labels = {};
       config.fields.forEach((field) => {
+        if (field.type === "select") {
+          const checked = runner.querySelector(`[data-workflow-select-option="${CSS.escape(String(field.id))}"]:checked`);
+          const row = checked?.closest("[data-workflow-select-row]");
+          const mode = row?.dataset.workflowSelectMode || "";
+          const optionLabel = row?.dataset.workflowSelectLabel || "";
+          const itemLabel = row?.dataset.workflowSelectItem || "";
+          let value = "";
+          let selectedText = "";
+          if (mode === "static") {
+            const staticInput = row?.querySelector(`[data-workflow-select-static-value="${CSS.escape(String(field.id))}"]`);
+            value = staticInput?.value || "";
+            selectedText = optionLabel ? `${optionLabel}: ${value}` : value;
+          } else if (mode === "affectedItemField") {
+            value = row?.dataset.workflowSelectValue || "";
+            selectedText = [optionLabel, itemLabel, value].filter(Boolean).join(": ");
+          }
+          answers[field.id] = value;
+          labels[field.id] = selectedText || value;
+          return;
+        }
+        if (field.type === "multiSelect") {
+          const checked = Array.from(runner.querySelectorAll(`[data-workflow-multiselect-option="${CSS.escape(String(field.id))}"]:checked`));
+          const values = checked.map((item) => {
+            const row = item.closest("[data-workflow-multiselect-row]");
+            const quantityInput = row?.querySelector(`[data-workflow-multiselect-quantity="${CSS.escape(String(field.id))}"]`);
+            const quantity = Number(quantityInput?.value || 0);
+            const amount = workflowLineAmountForQuantity(
+              row?.dataset.itemRate || "",
+              quantity,
+              row?.dataset.itemAmount || "",
+              row?.dataset.itemQuantity || ""
+            );
+            const grossamt = workflowLineAmountForQuantity(
+              "",
+              quantity,
+              row?.dataset.itemGrossamt || "",
+              row?.dataset.itemQuantity || ""
+            );
+            return {
+              id: String(item.value || "").trim(),
+              lineId: row?.dataset.itemLineId || "",
+              name: row?.dataset.itemName || item.value || "",
+              quantity: Number.isFinite(quantity) && quantity > 0 ? quantity : 0,
+              rate: row?.dataset.itemRate || "",
+              amount,
+              grossamt,
+            };
+          }).filter((item) => item.id && item.quantity > 0);
+          const names = values.map((item) => `${item.name} x ${item.quantity}`).filter(Boolean);
+          const value = JSON.stringify(values);
+          answers[field.id] = value;
+          labels[field.id] = names.join(", ");
+          return;
+        }
         const control = runner.querySelector(`[data-workflow-input-answer="${CSS.escape(String(field.id))}"]`);
         const value = control?.value || "";
         const searchInput = runner.querySelector(`[data-workflow-item-search="${CSS.escape(String(field.id))}"]`);
@@ -2430,6 +3213,12 @@
       workflowRun.answers = [];
       workflowRun.actions = [];
       workflowRun.actionApprovals = [];
+      workflowRun.actionEnableds = [];
+      workflowRun.executedActionNodeIds = [];
+      workflowRun.checkpoint = null;
+      workflowRun.focusedProgressWorkflowId = "";
+      workflowRun.pausedAtBreak = false;
+      workflowRun.resumeNodeId = "";
       workflowRun.checks = [];
       workflowRun.debugNodeIds = [];
       workflowRun.debugEdgeIds = [];
@@ -2449,6 +3238,240 @@
       if (actionTable) actionTable.hidden = true;
       closeWorkflowSteps();
       updateWorkflowStepMenuVisibility();
+    }
+
+    function workflowProgressCaseId() {
+      return String(params().get("caseId") || loadedCase?.id || "").trim();
+    }
+
+    function workflowProgressId(workflow = workflowRun.selected) {
+      return String(workflow?.id || "").trim();
+    }
+
+    function workflowProgressUrl(workflow = workflowRun.selected) {
+      const caseId = workflowProgressCaseId();
+      const workflowId = workflowProgressId(workflow);
+      if (!caseId || !workflowId) return "";
+      return `/api/netsuite/salesorder/cases/${encodeURIComponent(caseId)}/workflow-progress/${encodeURIComponent(workflowId)}`;
+    }
+
+    function workflowRunCheckpointPayload(extra = {}) {
+      const isPaused = extra.status === "paused" || workflowRun.pausedAtBreak;
+      return {
+        workflowId: workflowProgressId(),
+        workflowName: workflowRun.selected?.name || "",
+        currentNodeId: workflowRun.currentNodeId || "",
+        terminalNodeId: workflowRun.terminalNodeId || "",
+        resumeNodeId: workflowRun.resumeNodeId || "",
+        breakNodeId: isPaused ? workflowRun.terminalNodeId || "" : "",
+        stepHistory: workflowRun.stepHistory || [],
+        answers: workflowRun.answers || [],
+        checks: workflowRun.checks || [],
+        actions: workflowRun.actions || [],
+        executedActionNodeIds: workflowRun.executedActionNodeIds || [],
+        debugNodeIds: workflowRun.debugNodeIds || [],
+        debugEdgeIds: workflowRun.debugEdgeIds || [],
+        debugActionNodeIds: workflowRun.debugActionNodeIds || [],
+        savedAt: new Date().toISOString(),
+        ...extra,
+      };
+    }
+
+    async function loadWorkflowProgress(workflow = workflowRun.selected) {
+      const url = workflowProgressUrl(workflow);
+      if (!url) return null;
+      const res = await fetch(`${url}?_=${Date.now()}`, {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+      return data.progress || null;
+    }
+
+    async function loadCaseWorkflowProgressList() {
+      const caseId = workflowProgressCaseId();
+      if (!caseId) return [];
+      const res = await fetch(`/api/netsuite/salesorder/cases/${encodeURIComponent(caseId)}/workflow-progress?_=${Date.now()}`, {
+        headers: authHeaders(),
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+      return Array.isArray(data.progress) ? data.progress : [];
+    }
+
+    async function saveWorkflowProgress(extra = {}) {
+      const url = workflowProgressUrl();
+      if (!url) return null;
+      const progress = workflowRunCheckpointPayload(extra);
+      const res = await fetch(url, {
+        method: "PUT",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({ progress }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+      workflowRun.checkpoint = data.progress || progress;
+      if (workflowRun.checkpoint) workflowRun.progressByWorkflowId.set(workflowProgressId(), workflowRun.checkpoint);
+      renderWorkflowProgressBanner();
+      return workflowRun.checkpoint;
+    }
+
+    async function clearWorkflowProgress(workflow = workflowRun.selected) {
+      const url = workflowProgressUrl(workflow);
+      if (!url) return;
+      const res = await fetch(url, {
+        method: "DELETE",
+        headers: authHeaders(),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+      workflowRun.progressByWorkflowId.delete(workflowProgressId(workflow));
+      renderWorkflowProgressBanner();
+    }
+
+    function applyWorkflowProgress(progress = null) {
+      if (!progress || typeof progress !== "object") return false;
+      workflowRun.checkpoint = progress;
+      workflowRun.stepHistory = Array.isArray(progress.stepHistory) ? progress.stepHistory : [];
+      workflowRun.answers = Array.isArray(progress.answers) ? progress.answers : [];
+      workflowRun.checks = Array.isArray(progress.checks) ? progress.checks : [];
+      workflowRun.actions = Array.isArray(progress.actions) ? progress.actions : [];
+      workflowRun.executedActionNodeIds = Array.isArray(progress.executedActionNodeIds) ? progress.executedActionNodeIds.map(String) : [];
+      workflowRun.debugNodeIds = Array.isArray(progress.debugNodeIds) ? progress.debugNodeIds : [];
+      workflowRun.debugEdgeIds = Array.isArray(progress.debugEdgeIds) ? progress.debugEdgeIds : [];
+      workflowRun.debugActionNodeIds = Array.isArray(progress.debugActionNodeIds) ? progress.debugActionNodeIds : [];
+      workflowRun.terminalNodeId = String(progress.breakNodeId || progress.terminalNodeId || "");
+      workflowRun.resumeNodeId = String(progress.resumeNodeId || "");
+      workflowRun.currentNodeId = "";
+      workflowRun.started = true;
+      workflowRun.complete = true;
+      workflowRun.awaitingActionApproval = false;
+      workflowRun.pausedAtBreak = String(progress.status || "").toLowerCase() === "paused" || !!progress.breakNodeId;
+      workflowRun.actionsRendered = true;
+      workflowRun.actionApprovals = workflowRun.actions.map(defaultWorkflowActionApproval);
+      workflowRun.actionEnableds = workflowRun.actions.map(defaultWorkflowActionEnabled);
+      orderWorkflowActionsForReview();
+      return true;
+    }
+
+    async function selectWorkflowProgress(workflowId = "") {
+      let workflow = workflowRun.workflows.find((item) => String(item.id) === String(workflowId)) || null;
+      const existingProgress = workflowRun.progressByWorkflowId.get(String(workflowId));
+      if (!workflow && existingProgress) {
+        workflow = {
+          id: workflowId,
+          name: existingProgress.workflowName || "Saved workflow",
+          definition: { nodes: [], edges: [] },
+        };
+      }
+      if (!workflow) return;
+      const select = document.getElementById("caseWorkflowSelect");
+      if (select && Array.from(select.options).some((option) => String(option.value) === String(workflow.id))) {
+        select.value = String(workflow.id);
+      }
+      resetWorkflowRun(workflow);
+      workflowRun.focusedProgressWorkflowId = String(workflow.id || "");
+      let progress = workflowRun.progressByWorkflowId.get(String(workflow.id));
+      if (!progress) {
+        progress = await loadWorkflowProgress(workflow);
+        if (progress) workflowRun.progressByWorkflowId.set(String(workflow.id), progress);
+      }
+      if (progress) applyWorkflowProgress(progress);
+      renderWorkflowProgressBanner();
+      renderWorkflowRunner();
+    }
+
+    function renderWorkflowProgressBanner() {
+      const banner = document.getElementById("caseWorkflowProgressBanner");
+      if (!banner) return;
+      const entries = Array.from(workflowRun.progressByWorkflowId.entries())
+        .map(([workflowId, progress]) => ({
+          workflowId,
+          progress,
+          workflow: workflowRun.workflows.find((item) => String(item.id) === String(workflowId)) || {
+            id: workflowId,
+            name: progress?.workflowName || "Saved workflow",
+            definition: { nodes: [], edges: [] },
+          },
+        }))
+        .filter((item) => item.progress && (item.progress.status || item.progress.breakNodeId || item.progress.terminalNodeId));
+      if (!entries.length) {
+        banner.hidden = true;
+        banner.innerHTML = "";
+        return;
+      }
+      banner.hidden = false;
+      banner.innerHTML = `
+        <div class="workflow-progress-list">
+          ${entries.map((entry) => workflowProgressAuditHtml(entry)).join("")}
+        </div>
+      `;
+      banner.querySelectorAll("[data-continue-workflow-progress], [data-view-workflow-progress]").forEach((button) => {
+        button.addEventListener("click", (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const workflowId = button.dataset.continueWorkflowProgress || button.dataset.viewWorkflowProgress || "";
+          if (button.dataset.viewWorkflowProgress) {
+            const details = button.closest(".workflow-progress-item");
+            if (details) details.open = true;
+            workflowRun.focusedProgressWorkflowId = String(workflowId || "");
+            return;
+          }
+          workflowRun.focusedProgressWorkflowId = String(workflowId || "");
+          selectWorkflowProgress(workflowId).catch((err) => {
+            console.error("Could not open workflow progress:", err);
+            const statusText = document.getElementById("caseStatusText");
+            if (statusText) statusText.textContent = err.message || "Could not open workflow.";
+          });
+        });
+      });
+    }
+
+    function workflowProgressAuditHtml(entry = {}) {
+      const progress = entry.progress || {};
+      const workflow = entry.workflow || {};
+      const status = String(progress.status || (progress.breakNodeId ? "paused" : "completed")).toLowerCase();
+      const isComplete = status === "completed";
+      const canContinue = !isComplete && workflowRun.workflows.some((item) => String(item.id) === String(entry.workflowId));
+      const breakNode = workflowDefinition(workflow).nodes?.find((node) => String(node.id) === String(progress.breakNodeId || progress.terminalNodeId || ""));
+      const savedAt = progress.savedAt || progress.updatedAt || "";
+      const savedText = savedAt ? new Date(savedAt).toLocaleString() : "";
+      const actionCount = (Array.isArray(progress.actions) ? progress.actions : [])
+        .filter((action) => ["success", "failed", "skipped"].includes(String(action.executionState || "").toLowerCase()))
+        .length;
+      const summaryText = isComplete
+        ? `Completed${savedText ? ` ${savedText}` : ""}`
+        : `${breakNode?.label || breakNode?.message || "Paused at break"}${savedText ? ` - saved ${savedText}` : ""}`;
+      const actionButton = isComplete
+        ? `<button type="button" class="btn-secondary" data-view-workflow-progress="${escapeHtml(entry.workflowId)}">View</button>`
+        : canContinue
+        ? `<button type="button" class="btn-primary" data-continue-workflow-progress="${escapeHtml(entry.workflowId)}">Continue</button>`
+        : `<button type="button" class="btn-secondary" data-view-workflow-progress="${escapeHtml(entry.workflowId)}">View</button>`;
+      return `
+        <details class="workflow-progress-item" ${String(entry.workflowId) === String(workflowRun.focusedProgressWorkflowId || "") ? "open" : ""}>
+          <summary>
+            <span class="workflow-progress-status ${isComplete ? "complete" : ""}">${isComplete ? "&#10003;" : "..."}</span>
+            <span>
+              <strong>${escapeHtml(workflow.name || progress.workflowName || "Workflow")}</strong>
+              <p>${escapeHtml(summaryText)}${actionCount ? ` - ${actionCount} recorded action${actionCount === 1 ? "" : "s"}` : ""}</p>
+            </span>
+            ${actionButton}
+          </summary>
+          <div class="workflow-progress-body">
+            ${workflowProgressHistoryHtml(progress)}
+          </div>
+        </details>
+      `;
+    }
+
+    function workflowProgressHistoryHtml(progress = {}) {
+      const previousCheckpoint = workflowRun.checkpoint;
+      workflowRun.checkpoint = progress;
+      const html = workflowHistorySegmentHtml() || '<p class="case-status">No recorded actions or checks were saved for this workflow.</p>';
+      workflowRun.checkpoint = previousCheckpoint;
+      return html;
     }
 
     function renderWorkflowRunner(message = "") {
@@ -2487,9 +3510,34 @@
       }
 
       if (workflowRun.complete) {
+        if (workflowRun.pausedAtBreak && !workflowRun.awaitingActionApproval) {
+          clearWorkflowExecutionTable();
+          const breakNode = findWorkflowNode(workflowRun.terminalNodeId);
+          const savedAt = workflowRun.checkpoint?.savedAt || workflowRun.checkpoint?.updatedAt || "";
+          runner.innerHTML = `
+            <div class="workflow-run-shell">
+              <div class="workflow-question-card">
+                <h3>${escapeHtml(breakNode?.label || breakNode?.message || "Workflow paused")}</h3>
+                <p class="workflow-description">${escapeHtml(breakNode?.message || "This workflow is paused at a break point. Continue when the required external work has been completed.")}</p>
+                ${savedAt ? `<p class="case-status">Checkpoint saved ${escapeHtml(new Date(savedAt).toLocaleString())}.</p>` : ""}
+                <div class="workflow-run-actions">
+                  <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
+                  <button id="continueWorkflowBtn" type="button" class="btn-primary" ${workflowRun.resumeNodeId ? "" : "disabled"}>Continue</button>
+                </div>
+              </div>
+            </div>
+          `;
+          document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
+          document.getElementById("continueWorkflowBtn")?.addEventListener("click", continueWorkflowFromBreak);
+          renderWorkflowStepsDrawer();
+          updateWorkflowStepMenuVisibility();
+          return;
+        }
+
         if (workflowRun.awaitingActionApproval) {
           runner.innerHTML = renderWorkflowActionValidation();
           document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
+          document.getElementById("newWorkflowBtn")?.addEventListener("click", startNewWorkflow);
           bindWorkflowActionValidation();
           renderWorkflowStepsDrawer();
           updateWorkflowStepMenuVisibility();
@@ -2500,14 +3548,14 @@
           <div class="workflow-run-shell">
             <div class="workflow-question-card">
               <h3>Workflow complete</h3>
-              <p class="case-status">${workflowRun.actions.length ? "The action messages are now being shown in order." : "No action messages were found on this path."}</p>
+              <p class="case-status">This workflow has been saved to the audit history above.</p>
               <div class="workflow-run-actions">
-                <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
+                <button id="newWorkflowBtn" type="button" class="btn-primary">New workflow</button>
               </div>
             </div>
           </div>
         `;
-        document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
+        document.getElementById("newWorkflowBtn")?.addEventListener("click", startNewWorkflow);
         renderWorkflowStepsDrawer();
         updateWorkflowStepMenuVisibility();
         return;
@@ -2535,12 +3583,13 @@
                 <span class="workflow-check-spinner" aria-hidden="true"></span>
                 <span>Running Check</span>
               </div>
-              <div class="workflow-run-actions">
-                <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
-              </div>
+            <div class="workflow-run-actions">
+              <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
             </div>
           </div>
-        `;
+          ${workflowHistorySegmentHtml()}
+        </div>
+      `;
         document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
         renderWorkflowStepsDrawer();
         updateWorkflowStepMenuVisibility();
@@ -2567,10 +3616,15 @@
               <button id="nextWorkflowStepBtn" type="button" class="btn-primary" ${isInput || options.length ? "" : "disabled"}>Next</button>
             </div>
           </div>
+          ${workflowHistorySegmentHtml()}
         </div>
       `;
       document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
-      if (isInput) bindWorkflowItemSearchInputs(node, runner);
+      if (isInput) {
+        bindWorkflowItemSearchInputs(node, runner);
+        bindWorkflowSelectInputs(runner);
+        bindWorkflowMultiSelectInputs(runner);
+      }
       renderWorkflowStepsDrawer();
       updateWorkflowStepMenuVisibility();
       document.getElementById("nextWorkflowStepBtn")?.addEventListener("click", () => {
@@ -2651,9 +3705,9 @@
                 <div class="workflow-check-rule">
                   <strong>${escapeHtml(rule.fieldLabel || rule.field || "Field")}</strong>
                   ${escapeHtml(workflowOperatorLabel(rule.operator))}
-                  ${rule.operator === "isSet" || rule.operator === "isNotSet" ? "" : `<strong>${escapeHtml(displayWorkflowValue(rule.expectedValue))}</strong>`}
+                  ${rule.operator === "isSet" || rule.operator === "isNotSet" ? "" : `<strong>${escapeHtml(displayWorkflowValue(workflowCheckReviewValue(rule, "expected")))}</strong>`}
                   <br>
-                  Captured: ${escapeHtml(displayWorkflowValue(rule.actualValue))}
+                  Captured: ${escapeHtml(displayWorkflowValue(workflowCheckReviewValue(rule, "actual")))}
                   <span class="workflow-result-pill ${rule.passed ? "pass" : "fail"}">${rule.passed ? "Matched" : "Did not match"}</span>
                 </div>
               `).join("") || '<p class="case-status">No rules were configured for this check.</p>'}
@@ -2697,9 +3751,9 @@
           <div class="workflow-run-shell">
             <div class="workflow-question-card">
               <h3>Workflow complete</h3>
-              <p class="case-status">No action messages were found on this path.</p>
+              <p class="case-status">This workflow has been saved to the audit history above.</p>
               <div class="workflow-run-actions">
-                <button id="restartWorkflowBtn" type="button" class="btn-secondary">Restart</button>
+                <button id="newWorkflowBtn" type="button" class="btn-primary">New workflow</button>
               </div>
             </div>
           </div>
@@ -2723,14 +3777,22 @@
                 ${actions.map((action, index) => `
                   <tr>
                     <td>
-                      <label class="workflow-action-confirm">
-                        <input type="checkbox" data-workflow-action-approval="${index}" ${workflowRun.actionApprovals[index] ? "checked" : ""}>
-                        <span class="case-status">${action.mandatory === false ? "Optional" : "Required"}</span>
-                      </label>
+                      ${action.type === "break"
+                        ? '<span class="case-status">-</span>'
+                        : `<label class="workflow-action-confirm">
+                            <input type="checkbox" data-workflow-action-approval="${index}" ${workflowRun.actionApprovals[index] ? "checked" : ""} aria-label="Confirm action ${index + 1}">
+                          </label>`}
                     </td>
                     <td>
                       <strong>${escapeHtml(action.label || `Action ${index + 1}`)}</strong><br>
-                      <span class="case-status">${escapeHtml(workflowActionTypeLabel(action.actionType))}</span>
+                      <span class="case-status workflow-action-meta">${escapeHtml(workflowActionTypeLabel(action.actionType))}</span>
+                      ${action.mandatory === false ? `
+                        <label class="workflow-action-toggle">
+                          <input type="checkbox" data-workflow-action-enabled="${index}" ${workflowRun.actionEnableds[index] !== false ? "checked" : ""}>
+                          <span class="workflow-action-toggle-track" aria-hidden="true"></span>
+                          <span class="workflow-action-toggle-text">${workflowRun.actionEnableds[index] === false ? "Disabled" : "Enabled"}</span>
+                        </label>
+                      ` : ""}
                     </td>
                     <td>${escapeHtml(action.message || "No action note was set.")}</td>
                   </tr>
@@ -2758,6 +3820,15 @@
           const index = Number(checkbox.dataset.workflowActionApproval);
           if (Number.isFinite(index)) workflowRun.actionApprovals[index] = checkbox.checked;
           updateExecuteState();
+        });
+      });
+      runner.querySelectorAll("[data-workflow-action-enabled]").forEach((checkbox) => {
+        checkbox.addEventListener("change", () => {
+          const index = Number(checkbox.dataset.workflowActionEnabled);
+          if (Number.isFinite(index)) workflowRun.actionEnableds[index] = checkbox.checked;
+          const label = checkbox.closest(".workflow-action-toggle");
+          const text = label?.querySelector(".workflow-action-toggle-text");
+          if (text) text.textContent = checkbox.checked ? "Enabled" : "Disabled";
         });
       });
       document.getElementById("executeWorkflowActionsBtn")?.addEventListener("click", async () => {
@@ -2858,8 +3929,13 @@
 
     function collectWorkflowAction(node) {
       addWorkflowDebugAction(node.id);
-      const message = String(node?.message || node?.label || "").trim();
+      if (workflowRun.executedActionNodeIds.includes(String(node.id))) return;
       const actionConfig = node?.actionConfig && typeof node.actionConfig === "object" ? node.actionConfig : {};
+      const message = String(
+        actionConfig.type === "email"
+          ? actionConfig.emailAction?.message || node?.message || node?.label || ""
+          : node?.message || node?.label || ""
+      ).trim();
       if (!message && !actionConfig.type) return;
       workflowRun.actions.push({
         nodeId: node.id,
@@ -2867,12 +3943,15 @@
         type: node.type || "action",
         actionType: actionConfig.type || "",
         mandatory: actionConfig.mandatory !== false,
+        response: actionConfig.response || "",
         createRecord: actionConfig.createRecord || null,
         itemLineAction: actionConfig.itemLineAction || null,
+        emailAction: actionConfig.emailAction || null,
         message,
         stepIndex: workflowRun.collectingFromStepIndex,
       });
       workflowRun.actionApprovals.push(defaultWorkflowActionApproval(workflowRun.actions[workflowRun.actions.length - 1]));
+      workflowRun.actionEnableds.push(defaultWorkflowActionEnabled(workflowRun.actions[workflowRun.actions.length - 1]));
     }
 
     function collectSystemWorkflowAction(node, message, actionConfig = {}) {
@@ -2889,6 +3968,22 @@
         stepIndex: workflowRun.collectingFromStepIndex,
       });
       workflowRun.actionApprovals.push(false);
+      workflowRun.actionEnableds.push(true);
+    }
+
+    function orderWorkflowActionsForReview() {
+      const rows = (workflowRun.actions || []).map((action, index) => ({
+        action,
+        approval: workflowRun.actionApprovals[index],
+        enabled: workflowRun.actionEnableds[index],
+      }));
+      const ordered = [
+        ...rows.filter((row) => row.action?.type !== "break"),
+        ...rows.filter((row) => row.action?.type === "break"),
+      ];
+      workflowRun.actions = ordered.map((row) => row.action);
+      workflowRun.actionApprovals = ordered.map((row) => row.approval ?? defaultWorkflowActionApproval(row.action));
+      workflowRun.actionEnableds = ordered.map((row) => row.enabled ?? defaultWorkflowActionEnabled(row.action));
     }
 
     function trimWorkflowActionsFromStep(stepIndex) {
@@ -2898,6 +3993,7 @@
         workflowRun.actions = workflowRun.actions.filter((action) => Number(action.stepIndex ?? -1) < stepIndex);
       }
       workflowRun.actionApprovals = workflowRun.actions.map(defaultWorkflowActionApproval);
+      workflowRun.actionEnableds = workflowRun.actions.map(defaultWorkflowActionEnabled);
       workflowRun.debugActionNodeIds = workflowRun.actions.map((action) => String(action.nodeId || "")).filter(Boolean);
     }
 
@@ -2905,9 +4001,23 @@
       if (workflowRun.terminalNodeId) broadcastWorkflowDebug(workflowRun.terminalNodeId);
       workflowRun.currentNodeId = "";
       workflowRun.complete = true;
+      const terminalNode = findWorkflowNode(workflowRun.terminalNodeId);
+      workflowRun.pausedAtBreak = terminalNode?.type === "break";
+      workflowRun.resumeNodeId = workflowRun.pausedAtBreak ? outgoingWorkflowEdges(terminalNode.id)[0]?.to || "" : "";
+      orderWorkflowActionsForReview();
       workflowRun.awaitingActionApproval = workflowRun.actions.length > 0;
       workflowRun.actionApprovals = workflowRun.actions.map(defaultWorkflowActionApproval);
+      workflowRun.actionEnableds = workflowRun.actions.map(defaultWorkflowActionEnabled);
       workflowRun.actionsRendered = false;
+      if (workflowRun.pausedAtBreak && !workflowRun.awaitingActionApproval) {
+        saveWorkflowProgress({ status: "paused" }).catch((err) => {
+          console.error("Failed to save workflow break progress:", err);
+        });
+      } else if (!workflowRun.pausedAtBreak && !workflowRun.awaitingActionApproval) {
+        saveWorkflowProgress({ status: "completed", breakNodeId: "" }).catch((err) => {
+          console.error("Failed to save completed workflow progress:", err);
+        });
+      }
       renderWorkflowRunner();
     }
 
@@ -2965,11 +4075,53 @@
       };
     }
 
-    async function runWorkflowCheck(node) {
+    async function runWorkflowCheck(node, selectedRecordId = "") {
       if (!node || workflowRun.runningCheckNodeId === String(node.id)) return;
       const caseId = params().get("caseId") || loadedCase?.id || "";
       const runner = document.getElementById("caseWorkflowRunner");
       workflowRun.runningCheckNodeId = String(node.id);
+
+      const captureWorkflowCheckResult = (data = {}) => {
+        const captured = {
+          nodeId: node.id,
+          label: node.label || node.question || "Check",
+          result: data.result || "Fail",
+          recordType: data.recordType || node.checkConfig?.recordType || "affectedItem",
+          affectedItemSource: data.affectedItemSource || node.checkConfig?.affectedItemSource || "storeSalesOrder",
+          source: data.source || null,
+          message: data.message || "",
+          checks: Array.isArray(data.checks) ? data.checks : [],
+          data: data.data || {},
+          case: data.case || null,
+        };
+        workflowRun.checks = workflowRun.checks.filter((check) => String(check.nodeId) !== String(node.id));
+        workflowRun.checks.push(captured);
+        workflowRun.drawerTab = "actions";
+        renderWorkflowStepsDrawer();
+        workflowRun.runningCheckNodeId = "";
+        if (String(captured.result || "").toLowerCase() === "fail") {
+          if (runner) {
+            runner.innerHTML = workflowFailedCheckReviewHtml(captured);
+            document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
+            document.getElementById("continueFailedCheckBtn")?.addEventListener("click", () => advanceWorkflow(captured.result));
+          }
+          updateWorkflowStepMenuVisibility();
+          return;
+        }
+        advanceWorkflow(captured.result);
+      };
+
+      const renderWorkflowCheckRecordSelection = (data = {}) => {
+        workflowRun.runningCheckNodeId = "";
+        if (!runner) return;
+        runner.innerHTML = workflowCheckRecordSelectionHtml(node, data);
+        document.getElementById("restartWorkflowBtn")?.addEventListener("click", restartWorkflow);
+        document.getElementById("workflowCheckRecordContinueBtn")?.addEventListener("click", async () => {
+          const selected = runner.querySelector("[data-workflow-check-record]:checked")?.dataset.workflowCheckRecord || "";
+          if (!selected) return;
+          await runWorkflowCheck(node, selected);
+        });
+      };
 
       try {
         if (node.checkConfig?.recordType === "input") {
@@ -2990,62 +4142,28 @@
             });
             const data = await res.json().catch(() => ({}));
             if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
-            const captured = {
-              nodeId: node.id,
-              label: node.label || node.question || "Check",
-              result: data.result || "Fail",
+            captureWorkflowCheckResult({
+              ...data,
               recordType: data.recordType || "input",
-              affectedItemSource: data.affectedItemSource || node.checkConfig?.affectedItemSource || "storeSalesOrder",
-              source: data.source || null,
-              message: data.message || "",
-              checks: Array.isArray(data.checks) ? data.checks : [],
-              data: data.data || {},
-              case: data.case || null,
-            };
-            workflowRun.checks = workflowRun.checks.filter((check) => String(check.nodeId) !== String(node.id));
-            workflowRun.checks.push(captured);
-            workflowRun.drawerTab = "actions";
-            renderWorkflowStepsDrawer();
-            workflowRun.runningCheckNodeId = "";
-            advanceWorkflow(captured.result);
+            });
             return;
           }
-          const captured = evaluateInputWorkflowCheck(node);
-          workflowRun.checks = workflowRun.checks.filter((check) => String(check.nodeId) !== String(node.id));
-          workflowRun.checks.push(captured);
-          workflowRun.drawerTab = "actions";
-          renderWorkflowStepsDrawer();
-          workflowRun.runningCheckNodeId = "";
-          advanceWorkflow(captured.result);
+          captureWorkflowCheckResult(evaluateInputWorkflowCheck(node));
           return;
         }
         if (!caseId) throw new Error("Save the case before running workflow checks.");
         const res = await fetch(`/api/netsuite/salesorder/cases/${encodeURIComponent(caseId)}/workflow-check`, {
           method: "POST",
           headers: authHeaders({ "Content-Type": "application/json" }),
-          body: JSON.stringify({ node }),
+          body: JSON.stringify({ node, selectedRecordId }),
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
-
-        const captured = {
-          nodeId: node.id,
-          label: node.label || node.question || "Check",
-          result: data.result || "Fail",
-          recordType: data.recordType || node.checkConfig?.recordType || "affectedItem",
-          affectedItemSource: data.affectedItemSource || node.checkConfig?.affectedItemSource || "storeSalesOrder",
-          source: data.source || null,
-          message: data.message || "",
-          checks: Array.isArray(data.checks) ? data.checks : [],
-          data: data.data || {},
-          case: data.case || null,
-        };
-        workflowRun.checks = workflowRun.checks.filter((check) => String(check.nodeId) !== String(node.id));
-        workflowRun.checks.push(captured);
-        workflowRun.drawerTab = "actions";
-        renderWorkflowStepsDrawer();
-        workflowRun.runningCheckNodeId = "";
-        advanceWorkflow(captured.result);
+        if (data.needsInput === "workflowCheckRecordSelection") {
+          renderWorkflowCheckRecordSelection(data);
+          return;
+        }
+        captureWorkflowCheckResult(data);
       } catch (err) {
         console.error("Workflow check failed:", err);
         workflowRun.runningCheckNodeId = "";
@@ -3243,11 +4361,44 @@
       followWorkflowPath(start.id);
     }
 
+    async function continueWorkflowFromBreak() {
+      const nextNodeId = workflowRun.resumeNodeId || "";
+      if (!nextNodeId) return;
+      workflowRun.pausedAtBreak = false;
+      workflowRun.complete = false;
+      workflowRun.awaitingActionApproval = false;
+      workflowRun.terminalNodeId = "";
+      workflowRun.currentNodeId = "";
+      workflowRun.actions = [];
+      workflowRun.actionApprovals = [];
+      workflowRun.actionEnableds = [];
+      workflowRun.actionsRendered = false;
+      const actionTable = document.getElementById("caseWorkflowActionTable");
+      const table = document.getElementById("caseWorkflowActions");
+      if (actionTable) actionTable.hidden = true;
+      if (table) table.innerHTML = '<tr><td colspan="2">No workflow actions have been submitted yet.</td></tr>';
+      followWorkflowPath(nextNodeId);
+    }
+
     function restartWorkflow() {
       const workflow = workflowRun.selected;
+      clearWorkflowProgress(workflow).catch((err) => {
+        console.warn("Could not clear workflow progress:", err.message || err);
+      });
       resetWorkflowRun(workflow);
       workflowRun.selected = workflow;
       beginWorkflow();
+    }
+
+    function startNewWorkflow() {
+      const select = document.getElementById("caseWorkflowSelect");
+      if (select) select.value = "";
+      resetWorkflowRun(null);
+      workflowRun.focusedProgressWorkflowId = "";
+      renderWorkflowProgressBanner();
+      renderWorkflowRunner();
+      renderWorkflowStepsDrawer();
+      updateWorkflowStepMenuVisibility();
     }
 
     function goToWorkflowStep(index) {
@@ -3361,6 +4512,13 @@
       actions.forEach((action, index) => appendWorkflowActionRow(action, index));
     }
 
+    function clearWorkflowExecutionTable() {
+      const actionTable = document.getElementById("caseWorkflowActionTable");
+      const table = document.getElementById("caseWorkflowActions");
+      if (actionTable) actionTable.hidden = true;
+      if (table) table.innerHTML = "";
+    }
+
     function delayWorkflowAction(ms) {
       return new Promise((resolve) => window.setTimeout(resolve, ms));
     }
@@ -3406,13 +4564,13 @@
       const panel = document.querySelector(`[data-allocation-panel="${index}"]`);
       if (!panel) return [];
       const action = workflowRun.actions[index] || {};
-      const deposits = Array.isArray(action.depositOptions) ? action.depositOptions : [];
-      return deposits.map((deposit, rowIndex) => ({
+      const documents = Array.isArray(action.depositOptions) ? action.depositOptions : [];
+      return documents.map((document, rowIndex) => ({
         rowIndex,
-        deposit,
+        deposit: document,
         checkbox: panel.querySelector(`[data-allocation-select="${index}"][data-allocation-row="${rowIndex}"]`),
         amountInput: panel.querySelector(`[data-allocation-amount="${index}"][data-allocation-row="${rowIndex}"]`),
-        available: Number(deposit.total || deposit.amount || 0),
+        available: Number(document.total || document.amount || 0),
       }));
     }
 
@@ -3459,20 +4617,21 @@
         const action = workflowRun.actions[index];
         if (!action) return;
         const expected = Number(action.expectedAmount || 0);
-        const deposits = Array.isArray(action.depositOptions) ? action.depositOptions : [];
+        const documents = Array.isArray(action.depositOptions) ? action.depositOptions : [];
+        const isCreditMemo = action.needsInput === "customerCreditMemoAllocation";
         const error = panel.querySelector(`[data-allocation-error="${index}"]`);
         const allocations = [];
         panel.querySelectorAll(`[data-allocation-select="${index}"]`).forEach((checkbox) => {
           if (!checkbox.checked) return;
           const rowIndex = Number(checkbox.dataset.allocationRow);
-          const deposit = deposits[rowIndex] || {};
+          const document = documents[rowIndex] || {};
           const amountInput = panel.querySelector(`[data-allocation-amount="${index}"][data-allocation-row="${rowIndex}"]`);
           const amount = Number(amountInput?.value || 0);
-          if (amount > 0) allocations.push({ id: deposit.id, tranId: deposit.tranId, amount: amount.toFixed(2) });
+          if (amount > 0) allocations.push({ id: document.id, tranId: document.tranId, amount: amount.toFixed(2) });
         });
         const total = allocations.reduce((sum, item) => sum + Number(item.amount || 0), 0);
         if (!allocations.length) {
-          if (error) { error.hidden = false; error.textContent = "Select at least one customer deposit."; }
+          if (error) { error.hidden = false; error.textContent = `Select at least one ${isCreditMemo ? "credit memo" : "customer deposit"}.`; }
           return;
         }
         if (expected > 0 && total - expected > 0.0001) {
@@ -3480,7 +4639,8 @@
           return;
         }
         stopWorkflowBong();
-        action.depositAllocations = allocations;
+        if (isCreditMemo) action.creditAllocations = allocations;
+        else action.depositAllocations = allocations;
         await executeWorkflowActionAtIndex(index);
         if (workflowRun.actions[index]?.executionState === "success") {
           for (let nextIndex = index + 1; nextIndex < workflowRun.actions.length; nextIndex += 1) {
@@ -3507,7 +4667,7 @@
 
     function workflowActionSkippedByUser(index) {
       const action = workflowRun.actions[index];
-      return !!action && action.mandatory === false && workflowRun.actionApprovals[index] === false;
+      return !!action && action.mandatory === false && workflowRun.actionEnableds[index] === false;
     }
 
     function markWorkflowActionSkipped(index) {
@@ -3516,6 +4676,10 @@
         executionMessage: "Skipped by user.",
         executionError: "",
       });
+      const nodeId = workflowRun.actions[index]?.nodeId || "";
+      if (nodeId && !workflowRun.executedActionNodeIds.includes(String(nodeId))) {
+        workflowRun.executedActionNodeIds.push(String(nodeId));
+      }
     }
 
     async function executeWorkflowActionAtIndex(index) {
@@ -3553,10 +4717,10 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
       const result = Array.isArray(data.results) ? data.results[0] : null;
-      if (result?.needsInput === "customerDepositAllocation") {
+      if (["customerDepositAllocation", "customerCreditMemoAllocation"].includes(result?.needsInput)) {
         updateWorkflowActionRow(index, {
           executionState: "needsInput",
-          executionMessage: result.message || "Choose customer deposit allocation.",
+          executionMessage: result.message || "Choose refund allocation.",
           executionError: "",
           needsInput: result.needsInput,
           depositOptions: Array.isArray(result.deposits) ? result.deposits : [],
@@ -3580,12 +4744,22 @@
         executionError: result?.ok === false ? result?.error || "Action failed." : "",
         executionDebug: result?.debug || null,
       });
-      if (result?.ok !== false) stopWorkflowBong();
+      if (result?.ok !== false) {
+        const nodeId = action.nodeId || "";
+        if (nodeId && !workflowRun.executedActionNodeIds.includes(String(nodeId))) {
+          workflowRun.executedActionNodeIds.push(String(nodeId));
+        }
+        stopWorkflowBong();
+      }
     }
 
     async function executeWorkflowRunActions() {
       renderWorkflowExecutionTable();
       for (let index = 0; index < workflowRun.actions.length; index += 1) {
+        if (workflowRun.actions[index]?.type === "break") {
+          markWorkflowActionSkipped(index);
+          continue;
+        }
         if (workflowActionSkippedByUser(index)) {
           markWorkflowActionSkipped(index);
           continue;
@@ -3600,6 +4774,26 @@
             executionMessage: workflowRun.actions[index]?.message || "Action failed.",
             executionError: err.message || "Action failed.",
           });
+        }
+      }
+      if (workflowRun.pausedAtBreak) {
+        try {
+          await saveWorkflowProgress({ status: "paused" });
+          clearWorkflowExecutionTable();
+          renderWorkflowRunner();
+        } catch (err) {
+          console.error("Failed to save workflow break progress:", err);
+          const statusText = document.getElementById("caseStatusText");
+          if (statusText) statusText.textContent = `Workflow actions completed, but progress was not saved: ${err.message || err}`;
+        }
+      } else if (workflowRun.complete) {
+        try {
+          await saveWorkflowProgress({ status: "completed", breakNodeId: "" });
+          renderWorkflowProgressBanner();
+        } catch (err) {
+          console.error("Failed to save completed workflow progress:", err);
+          const statusText = document.getElementById("caseStatusText");
+          if (statusText) statusText.textContent = `Workflow completed, but audit history was not saved: ${err.message || err}`;
         }
       }
     }
@@ -3626,14 +4820,29 @@
 
         workflowRun.workflows = await filterAvailableWorkflows((Array.isArray(data.workflows) ? data.workflows : []).filter((workflow) => workflow.isActive !== false));
         workflowRun.records = Array.isArray(recordsData.records) ? recordsData.records : [];
+        workflowRun.progressByWorkflowId = new Map();
+        try {
+          const progressEntries = await loadCaseWorkflowProgressList();
+          progressEntries.forEach((progress) => {
+            const workflowId = String(progress.workflowId || "").trim();
+            if (workflowId && (progress.status || progress.breakNodeId || progress.terminalNodeId)) {
+              workflowRun.progressByWorkflowId.set(workflowId, progress);
+            }
+          });
+        } catch (err) {
+          console.warn("Could not load workflow progress audit.", err.message || err);
+        }
         select.innerHTML = '<option value="">Select workflow</option>' + workflowRun.workflows
           .map((workflow) => `<option value="${escapeHtml(workflow.id)}">${escapeHtml(workflow.name)}</option>`)
           .join("");
+        renderWorkflowProgressBanner();
         renderWorkflowRunner();
       } catch (err) {
         console.error("Failed to load CS workflows:", err);
         workflowRun.workflows = [];
+        workflowRun.progressByWorkflowId = new Map();
         select.innerHTML = '<option value="">Workflows unavailable</option>';
+        renderWorkflowProgressBanner();
         renderWorkflowRunner(err.message || "Could not load workflows.");
       }
     }
@@ -3664,9 +4873,11 @@
     function bindCaseWorkflowRunner() {
       const select = document.getElementById("caseWorkflowSelect");
       if (!select) return;
-      select.addEventListener("change", () => {
+      select.addEventListener("change", async () => {
         const workflow = workflowRun.workflows.find((item) => String(item.id) === String(select.value)) || null;
         resetWorkflowRun(workflow);
+        workflowRun.focusedProgressWorkflowId = "";
+        renderWorkflowProgressBanner();
         renderWorkflowRunner();
       });
     }
@@ -3730,6 +4941,7 @@
           document.getElementById("caseStatusText").textContent = err.message || "Could not load case.";
         });
       } else {
+        await loadWorkflowSalesOrderItems();
         populateCaseSubTypes();
       }
       loadAiCaseSummary();

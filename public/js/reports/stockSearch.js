@@ -146,8 +146,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function getColCount(showLocation, showInbound) {
-    // expander + item + (location?) + available + (dueIn?) + (bookedIn?)
-    let cols = 1 + 1 + 1; // expander, item, available
+    // expander + item + (location?) + on hand + available + (dueIn?) + (bookedIn?)
+    let cols = 1 + 1 + 2; // expander, item, on hand, available
     if (showLocation) cols += 1;
     if (showInbound) cols += 2;
     return cols;
@@ -169,12 +169,13 @@ document.addEventListener("DOMContentLoaded", async () => {
       })();
 
     // Header order matches body:
-    // [blank expander] [Item] [Location?] [On Hand] [Due In (Net)?] [Booked In?]
+    // [blank expander] [Item] [Location?] [On Hand] [Available Qty] [Due In (Net)?] [Booked In?]
     tr.innerHTML = `
       <th style="width:34px;"></th>
       <th>Item</th>
       ${showLocation ? `<th>Location</th>` : ``}
       <th style="text-align:right;">On Hand</th>
+      <th style="text-align:right;">Available Qty</th>
       ${
         showInbound
           ? `
@@ -392,6 +393,15 @@ document.addEventListener("DOMContentLoaded", async () => {
           bal["Item ID"] || bal["Item Id"] || bal["itemid"] || bal["Item"]
         );
         const onHand = parseInt(bal["On Hand"] || bal["OnHand"] || bal["Quantity On Hand"] || 0, 10) || 0;
+        const available =
+          parseInt(
+            bal["Available"] ||
+              bal["Available Qty"] ||
+              bal["Available Quantity"] ||
+              bal["Quantity Available"] ||
+              0,
+            10
+          ) || 0;
 
         return {
           itemId,
@@ -403,7 +413,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           status: bal["Status"] || "-",
           className: norm(bal["Class"] || bal["class"] || bal["CLASS"] || ""),
           sizeName: norm(bal["Size"] || bal["size"] || bal["SIZE"] || ""),
-          available: onHand,
+          available,
           onHand,
         };
       });
@@ -590,7 +600,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   /* =====================================================
      START LOADING
   ===================================================== */
-  setLoading(true, 3);
+  setLoading(true, 4);
 
   const [mergedData, inbound] = await Promise.all([
     fetchInventoryData(),
@@ -834,6 +844,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       tr.className = "stock-item-row";
       tr.dataset.itemId = g.itemId;
 
+      const onHandTd = `<td style="text-align:right; font-weight:600;">${g.totalOnHand}</td>`;
       const availTd = `<td style="text-align:right; font-weight:600;">${g.totalAvailable}</td>`;
       const dueInTd = showInboundCols
         ? `<td style="text-align:right; font-weight:600;">${g.dueInNet || 0}</td>`
@@ -846,6 +857,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         <td class="stock-expander" style="cursor:pointer; width:34px;">➕</td>
         <td>${escapeHtml(g.itemName)}</td>
         ${showLocation ? `<td>${escapeHtml(g.location || "Unknown")}</td>` : ``}
+        ${onHandTd}
         ${availTd}
         ${dueInTd}
         ${bookedTd}
@@ -866,6 +878,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                   <th style="text-align:left; padding:6px 4px;">Bin</th>
                   <th style="text-align:left; padding:6px 4px;">Status</th>
                   <th style="text-align:right; padding:6px 4px;">On Hand</th>
+                  <th style="text-align:right; padding:6px 4px;">Available Qty</th>
                 </tr>
               </thead>
               <tbody>
@@ -879,6 +892,7 @@ document.addEventListener("DOMContentLoaded", async () => {
                           <td style="padding:6px 4px;">${escapeHtml(l.bin || "—")}</td>
                           <td style="padding:6px 4px;">${escapeHtml(l.status || "—")}</td>
                           <td style="padding:6px 4px; text-align:right; font-weight:600;">${l.onHand}</td>
+                          <td style="padding:6px 4px; text-align:right; font-weight:600;">${l.available}</td>
                         </tr>
                       `
                     )

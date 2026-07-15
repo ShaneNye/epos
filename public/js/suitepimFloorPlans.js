@@ -29,6 +29,7 @@
     lockGrid: true,
     draft: null,
     movingAsset: null,
+    resizingElement: null,
     selectedElementId: "",
     selectedAssetIds: new Set(),
     zoom: 1,
@@ -298,6 +299,7 @@
     state.selectedElementId = "";
     state.draft = null;
     state.movingAsset = null;
+    state.resizingElement = null;
     setDirty();
     renderCanvas();
   }
@@ -313,6 +315,7 @@
     state.redoStack = [];
     state.selectedElementId = "";
     state.movingAsset = null;
+    state.resizingElement = null;
   }
 
   function undo() {
@@ -351,7 +354,9 @@
     if (el.suitepimFloorPlanCurrent) el.suitepimFloorPlanCurrent.disabled = !state.editMode;
     document.getElementById("suitepimFloorPlanApp")?.classList.toggle("is-editing", state.editMode);
     el.suitepimFloorPlanCanvas.classList.toggle("is-editing", state.editMode);
+    el.suitepimFloorPlanCanvas.classList.toggle("is-select-tool", state.editMode && state.tool === "select");
     el.suitepimFloorPlanCanvasWrap?.classList.toggle("is-editing", state.editMode);
+    el.suitepimFloorPlanCanvasWrap?.classList.toggle("is-select-tool", state.editMode && state.tool === "select");
     document.querySelectorAll("[data-floorplan-tool], #suitepimFloorPlanLockGrid").forEach((control) => {
       control.disabled = !state.editMode;
     });
@@ -952,14 +957,25 @@
     `;
   }
 
+  function structuralHandleMarkup(element) {
+    if (!state.editMode || state.selectedElementId !== element.id || element.type === "asset") return "";
+    return `
+      <g class="suitepim-floorplan-structural-handles">
+        <circle cx="${(element.x1 * PX_PER_METER).toFixed(2)}" cy="${(element.y1 * PX_PER_METER).toFixed(2)}" r="7" data-structural-handle="start"></circle>
+        <circle cx="${(element.x2 * PX_PER_METER).toFixed(2)}" cy="${(element.y2 * PX_PER_METER).toFixed(2)}" r="7" data-structural-handle="end"></circle>
+      </g>
+    `;
+  }
+
   function elementMarkup(element, isDraft = false) {
     if (element.type === "asset") return assetMarkup(element);
+    const selected = state.selectedElementId === element.id;
     const body = element.type === "door"
       ? `${openingMarkup(element, "suitepim-floorplan-door")}${doorSwingMarkup(element)}`
       : element.type === "window"
         ? openingMarkup(element, "suitepim-floorplan-window")
         : wallMarkup(element);
-    return `<g class="suitepim-floorplan-element${isDraft ? " is-draft" : ""}">${body}${dimensionMarkup(element)}</g>`;
+    return `<g class="suitepim-floorplan-element${isDraft ? " is-draft" : ""}${selected ? " is-selected" : ""}" data-element-id="${clean(element.id)}">${body}${dimensionMarkup(element)}${structuralHandleMarkup(element)}</g>`;
   }
 
   function enclosedFloorCells(data, cellMeters) {
@@ -1312,12 +1328,13 @@
     wrap.scrollTop = canvasY * state.zoom - screenY;
   }
 
-  function canvasPoint(event) {
+  function canvasPoint(event, options = {}) {
     const rect = el.suitepimFloorPlanCanvas.getBoundingClientRect();
     const data = planData();
     const rawX = ((event.clientX - rect.left) / rect.width) * data.widthMeters;
     const rawY = ((event.clientY - rect.top) / rect.height) * data.heightMeters;
-    const point = state.lockGrid
+    const shouldSnap = options.snap ?? state.lockGrid;
+    const point = shouldSnap
       ? { x: Math.round(rawX), y: Math.round(rawY) }
       : { x: Math.round(rawX * 10) / 10, y: Math.round(rawY * 10) / 10 };
 
@@ -1343,8 +1360,8 @@
   }
 
   function startDrawing(event) {
-    if (!state.editMode || event.button !== 0) return;
-    if (event.target.closest?.(".suitepim-floorplan-placed-asset")) return;
+    if (!state.editMode || event.button !== 0 || state.tool === "select") return false;
+    if (event.target.closest?.(".suitepim-floorplan-placed-asset")) return false;
     const point = canvasPoint(event);
     state.draft = {
       id: `draft-${Date.now()}`,
@@ -1355,6 +1372,7 @@
       y2: point.y,
     };
     renderCanvas();
+    return true;
   }
 
   function updateDrawing(event) {
@@ -1368,12 +1386,12 @@
   }
 
   function finishDrawing() {
-    if (!state.draft) return;
+    if (!state.draft) return false;
     const draft = state.draft;
     state.draft = null;
     if (draft.x1 === draft.x2 && draft.y1 === draft.y2) {
       renderCanvas();
-      return;
+      return true;
     }
     pushHistory();
     const data = planData();
@@ -1384,6 +1402,117 @@
     setPlanData(data);
     setDirty();
     renderCanvas();
+    return true;
+  }
+
+  function structuralElementAtPoint(point) {
+    const data = planData();
+    return [...data.elements].reverse().find((element) => {
+      if (!["line", "door", "window"].includes(element.type)) return false;
+      return pointSegmentDistance(point, element) <= 0.35;
+    }) || null;
+  }
+
+  function selectedStructuralElement() {
+    const data = planData();
+    return data.elements.find((element) => (
+      element.id === state.selectedElementId && ["line", "door", "window"].includes(element.type)
+    )) || null;
+  }
+
+  function pointSegmentDistance(point, element) {
+    const x1 = Number(element.x1) || 0;
+    const y1 = Number(element.y1) || 0;
+    const x2 = Number(element.x2) || 0;
+    const y2 = Number(element.y2) || 0;
+    const dx = x2 - x1;
+    const dy = y2 - y1;
+    const lengthSq = (dx * dx) + (dy * dy);
+    if (!lengthSq) return Math.hypot(point.x - x1, point.y - y1);
+    const progress = Math.max(0, Math.min(1, (((point.x - x1) * dx) + ((point.y - y1) * dy)) / lengthSq));
+    const nearestX = x1 + (dx * progress);
+    const nearestY = y1 + (dy * progress);
+    return Math.hypot(point.x - nearestX, point.y - nearestY);
+  }
+
+  function structuralHandleAtPoint(point, element) {
+    if (!element) return "";
+    const startDist = Math.hypot(point.x - (Number(element.x1) || 0), point.y - (Number(element.y1) || 0));
+    const endDist = Math.hypot(point.x - (Number(element.x2) || 0), point.y - (Number(element.y2) || 0));
+    const threshold = state.zoom < 0.8 ? 0.75 : 0.45;
+    if (startDist <= threshold && startDist <= endDist) return "start";
+    if (endDist <= threshold) return "end";
+    return "";
+  }
+
+  function startStructuralEdit(event) {
+    if (!state.editMode || state.tool !== "select" || event.button !== 0) return false;
+    if (event.target.closest?.(".suitepim-floorplan-placed-asset")) return false;
+    event.preventDefault();
+
+    const point = canvasPoint(event, { snap: false });
+    const selected = selectedStructuralElement();
+    const handle = structuralHandleAtPoint(point, selected);
+    if (selected && handle) {
+      state.resizingElement = {
+        id: selected.id,
+        handle,
+        historyPushed: false,
+      };
+      el.suitepimFloorPlanCanvas.setPointerCapture?.(event.pointerId);
+      return true;
+    }
+
+    const hit = structuralElementAtPoint(point);
+    state.selectedAssetIds.clear();
+    state.selectedElementId = hit?.id || "";
+    renderCanvas();
+    return true;
+  }
+
+  function updateStructuralResize(event) {
+    if (!state.resizingElement) return false;
+    const data = planData();
+    const element = data.elements.find((item) => item.id === state.resizingElement.id && ["line", "door", "window"].includes(item.type));
+    if (!element) {
+      state.resizingElement = null;
+      return false;
+    }
+
+    if (!state.resizingElement.historyPushed) {
+      pushHistory();
+      state.resizingElement.historyPushed = true;
+    }
+
+    let point = canvasPoint(event);
+    if (state.lockGrid) {
+      const anchor = state.resizingElement.handle === "start"
+        ? { x: Number(element.x2) || 0, y: Number(element.y2) || 0 }
+        : { x: Number(element.x1) || 0, y: Number(element.y1) || 0 };
+      point = lockedEndPoint(anchor, point);
+    }
+    point.x = Math.min(data.widthMeters, Math.max(0, point.x));
+    point.y = Math.min(data.heightMeters, Math.max(0, point.y));
+
+    if (state.resizingElement.handle === "start") {
+      element.x1 = point.x;
+      element.y1 = point.y;
+    } else {
+      element.x2 = point.x;
+      element.y2 = point.y;
+    }
+
+    setPlanData(data);
+    setDirty();
+    renderCanvas();
+    return true;
+  }
+
+  function finishStructuralResize() {
+    if (!state.resizingElement) return false;
+    state.resizingElement = null;
+    renderCanvas();
+    return true;
   }
 
   function addAssetToPlan(assetKey, event) {
@@ -2354,9 +2483,13 @@
     document.querySelectorAll("[data-floorplan-tool]").forEach((button) => {
       button.addEventListener("click", () => {
         state.tool = button.dataset.floorplanTool || "line";
+        state.draft = null;
+        state.resizingElement = null;
         document.querySelectorAll("[data-floorplan-tool]").forEach((item) => {
           item.classList.toggle("active", item === button);
         });
+        updateEditControls();
+        renderCanvas();
       });
     });
 
@@ -2373,12 +2506,14 @@
         }
       }
       if (startViewportPan(event)) return;
+      if (startStructuralEdit(event)) return;
       if (startAssetMove(event)) return;
       startDrawing(event);
     });
     el.suitepimFloorPlanCanvas.addEventListener("pointermove", (event) => {
       if (updateHighlightSelection(event)) return;
       if (updateViewportPan(event)) return;
+      if (updateStructuralResize(event)) return;
       if (updateAssetMove(event)) return;
       updateDrawing(event);
     });
@@ -2406,6 +2541,7 @@
     window.addEventListener("pointerup", () => {
       if (finishHighlightSelection()) return;
       if (finishViewportPan()) return;
+      if (finishStructuralResize()) return;
       if (finishAssetMove()) return;
       finishDrawing();
     });

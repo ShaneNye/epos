@@ -1143,6 +1143,14 @@ button {
   pointer-events: auto;
 }
 
+.workflow-selection-box {
+  position: absolute;
+  z-index: 8;
+  border: 1px solid #0081ab;
+  background: rgba(0, 129, 171, 0.14);
+  pointer-events: none;
+}
+
 .workflow-edge {
   stroke: #64748b;
   stroke-width: 2;
@@ -2383,6 +2391,11 @@ body.cs-workflow-dark .workflow-node.selected {
 body.cs-workflow-dark .workflow-edge {
   stroke: #8da2b7;
   filter: none;
+}
+
+body.cs-workflow-dark .workflow-selection-box {
+  border-color: #2bb9df;
+  background: rgba(43, 185, 223, 0.16);
 }
 
 body.cs-workflow-dark .workflow-edge.pass-path {

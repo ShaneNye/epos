@@ -17,8 +17,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (firstTab) setActive(firstTab.dataset.tab);
 
   /* === SUBTABS === */
-  const subtabs = document.querySelectorAll(".subtab");
-  const subContents = document.querySelectorAll(".subtab-content");
+  const ordersPanel = document.getElementById("orders");
+  const subtabs = ordersPanel?.querySelectorAll(".subtab") || [];
+  const subContents = ordersPanel?.querySelectorAll(".subtab-content") || [];
 
   subtabs.forEach(sub => {
     sub.addEventListener("click", () => {
@@ -61,6 +62,109 @@ const storeRes = await fetch(`/api/meta/store/${storeId}`, { headers });        
 
   /* === FETCH ORDER MANAGEMENT DATA === */
   let allOrders = [];
+  let billedOrders = [];
+  let billedSearchTimer = null;
+  let billedSearchController = null;
+
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const formatMoney = (value) => {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return escapeHtml(value || "");
+    return amount.toLocaleString("en-GB", {
+      style: "currency",
+      currency: "GBP",
+    });
+  };
+
+  const setBilledMessage = (message) => {
+    const billedBody = document.querySelector("#billedTable tbody");
+    if (billedBody) billedBody.innerHTML = `<tr><td colspan="7">${escapeHtml(message)}</td></tr>`;
+  };
+
+  const renderBilledTable = (orders, selectedStore, searchTerm = "") => {
+    const billedBody = document.querySelector("#billedTable tbody");
+    const billedTab = document.querySelector('#orders .subtab[data-subtab="billed"]');
+    if (!billedBody) return;
+
+    const query = searchTerm.trim();
+    const filtered = orders;
+
+    if (billedTab) billedTab.textContent = `Billed Orders (${filtered.length})`;
+
+    if (query.length < 2) {
+      setBilledMessage("Search for a sales order or customer to load billed orders.");
+      return;
+    }
+
+    billedBody.innerHTML = filtered.length
+      ? filtered.map(o => {
+          const id = escapeHtml(o.ID || "");
+          const doc = escapeHtml(o["Document Number"] || "");
+          const docNum = doc && id
+            ? `<a href="/sales/view/${id}" class="doc-link">${doc}</a>`
+            : doc;
+          return `
+            <tr>
+              <td>${escapeHtml(o.Date || "")}</td>
+              <td>${escapeHtml(o.Name || "")}</td>
+              <td>${docNum}</td>
+              <td>${escapeHtml(o.Store || "")}</td>
+              <td>${escapeHtml(o["Order Type"] || "")}</td>
+              <td>${escapeHtml(o.Status || "")}</td>
+              <td>${formatMoney(o.Amount)}</td>
+            </tr>
+          `;
+        }).join("")
+      : `<tr><td colspan="7">No billed orders found for this search.</td></tr>`;
+  };
+
+  const loadBilledOrders = async (searchTerm, selectedStore) => {
+    const query = searchTerm.trim();
+    if (query.length < 2) {
+      billedOrders = [];
+      renderBilledTable(billedOrders, selectedStore, query);
+      return;
+    }
+
+    if (billedSearchController) billedSearchController.abort();
+    billedSearchController = new AbortController();
+    setBilledMessage("Searching billed orders...");
+
+    try {
+      const params = new URLSearchParams({ q: query, _: String(Date.now()) });
+      const res = await fetch(`/api/netsuite/order-management/billed-orders?${params}`, {
+        headers,
+        cache: "no-store",
+        signal: billedSearchController.signal,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+      billedOrders = Array.isArray(data.results) ? data.results : [];
+      renderBilledTable(billedOrders, selectedStore, query);
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.error("Failed to load billed orders:", err);
+      billedOrders = [];
+      setBilledMessage(err.message || "Error loading billed orders.");
+      const billedTab = document.querySelector('#orders .subtab[data-subtab="billed"]');
+      if (billedTab) billedTab.textContent = "Billed Orders (0)";
+    }
+  };
+
+  const scheduleBilledSearch = (searchTerm, selectedStore) => {
+    clearTimeout(billedSearchTimer);
+    billedSearchTimer = setTimeout(() => {
+      loadBilledOrders(searchTerm, selectedStore);
+    }, 300);
+  };
+
   try {
     const res = await fetch(`/api/netsuite/order-management?refresh=1&_=${Date.now()}`, {
       headers,
@@ -100,13 +204,16 @@ const storeRes = await fetch(`/api/meta/store/${storeId}`, { headers });        
     }
 
     renderTables(orders, storeFilter.value, orderSearch?.value || "");
+    renderBilledTable(billedOrders, storeFilter.value, orderSearch?.value || "");
 
     storeFilter.addEventListener("change", () => {
       renderTables(orders, storeFilter.value, orderSearch?.value || "");
+      renderBilledTable(billedOrders, storeFilter.value, orderSearch?.value || "");
     });
 
     orderSearch?.addEventListener("input", () => {
       renderTables(orders, storeFilter.value, orderSearch.value);
+      scheduleBilledSearch(orderSearch.value, storeFilter.value);
     });
 
   } catch (err) {
@@ -130,7 +237,7 @@ const storeRes = await fetch(`/api/meta/store/${storeId}`, { headers });        
         );
 
     const filtered = query
-      ? orders.filter(o => {
+      ? storeFiltered.filter(o => {
           const documentNumber = String(o["Document Number"] || "").toLowerCase();
           const customerName = String(o.Name || "").toLowerCase();
           return documentNumber.includes(query) || customerName.includes(query);
@@ -142,8 +249,10 @@ const storeRes = await fetch(`/api/meta/store/${storeId}`, { headers });        
 
     const readyTab = document.querySelector('#orders .subtab[data-subtab="ready"]');
     const pendingTab = document.querySelector('#orders .subtab[data-subtab="pending"]');
+    const billedTab = document.querySelector('#orders .subtab[data-subtab="billed"]');
     if (readyTab) readyTab.textContent = `Ready for Delivery (${ready.length})`;
     if (pendingTab) pendingTab.textContent = `Pending Orders (${pending.length})`;
+    if (billedTab) billedTab.textContent = `Billed Orders (${billedOrders.length})`;
 
     // === READY TABLE (updated: Document Number as anchor) ===
     const isOrderOnHold = (order) =>

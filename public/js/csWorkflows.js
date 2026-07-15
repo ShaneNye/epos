@@ -20,9 +20,13 @@ document.addEventListener("DOMContentLoaded", () => {
     selectedNodeId: "",
     selectedEdgeId: "",
     selectedAnchor: null,
+    selectedNodeIds: [],
+    selectedEdgeIds: [],
+    selectedAnchors: [],
     drag: null,
     portDrag: null,
     edgeAnchorDrag: null,
+    selectionBox: null,
     pathPreview: null,
     pan: null,
     suppressClick: false,
@@ -109,6 +113,7 @@ document.addEventListener("DOMContentLoaded", () => {
     actionConfigWrap: document.getElementById("actionConfigWrap"),
     actionType: document.getElementById("actionTypeSelect"),
     actionMandatory: document.getElementById("actionMandatoryCheckbox"),
+    actionResponse: document.getElementById("actionResponseText"),
     itemLineItemWrap: document.getElementById("itemLineItemWrap"),
     itemLineItem: document.getElementById("itemLineItemSelect"),
     itemLineInputWrap: document.getElementById("itemLineInputWrap"),
@@ -118,6 +123,10 @@ document.addEventListener("DOMContentLoaded", () => {
     itemLineMapWrap: document.getElementById("itemLineMapWrap"),
     itemLineMapButton: document.getElementById("addItemLineMappingBtn"),
     itemLineMappings: document.getElementById("itemLineMappingsList"),
+    emailTargetWrap: document.getElementById("emailTargetWrap"),
+    emailTarget: document.getElementById("emailTargetSelect"),
+    emailMessageWrap: document.getElementById("emailMessageWrap"),
+    emailMessage: document.getElementById("emailMessageText"),
     createRecordTargetWrap: document.getElementById("createRecordTargetWrap"),
     createRecordTarget: document.getElementById("createRecordTargetSelect"),
     createRecordMapWrap: document.getElementById("createRecordMapWrap"),
@@ -273,6 +282,96 @@ document.addEventListener("DOMContentLoaded", () => {
     return state.edges.find((edge) => edge.id === state.selectedEdgeId) || null;
   }
 
+  function anchorKey(anchor = {}) {
+    return `${anchor.edgeId}:${Number(anchor.anchorIndex)}`;
+  }
+
+  function selectedNodeSet() {
+    return new Set((state.selectedNodeIds || []).map(String));
+  }
+
+  function selectedEdgeSet() {
+    return new Set((state.selectedEdgeIds || []).map(String));
+  }
+
+  function selectedAnchorSet() {
+    return new Set((state.selectedAnchors || []).map(anchorKey));
+  }
+
+  function clearMultiSelection() {
+    state.selectedNodeIds = [];
+    state.selectedEdgeIds = [];
+    state.selectedAnchors = [];
+  }
+
+  function clearWorkflowSelection() {
+    state.selectedNodeId = "";
+    state.selectedEdgeId = "";
+    state.selectedAnchor = null;
+    clearMultiSelection();
+  }
+
+  function setSingleNodeSelection(id = "") {
+    state.selectedNodeId = id;
+    state.selectedEdgeId = "";
+    state.selectedAnchor = null;
+    clearMultiSelection();
+  }
+
+  function setSingleEdgeSelection(id = "") {
+    state.selectedNodeId = "";
+    state.selectedEdgeId = id;
+    state.selectedAnchor = null;
+    clearMultiSelection();
+  }
+
+  function setSingleAnchorSelection(edgeId = "", anchorIndex = 0) {
+    state.selectedNodeId = "";
+    state.selectedEdgeId = edgeId;
+    state.selectedAnchor = { edgeId, anchorIndex };
+    clearMultiSelection();
+  }
+
+  function normaliseSelectedAnchors(anchors = []) {
+    const seen = new Set();
+    return anchors
+      .map((anchor) => ({ edgeId: String(anchor.edgeId || ""), anchorIndex: Number(anchor.anchorIndex) }))
+      .filter((anchor) => anchor.edgeId && Number.isFinite(anchor.anchorIndex))
+      .filter((anchor) => {
+        const key = anchorKey(anchor);
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
+  }
+
+  function selectedWorkflowItemCount() {
+    return (state.selectedNodeIds || []).length + (state.selectedEdgeIds || []).length + (state.selectedAnchors || []).length;
+  }
+
+  function selectedAnchorDragItems() {
+    const selectedEdges = selectedEdgeSet();
+    const anchors = [
+      ...(state.selectedAnchors || []),
+      ...state.edges
+        .filter((edge) => selectedEdges.has(String(edge.id)))
+        .flatMap((edge) => (Array.isArray(edge.anchors) ? edge.anchors : []).map((anchor, anchorIndex) => ({ edgeId: edge.id, anchorIndex }))),
+    ];
+    return normaliseSelectedAnchors(anchors)
+      .map((selected) => {
+        const edge = state.edges.find((item) => String(item.id) === String(selected.edgeId));
+        const anchor = edge?.anchors?.[selected.anchorIndex];
+        if (!anchor) return null;
+        return {
+          edge,
+          anchorIndex: selected.anchorIndex,
+          x: Number(anchor.x) || 0,
+          y: Number(anchor.y) || 0,
+        };
+      })
+      .filter(Boolean);
+  }
+
   function snapshot() {
     return JSON.stringify({
       nodes: state.nodes,
@@ -293,6 +392,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.selectedNodeId = next.selectedNodeId || "";
     state.selectedEdgeId = next.selectedEdgeId || "";
     state.selectedAnchor = next.selectedAnchor || null;
+    clearMultiSelection();
     state.settings = normaliseWorkflowSettings(next.settings);
     state.criteria = normaliseWorkflowCriteria(next.criteria);
     renderWorkflowSettings();
@@ -999,9 +1099,17 @@ document.addEventListener("DOMContentLoaded", () => {
     node.inputConfig.fields = node.inputConfig.fields.map((field, index) => ({
       id: field.id || `input_${Date.now()}_${index}`,
       label: field.label || `Response ${index + 1}`,
-      type: ["string", "currency", "list", "boolean"].includes(field.type) ? field.type : "string",
+      type: ["string", "currency", "list", "boolean", "select", "multiSelect"].includes(field.type) ? field.type : "string",
       listSource: field.listSource || "salesOrderItems",
       listField: field.listField || "",
+      selectSource: ["manual", "affectedItem"].includes(field.selectSource) ? field.selectSource : "manual",
+      selectOptions: Array.isArray(field.selectOptions) ? field.selectOptions.map((option, optionIndex) => ({
+        id: option.id || `option_${Date.now()}_${index}_${optionIndex}`,
+        label: option.label || option.value || `Option ${optionIndex + 1}`,
+        valueMode: ["static", "affectedItemField"].includes(option.valueMode) ? option.valueMode : "static",
+        value: option.value || "",
+        affectedItemField: option.affectedItemField || "",
+      })) : [],
     }));
     return node.inputConfig;
   }
@@ -1010,6 +1118,7 @@ document.addEventListener("DOMContentLoaded", () => {
     node.actionConfig = node.actionConfig || {};
     node.actionConfig.type = node.actionConfig.type || "";
     node.actionConfig.mandatory = node.actionConfig.mandatory !== false;
+    node.actionConfig.response = node.actionConfig.response || "";
     node.actionConfig.createRecord = node.actionConfig.createRecord && typeof node.actionConfig.createRecord === "object"
       ? node.actionConfig.createRecord
       : {};
@@ -1018,6 +1127,12 @@ document.addEventListener("DOMContentLoaded", () => {
     node.actionConfig.createRecord.mappings = Array.isArray(node.actionConfig.createRecord.mappings)
       ? node.actionConfig.createRecord.mappings
       : [];
+    node.actionConfig.createRecord.mappings = node.actionConfig.createRecord.mappings.map((mapping) => ({
+      ...mapping,
+      sourceRecord: mapping.sourceType === "workflowInput"
+        ? ""
+        : (mapping.sourceRecord || node.actionConfig.createRecord.sourceRecord || "storeSalesOrder"),
+    }));
     node.actionConfig.itemLineAction = node.actionConfig.itemLineAction && typeof node.actionConfig.itemLineAction === "object"
       ? node.actionConfig.itemLineAction
       : {};
@@ -1029,7 +1144,18 @@ document.addEventListener("DOMContentLoaded", () => {
     node.actionConfig.itemLineAction.mappings = Array.isArray(node.actionConfig.itemLineAction.mappings)
       ? node.actionConfig.itemLineAction.mappings
       : [];
+    node.actionConfig.emailAction = node.actionConfig.emailAction && typeof node.actionConfig.emailAction === "object"
+      ? node.actionConfig.emailAction
+      : {};
+    node.actionConfig.emailAction.target = ["customer", "supplier"].includes(node.actionConfig.emailAction.target)
+      ? node.actionConfig.emailAction.target
+      : "customer";
+    node.actionConfig.emailAction.message = node.actionConfig.emailAction.message || "";
     return node.actionConfig;
+  }
+
+  function isItemLineMapAction(type = "") {
+    return type === "itemLineAction" || type === "addItemLine";
   }
 
   function portKey(label = "") {
@@ -1110,6 +1236,76 @@ document.addEventListener("DOMContentLoaded", () => {
       [{ x: right, y: bottom }, { x: left, y: bottom }],
       [{ x: left, y: bottom }, { x: left, y: top }],
     ].some(([a, b]) => segmentsIntersect(from, to, a, b));
+  }
+
+  function normaliseRect(from = {}, to = {}) {
+    const x = Math.min(Number(from.x) || 0, Number(to.x) || 0);
+    const y = Math.min(Number(from.y) || 0, Number(to.y) || 0);
+    return {
+      x,
+      y,
+      width: Math.abs((Number(to.x) || 0) - (Number(from.x) || 0)),
+      height: Math.abs((Number(to.y) || 0) - (Number(from.y) || 0)),
+    };
+  }
+
+  function rectsIntersect(a = {}, b = {}) {
+    return a.x <= b.x + b.width &&
+      a.x + a.width >= b.x &&
+      a.y <= b.y + b.height &&
+      a.y + a.height >= b.y;
+  }
+
+  function edgeIntersectsRect(edge = {}, rect = {}) {
+    const points = edgeRoutePoints(edge);
+    if (points.some((point) => pointInRect(point, rect))) return true;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      if (segmentIntersectsRect(points[index], points[index + 1], rect)) return true;
+    }
+    return false;
+  }
+
+  function selectionForRect(rect = {}) {
+    const nodeIds = state.nodes
+      .filter((node) => rectsIntersect(rect, { x: Number(node.x) || 0, y: Number(node.y) || 0, width: NODE_WIDTH, height: NODE_HEIGHT }))
+      .map((node) => node.id);
+    const edgeIds = state.edges
+      .filter((edge) => edgeIntersectsRect(edge, rect))
+      .map((edge) => edge.id);
+    const anchors = state.edges.flatMap((edge) =>
+      (Array.isArray(edge.anchors) ? edge.anchors : [])
+        .map((anchor, anchorIndex) => ({ edgeId: edge.id, anchorIndex, x: Number(anchor.x), y: Number(anchor.y) }))
+        .filter((anchor) => Number.isFinite(anchor.x) && Number.isFinite(anchor.y) && pointInRect(anchor, rect))
+        .map((anchor) => ({ edgeId: anchor.edgeId, anchorIndex: anchor.anchorIndex }))
+    );
+    return { nodeIds, edgeIds, anchors };
+  }
+
+  function applySelection(selection = {}, additive = false) {
+    const nodeIds = additive ? [...(state.selectedNodeIds || []), ...(selection.nodeIds || [])] : (selection.nodeIds || []);
+    const edgeIds = additive ? [...(state.selectedEdgeIds || []), ...(selection.edgeIds || [])] : (selection.edgeIds || []);
+    const anchors = additive ? [...(state.selectedAnchors || []), ...(selection.anchors || [])] : (selection.anchors || []);
+    state.selectedNodeIds = [...new Set(nodeIds.map(String))];
+    state.selectedEdgeIds = [...new Set(edgeIds.map(String))];
+    state.selectedAnchors = normaliseSelectedAnchors(anchors);
+    state.selectedNodeId = state.selectedNodeIds[state.selectedNodeIds.length - 1] || "";
+    state.selectedAnchor = !state.selectedNodeId && state.selectedAnchors.length
+      ? state.selectedAnchors[state.selectedAnchors.length - 1]
+      : null;
+    state.selectedEdgeId = state.selectedNodeId ? "" : (state.selectedEdgeIds[state.selectedEdgeIds.length - 1] || state.selectedAnchor?.edgeId || "");
+  }
+
+  function renderSelectionBox() {
+    el.surface.querySelectorAll(".workflow-selection-box").forEach((box) => box.remove());
+    if (!state.selectionBox?.current) return;
+    const rect = normaliseRect(state.selectionBox.start, state.selectionBox.current);
+    const box = document.createElement("div");
+    box.className = "workflow-selection-box";
+    box.style.left = `${rect.x}px`;
+    box.style.top = `${rect.y}px`;
+    box.style.width = `${rect.width}px`;
+    box.style.height = `${rect.height}px`;
+    el.surface.appendChild(box);
   }
 
   function routeCollisions(points, obstacles) {
@@ -1238,6 +1434,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function renderNodes() {
     el.surface.querySelectorAll(".workflow-node").forEach((node) => node.remove());
+    const activeNodeIds = selectedNodeSet();
     state.nodes.forEach((node) => {
       const div = document.createElement("div");
       const debugNodeIds = new Set((state.debug?.nodeIds || []).map(String));
@@ -1248,7 +1445,8 @@ document.addEventListener("DOMContentLoaded", () => {
         String(state.debug.nodeId || "") === String(node.id);
       const debugVisited = state.debug && String(state.debug.workflowId || "") === String(state.currentId || "") && debugNodeIds.has(String(node.id));
       const debugAction = state.debug && String(state.debug.workflowId || "") === String(state.currentId || "") && debugActionNodeIds.has(String(node.id));
-      div.className = `workflow-node ${node.type}${node.id === state.selectedNodeId ? " selected" : ""}${debugVisited ? " debug-visited" : ""}${debugAction ? " debug-action" : ""}${debugActive ? " debug-active" : ""}`;
+      const isSelected = node.id === state.selectedNodeId || activeNodeIds.has(String(node.id));
+      div.className = `workflow-node ${node.type}${isSelected ? " selected" : ""}${debugVisited ? " debug-visited" : ""}${debugAction ? " debug-action" : ""}${debugActive ? " debug-active" : ""}`;
       div.dataset.nodeId = node.id;
       div.style.left = `${node.x}px`;
       div.style.top = `${node.y}px`;
@@ -1277,8 +1475,9 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function refreshNodeSelection() {
+    const activeNodeIds = selectedNodeSet();
     el.surface.querySelectorAll(".workflow-node").forEach((node) => {
-      const active = node.dataset.nodeId === state.selectedNodeId;
+      const active = node.dataset.nodeId === state.selectedNodeId || activeNodeIds.has(String(node.dataset.nodeId || ""));
       node.classList.toggle("selected", active);
     });
     renderProperties();
@@ -1287,6 +1486,8 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderEdges() {
     el.edges.innerHTML = "";
     const debugEdgeIds = new Set((state.debug?.edgeIds || []).map(String));
+    const activeEdgeIds = selectedEdgeSet();
+    const activeAnchorIds = selectedAnchorSet();
     state.edges.forEach((edge) => {
       const from = state.nodes.find((node) => node.id === edge.from);
       const to = state.nodes.find((node) => node.id === edge.to);
@@ -1312,7 +1513,8 @@ document.addEventListener("DOMContentLoaded", () => {
       const isCheckPass = from.type === "check" && String(edge.label || "").trim().toLowerCase() === "pass";
       const isCheckFail = from.type === "check" && String(edge.label || "").trim().toLowerCase() === "fail";
       const edgeTone = isCheckPass ? " pass-path" : isCheckFail ? " fail-path" : "";
-      path.setAttribute("class", `workflow-edge${edgeTone}${edge.id === state.selectedEdgeId ? " selected" : ""}${debugEdge ? " debug-path" : ""}`);
+      const edgeSelected = edge.id === state.selectedEdgeId || activeEdgeIds.has(String(edge.id));
+      path.setAttribute("class", `workflow-edge${edgeTone}${edgeSelected ? " selected" : ""}${debugEdge ? " debug-path" : ""}`);
       path.dataset.edgeId = edge.id;
       path.setAttribute("d", pathD);
       path.addEventListener("pointerdown", (event) => event.stopPropagation());
@@ -1324,9 +1526,12 @@ document.addEventListener("DOMContentLoaded", () => {
       hitPath.addEventListener("pointerdown", (event) => event.stopPropagation());
       hitPath.addEventListener("click", onEdgeClick);
       el.edges.appendChild(hitPath);
-      if (edge.id === state.selectedEdgeId || state.edgeAnchorDrag?.edgeId === edge.id || state.selectedAnchor?.edgeId === edge.id) {
+      const showAnchors = edgeSelected || state.edgeAnchorDrag?.edgeId === edge.id || state.selectedAnchor?.edgeId === edge.id || (state.selectedAnchors || []).some((anchor) => anchor.edgeId === edge.id);
+      if (showAnchors) {
         anchorPoints.forEach((anchor, index) => {
-          const anchorSelected = state.selectedAnchor?.edgeId === edge.id && Number(state.selectedAnchor?.anchorIndex) === index;
+          const anchorSelected =
+            (state.selectedAnchor?.edgeId === edge.id && Number(state.selectedAnchor?.anchorIndex) === index) ||
+            activeAnchorIds.has(anchorKey({ edgeId: edge.id, anchorIndex: index }));
           const circle = document.createElementNS("http://www.w3.org/2000/svg", "circle");
           circle.setAttribute("class", `workflow-edge-anchor${anchorSelected ? " selected" : ""}${state.edgeAnchorDrag?.edgeId === edge.id && state.edgeAnchorDrag?.anchorIndex === index ? " placing" : ""}`);
           circle.dataset.edgeId = edge.id;
@@ -1487,8 +1692,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const input = checkInputNode(config);
     if (input?.type !== "input") return false;
     const fields = Array.isArray(input.inputConfig?.fields) ? input.inputConfig.fields : [];
-    if (fields.some((field) => field.type === "list" && field.listSource === "salesOrderItems")) return true;
-    return input.inputConfig?.type === "list" && input.inputConfig?.listSource === "salesOrderItems";
+    if (fields.some((field) => ["list", "multiSelect"].includes(field.type) && field.listSource === "salesOrderItems")) return true;
+    return ["list", "multiSelect"].includes(input.inputConfig?.type) && input.inputConfig?.listSource === "salesOrderItems";
   }
 
   function checkFieldRecordType(config = {}) {
@@ -1514,9 +1719,45 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function inputTypeOptions(selectedValue = "string") {
-    return ["string", "currency", "list", "boolean"].map((type) => `
-      <option value="${escapeHtml(type)}" ${type === selectedValue ? "selected" : ""}>${escapeHtml(type === "currency" ? "Currency" : type === "boolean" ? "Boolean" : type === "list" ? "List" : "string")}</option>
+    return ["string", "currency", "list", "select", "multiSelect", "boolean"].map((type) => `
+      <option value="${escapeHtml(type)}" ${type === selectedValue ? "selected" : ""}>${escapeHtml(type === "currency" ? "Currency" : type === "boolean" ? "Boolean" : type === "list" ? "List" : type === "select" ? "Select" : type === "multiSelect" ? "Multi-select" : "string")}</option>
     `).join("");
+  }
+
+  function affectedItemSublistFieldOptions(selectedValue = "") {
+    const builtIns = [
+      { internalId: "amount", label: "Amount" },
+      { internalId: "grossamt", label: "Gross Amount" },
+      { internalId: "rate", label: "Rate" },
+      { internalId: "quantity", label: "Quantity" },
+      { internalId: "description", label: "Description" },
+    ];
+    const configured = salesOrderItemSublist()?.fields || [];
+    const fields = [...configured, ...builtIns]
+      .filter((field, index, list) => field.internalId && list.findIndex((item) => item.internalId === field.internalId) === index);
+    if (!fields.length) return '<option value="">No item sublist fields configured</option>';
+    return fields.map((field) => `
+      <option value="${escapeHtml(field.internalId)}" ${field.internalId === selectedValue ? "selected" : ""}>${escapeHtml(field.label)}</option>
+    `).join("");
+  }
+
+  function inputSelectOptionRows(field = {}) {
+    const options = Array.isArray(field.selectOptions) ? field.selectOptions : [];
+    return options.length
+      ? options.map((option, index) => `
+        <div class="input-select-option-row" data-input-select-option-row="${escapeHtml(field.id)}" data-option-id="${escapeHtml(option.id)}">
+          <input data-input-select-option-label="${escapeHtml(field.id)}" data-option-id="${escapeHtml(option.id)}" value="${escapeHtml(option.label)}" placeholder="Label">
+          <select data-input-select-option-mode="${escapeHtml(field.id)}" data-option-id="${escapeHtml(option.id)}">
+            <option value="static" ${option.valueMode !== "affectedItemField" ? "selected" : ""}>Static value</option>
+            <option value="affectedItemField" ${option.valueMode === "affectedItemField" ? "selected" : ""}>Affected item field</option>
+          </select>
+          ${option.valueMode === "affectedItemField"
+            ? `<select data-input-select-option-field="${escapeHtml(field.id)}" data-option-id="${escapeHtml(option.id)}">${affectedItemSublistFieldOptions(option.affectedItemField || "")}</select>`
+            : `<input data-input-select-option-value="${escapeHtml(field.id)}" data-option-id="${escapeHtml(option.id)}" value="${escapeHtml(option.value)}" placeholder="Value">`}
+          <button type="button" class="btn-secondary" data-remove-input-select-option="${escapeHtml(field.id)}" data-option-id="${escapeHtml(option.id)}">Remove</button>
+        </div>
+      `).join("")
+      : '<p class="workflow-status">No select options configured.</p>';
   }
 
   function inputFieldListOptions(config = {}, field = {}) {
@@ -1534,10 +1775,14 @@ document.addEventListener("DOMContentLoaded", () => {
     el.inputFieldsList.innerHTML = fields.length
       ? fields.map((field, index) => {
         const isList = field.type === "list";
+        const isSelect = field.type === "select";
+        const isMultiSelect = field.type === "multiSelect";
         const record = inputSourceRecord(field.listSource);
         if (isList && record && Array.isArray(record.fields) && record.fields.length && !record.fields.some((item) => item.internalId === field.listField)) {
           field.listField = record.fields[0].internalId || "";
         }
+        if (isMultiSelect) field.listSource = "salesOrderItems";
+        if (isSelect && !Array.isArray(field.selectOptions)) field.selectOptions = [];
         return `
           <div class="input-field-config" data-input-field-row="${escapeHtml(field.id)}">
             <label>
@@ -1548,14 +1793,24 @@ document.addEventListener("DOMContentLoaded", () => {
               Type
               <select data-input-field-type="${escapeHtml(field.id)}">${inputTypeOptions(field.type)}</select>
             </label>
-            <label ${isList ? "" : "hidden"}>
+            <label ${isList || isMultiSelect ? "" : "hidden"}>
               Source
-              <select data-input-field-source="${escapeHtml(field.id)}">${inputRecordSourceOptions(field.listSource)}</select>
+              <select data-input-field-source="${escapeHtml(field.id)}">
+                ${isMultiSelect
+                  ? `<option value="salesOrderItems" selected>Items</option>`
+                  : inputRecordSourceOptions(field.listSource)}
+              </select>
             </label>
             <label ${isList && inputSourceRecord(field.listSource) ? "" : "hidden"}>
               Field
               <select data-input-field-list-field="${escapeHtml(field.id)}">${inputFieldListOptions(config, field)}</select>
             </label>
+            <div class="input-select-options" ${isSelect ? "" : "hidden"}>
+              <div class="property-row property-row-tight">
+                <button type="button" class="btn-secondary" data-add-input-select-option="${escapeHtml(field.id)}">Add Select Option</button>
+              </div>
+              ${inputSelectOptionRows(field)}
+            </div>
             <button type="button" class="btn-secondary input-field-remove" data-remove-input-field="${escapeHtml(field.id)}" ${fields.length <= 1 ? "disabled" : ""}>Remove</button>
           </div>
         `;
@@ -1566,13 +1821,23 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderInputConfig(node) {
     if (!node || node.type !== "input" || !el.inputConfigWrap) return;
     const config = ensureInputConfig(node);
-    const validTypes = new Set(["string", "currency", "list", "boolean"]);
+    const validTypes = new Set(["string", "currency", "list", "select", "multiSelect", "boolean"]);
     if (!validTypes.has(config.type)) config.type = "string";
     renderInputFields(config);
     el.inputType.value = config.type;
     const isList = config.type === "list";
-    el.inputListSourceWrap.hidden = !isList;
+    const isMultiSelect = config.type === "multiSelect";
+    if (isMultiSelect) {
+      config.listSource = "salesOrderItems";
+      config.listField = "";
+    }
+    el.inputListSourceWrap.hidden = !isList && !isMultiSelect;
     el.inputListFieldWrap.hidden = true;
+    if (isMultiSelect) {
+      el.inputListSource.innerHTML = '<option value="salesOrderItems">Items</option>';
+      el.inputListSource.value = "salesOrderItems";
+      return;
+    }
     if (!isList) return;
 
     el.inputListSource.innerHTML = inputRecordSourceOptions(config.listSource);
@@ -1601,23 +1866,52 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderActionConfig(node) {
     if (!node || node.type !== "action" || !el.actionConfigWrap) return;
     const config = ensureActionConfig(node);
-    const validTypes = new Set(["", "itemLineAction", "closeSalesLine", "closeIntercompanyLine", "closeSupplierPurchaseOrderLine", "createRecord"]);
+    const validTypes = new Set(["", "itemLineAction", "addItemLine", "email", "closeSalesLine", "closeIntercompanyLine", "closeSupplierPurchaseOrderLine", "refundCreditMemo", "creditRma", "receiveRma", "createRecord"]);
+    if (el.actionType && ![...el.actionType.options].some((option) => option.value === "creditRma")) {
+      const option = document.createElement("option");
+      option.value = "creditRma";
+      option.textContent = "Credit RMA";
+      const createRecordOption = [...el.actionType.options].find((item) => item.value === "createRecord");
+      el.actionType.insertBefore(option, createRecordOption || null);
+    }
+    if (el.actionType && ![...el.actionType.options].some((option) => option.value === "receiveRma")) {
+      const option = document.createElement("option");
+      option.value = "receiveRma";
+      option.textContent = "Receive RMA";
+      const createRecordOption = [...el.actionType.options].find((item) => item.value === "createRecord");
+      el.actionType.insertBefore(option, createRecordOption || null);
+    }
     if (!validTypes.has(config.type)) config.type = "";
     el.actionType.value = config.type;
     if (el.actionMandatory) el.actionMandatory.checked = config.mandatory !== false;
+    if (el.actionResponse) el.actionResponse.value = config.response || "";
     [
       el.itemLineItemWrap,
       el.itemLineInputWrap,
       el.itemLineSourceWrap,
       el.itemLineMapWrap,
       el.itemLineMappings,
+      el.emailTargetWrap,
+      el.emailMessageWrap,
       el.createRecordTargetWrap,
       el.createRecordMapWrap,
     ].forEach((nodeEl) => {
       if (nodeEl) nodeEl.hidden = true;
     });
     renderItemLineActionConfig(node);
+    renderEmailActionConfig(node);
     renderCreateRecordActionConfig(node);
+  }
+
+  function renderEmailActionConfig(node) {
+    const config = ensureActionConfig(node);
+    const emailConfig = config.emailAction;
+    const isEmail = config.type === "email";
+    if (el.emailTargetWrap) el.emailTargetWrap.hidden = !isEmail;
+    if (el.emailMessageWrap) el.emailMessageWrap.hidden = !isEmail;
+    if (!isEmail) return;
+    if (el.emailTarget) el.emailTarget.value = emailConfig.target || "customer";
+    if (el.emailMessage) el.emailMessage.value = emailConfig.message || "";
   }
 
   function salesOrderRecord() {
@@ -1644,18 +1938,36 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderItemLineActionConfig(node) {
     const config = ensureActionConfig(node);
     const itemLine = config.itemLineAction;
-    const isItemLineAction = config.type === "itemLineAction";
-    [el.itemLineItemWrap, el.itemLineSourceWrap, el.itemLineMapWrap, el.itemLineMappings].forEach((nodeEl) => {
+    const isItemLineAction = isItemLineMapAction(config.type);
+    const isAddItemLine = config.type === "addItemLine";
+    [el.itemLineSourceWrap, el.itemLineMapWrap, el.itemLineMappings].forEach((nodeEl) => {
       if (nodeEl) nodeEl.hidden = !isItemLineAction;
     });
+    if (el.itemLineItemWrap) el.itemLineItemWrap.hidden = !isItemLineAction || isAddItemLine;
     if (!isItemLineAction) return;
 
     itemLine.itemSource = itemLine.itemSource || "caseAffectedItem";
     if (el.itemLineItem) el.itemLineItem.value = itemLine.itemSource || "caseAffectedItem";
-    if (el.itemLineInputWrap) el.itemLineInputWrap.hidden = itemLine.itemSource !== "input";
+    if (el.itemLineInputWrap) el.itemLineInputWrap.hidden = isAddItemLine || itemLine.itemSource !== "input";
     itemLine.target = itemLine.target || itemLine.source || "storeSalesOrder";
+    if (isAddItemLine && !["storeSalesOrder", "intercompanySalesOrder"].includes(itemLine.target)) {
+      itemLine.target = "storeSalesOrder";
+      itemLine.mappings = [];
+    }
     itemLine.source = itemLine.target;
-    if (el.itemLineSource) el.itemLineSource.value = itemLine.target || "storeSalesOrder";
+    if (el.itemLineSource) {
+      el.itemLineSource.innerHTML = isAddItemLine
+        ? `
+          <option value="storeSalesOrder">Sales Order</option>
+          <option value="intercompanySalesOrder">Paired Sales Order</option>
+        `
+        : `
+          <option value="storeSalesOrder">Sales Order</option>
+          <option value="intercompanySalesOrder">Paired Sales Order</option>
+          <option value="supplierPurchaseOrder">Supplier Purchase Order</option>
+        `;
+      el.itemLineSource.value = itemLine.target || "storeSalesOrder";
+    }
     if (el.itemLineInput) {
       const inputs = state.nodes.filter((candidate) => candidate.type === "input" && candidate.id !== node.id);
       el.itemLineInput.innerHTML = inputs.length
@@ -1675,6 +1987,7 @@ document.addEventListener("DOMContentLoaded", () => {
     salesOrder: { label: "Sales Order", keys: ["salesorder", "sales_order"] },
     customerDeposit: { label: "Customer Deposit", keys: ["customerdeposit", "customer_deposit"] },
     customerRefund: { label: "Customer Refund", keys: ["customerrefund", "customer_refund"] },
+    creditMemo: { label: "Credit Memo", keys: ["creditmemo", "credit_memo", "custcred"] },
     returnAuthorization: { label: "Return Authorisation", keys: ["returnauthorization", "return_authorization", "returnauthorisation", "return_authorisation"] },
   };
 
@@ -1728,6 +2041,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const targetFields = createRecordTargetRecord(config.targetRecord)?.fields || [];
     return {
       sourceType: "record",
+      sourceRecord: config.sourceRecord || "storeSalesOrder",
       sourceInputId: "",
       sourceInputType: "",
       sourceField: sourceFields[0]?.internalId || "",
@@ -1744,8 +2058,10 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderCreateRecordActionConfig(node) {
     const config = ensureActionConfig(node);
     const createConfig = config.createRecord;
-    const isCreateRecord = config.type === "createRecord";
-    if (el.createRecordTargetWrap) el.createRecordTargetWrap.hidden = !isCreateRecord;
+    const isRefundCreditMemo = config.type === "refundCreditMemo";
+    const isCreateRecord = config.type === "createRecord" || isRefundCreditMemo;
+    if (isRefundCreditMemo) createConfig.targetRecord = "customerRefund";
+    if (el.createRecordTargetWrap) el.createRecordTargetWrap.hidden = !isCreateRecord || isRefundCreditMemo;
     if (el.createRecordMapWrap) el.createRecordMapWrap.hidden = !isCreateRecord;
     if (!isCreateRecord) return;
 
@@ -1937,6 +2253,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateSurfaceBounds();
     renderNodes();
     renderEdges();
+    renderSelectionBox();
     renderProperties();
     renderExistingWorkflows();
     updateHistoryButtons();
@@ -1950,9 +2267,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.settings = normaliseWorkflowSettings();
     state.debug = null;
     ensureStartNode();
-    state.selectedNodeId = "";
-    state.selectedEdgeId = "";
-    state.selectedAnchor = null;
+    clearWorkflowSelection();
     el.select.value = "";
     el.name.value = "";
     el.description.value = "";
@@ -1978,9 +2293,7 @@ document.addEventListener("DOMContentLoaded", () => {
       options: Array.isArray(defaults.options) ? defaults.options.map((option) => ({ ...option })) : [],
     };
     state.nodes.push(node);
-    state.selectedNodeId = node.id;
-    state.selectedEdgeId = "";
-    state.selectedAnchor = null;
+    setSingleNodeSelection(node.id);
     switchToNodePropertiesFromWorkflowTab();
     render();
     pushHistory(before);
@@ -1995,11 +2308,39 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     const node = state.nodes.find((item) => item.id === event.currentTarget.dataset.nodeId);
     if (!node) return;
-    state.selectedNodeId = node.id;
-    state.selectedEdgeId = "";
-    state.selectedAnchor = null;
+    const selectedNodes = selectedNodeSet();
+    if (event.shiftKey) {
+      if (selectedNodes.has(String(node.id))) {
+        state.selectedNodeIds = state.selectedNodeIds.filter((id) => String(id) !== String(node.id));
+      } else {
+        state.selectedNodeIds = [...state.selectedNodeIds, node.id];
+      }
+      state.selectedEdgeIds = [];
+      state.selectedAnchors = [];
+      state.selectedNodeId = state.selectedNodeIds[state.selectedNodeIds.length - 1] || "";
+      state.selectedEdgeId = "";
+      state.selectedAnchor = null;
+      refreshNodeSelection();
+      state.suppressClick = true;
+      event.preventDefault();
+      return;
+    }
+    if (!selectedNodes.has(String(node.id))) {
+      setSingleNodeSelection(node.id);
+      state.selectedNodeIds = [node.id];
+    } else {
+      state.selectedNodeId = node.id;
+      state.selectedEdgeId = "";
+      state.selectedAnchor = null;
+    }
+    const dragNodes = state.nodes
+      .filter((item) => selectedNodeSet().has(String(item.id)))
+      .map((item) => ({ node: item, x: Number(item.x) || 0, y: Number(item.y) || 0 }));
+    const dragAnchors = selectedAnchorDragItems();
     state.drag = {
       node,
+      nodes: dragNodes.length ? dragNodes : [{ node, x: Number(node.x) || 0, y: Number(node.y) || 0 }],
+      anchors: dragAnchors,
       startX: event.clientX,
       startY: event.clientY,
       nodeX: node.x,
@@ -2079,9 +2420,20 @@ document.addEventListener("DOMContentLoaded", () => {
     }
     if (event.target.closest?.(".workflow-node, .workflow-output-port, .workflow-input-port, .workflow-edge, .workflow-edge-hit, .workflow-edge-label")) return;
     event.preventDefault();
-    state.selectedNodeId = "";
-    state.selectedEdgeId = "";
-    state.selectedAnchor = null;
+    if (event.shiftKey) {
+      const point = canvasPointFromClient(event.clientX, event.clientY);
+      state.selectionBox = {
+        start: point,
+        current: point,
+        additive: event.ctrlKey || event.metaKey,
+        moved: false,
+      };
+      el.canvas.setPointerCapture(event.pointerId);
+      setStatus("Drag to select workflow elements.");
+      render();
+      return;
+    }
+    clearWorkflowSelection();
     state.pan = {
       startX: event.clientX,
       startY: event.clientY,
@@ -2099,9 +2451,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return;
     }
     const id = event.currentTarget.dataset.nodeId;
-    state.selectedNodeId = id;
-    state.selectedEdgeId = "";
-    state.selectedAnchor = null;
+    setSingleNodeSelection(id);
     switchToNodePropertiesFromWorkflowTab();
     render();
   }
@@ -2118,9 +2468,20 @@ document.addEventListener("DOMContentLoaded", () => {
       beginEdgeAnchorPlacement(edgeId, canvasPointFromClient(event.clientX, event.clientY));
       return;
     }
-    state.selectedEdgeId = edgeId;
-    state.selectedNodeId = "";
-    state.selectedAnchor = null;
+    if (event.ctrlKey || event.metaKey) {
+      const edges = selectedEdgeSet();
+      state.selectedNodeIds = [];
+      state.selectedAnchors = [];
+      state.selectedEdgeIds = edges.has(String(edgeId))
+        ? state.selectedEdgeIds.filter((id) => String(id) !== String(edgeId))
+        : [...state.selectedEdgeIds, edgeId];
+      state.selectedNodeId = "";
+      state.selectedEdgeId = edgeId;
+      state.selectedAnchor = null;
+      render();
+      return;
+    }
+    setSingleEdgeSelection(edgeId);
     render();
   }
 
@@ -2196,17 +2557,29 @@ document.addEventListener("DOMContentLoaded", () => {
       confirmEdgeAnchorPlacement();
       return;
     }
-    state.selectedNodeId = "";
-    state.selectedEdgeId = edgeId;
-    state.selectedAnchor = { edgeId, anchorIndex };
-    if (!event.shiftKey) {
+    const anchorIsInGroup = selectedAnchorSet().has(anchorKey({ edgeId, anchorIndex }));
+    if (!anchorIsInGroup) setSingleAnchorSelection(edgeId, anchorIndex);
+    else {
+      state.selectedNodeId = "";
+      state.selectedEdgeId = edgeId;
+      state.selectedAnchor = { edgeId, anchorIndex };
+    }
+    if (!event.shiftKey && !anchorIsInGroup) {
       render();
       setStatus("Anchor selected. Hold Shift and drag to move it, or press Delete to remove it.");
       return;
     }
+    const dragAnchors = anchorIsInGroup ? selectedAnchorDragItems() : selectedAnchorDragItems().concat([{
+      edge,
+      anchorIndex,
+      x: Number(edge.anchors?.[anchorIndex]?.x) || 0,
+      y: Number(edge.anchors?.[anchorIndex]?.y) || 0,
+    }]);
     state.edgeAnchorDrag = {
       edgeId,
       anchorIndex,
+      anchors: dragAnchors,
+      startPoint: canvasPointFromClient(event.clientX, event.clientY),
       before: snapshot(),
       placing: false,
       moved: false,
@@ -2216,10 +2589,24 @@ document.addEventListener("DOMContentLoaded", () => {
 
   function updateDraggedEdgeAnchor(event) {
     if (!state.edgeAnchorDrag) return false;
+    const point = canvasPointFromClient(event.clientX, event.clientY);
+    if (Array.isArray(state.edgeAnchorDrag.anchors) && state.edgeAnchorDrag.anchors.length) {
+      const startPoint = state.edgeAnchorDrag.startPoint || point;
+      const dx = point.x - startPoint.x;
+      const dy = point.y - startPoint.y;
+      state.edgeAnchorDrag.anchors.forEach((item) => {
+        const anchor = item.edge?.anchors?.[item.anchorIndex];
+        if (!anchor) return;
+        anchor.x = Math.max(0, item.x + dx);
+        anchor.y = Math.max(0, item.y + dy);
+      });
+      state.edgeAnchorDrag.moved = true;
+      renderEdges();
+      return true;
+    }
     const edge = state.edges.find((item) => item.id === state.edgeAnchorDrag.edgeId);
     const anchor = edge?.anchors?.[state.edgeAnchorDrag.anchorIndex];
     if (!anchor) return false;
-    const point = canvasPointFromClient(event.clientX, event.clientY);
     anchor.x = Math.max(0, point.x);
     anchor.y = Math.max(0, point.y);
     state.edgeAnchorDrag.moved = true;
@@ -2289,9 +2676,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const before = snapshot();
     state.edges.push({ id: uid("edge"), from: path.from, to, label: path.label || "" });
     state.pathPreview = null;
-    state.selectedNodeId = path.from;
-    state.selectedEdgeId = "";
-    state.selectedAnchor = null;
+    setSingleNodeSelection(path.from);
     render();
     pushHistory(before);
     setStatus(path.label ? `Connected "${path.label}".` : "Connected path.");
@@ -2322,6 +2707,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (updateDraggedEdgeAnchor(event)) return;
     if (updateDraggedPort(event)) return;
 
+    if (state.selectionBox) {
+      state.selectionBox.current = canvasPointFromClient(event.clientX, event.clientY);
+      const rect = normaliseRect(state.selectionBox.start, state.selectionBox.current);
+      state.selectionBox.moved = rect.width > 3 || rect.height > 3;
+      const selection = selectionForRect(rect);
+      applySelection(selection, state.selectionBox.additive);
+      render();
+      return;
+    }
+
     if (state.pan) {
       const dx = event.clientX - state.pan.startX;
       const dy = event.clientY - state.pan.startY;
@@ -2334,8 +2729,18 @@ document.addEventListener("DOMContentLoaded", () => {
     const dx = event.clientX - state.drag.startX;
     const dy = event.clientY - state.drag.startY;
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) state.drag.moved = true;
-    state.drag.node.x = Math.max(0, state.drag.nodeX + dx / state.zoom);
-    state.drag.node.y = Math.max(0, state.drag.nodeY + dy / state.zoom);
+    const moveX = dx / state.zoom;
+    const moveY = dy / state.zoom;
+    (state.drag.nodes || [{ node: state.drag.node, x: state.drag.nodeX, y: state.drag.nodeY }]).forEach((item) => {
+      item.node.x = Math.max(0, item.x + moveX);
+      item.node.y = Math.max(0, item.y + moveY);
+    });
+    (state.drag.anchors || []).forEach((item) => {
+      const anchor = item.edge?.anchors?.[item.anchorIndex];
+      if (!anchor) return;
+      anchor.x = Math.max(0, item.x + moveX);
+      anchor.y = Math.max(0, item.y + moveY);
+    });
     render();
   });
 
@@ -2347,6 +2752,13 @@ document.addEventListener("DOMContentLoaded", () => {
     if (state.portDrag) {
       if (state.portDrag.moved) pushHistory(state.portDrag.before);
       state.portDrag = null;
+    }
+
+    if (state.selectionBox) {
+      const count = selectedWorkflowItemCount();
+      state.selectionBox = null;
+      render();
+      setStatus(count ? `${count} workflow element${count === 1 ? "" : "s"} selected.` : "No workflow elements selected.");
     }
 
     if (state.pan) {
@@ -2592,13 +3004,24 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   el.inputFieldsList?.addEventListener("input", (event) => {
-    const id = event.target.dataset.inputFieldLabel;
-    if (!id) return;
     const node = selectedNode();
     if (!node || node.type !== "input") return;
-    const field = ensureInputConfig(node).fields.find((item) => String(item.id) === String(id));
+    const config = ensureInputConfig(node);
+    const optionLabelId = event.target.dataset.inputSelectOptionLabel;
+    const optionValueId = event.target.dataset.inputSelectOptionValue;
+    const id = event.target.dataset.inputFieldLabel || optionLabelId || optionValueId;
+    if (!id) return;
+    const field = config.fields.find((item) => String(item.id) === String(id));
     if (!field) return;
-    field.label = event.target.value || "";
+    if (event.target.dataset.inputFieldLabel) {
+      field.label = event.target.value || "";
+      return;
+    }
+    const optionId = event.target.dataset.optionId || "";
+    const option = (field.selectOptions || []).find((item) => String(item.id) === String(optionId));
+    if (!option) return;
+    if (optionLabelId) option.label = event.target.value || "";
+    if (optionValueId) option.value = event.target.value || "";
   });
 
   el.inputFieldsList?.addEventListener("change", (event) => {
@@ -2609,14 +3032,29 @@ document.addEventListener("DOMContentLoaded", () => {
     const typeId = event.target.dataset.inputFieldType;
     const sourceId = event.target.dataset.inputFieldSource;
     const listFieldId = event.target.dataset.inputFieldListField;
-    const id = typeId || sourceId || listFieldId;
+    const optionModeId = event.target.dataset.inputSelectOptionMode;
+    const optionFieldId = event.target.dataset.inputSelectOptionField;
+    const id = typeId || sourceId || listFieldId || optionModeId || optionFieldId;
     const field = config.fields.find((item) => String(item.id) === String(id));
     if (!field) return;
     if (typeId) {
       field.type = event.target.value || "string";
-      if (field.type !== "list") {
+      if (field.type !== "list" && field.type !== "multiSelect") {
         field.listSource = "salesOrderItems";
         field.listField = "";
+      }
+      if (field.type === "multiSelect") {
+        field.listSource = "salesOrderItems";
+        field.listField = "";
+      }
+      if (field.type === "select" && !field.selectOptions.length) {
+        field.selectOptions.push({
+          id: `option_${Date.now()}`,
+          label: "Affected item gross amount",
+          valueMode: "affectedItemField",
+          value: "",
+          affectedItemField: "grossamt",
+        });
       }
     }
     if (sourceId) {
@@ -2625,6 +3063,14 @@ document.addEventListener("DOMContentLoaded", () => {
       field.listField = Array.isArray(record?.fields) && record.fields.length ? record.fields[0].internalId || "" : "";
     }
     if (listFieldId) field.listField = event.target.value || "";
+    if (optionModeId || optionFieldId) {
+      const optionId = event.target.dataset.optionId || "";
+      const option = (field.selectOptions || []).find((item) => String(item.id) === String(optionId));
+      if (option) {
+        if (optionModeId) option.valueMode = event.target.value === "affectedItemField" ? "affectedItemField" : "static";
+        if (optionFieldId) option.affectedItemField = event.target.value || "";
+      }
+    }
     config.type = config.fields[0]?.type || "string";
     config.listSource = config.fields[0]?.listSource || "salesOrderItems";
     config.listField = config.fields[0]?.listField || "";
@@ -2634,6 +3080,34 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   el.inputFieldsList?.addEventListener("click", (event) => {
+    const addSelectOptionId = event.target.dataset.addInputSelectOption;
+    const removeSelectOptionId = event.target.dataset.removeInputSelectOption;
+    if (addSelectOptionId || removeSelectOptionId) {
+      const node = selectedNode();
+      if (!node || node.type !== "input") return;
+      const before = snapshot();
+      const config = ensureInputConfig(node);
+      const fieldId = addSelectOptionId || removeSelectOptionId;
+      const field = config.fields.find((item) => String(item.id) === String(fieldId));
+      if (!field) return;
+      field.selectOptions = Array.isArray(field.selectOptions) ? field.selectOptions : [];
+      if (addSelectOptionId) {
+        field.selectOptions.push({
+          id: `option_${Date.now()}`,
+          label: `Option ${field.selectOptions.length + 1}`,
+          valueMode: "static",
+          value: "",
+          affectedItemField: "",
+        });
+      } else {
+        const optionId = event.target.dataset.optionId || "";
+        field.selectOptions = field.selectOptions.filter((option) => String(option.id) !== String(optionId));
+      }
+      render();
+      el.inputConfigWrap.open = true;
+      pushHistory(before);
+      return;
+    }
     const id = event.target.dataset.removeInputField;
     if (!id) return;
     const node = selectedNode();
@@ -2656,7 +3130,11 @@ document.addEventListener("DOMContentLoaded", () => {
     const before = snapshot();
     const config = ensureInputConfig(node);
     config.type = el.inputType.value || "string";
-    if (config.type !== "list") {
+    if (config.type !== "list" && config.type !== "multiSelect") {
+      config.listSource = "salesOrderItems";
+      config.listField = "";
+    }
+    if (config.type === "multiSelect") {
       config.listSource = "salesOrderItems";
       config.listField = "";
     }
@@ -2694,8 +3172,19 @@ document.addEventListener("DOMContentLoaded", () => {
     const before = snapshot();
     const config = ensureActionConfig(node);
     config.type = el.actionType.value || "";
-    if (config.type === "createRecord" && !config.createRecord.mappings.length) {
+    if (config.type === "addItemLine" && !["storeSalesOrder", "intercompanySalesOrder"].includes(config.itemLineAction.target || config.itemLineAction.source)) {
+      config.itemLineAction.target = "storeSalesOrder";
+      config.itemLineAction.source = "storeSalesOrder";
+      config.itemLineAction.mappings = [];
+    }
+    if (config.type === "refundCreditMemo") {
+      config.createRecord.targetRecord = "customerRefund";
+    }
+    if ((config.type === "createRecord" || config.type === "refundCreditMemo") && !config.createRecord.mappings.length) {
       config.createRecord.mappings.push(defaultCreateRecordMapping(config.createRecord));
+    }
+    if (config.type === "email" && !config.emailAction.message) {
+      config.emailAction.message = node.message || "";
     }
     render();
     el.actionConfigWrap.open = true;
@@ -2710,6 +3199,59 @@ document.addEventListener("DOMContentLoaded", () => {
     render();
     el.actionConfigWrap.open = true;
     pushHistory(before);
+  });
+
+  el.actionResponse?.addEventListener("input", () => {
+    const node = selectedNode();
+    if (!node || node.type !== "action") return;
+    ensureActionConfig(node).response = el.actionResponse.value || "";
+  });
+
+  el.actionResponse?.addEventListener("focus", () => {
+    el.actionResponse.dataset.editSnapshot = snapshot();
+  });
+
+  el.actionResponse?.addEventListener("change", () => {
+    const node = selectedNode();
+    if (!node || node.type !== "action") return;
+    const before = el.actionResponse.dataset.editSnapshot || snapshot();
+    ensureActionConfig(node).response = el.actionResponse.value || "";
+    render();
+    el.actionConfigWrap.open = true;
+    pushHistory(before);
+    el.actionResponse.dataset.editSnapshot = "";
+  });
+
+  el.emailTarget?.addEventListener("change", () => {
+    const node = selectedNode();
+    if (!node || node.type !== "action") return;
+    const before = snapshot();
+    const emailConfig = ensureActionConfig(node).emailAction;
+    emailConfig.target = el.emailTarget.value === "supplier" ? "supplier" : "customer";
+    render();
+    el.actionConfigWrap.open = true;
+    pushHistory(before);
+  });
+
+  el.emailMessage?.addEventListener("input", () => {
+    const node = selectedNode();
+    if (!node || node.type !== "action") return;
+    ensureActionConfig(node).emailAction.message = el.emailMessage.value || "";
+  });
+
+  el.emailMessage?.addEventListener("focus", () => {
+    el.emailMessage.dataset.editSnapshot = snapshot();
+  });
+
+  el.emailMessage?.addEventListener("change", () => {
+    const node = selectedNode();
+    if (!node || node.type !== "action") return;
+    const before = el.emailMessage.dataset.editSnapshot || snapshot();
+    ensureActionConfig(node).emailAction.message = el.emailMessage.value || "";
+    render();
+    el.actionConfigWrap.open = true;
+    pushHistory(before);
+    el.emailMessage.dataset.editSnapshot = "";
   });
 
   el.itemLineItem?.addEventListener("change", () => {
@@ -2751,11 +3293,13 @@ document.addEventListener("DOMContentLoaded", () => {
   el.itemLineMapButton?.addEventListener("click", () => {
     const node = selectedNode();
     if (!node || node.type !== "action") return;
-    const itemLine = ensureActionConfig(node).itemLineAction;
+    const config = ensureActionConfig(node);
+    const itemLine = config.itemLineAction;
     itemLine.target = itemLine.target || itemLine.source || "storeSalesOrder";
     itemLine.source = itemLine.target;
     localStorage.setItem("csCreateRecordMapDraft", JSON.stringify({
       mapMode: "itemLineAction",
+      actionType: config.type === "addItemLine" ? "addItemLine" : "itemLineAction",
       nodeId: node.id,
       workflowId: state.currentId || "",
       records: state.records,
@@ -2793,10 +3337,6 @@ document.addEventListener("DOMContentLoaded", () => {
     const before = snapshot();
     const createConfig = ensureActionConfig(node).createRecord;
     createConfig.sourceRecord = el.createRecordSource.value || "storeSalesOrder";
-    createConfig.mappings = createConfig.mappings.map((mapping) => ({
-      ...mapping,
-      sourceField: createRecordSourceRecord(createConfig.sourceRecord)?.fields?.[0]?.internalId || "",
-    }));
     render();
     el.actionConfigWrap.open = true;
     pushHistory(before);
@@ -2835,7 +3375,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const before = snapshot();
     const config = ensureActionConfig(node);
     if (payload.type === "cs-item-line-map-saved") {
-      config.type = "itemLineAction";
+      config.type = payload.actionType === "addItemLine" ? "addItemLine" : "itemLineAction";
       config.itemLineAction = {
         ...config.itemLineAction,
         ...(payload.itemLineAction || {}),
@@ -3134,11 +3674,48 @@ document.addEventListener("DOMContentLoaded", () => {
     state.edges = state.edges.filter((edge) => edge.id !== edgeId);
     if (state.selectedEdgeId === edgeId) state.selectedEdgeId = "";
     if (state.selectedAnchor?.edgeId === edgeId) state.selectedAnchor = null;
+    state.selectedEdgeIds = (state.selectedEdgeIds || []).filter((id) => String(id) !== String(edgeId));
+    state.selectedAnchors = (state.selectedAnchors || []).filter((anchor) => String(anchor.edgeId) !== String(edgeId));
     render();
     pushHistory(before);
   });
 
   function deleteSelectedWorkflowItem() {
+    if (selectedWorkflowItemCount()) {
+      const before = snapshot();
+      const nodeIds = new Set((state.selectedNodeIds || []).map(String));
+      const anchorCount = (state.selectedAnchors || []).length;
+      const startSelected = state.nodes.some((node) => node.type === "start" && nodeIds.has(String(node.id)));
+      const deletableNodeIds = new Set(state.nodes.filter((node) => node.type !== "start" && nodeIds.has(String(node.id))).map((node) => String(node.id)));
+      const edgeIds = new Set((state.selectedEdgeIds || []).map(String));
+      state.edges.forEach((edge) => {
+        if (deletableNodeIds.has(String(edge.from)) || deletableNodeIds.has(String(edge.to))) edgeIds.add(String(edge.id));
+      });
+
+      state.selectedAnchors
+        .slice()
+        .sort((a, b) => String(a.edgeId).localeCompare(String(b.edgeId)) || Number(b.anchorIndex) - Number(a.anchorIndex))
+        .forEach((anchor) => {
+          if (edgeIds.has(String(anchor.edgeId))) return;
+          const edge = state.edges.find((item) => String(item.id) === String(anchor.edgeId));
+          const index = Number(anchor.anchorIndex);
+          if (edge?.anchors?.[index]) {
+            edge.anchors.splice(index, 1);
+            if (!edge.anchors.length) delete edge.anchors;
+          }
+        });
+
+      state.nodes = state.nodes.filter((node) => !deletableNodeIds.has(String(node.id)));
+      state.edges = state.edges.filter((edge) => !edgeIds.has(String(edge.id)));
+      clearWorkflowSelection();
+      state.edgeAnchorDrag = null;
+      render();
+      pushHistory(before);
+      const removedCount = deletableNodeIds.size + edgeIds.size + anchorCount;
+      setStatus(startSelected ? "Selected elements deleted. Start node was kept." : "Selected elements deleted.");
+      return removedCount > 0 || startSelected;
+    }
+
     if (!state.selectedNodeId && !state.selectedEdgeId && !state.selectedAnchor) return false;
     const before = snapshot();
 
@@ -3171,9 +3748,7 @@ document.addEventListener("DOMContentLoaded", () => {
       }
       state.nodes = state.nodes.filter((node) => node.id !== id);
       state.edges = state.edges.filter((edge) => edge.from !== id && edge.to !== id);
-      state.selectedNodeId = "";
-      state.selectedEdgeId = "";
-      state.selectedAnchor = null;
+      clearWorkflowSelection();
       render();
       pushHistory(before);
       setStatus("Node deleted.");
@@ -3182,8 +3757,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (state.selectedEdgeId) {
       state.edges = state.edges.filter((edge) => edge.id !== state.selectedEdgeId);
-      state.selectedEdgeId = "";
-      state.selectedAnchor = null;
+      clearWorkflowSelection();
       render();
       pushHistory(before);
       setStatus("Path deleted.");
@@ -3257,9 +3831,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.currentId = "";
     state.nodes = [];
     state.edges = [];
-    state.selectedNodeId = "";
-    state.selectedEdgeId = "";
-    state.selectedAnchor = null;
+    clearWorkflowSelection();
     state.criteria = [];
     state.settings = normaliseWorkflowSettings();
     state.undo = [];
@@ -3308,9 +3880,7 @@ document.addEventListener("DOMContentLoaded", () => {
     state.settings = normaliseWorkflowSettings(workflow?.definition?.settings);
     state.criteria = normaliseWorkflowCriteria(workflow?.definition?.criteria);
     state.debug = null;
-    state.selectedNodeId = "";
-    state.selectedEdgeId = "";
-    state.selectedAnchor = null;
+    clearWorkflowSelection();
     renderWorkflowSettings();
     renderWorkflowCriteria();
     setBuilderTab("workflow");

@@ -2,7 +2,7 @@
  * @NApiVersion 2.1
  * @NScriptType Restlet
  */
-define(["N/record", "N/log", "N/error"], (record, log, error) => {
+define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/search"], (record, log, error, email, render, runtime, search) => {
   const GROSS_DIVISOR = 1.2;
   const CUSTOMER_EMAIL_SENT_FIELD = "custbody_sb_cust_email_sent";
 
@@ -72,6 +72,94 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       ok: true,
       skipped: false,
       pairedSalesOrderId: String(pairedSalesOrderId),
+    };
+  }
+
+  function splitEmailRecipients(value) {
+    return String(value || "")
+      .split(/[;,]/)
+      .map(function (item) { return String(item || "").trim(); })
+      .filter(function (item) { return item && item.indexOf("@") > 0; });
+  }
+
+  function lookupEntityEmail(entityType, entityId) {
+    if (!entityId) return "";
+    try {
+      var lookup = search.lookupFields({
+        type: entityType,
+        id: entityId,
+        columns: ["email"],
+      });
+      return String(lookup && lookup.email || "").trim();
+    } catch (e) {
+      log.debug("Could not lookup workflow email entity recipient", {
+        entityType: entityType,
+        entityId: entityId,
+        error: e.message || e,
+      });
+      return "";
+    }
+  }
+
+  function workflowTransactionEmailRecipients(transactionRec, isPurchaseOrder) {
+    var transactionEmail = "";
+    try {
+      transactionEmail = transactionRec.getValue({ fieldId: "email" }) || "";
+    } catch (e) {
+      transactionEmail = "";
+    }
+
+    var recipients = splitEmailRecipients(transactionEmail);
+    if (recipients.length) return recipients;
+
+    var entityId = transactionRec.getValue({ fieldId: "entity" });
+    var entityType = isPurchaseOrder ? search.Type.VENDOR : search.Type.CUSTOMER;
+    return splitEmailRecipients(lookupEntityEmail(entityType, entityId));
+  }
+
+  function sendWorkflowTransactionEmail(transactionRec, id, isPurchaseOrder, message) {
+    var recipients = workflowTransactionEmailRecipients(transactionRec, isPurchaseOrder);
+    if (!recipients.length) {
+      throw error.create({
+        name: "MISSING_EMAIL_RECIPIENT",
+        message: "No email recipient was found on the transaction or entity.",
+      });
+    }
+
+    var tranId = "";
+    try {
+      tranId = transactionRec.getValue({ fieldId: "tranid" }) || "";
+    } catch (e) {
+      tranId = String(id || "");
+    }
+
+    var author = runtime.getCurrentUser().id;
+    var attachment = render.transaction({
+      entityId: Number(id),
+      printMode: render.PrintMode.PDF,
+    });
+    var subject = isPurchaseOrder
+      ? "Purchase Order " + (tranId || id)
+      : "Sales Order " + (tranId || id);
+
+    email.send({
+      author: author,
+      recipients: recipients,
+      subject: subject,
+      body: String(message || ""),
+      attachments: attachment ? [attachment] : [],
+      relatedRecords: {
+        transactionId: Number(id),
+      },
+    });
+
+    return {
+      ok: true,
+      id: String(id),
+      tranId: String(tranId || ""),
+      recipients: recipients,
+      subject: subject,
+      attachedPdf: !!attachment,
     };
   }
 
@@ -154,6 +242,10 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
         itemId: hasLineIndex
           ? String(safeGetSublistValue(transactionRec, "item", lineIndex) || processed.itemId || "")
           : String(processed.itemId || ""),
+        price: hasLineIndex ? safeGetSublistValue(transactionRec, "price", lineIndex) : "",
+        rate: hasLineIndex ? safeGetSublistValue(transactionRec, "rate", lineIndex) : "",
+        amount: hasLineIndex ? safeGetSublistValue(transactionRec, "amount", lineIndex) : "",
+        grossamt: hasLineIndex ? safeGetSublistValue(transactionRec, "grossamt", lineIndex) : "",
         isNew: processed.isNew === true,
       };
     });
@@ -219,14 +311,66 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     const failures = [];
 
     (Array.isArray(updates) ? updates : []).forEach((u) => {
+      const isNewLine = u && (u.isNew === true || u.isNew === "true");
+      const updateItem = u.item && typeof u.item === "object" ? u.item.id : u.item;
+      const itemId = String(u.itemId || updateItem || "").trim();
+
+      if (isNewLine) {
+        if (!itemId) {
+          failures.push({
+            lineId: "",
+            itemId: "",
+            error: "New line is missing itemId",
+          });
+          return;
+        }
+
+        try {
+          soRec.selectNewLine({ sublistId: "item" });
+          setCurrentIfDefined(soRec, "item", itemId);
+          if (hasOptionsValue(u)) {
+            const optionsValue = u.options !== undefined ? u.options : u.optionsSummary;
+            setCurrentIfDefined(soRec, "custcol_sb_itemoptionsdisplay", String(optionsValue || ""));
+          }
+          if (hasClosedValue(u)) {
+            setCurrentIfDefined(soRec, "isclosed", normaliseClosedValue(u));
+          }
+          applyMappedCurrentLineFields(soRec, u);
+          soRec.commitLine({ sublistId: "item" });
+
+          const insertedLineIndex = getItemLineCount(soRec) - 1;
+          soRec.selectLine({ sublistId: "item", line: insertedLineIndex });
+          applyMappedCurrentLineFields(soRec, u);
+          soRec.commitLine({ sublistId: "item" });
+
+          results.push({
+            line: insertedLineIndex,
+            lineId: String(safeGetSublistValue(soRec, "line", insertedLineIndex) || ""),
+            lineUniqueKey: String(safeGetSublistValue(soRec, "lineuniquekey", insertedLineIndex) || ""),
+            itemId: String(safeGetSublistValue(soRec, "item", insertedLineIndex) || itemId),
+            price: safeGetSublistValue(soRec, "price", insertedLineIndex),
+            rate: safeGetSublistValue(soRec, "rate", insertedLineIndex),
+            amount: safeGetSublistValue(soRec, "amount", insertedLineIndex),
+            grossamt: safeGetSublistValue(soRec, "grossamt", insertedLineIndex),
+            isNew: true,
+          });
+        } catch (lineErr) {
+          failures.push({
+            lineId: "",
+            itemId,
+            error: lineErr.message || String(lineErr),
+          });
+        }
+        return;
+      }
+
       const targetLine = findLineIndexForOptionsUpdate(soRec, u, updates);
       const optionsValue = u.options !== undefined ? u.options : u.optionsSummary;
 
       if (targetLine < 0) {
-        const updateItem = u.item && typeof u.item === "object" ? u.item.id : u.item;
         failures.push({
           lineId: String(u.lineId || u.suiteQlLineId || ""),
-          itemId: String(u.itemId || updateItem || ""),
+          itemId,
           error: "Line not found",
         });
         return;
@@ -260,11 +404,10 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
           closed: hasClosedValue(u) ? normaliseClosedValue(u) : undefined,
         });
       } catch (lineErr) {
-        const updateItem = u.item && typeof u.item === "object" ? u.item.id : u.item;
         failures.push({
           line: targetLine,
           lineId: String(u.lineId || u.suiteQlLineId || ""),
-          itemId: String(u.itemId || updateItem || ""),
+          itemId,
           error: lineErr.message || String(lineErr),
         });
       }
@@ -544,6 +687,17 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     return text.indexOf("deposit") >= 0 || /\bcd\d+/i.test(text);
   }
 
+  function isCreditApplyLine(line) {
+    const text = [
+      line.refNum,
+      line.refnum,
+      line.type,
+      line.doc,
+      line.internalId,
+    ].join(" ").toLowerCase();
+    return text.indexOf("credit") >= 0 || /\bcm\d+/i.test(text);
+  }
+
   function candidateDepositIds(context) {
     const candidates = Array.isArray(context && context.candidateDeposits)
       ? context.candidateDeposits
@@ -560,6 +714,139 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
         amount: normaliseAmount(allocation && allocation.amount),
       }))
       .filter((allocation) => allocation.id && allocation.amount);
+  }
+
+  function candidateCreditIds(context) {
+    const candidates = Array.isArray(context && context.candidateCredits)
+      ? context.candidateCredits
+      : [];
+    return candidates
+      .map((credit) => String(normaliseRecordValue(credit && (credit.id || credit.doc || credit.creditId)) || "").trim())
+      .filter(Boolean);
+  }
+
+  function creditAllocations(context) {
+    return (Array.isArray(context && context.creditAllocations) ? context.creditAllocations : [])
+      .map((allocation) => ({
+        id: String(normaliseRecordValue(allocation && (allocation.id || allocation.creditId || allocation.doc)) || "").trim(),
+        amount: normaliseAmount(allocation && allocation.amount),
+      }))
+      .filter((allocation) => allocation.id && allocation.amount);
+  }
+
+  function autoApplyCustomerCredit(customerRefundRec, context) {
+    const requestedAmount = normaliseAmount(context && context.refundAmount);
+    const wantedCreditIds = candidateCreditIds(context);
+    const requestedAllocations = creditAllocations(context);
+    const sublistDebug = customerRefundSublistDebug(customerRefundRec);
+    const sublistIds = ["apply", "credit", "credits"];
+    const lines = [];
+
+    sublistIds.forEach((sublistId) => {
+      const lineCount = sublistLineCount(customerRefundRec, sublistId);
+      for (let i = 0; i < lineCount; i++) {
+        lines.push(applyLineSnapshot(customerRefundRec, sublistId, i));
+      }
+    });
+
+    const creditLines = lines.filter((line) =>
+      isCreditApplyLine(line) ||
+      wantedCreditIds.indexOf(String(line.doc || "").trim()) >= 0 ||
+      wantedCreditIds.indexOf(String(line.internalId || "").trim()) >= 0
+    );
+
+    if (requestedAllocations.length) {
+      const applied = [];
+      const failed = [];
+      requestedAllocations.forEach((allocation) => {
+        const targetLine = creditLines.find((line) =>
+          String(line.doc || "").trim() === allocation.id ||
+          String(line.internalId || "").trim() === allocation.id
+        );
+        if (!targetLine) {
+          failed.push({ allocation, error: "Selected credit memo was not available on the refund apply sublist." });
+          return;
+        }
+        try {
+          customerRefundRec.selectLine({ sublistId: targetLine.sublistId, line: targetLine.line });
+          customerRefundRec.setCurrentSublistValue({ sublistId: targetLine.sublistId, fieldId: "apply", value: true });
+          customerRefundRec.setCurrentSublistValue({ sublistId: targetLine.sublistId, fieldId: "amount", value: allocation.amount });
+          customerRefundRec.commitLine({ sublistId: targetLine.sublistId });
+          applied.push({ line: targetLine.line, amount: allocation.amount, selectedLine: targetLine, allocation });
+        } catch (e) {
+          failed.push({ allocation, selectedLine: targetLine, error: e.message || String(e) });
+        }
+      });
+      return { applied, failed, availableLines: lines };
+    }
+
+    const target = creditLines[0] || lines[0];
+    if (!target) {
+      return {
+        applied: [],
+        failed: [{
+          error: "No credit memo lines were available to apply.",
+          wantedCreditIds,
+          sublists: sublistDebug,
+          availableLines: lines,
+        }],
+      };
+    }
+
+    const dueAmount = normaliseAmount(target.due) || normaliseAmount(target.total) || normaliseAmount(target.amount);
+    const amount = requestedAmount || dueAmount;
+    if (!amount) {
+      return {
+        applied: [],
+        failed: [{ error: "A refund amount could not be resolved for the selected credit memo line.", selectedLine: target, availableLines: lines }],
+      };
+    }
+
+    try {
+      customerRefundRec.selectLine({ sublistId: target.sublistId, line: target.line });
+      customerRefundRec.setCurrentSublistValue({ sublistId: target.sublistId, fieldId: "apply", value: true });
+      customerRefundRec.setCurrentSublistValue({ sublistId: target.sublistId, fieldId: "amount", value: amount });
+      customerRefundRec.commitLine({ sublistId: target.sublistId });
+      return {
+        applied: [{ line: target.line, amount, selectedLine: target }],
+        failed: [],
+        availableLines: lines,
+      };
+    } catch (e) {
+      return {
+        applied: [],
+        failed: [{ error: e.message || String(e), selectedLine: target, availableLines: lines }],
+      };
+    }
+  }
+
+  function firstDepositAllocation(context) {
+    const allocations = depositAllocations(context);
+    if (allocations.length) return allocations[0];
+    const candidates = Array.isArray(context && context.candidateDeposits)
+      ? context.candidateDeposits
+      : [];
+    const requestedAmount = normaliseAmount(context && context.refundAmount);
+    for (let i = 0; i < candidates.length; i++) {
+      const id = String(normaliseRecordValue(candidates[i] && (candidates[i].id || candidates[i].depositId || candidates[i].doc)) || "").trim();
+      if (id && requestedAmount) return { id, amount: requestedAmount };
+    }
+    return null;
+  }
+
+  function firstCreditAllocation(context) {
+    const allocations = creditAllocations(context);
+    if (allocations.length) return allocations[0];
+    const candidates = Array.isArray(context && context.candidateCredits)
+      ? context.candidateCredits
+      : [];
+    const requestedAmount = normaliseAmount(context && context.refundAmount);
+    for (let i = 0; i < candidates.length; i++) {
+      const id = String(normaliseRecordValue(candidates[i] && (candidates[i].id || candidates[i].creditId || candidates[i].doc)) || "").trim();
+      const amount = requestedAmount || normaliseAmount(candidates[i] && (candidates[i].total || candidates[i].amount));
+      if (id && amount) return { id, amount };
+    }
+    return null;
   }
 
   function autoApplyCustomerDeposit(customerRefundRec, context) {
@@ -672,6 +959,282 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     const payload = context && context.payload && typeof context.payload === "object"
       ? context.payload
       : context || {};
+    const selectedCredit = context && context.refundSource === "creditMemo" ? firstCreditAllocation(context) : null;
+    const selectedDeposit = firstDepositAllocation(context);
+
+    function buildAndSaveCustomerRefundFromCredit(allocation, options) {
+      const effectivePayload = Object.assign({}, payload);
+      const ignoredBodyFields = [];
+      ["customer", "entity", "account", "createdfrom", "createdFrom"].forEach((fieldId) => {
+        if (effectivePayload[fieldId] !== undefined) {
+          ignoredBodyFields.push({
+            fieldId,
+            value: effectivePayload[fieldId],
+            reason: "Customer Refund was transformed from the selected Credit Memo.",
+          });
+          delete effectivePayload[fieldId];
+        }
+      });
+      if (options && options.skipPaymentMethod === true) {
+        ["paymentMethod", "paymentmethod", "paymentOption", "paymentoption"].forEach((fieldId) => {
+          if (effectivePayload[fieldId] !== undefined) {
+            ignoredBodyFields.push({
+              fieldId,
+              value: effectivePayload[fieldId],
+              reason: "Skipped while retrying transformed Customer Refund save after linked-account validation.",
+            });
+            delete effectivePayload[fieldId];
+          }
+        });
+      }
+
+      const fieldAliasMap = {
+        paymentMethod: ["paymentmethod", "paymentMethod"],
+        paymentmethod: ["paymentmethod", "paymentMethod"],
+        paymentOption: ["paymentoption", "PaymentOption", "paymentmethod", "paymentMethod"],
+        paymentoption: ["paymentoption", "PaymentOption", "paymentmethod", "paymentMethod"],
+      };
+
+      let refundRec;
+      try {
+        refundRec = record.transform({
+          fromType: record.Type.CREDIT_MEMO,
+          fromId: Number(allocation.id),
+          toType: record.Type.CUSTOMER_REFUND,
+          isDynamic: true,
+        });
+      } catch (transformErr) {
+        return {
+          ok: false,
+          error: transformErr.message || String(transformErr),
+          name: transformErr.name || "",
+          allocation,
+          retryMode: options && options.skipPaymentMethod ? "credit-transform-without-payment-method" : "credit-transform",
+        };
+      }
+
+      const bodyResult = setMappedBodyFields(refundRec, effectivePayload, fieldAliasMap, [
+        "customform",
+        "paymentMethod",
+        "paymentmethod",
+        "paymentOption",
+        "paymentoption",
+      ]);
+      bodyResult.ignored = ignoredBodyFields;
+      const amountResult = allocation.amount
+        ? setFirstBodyValue(refundRec, ["payment", "amount", "usertotal", "total"], allocation.amount)
+        : { ok: false, skipped: true, reason: "blank" };
+      if (amountResult.ok) {
+        bodyResult.applied.push({
+          sourceField: "creditAllocation.amount",
+          fieldId: amountResult.fieldId,
+          value: amountResult.value,
+        });
+      } else if (!amountResult.skipped) {
+        bodyResult.failed.push({
+          sourceField: "creditAllocation.amount",
+          aliases: ["payment", "amount", "usertotal", "total"],
+          errors: amountResult.errors || [],
+        });
+      }
+
+      const applyResult = {
+        applied: [{
+          transformedFromCreditMemo: true,
+          creditMemoId: allocation.id,
+          amount: allocation.amount,
+          reason: "Customer Refund was transformed from the selected Credit Memo.",
+        }],
+        failed: [],
+        availableLines: [],
+      };
+
+      let id;
+      try {
+        id = refundRec.save({
+          enableSourcing: true,
+          ignoreMandatoryFields: false,
+        });
+      } catch (saveErr) {
+        return {
+          ok: false,
+          error: saveErr.message || String(saveErr),
+          name: saveErr.name || "",
+          bodyResult,
+          applyResult,
+          allocation,
+          sublists: customerRefundSublistDebug(refundRec),
+          retryMode: options && options.skipPaymentMethod ? "credit-transform-without-payment-method" : "credit-transform",
+        };
+      }
+
+      const saved = record.load({
+        type: record.Type.CUSTOMER_REFUND,
+        id,
+        isDynamic: false,
+      });
+
+      return {
+        ok: true,
+        id: String(id),
+        tranId: String(saved.getValue({ fieldId: "tranid" }) || ""),
+        bodyResult,
+        applyResult,
+        allocation,
+        retryMode: options && options.skipPaymentMethod ? "credit-transform-without-payment-method" : "credit-transform",
+      };
+    }
+
+    if (selectedCredit) {
+      const transformed = buildAndSaveCustomerRefundFromCredit(selectedCredit, { skipPaymentMethod: false });
+      if (transformed.ok || !/account of a transaction line/i.test(transformed.error || "")) {
+        return transformed;
+      }
+      const retry = buildAndSaveCustomerRefundFromCredit(selectedCredit, { skipPaymentMethod: true });
+      retry.firstAttempt = transformed;
+      return retry;
+    }
+
+    function buildAndSaveCustomerRefundFromDeposit(allocation, options) {
+      const effectivePayload = Object.assign({}, payload);
+      const ignoredBodyFields = [];
+      ["customer", "entity", "account", "createdfrom", "createdFrom"].forEach((fieldId) => {
+        if (effectivePayload[fieldId] !== undefined) {
+          ignoredBodyFields.push({
+            fieldId,
+            value: effectivePayload[fieldId],
+            reason: "Customer Refund was transformed from the selected Customer Deposit.",
+          });
+          delete effectivePayload[fieldId];
+        }
+      });
+      if (options && options.skipPaymentMethod === true) {
+        ["paymentMethod", "paymentmethod", "paymentOption", "paymentoption"].forEach((fieldId) => {
+          if (effectivePayload[fieldId] !== undefined) {
+            ignoredBodyFields.push({
+              fieldId,
+              value: effectivePayload[fieldId],
+              reason: "Skipped while retrying transformed Customer Refund save after linked-account validation.",
+            });
+            delete effectivePayload[fieldId];
+          }
+        });
+      }
+
+      const fieldAliasMap = {
+        paymentMethod: ["paymentmethod", "paymentMethod"],
+        paymentmethod: ["paymentmethod", "paymentMethod"],
+        paymentOption: ["paymentoption", "paymentOption", "paymentmethod", "paymentMethod"],
+        paymentoption: ["paymentoption", "paymentOption", "paymentmethod", "paymentMethod"],
+      };
+
+      let refundRec;
+      try {
+        refundRec = record.transform({
+          fromType: record.Type.CUSTOMER_DEPOSIT,
+          fromId: Number(allocation.id),
+          toType: record.Type.CUSTOMER_REFUND,
+          isDynamic: true,
+        });
+      } catch (transformErr) {
+        return {
+          ok: false,
+          error: transformErr.message || String(transformErr),
+          name: transformErr.name || "",
+          allocation,
+          retryMode: options && options.skipPaymentMethod ? "transform-without-payment-method" : "transform",
+        };
+      }
+
+      const bodyResult = setMappedBodyFields(refundRec, effectivePayload, fieldAliasMap, [
+        "customform",
+        "paymentMethod",
+        "paymentmethod",
+        "paymentOption",
+        "paymentoption",
+      ]);
+      bodyResult.ignored = ignoredBodyFields;
+      const amountResult = allocation.amount
+        ? setFirstBodyValue(refundRec, ["payment", "amount", "usertotal", "total"], allocation.amount)
+        : { ok: false, skipped: true, reason: "blank" };
+      if (amountResult.ok) {
+        bodyResult.applied.push({
+          sourceField: "depositAllocation.amount",
+          fieldId: amountResult.fieldId,
+          value: amountResult.value,
+        });
+      } else if (!amountResult.skipped) {
+        bodyResult.failed.push({
+          sourceField: "depositAllocation.amount",
+          aliases: ["payment", "amount", "usertotal", "total"],
+          errors: amountResult.errors || [],
+        });
+      }
+
+      const applyContext = Object.assign({}, context || {}, {
+        refundAmount: allocation.amount || (context && context.refundAmount),
+        depositAllocations: [allocation],
+        candidateDeposits: [{ id: allocation.id }],
+      });
+      const explicitApplyResult = effectivePayload.apply ? applyCustomerRefundSublistRows(refundRec, effectivePayload.apply) : { applied: [], failed: [] };
+      const applyResult = explicitApplyResult.applied.length
+        ? explicitApplyResult
+        : autoApplyCustomerDeposit(refundRec, applyContext);
+      if (!applyResult.applied.length) {
+        applyResult.applied.push({
+          transformedFromDeposit: true,
+          depositId: allocation.id,
+          amount: allocation.amount,
+          reason: "Customer Refund was transformed from the selected Customer Deposit; no apply sublist lines were exposed.",
+        });
+      }
+
+      let id;
+      try {
+        id = refundRec.save({
+          enableSourcing: true,
+          ignoreMandatoryFields: false,
+        });
+      } catch (saveErr) {
+        return {
+          ok: false,
+          error: saveErr.message || String(saveErr),
+          name: saveErr.name || "",
+          bodyResult,
+          applyResult,
+          allocation,
+          sublists: customerRefundSublistDebug(refundRec),
+          retryMode: options && options.skipPaymentMethod ? "transform-without-payment-method" : "transform",
+        };
+      }
+
+      const saved = record.load({
+        type: record.Type.CUSTOMER_REFUND,
+        id,
+        isDynamic: false,
+      });
+
+      return {
+        ok: true,
+        id: String(id),
+        tranId: String(saved.getValue({ fieldId: "tranid" }) || ""),
+        bodyResult,
+        applyResult,
+        allocation,
+        retryMode: options && options.skipPaymentMethod ? "transform-without-payment-method" : "transform",
+      };
+    }
+
+    if (selectedDeposit) {
+      const transformed = buildAndSaveCustomerRefundFromDeposit(selectedDeposit, { skipPaymentMethod: false });
+      if (transformed.ok || !/account of a transaction line/i.test(transformed.error || "")) {
+        return transformed;
+      }
+      const retry = buildAndSaveCustomerRefundFromDeposit(selectedDeposit, { skipPaymentMethod: true });
+      retry.firstAttempt = transformed;
+      return retry;
+    }
+
     function buildAndSaveCustomerRefund(options) {
       const effectivePayload = Object.assign({}, payload);
       const ignoredBodyFields = [];
@@ -727,11 +1290,15 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       const explicitApplyResult = effectivePayload.apply ? applyCustomerRefundSublistRows(refundRec, effectivePayload.apply) : { applied: [], failed: [] };
       const applyResult = explicitApplyResult.applied.length
         ? explicitApplyResult
-        : autoApplyCustomerDeposit(refundRec, context || {});
+        : context && context.refundSource === "creditMemo"
+          ? autoApplyCustomerCredit(refundRec, context || {})
+          : autoApplyCustomerDeposit(refundRec, context || {});
       if (!applyResult.applied.length) {
         return {
           ok: false,
-          error: "No customer deposit was applied to the refund.",
+          error: context && context.refundSource === "creditMemo"
+            ? "No credit memo was applied to the refund."
+            : "No customer deposit was applied to the refund.",
           bodyResult,
           applyResult,
           retryMode: options && options.skipPaymentMethod ? "without-payment-method" : "normal",
@@ -899,6 +1466,8 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       itemId: true,
       item: true,
       lineIndex: true,
+      isNew: true,
+      clientLineKey: true,
       options: true,
       optionsSummary: true,
       closed: true,
@@ -940,6 +1509,7 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
   function mappedLineFieldEntries(update) {
     const reserved = reservedLineUpdateKeys();
     const order = {
+      price: 5,
       rate: 10,
       amount: 20,
       grossamt: 30,
@@ -956,9 +1526,29 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       .sort((a, b) => (order[a.fieldId] || 50) - (order[b.fieldId] || 50));
   }
 
+  function entryNeedsCustomPriceLevel(entry) {
+    var clean = String(entry && entry.fieldId || "").toLowerCase();
+    return clean === "rate" ||
+      clean === "amount" ||
+      clean === "grossamt" ||
+      clean === "grossamount" ||
+      clean === "netamount";
+  }
+
+  function setCurrentCustomPriceLevel(soRec) {
+    try {
+      setCurrentIfDefined(soRec, "price", -1);
+    } catch (e) {
+      log.debug("Could not set workflow line price level to custom", e.message || e);
+    }
+  }
+
   function applyMappedCurrentLineFields(soRec, update) {
     const entries = mappedLineFieldEntries(update);
     log.debug("Workflow mapped current line fields", entries);
+    if (entries.some(entryNeedsCustomPriceLevel)) {
+      setCurrentCustomPriceLevel(soRec);
+    }
     entries.forEach((entry) => {
       setCurrentIfDefined(soRec, entry.fieldId, entry.value);
     });
@@ -1263,12 +1853,447 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
     applyPricingToCurrentLine(soRec, u, isNewLine);
   }
 
+  function creditReturnAuthorization(context) {
+    var returnAuthorizationId = Number(context.returnAuthorizationId || context.id || 0);
+    if (!returnAuthorizationId) {
+      throw error.create({
+        name: "MISSING_RETURN_AUTHORIZATION",
+        message: "Return Authorisation ID is required.",
+      });
+    }
+
+    var creditMemoRec = record.transform({
+      fromType: record.Type.RETURN_AUTHORIZATION,
+      fromId: returnAuthorizationId,
+      toType: record.Type.CREDIT_MEMO,
+      isDynamic: false,
+    });
+
+    if (context.memo !== undefined) {
+      try {
+        creditMemoRec.setValue({
+          fieldId: "memo",
+          value: String(context.memo || ""),
+        });
+      } catch (memoErr) {
+        log.debug("Could not set Credit Memo memo during RMA credit", memoErr.message || memoErr);
+      }
+    }
+
+    var creditMemoId = creditMemoRec.save({
+      enableSourcing: true,
+      ignoreMandatoryFields: false,
+    });
+
+    var tranId = "";
+    try {
+      var lookup = search.lookupFields({
+        type: search.Type.CREDIT_MEMO,
+        id: creditMemoId,
+        columns: ["tranid"],
+      });
+      tranId = String((lookup && lookup.tranid) || "");
+    } catch (lookupErr) {
+      tranId = String(creditMemoId);
+    }
+
+    return {
+      ok: true,
+      id: String(creditMemoId),
+      tranId: tranId || String(creditMemoId),
+      returnAuthorizationId: String(returnAuthorizationId),
+      transformed: true,
+      recordType: "creditMemo",
+    };
+  }
+
+  function cleanReceiptLotAssignments(assignments) {
+    return (Array.isArray(assignments) ? assignments : [])
+      .map(function (assignment) {
+        return {
+          itemId: String(assignment.itemId || assignment.item || "").trim(),
+          quantity: Number(assignment.quantity || assignment.qty || 0) || 0,
+          inventoryNumberId: String(assignment.inventoryNumberId || assignment.lotNumberId || assignment.lot || "").trim(),
+          inventoryNumberName: String(assignment.inventoryNumberName || assignment.lotNumberName || assignment.lotName || "").trim(),
+          inventoryStatusId: String(assignment.inventoryStatusId || assignment.statusId || "").trim(),
+          locationId: String(assignment.locationId || "").trim(),
+        };
+      })
+      .filter(function (assignment) {
+        return assignment.itemId && assignment.inventoryNumberId;
+      });
+  }
+
+  function receiptAssignmentMap(assignments) {
+    return cleanReceiptLotAssignments(assignments).reduce(function (map, assignment) {
+      if (!map[assignment.itemId]) map[assignment.itemId] = [];
+      map[assignment.itemId].push(assignment);
+      return map;
+    }, {});
+  }
+
+  function getSublistValueSafe(rec, sublistId, fieldId, line) {
+    try {
+      return rec.getSublistValue({
+        sublistId: sublistId,
+        fieldId: fieldId,
+        line: line,
+      });
+    } catch (err) {
+      return "";
+    }
+  }
+
+  function getAssignmentValueSafe(inventoryDetail, line, fieldId) {
+    try {
+      return inventoryDetail.getSublistValue({
+        sublistId: "inventoryassignment",
+        fieldId: fieldId,
+        line: line,
+      });
+    } catch (err) {
+      return "";
+    }
+  }
+
+  function inventoryNumberNameFromId(inventoryNumberId) {
+    var id = String(inventoryNumberId || "").trim();
+    if (!id) return "";
+    try {
+      var lookup = search.lookupFields({
+        type: search.Type.INVENTORY_NUMBER,
+        id: id,
+        columns: ["inventorynumber"],
+      });
+      return String((lookup && lookup.inventorynumber) || "").trim();
+    } catch (err) {
+      log.debug("Could not resolve inventory number name", {
+        inventoryNumberId: id,
+        error: err.message || err,
+      });
+      return "";
+    }
+  }
+
+  function salesOrderLotAssignmentsFromInventoryDetail(salesOrderId) {
+    var id = Number(salesOrderId || 0);
+    if (!id) return [];
+
+    var soRec = record.load({
+      type: record.Type.SALES_ORDER,
+      id: id,
+      isDynamic: false,
+    });
+    var lineCount = soRec.getLineCount({ sublistId: "item" });
+    var assignments = [];
+
+    for (var line = 0; line < lineCount; line += 1) {
+      var itemId = String(getSublistValueSafe(soRec, "item", "item", line) || "").trim();
+      if (!itemId) continue;
+
+      var inventoryDetail;
+      try {
+        inventoryDetail = soRec.getSublistSubrecord({
+          sublistId: "item",
+          fieldId: "inventorydetail",
+          line: line,
+        });
+      } catch (detailErr) {
+        continue;
+      }
+      if (!inventoryDetail) continue;
+
+      var assignmentCount = inventoryDetail.getLineCount({
+        sublistId: "inventoryassignment",
+      });
+      for (var assignmentLine = 0; assignmentLine < assignmentCount; assignmentLine += 1) {
+        var inventoryNumberId =
+          getAssignmentValueSafe(inventoryDetail, assignmentLine, "issueinventorynumber") ||
+          getAssignmentValueSafe(inventoryDetail, assignmentLine, "receiptinventorynumber");
+        if (!inventoryNumberId) continue;
+        assignments.push({
+          itemId: itemId,
+          sourceLine: line,
+          quantity: Number(getAssignmentValueSafe(inventoryDetail, assignmentLine, "quantity") || 0) || 0,
+          inventoryNumberId: String(inventoryNumberId),
+          inventoryNumberName: inventoryNumberNameFromId(inventoryNumberId),
+          inventoryStatusId: String(getAssignmentValueSafe(inventoryDetail, assignmentLine, "inventorystatus") || ""),
+          binNumberId: String(getAssignmentValueSafe(inventoryDetail, assignmentLine, "binnumber") || ""),
+        });
+      }
+    }
+
+    return assignments;
+  }
+
+  function clearInventoryAssignments(inventoryDetail) {
+    var count = inventoryDetail.getLineCount({ sublistId: "inventoryassignment" });
+    for (var line = count - 1; line >= 0; line -= 1) {
+      inventoryDetail.removeLine({
+        sublistId: "inventoryassignment",
+        line: line,
+      });
+    }
+  }
+
+  function setReceiptInventoryAssignments(receiptRec, line, assignments, lineQuantity) {
+    var inventoryDetail = receiptRec.getSublistSubrecord({
+      sublistId: "item",
+      fieldId: "inventorydetail",
+      line: line,
+    });
+    clearInventoryAssignments(inventoryDetail);
+
+    var remainingQuantity = Number(lineQuantity || 0) || 0;
+    var assignmentLine = 0;
+    assignments.forEach(function (assignment) {
+      if (remainingQuantity <= 0 && lineQuantity > 0) return;
+      var quantity = Number(assignment.quantity || 0) || remainingQuantity || 1;
+      if (remainingQuantity > 0 && quantity > remainingQuantity) quantity = remainingQuantity;
+      inventoryDetail.insertLine({
+        sublistId: "inventoryassignment",
+        line: assignmentLine,
+      });
+      var inventoryNumberName = String(assignment.inventoryNumberName || "").trim();
+      if (inventoryNumberName) {
+        try {
+          inventoryDetail.setSublistText({
+            sublistId: "inventoryassignment",
+            fieldId: "receiptinventorynumber",
+            line: assignmentLine,
+            text: inventoryNumberName,
+          });
+        } catch (textErr) {
+          log.debug("Could not set receipt inventory number by text; falling back to value", {
+            inventoryNumberId: assignment.inventoryNumberId,
+            inventoryNumberName: inventoryNumberName,
+            error: textErr.message || textErr,
+          });
+          inventoryDetail.setSublistValue({
+            sublistId: "inventoryassignment",
+            fieldId: "receiptinventorynumber",
+            line: assignmentLine,
+            value: Number(assignment.inventoryNumberId),
+          });
+        }
+      } else {
+        inventoryDetail.setSublistValue({
+          sublistId: "inventoryassignment",
+          fieldId: "receiptinventorynumber",
+          line: assignmentLine,
+          value: Number(assignment.inventoryNumberId),
+        });
+      }
+      if (assignment.inventoryStatusId) {
+        inventoryDetail.setSublistValue({
+          sublistId: "inventoryassignment",
+          fieldId: "inventorystatus",
+          line: assignmentLine,
+          value: Number(assignment.inventoryStatusId),
+        });
+      }
+      inventoryDetail.setSublistValue({
+        sublistId: "inventoryassignment",
+        fieldId: "quantity",
+        line: assignmentLine,
+        value: quantity,
+      });
+      if (remainingQuantity > 0) remainingQuantity -= quantity;
+      assignmentLine += 1;
+    });
+  }
+
+  function receiveReturnAuthorization(context) {
+    var returnAuthorizationId = Number(context.returnAuthorizationId || context.id || 0);
+    if (!returnAuthorizationId) {
+      throw error.create({
+        name: "MISSING_RETURN_AUTHORIZATION",
+        message: "Return Authorisation ID is required.",
+      });
+    }
+
+    var lotAssignments = cleanReceiptLotAssignments(context.lotAssignments || []);
+    var lotAssignmentSource = "payload";
+    if (!lotAssignments.length && context.pairedSalesOrderId) {
+      lotAssignments = salesOrderLotAssignmentsFromInventoryDetail(context.pairedSalesOrderId);
+      lotAssignmentSource = "pairedSalesOrderInventoryDetail";
+    }
+    lotAssignments = lotAssignments.map(function (assignment) {
+      if (assignment.inventoryNumberName) return assignment;
+      assignment.inventoryNumberName = inventoryNumberNameFromId(assignment.inventoryNumberId);
+      return assignment;
+    });
+    var assignmentsByItem = receiptAssignmentMap(lotAssignments);
+    var receiptRec = record.transform({
+      fromType: record.Type.RETURN_AUTHORIZATION,
+      fromId: returnAuthorizationId,
+      toType: record.Type.ITEM_RECEIPT,
+      isDynamic: false,
+    });
+
+    if (context.memo !== undefined) {
+      try {
+        receiptRec.setValue({
+          fieldId: "memo",
+          value: String(context.memo || ""),
+        });
+      } catch (memoErr) {
+        log.debug("Could not set Item Receipt memo during RMA receipt", memoErr.message || memoErr);
+      }
+    }
+
+    var lineCount = receiptRec.getLineCount({ sublistId: "item" });
+    var applied = [];
+    var missing = [];
+    for (var line = 0; line < lineCount; line += 1) {
+      var itemId = String(receiptRec.getSublistValue({
+        sublistId: "item",
+        fieldId: "item",
+        line: line,
+      }) || "").trim();
+      var lineQuantity = Number(receiptRec.getSublistValue({
+        sublistId: "item",
+        fieldId: "quantity",
+        line: line,
+      }) || 0) || 0;
+      var inventoryDetailAvailable = false;
+      try {
+        var inventoryDetailAvailValue = receiptRec.getSublistValue({
+          sublistId: "item",
+          fieldId: "inventorydetailavail",
+          line: line,
+        });
+        inventoryDetailAvailable = inventoryDetailAvailValue === true || inventoryDetailAvailValue === "T";
+      } catch (detailAvailErr) {
+        inventoryDetailAvailable = false;
+      }
+
+      try {
+        receiptRec.setSublistValue({
+          sublistId: "item",
+          fieldId: "itemreceive",
+          line: line,
+          value: true,
+        });
+      } catch (receiveErr) {
+        log.debug("Could not force itemreceive on RMA receipt line", {
+          line: line,
+          itemId: itemId,
+          error: receiveErr.message || receiveErr,
+        });
+      }
+
+      var lineAssignments = assignmentsByItem[itemId] || [];
+      if (!lineAssignments.length) {
+        if (inventoryDetailAvailable) {
+          missing.push({ line: line, itemId: itemId, reason: "No matching lot assignment from paired Sales Order." });
+        }
+        continue;
+      }
+
+      try {
+        setReceiptInventoryAssignments(receiptRec, line, lineAssignments, lineQuantity);
+        applied.push({
+          line: line,
+          itemId: itemId,
+          quantity: lineQuantity,
+          lots: lineAssignments.map(function (assignment) {
+            return {
+              id: assignment.inventoryNumberId,
+              name: assignment.inventoryNumberName || "",
+            };
+          }),
+        });
+      } catch (assignErr) {
+        missing.push({ line: line, itemId: itemId, reason: assignErr.message || String(assignErr) });
+      }
+    }
+
+    if (missing.length) {
+      throw error.create({
+        name: "RMA_RECEIPT_LOT_ASSIGNMENT_FAILED",
+        message: "One or more Item Receipt lines could not be assigned a lot number from " + lotAssignmentSource + ": " + JSON.stringify(missing),
+      });
+    }
+
+    var itemReceiptId = receiptRec.save({
+      enableSourcing: true,
+      ignoreMandatoryFields: false,
+    });
+
+    var tranId = "";
+    try {
+      var lookup = search.lookupFields({
+        type: search.Type.ITEM_RECEIPT,
+        id: itemReceiptId,
+        columns: ["tranid"],
+      });
+      tranId = String((lookup && lookup.tranid) || "");
+    } catch (lookupErr) {
+      tranId = String(itemReceiptId);
+    }
+
+    return {
+      ok: true,
+      id: String(itemReceiptId),
+      tranId: tranId || String(itemReceiptId),
+      returnAuthorizationId: String(returnAuthorizationId),
+      pairedSalesOrderId: String(context.pairedSalesOrderId || ""),
+      transformed: true,
+      recordType: "itemReceipt",
+      lotAssignmentSource: lotAssignmentSource,
+      applied: applied,
+    };
+  }
+
+  function approveReturnAuthorization(context) {
+    var returnAuthorizationId = Number(context.returnAuthorizationId || context.id || 0);
+    if (!returnAuthorizationId) {
+      throw error.create({
+        name: "MISSING_RETURN_AUTHORIZATION",
+        message: "Return Authorisation ID is required.",
+      });
+    }
+
+    record.submitFields({
+      type: record.Type.RETURN_AUTHORIZATION,
+      id: returnAuthorizationId,
+      values: {
+        orderstatus: String(context.orderstatus || context.orderStatus || "B"),
+      },
+      options: {
+        enableSourcing: true,
+        ignoreMandatoryFields: false,
+      },
+    });
+
+    return {
+      ok: true,
+      id: String(returnAuthorizationId),
+      recordType: "returnAuthorization",
+      approved: true,
+      orderstatus: String(context.orderstatus || context.orderStatus || "B"),
+    };
+  }
+
   const post = (context) => {
     try {
       log.audit("🔁 RESTlet Triggered", context);
 
       if (context && context.action === "createCustomerRefund") {
         return createCustomerRefund(context);
+      }
+
+      if (context && context.action === "creditReturnAuthorization") {
+        return creditReturnAuthorization(context);
+      }
+
+      if (context && context.action === "receiveReturnAuthorization") {
+        return receiveReturnAuthorization(context);
+      }
+
+      if (context && context.action === "approveReturnAuthorization") {
+        return approveReturnAuthorization(context);
       }
 
       if (!context.id) {
@@ -1285,6 +2310,26 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
       const transactionRecordType = isPurchaseOrder
         ? record.Type.PURCHASE_ORDER
         : record.Type.SALES_ORDER;
+
+      if (context.workflowEmailAction === true) {
+        const emailMessage = String(context.message == null ? "" : context.message);
+        const emailRec = record.load({
+          type: transactionRecordType,
+          id,
+          isDynamic: false,
+        });
+        const emailResult = sendWorkflowTransactionEmail(emailRec, id, isPurchaseOrder, emailMessage);
+
+        return {
+          ok: true,
+          id,
+          recordType: isPurchaseOrder ? "purchaseOrder" : "salesOrder",
+          triggered: true,
+          triggerType: "EMAIL",
+          message: "Workflow email sent",
+          email: emailResult,
+        };
+      }
 
       const lines = Array.isArray(context.lines) ? context.lines : [];
       const deletedLineIds = Array.isArray(context.deletedLineIds)
@@ -1562,9 +2607,14 @@ define(["N/record", "N/log", "N/error"], (record, log, error) => {
               soRec.selectNewLine({ sublistId: "item" });
 
               applyLineValues(soRec, u, warehouseId, warehouseTextNorm, true);
+              applyMappedCurrentLineFields(soRec, u);
 
               soRec.commitLine({ sublistId: "item" });
               const insertedLineIndex = getItemLineCount(soRec) - 1;
+              soRec.selectLine({ sublistId: "item", line: insertedLineIndex });
+              applyMappedCurrentLineFields(soRec, u);
+              soRec.commitLine({ sublistId: "item" });
+
               processedLines.push({
                 clientLineKey: u.clientLineKey,
                 lineIndex: insertedLineIndex,

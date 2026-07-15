@@ -33,6 +33,8 @@ const { createNetSuiteCustomer } = require("../utils/netsuiteCustomerCreate");
 const SO_CACHE_TTL_MS = 60 * 60 * 1000; // 1 hour
 const SO_CACHE_VERSION = "closed-lines-v1";
 const soCache = new Map(); // key -> { expiresAt, data, inFlight }
+let workflowProgressTableReady = false;
+let workflowProgressTableInit = null;
 const LOCATION_FEED_TTL_MS = 10 * 60 * 1000;
 const locationFeedCache = { expiresAt: 0, rows: null, inFlight: null };
 const inventoryStatusFeedCache = { expiresAt: 0, rows: null, inFlight: null };
@@ -978,14 +980,14 @@ function cleanDraftValue(value) {
 
 function refId(value) {
   if (value && typeof value === "object") {
-    return cleanDraftValue(value.id || value.internalId || value.value);
+    return cleanDraftValue(value.id || value.internalId || value.value || value.internalid);
   }
   return cleanDraftValue(value);
 }
 
 function refName(value) {
   if (value && typeof value === "object") {
-    return cleanDraftValue(value.refName || value.name || value.text || value.value);
+    return cleanDraftValue(value.refName || value.name || value.text || value.value || value.displayName);
   }
   return "";
 }
@@ -1213,6 +1215,85 @@ function workflowCheckFieldLabel(fieldId) {
   })[fieldId] || fieldId;
 }
 
+function workflowCheckRecordLabel(recordType = "") {
+  return ({
+    returnAuthorization: "Return Authorisation",
+    creditMemo: "Credit Memo",
+    customerRefund: "Customer Refund",
+    customerDeposit: "Customer Deposit",
+    salesOrder: "Sales Order",
+  })[recordType] || recordType || "Record";
+}
+
+function normaliseWorkflowCheckRecordType(value = "") {
+  const raw = cleanDraftValue(value);
+  return raw.replace(/^record:/i, "");
+}
+
+async function resolveWorkflowCheckRecordType(recordType = "") {
+  const raw = cleanDraftValue(recordType);
+  const recordIdMatch = raw.match(/^record:(\d+)$/i);
+  if (!recordIdMatch) return raw;
+  const result = await pool.query(
+    `SELECT id, label, internal_id FROM cs_workflow_record_types WHERE id = $1 LIMIT 1`,
+    [recordIdMatch[1]]
+  );
+  const record = result.rows[0];
+  return cleanDraftValue(record?.internal_id) || raw;
+}
+
+function workflowCheckTransactionType(recordType = "") {
+  const clean = normaliseWorkflowCheckRecordType(recordType);
+  return ({
+    returnAuthorization: "RtnAuth",
+    returnauthorization: "RtnAuth",
+    return_authorization: "RtnAuth",
+    returnauthorisation: "RtnAuth",
+    return_authorisation: "RtnAuth",
+    creditMemo: "CustCred",
+    creditmemo: "CustCred",
+    customerRefund: "CustRfnd",
+    customerrefund: "CustRfnd",
+    customerDeposit: "CustDep",
+    customerdeposit: "CustDep",
+    salesOrder: "SalesOrd",
+    salesorder: "SalesOrd",
+  })[clean] || "";
+}
+
+function workflowCheckRecordPage(recordType = "") {
+  const clean = normaliseWorkflowCheckRecordType(recordType);
+  return ({
+    returnAuthorization: "rtnauth.nl",
+    returnauthorization: "rtnauth.nl",
+    return_authorization: "rtnauth.nl",
+    returnauthorisation: "rtnauth.nl",
+    return_authorisation: "rtnauth.nl",
+    creditMemo: "custcred.nl",
+    creditmemo: "custcred.nl",
+    customerRefund: "custrfnd.nl",
+    customerrefund: "custrfnd.nl",
+    customerDeposit: "custdep.nl",
+    customerdeposit: "custdep.nl",
+    salesOrder: "salesord.nl",
+    salesorder: "salesord.nl",
+  })[clean] || "";
+}
+
+function normaliseWorkflowCheckRecordCandidate(row = {}, recordType = "") {
+  const id = cleanDraftValue(rowValue(row, "id", "ID"));
+  const tranId = cleanDraftValue(rowValue(row, "tranid", "TRANID", "number", "NUMBER")) || id;
+  const page = workflowCheckRecordPage(recordType);
+  return {
+    id,
+    tranId,
+    date: cleanDraftValue(rowValue(row, "trandate", "TRANDATE")),
+    status: cleanDraftValue(rowValue(row, "status_display", "STATUS_DISPLAY", "status", "STATUS")),
+    total: cleanDraftValue(rowValue(row, "total", "TOTAL", "foreigntotal", "FOREIGNTOTAL")),
+    url: page && id ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}/app/accounting/transactions/${page}?id=${encodeURIComponent(id)}` : "",
+  };
+}
+
 function workflowCheckLineValue(row = {}, fieldId = "") {
   const key = String(fieldId || "").toLowerCase();
   const absoluteNumber = (value) => {
@@ -1248,6 +1329,104 @@ function workflowCheckLineSourceMappings(rules = []) {
     sourceSublist: "item",
     sourceField: field,
   }));
+}
+
+async function getWorkflowCheckSalesOrderEntityId(salesOrderId, userId) {
+  const salesOrderNumeric = Number(salesOrderId);
+  if (!Number.isFinite(salesOrderNumeric) || salesOrderNumeric <= 0) return "";
+  const result = await nsPostRaw(
+    suiteQlUrl(),
+    {
+      q: `
+        SELECT entity
+        FROM transaction
+        WHERE id = ${salesOrderNumeric}
+      `,
+    },
+    userId
+  );
+  const row = Array.isArray(result?.items) ? result.items[0] || {} : {};
+  return cleanDraftValue(row.entity || row.ENTITY);
+}
+
+async function getWorkflowCheckRecordCandidates({ recordType, salesOrderId }, userId) {
+  const transactionType = workflowCheckTransactionType(recordType);
+  const salesOrderEntityId = await getWorkflowCheckSalesOrderEntityId(salesOrderId, userId);
+  const customerNumeric = Number(salesOrderEntityId);
+  if (!transactionType || !Number.isFinite(customerNumeric) || customerNumeric <= 0) return [];
+  const result = await nsPostRaw(
+    suiteQlUrl(),
+    {
+      q: `
+        SELECT
+          id,
+          tranid,
+          trandate,
+          status,
+          BUILTIN.DF(status) AS status_display,
+          total,
+          foreigntotal
+        FROM transaction
+        WHERE entity = ${customerNumeric}
+          AND type = '${transactionType}'
+        ORDER BY trandate DESC, id DESC
+      `,
+    },
+    userId
+  );
+  return (Array.isArray(result?.items) ? result.items : [])
+    .map((row) => normaliseWorkflowCheckRecordCandidate(row, recordType))
+    .filter((candidate) => candidate.id);
+}
+
+async function loadWorkflowCheckTransactionRecord({ recordType, recordId, fields }, userId) {
+  const id = Number(recordId);
+  if (!Number.isFinite(id) || id <= 0) throw new Error(`Could not resolve ${workflowCheckRecordLabel(recordType)} record`);
+  const safeFields = Array.from(new Set(fields.filter(Boolean))).map(safeSuiteQlIdentifier);
+  const selectFields = safeFields.flatMap((field) => [
+    field,
+    `BUILTIN.DF(${field}) AS ${field}_display`,
+  ]);
+  const result = await nsPostRaw(
+    suiteQlUrl(),
+    {
+      q: `
+        SELECT
+          id,
+          tranid
+          ${selectFields.length ? `,\n          ${selectFields.join(",\n          ")}` : ""}
+        FROM transaction
+        WHERE id = ${id}
+      `,
+    },
+    userId
+  );
+  return Array.isArray(result?.items) ? result.items[0] || {} : {};
+}
+
+function evaluateWorkflowRecordRules(rules = [], row = {}) {
+  return (Array.isArray(rules) ? rules : []).map((rule) => {
+    const actual = workflowCriteriaValue(row, rule.field || "");
+    const expected = rule.compareType === "field"
+      ? workflowCriteriaValue(row, rule.compareField || "")
+      : { raw: cleanDraftValue(rule.staticValue), display: cleanDraftValue(rule.staticValueLabel) };
+    const passed = compareWorkflowCriteriaValues(actual, rule.operator || "equals", expected);
+    return {
+      field: rule.field,
+      fieldLabel: workflowCheckFieldLabel(rule.field),
+      operator: rule.operator || "equals",
+      compareType: rule.compareType || "static",
+      compareField: rule.compareField || "",
+      compareFieldLabel: workflowCheckFieldLabel(rule.compareField),
+      staticValue: rule.staticValue || "",
+      staticValueLabel: rule.staticValueLabel || "",
+      actualValue: actual.display || actual.raw,
+      actualRawValue: actual.raw,
+      expectedValue: expected.display || expected.raw,
+      expectedRawValue: expected.raw,
+      passed,
+    };
+  });
 }
 
 function normaliseWorkflowLineQuantities(row = {}) {
@@ -1646,18 +1825,47 @@ async function loadWorkflowCriteriaRecord({ caseId, source, fields }, userId) {
     field,
     `BUILTIN.DF(${field}) AS ${field}_display`,
   ]);
-  const result = await nsPostRaw(
-    suiteQlUrl(),
-    {
-      q: `
-        SELECT
-          ${selectFields.join(",\n          ")}
-        FROM ${table}
-        WHERE id = ${recordId}
-      `,
-    },
-    userId
-  );
+  let result;
+  try {
+    result = await nsPostRaw(
+      suiteQlUrl(),
+      {
+        q: `
+          SELECT
+            ${selectFields.join(",\n          ")}
+          FROM ${table}
+          WHERE id = ${recordId}
+        `,
+      },
+      userId
+    );
+  } catch (err) {
+    const text = `${err.message || ""} ${JSON.stringify(err.responseBody || {})}`;
+    const invalidMatch = text.match(/Unknown identifier '([^']+)'/i);
+    const invalidField = invalidMatch ? invalidMatch[1] : "";
+    if (!invalidField) throw err;
+    const retryFields = safeFields.filter((field) => field.toLowerCase() !== invalidField.toLowerCase());
+    if (!retryFields.length) {
+      result = { items: [{}] };
+    } else {
+    const retrySelectFields = retryFields.flatMap((field) => [
+      field,
+      `BUILTIN.DF(${field}) AS ${field}_display`,
+    ]);
+    result = await nsPostRaw(
+      suiteQlUrl(),
+      {
+        q: `
+          SELECT
+            ${retrySelectFields.join(",\n          ")}
+          FROM ${table}
+          WHERE id = ${recordId}
+        `,
+      },
+      userId
+    );
+    }
+  }
   return {
     supportCase,
     recordId,
@@ -1715,9 +1923,12 @@ async function evaluateWorkflowCriteria({ caseId, criteria }, userId) {
   };
 }
 
-async function evaluateWorkflowCheck({ caseId, node, inputValue, inputLabel, inputSource }, userId) {
+async function evaluateWorkflowCheck({ caseId, node, inputValue, inputLabel, inputSource, selectedRecordId }, userId) {
   const config = node?.checkConfig || {};
-  const recordType = config.recordType || "affectedItem";
+  const configuredRecordType = config.recordType || "affectedItem";
+  const recordType = ["affectedItem", "input"].includes(configuredRecordType)
+    ? configuredRecordType
+    : await resolveWorkflowCheckRecordType(configuredRecordType);
   const affectedItemSource = config.affectedItemSource || "storeSalesOrder";
   const rules = Array.isArray(config.rules) ? config.rules : [];
   if (!rules.length) {
@@ -1762,13 +1973,87 @@ async function evaluateWorkflowCheck({ caseId, node, inputValue, inputLabel, inp
   }
 
   if (recordType !== "affectedItem") {
+    if (!workflowCheckTransactionType(recordType)) {
+      return {
+        result: "Fail",
+        recordType: configuredRecordType,
+        affectedItemSource,
+        message: `${configuredRecordType} checks are framework-only and not wired yet`,
+        checks: rules.map((rule) => ({ ...rule, passed: false, note: "Not wired yet" })),
+        data: {},
+      };
+    }
+
+    const supportCase = await getSupportCaseDetail(caseId, userId);
+    let recordId = cleanDraftValue(selectedRecordId);
+    let candidates = [];
+    if (recordType === "salesOrder") {
+      recordId = recordId || cleanDraftValue(supportCase.salesOrderId);
+      candidates = recordId ? [normaliseWorkflowCheckRecordCandidate({ id: recordId, tranid: recordId }, recordType)] : [];
+    } else {
+      candidates = await getWorkflowCheckRecordCandidates({ recordType, salesOrderId: supportCase.salesOrderId }, userId);
+      if (!recordId && candidates.length === 1) recordId = candidates[0].id;
+      if (!recordId && candidates.length > 1) {
+        return {
+          result: "Fail",
+          recordType,
+          affectedItemSource,
+          needsInput: "workflowCheckRecordSelection",
+          message: `Select which ${workflowCheckRecordLabel(recordType)} to check.`,
+          candidates,
+          checks: [],
+          data: {},
+          case: {
+            id: supportCase.id,
+            caseNumber: supportCase.caseNumber,
+            salesOrderId: supportCase.salesOrderId,
+            customerId: supportCase.customerId,
+            customerName: supportCase.customerName,
+          },
+        };
+      }
+    }
+
+    if (!recordId) {
+      return {
+        result: "Fail",
+        recordType,
+        affectedItemSource,
+        message: `No ${workflowCheckRecordLabel(recordType)} was found for the Sales Order customer.`,
+        checks: rules.map((rule) => ({ ...rule, passed: false, note: "No record found" })),
+        candidates,
+        data: {},
+      };
+    }
+
+    const fields = Array.from(new Set(rules.flatMap((rule) => [
+      rule.field,
+      rule.compareType === "field" ? rule.compareField : "",
+    ]).filter(Boolean)));
+    const row = await loadWorkflowCheckTransactionRecord({ recordType, recordId, fields }, userId);
+    const checks = evaluateWorkflowRecordRules(rules, row);
+    const selected = normaliseWorkflowCheckRecordCandidate(row, recordType);
     return {
-      result: "Fail",
+      result: checks.every((check) => check.passed) ? "Pass" : "Fail",
       recordType,
       affectedItemSource,
-      message: `${recordType} checks are framework-only and not wired yet`,
-      checks: rules.map((rule) => ({ ...rule, passed: false, note: "Not wired yet" })),
-      data: {},
+      source: {
+        type: recordType,
+        recordId: String(recordId),
+        label: workflowCheckRecordLabel(recordType),
+        documentNumber: selected.tranId || String(recordId),
+        url: selected.url || "",
+      },
+      case: {
+        id: supportCase.id,
+        caseNumber: supportCase.caseNumber,
+        salesOrderId: supportCase.salesOrderId,
+        customerId: supportCase.customerId,
+        customerName: supportCase.customerName,
+      },
+      data: row,
+      checks,
+      candidates,
     };
   }
 
@@ -1801,9 +2086,14 @@ function workflowActionTypeLabel(type = "") {
   return ({
     setCaseStatus: "Set Case Status",
     itemLineAction: "Item Line Action",
+    addItemLine: "Add Item Line",
+    email: "Email",
     closeSalesLine: "Close Sales Line",
     closeIntercompanyLine: "Close Intercompany Line",
     closeSupplierPurchaseOrderLine: "Close Supplier Purchase Order Line",
+    refundCreditMemo: "Refund Credit Memo",
+    creditRma: "Credit RMA",
+    receiveRma: "Receive RMA",
     createRecord: "Create Record",
   })[type] || "Action message only";
 }
@@ -1812,6 +2102,7 @@ const CREATE_RECORD_ENDPOINTS = {
   salesOrder: { endpoint: "/salesOrder", recordType: "salesOrder", documentPath: "/app/accounting/transactions/salesord.nl" },
   customerDeposit: { endpoint: "/customerDeposit", recordType: "customerDeposit", documentPath: "/app/accounting/transactions/custdep.nl" },
   customerRefund: { endpoint: "/customerRefund", recordType: "customerRefund", documentPath: "/app/accounting/transactions/custrfnd.nl" },
+  creditMemo: { endpoint: "/creditMemo", recordType: "creditMemo", documentPath: "/app/accounting/transactions/custcred.nl" },
   returnAuthorization: { endpoint: "/returnAuthorization", recordType: "returnAuthorization", documentPath: "/app/accounting/transactions/rtnauth.nl" },
 };
 
@@ -1890,6 +2181,67 @@ function workflowAnswerValue(answers = [], inputNodeId = "", inputFieldId = "", 
   return cleanDraftValue(step.answer);
 }
 
+function parseWorkflowMultiSelectValue(value) {
+  const raw = cleanDraftValue(value);
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      return parsed
+        .map((item) => {
+          if (item && typeof item === "object") {
+            return {
+              id: cleanDraftValue(item.id || item.itemId || item.value),
+              lineId: cleanDraftValue(item.lineId || item.line || item.lineuniquekey),
+              name: cleanDraftValue(item.name || item.label || item.text),
+              quantity: coerceDecimalValue(item.quantity || item.qty || 1) || 1,
+              rate: cleanDraftValue(item.rate),
+              amount: cleanDraftValue(item.amount),
+              grossamt: cleanDraftValue(item.grossamt || item.grossAmount),
+            };
+          }
+          return { id: cleanDraftValue(item), lineId: "", name: "", quantity: 1, rate: "", amount: "", grossamt: "" };
+        })
+        .filter((item) => item.id);
+    }
+  } catch {}
+  return raw.split(",")
+    .map((item) => cleanDraftValue(item))
+    .filter(Boolean)
+    .map((id) => ({ id, lineId: "", name: "", quantity: 1, rate: "", amount: "", grossamt: "" }));
+}
+
+function workflowAnswerMultiSelectValues(answers = [], inputNodeId = "", inputFieldId = "") {
+  return parseWorkflowMultiSelectValue(workflowAnswerValue(answers, inputNodeId, inputFieldId, "id"));
+}
+
+function multiSelectSelectionLine(selection = {}) {
+  return {
+    id: selection.id || "",
+    item: selection.id || "",
+    itemId: selection.id || "",
+    item_display: selection.name || "",
+    itemName: selection.name || "",
+    line: selection.lineId || "",
+    lineuniquekey: selection.lineId || "",
+    quantity: selection.quantity || 1,
+    rate: selection.rate || "",
+    amount: selection.amount || "",
+    grossamt: selection.grossamt || selection.amount || "",
+  };
+}
+
+function multiSelectSelectionValueForTarget(selection = {}, mapping = {}) {
+  const targetField = cleanDraftValue(mapping.targetField).toLowerCase();
+  if (["quantity", "qty"].includes(targetField)) return selection.quantity || 1;
+  if (["rate"].includes(targetField)) return selection.rate || "";
+  if (["amount", "netamount"].includes(targetField)) return selection.amount || "";
+  if (["grossamt", "grossamount"].includes(targetField)) return selection.grossamt || selection.amount || "";
+  if (["line", "lineuniquekey", "lineid"].includes(targetField)) return selection.lineId || "";
+  if (mapping.valueMode === "name" || mapping.valueCast === "text") return selection.name || selection.id || "";
+  return selection.id || "";
+}
+
 function workflowAnswerValueByLabel(answers = [], labelPattern) {
   const matcher = labelPattern instanceof RegExp ? labelPattern : new RegExp(String(labelPattern || ""), "i");
   for (const step of Array.isArray(answers) ? answers : []) {
@@ -1938,6 +2290,7 @@ async function resolveCreateRecordMappingValue(mapping = {}, context = {}, userI
     return workflowAnswerValue(context.answers, mapping.sourceInputId, mapping.sourceInputFieldId, mapping.valueMode);
   }
 
+  const mappingSourceRecord = cleanDraftValue(mapping.sourceRecord || context.sourceRecord || "storeSalesOrder");
   const sourceField = cleanDraftValue(mapping.sourceField);
   if (!sourceField) return "";
 
@@ -1959,11 +2312,11 @@ async function resolveCreateRecordMappingValue(mapping = {}, context = {}, userI
 
   let sourceRecord = null;
   let parentValue = "";
-  if (context.sourceRecord === "case") {
+  if (mappingSourceRecord === "case") {
     sourceRecord = context.caseDetail || {};
     parentValue = recordValueByMode(sourceRecord, sourceField, mapping.valueMode);
   } else {
-    const salesOrderId = context.sourceRecord === "intercompanySalesOrder"
+    const salesOrderId = mappingSourceRecord === "intercompanySalesOrder"
       ? context.intercompanySalesOrderId
       : context.salesOrderId;
     if (!salesOrderId) return "";
@@ -2289,11 +2642,31 @@ async function buildCreateRecordPayload(action = {}, context = {}, userId) {
   const body = {};
   const sublistRows = new Map();
   const debugMappings = [];
+
+  const expandedSublists = new Map();
   for (const mapping of mappings) {
+    const targetSublist = cleanDraftValue(mapping.targetSublist);
+    if (
+      targetSublist &&
+      mapping.sourceType === "workflowInput" &&
+      cleanDraftValue(mapping.sourceInputType).toLowerCase() === "multiselect"
+    ) {
+      const selections = workflowAnswerMultiSelectValues(context.answers, mapping.sourceInputId, mapping.sourceInputFieldId);
+      if (selections.length) {
+        expandedSublists.set(targetSublist, { mapping, selections });
+      }
+    }
+  }
+
+  for (const mapping of mappings) {
+    const targetSublist = cleanDraftValue(mapping.targetSublist);
+    if (targetSublist && expandedSublists.has(targetSublist)) continue;
+
     const value = await resolveCreateRecordMappingValue(mapping, context, userId);
     debugMappings.push({
       targetField: mapping.targetSublist ? `${mapping.targetSublist}.${mapping.targetField}` : mapping.targetField,
       sourceType: mapping.sourceType || "record",
+      sourceRecord: mapping.sourceRecord || createRecord.sourceRecord || context.sourceRecord || "",
       sourceField: mapping.sourceType === "workflowInput" ? `${mapping.sourceInputId || ""}:${mapping.sourceInputFieldId || ""}` : mapping.sourceField || "",
       value,
       valueMode: mapping.valueMode || "id",
@@ -2301,16 +2674,77 @@ async function buildCreateRecordPayload(action = {}, context = {}, userId) {
     const coerced = coerceMappedValueForTarget(value, mapping);
     if (coerced === "") continue;
     if (mapping.targetSublist) {
-      const key = cleanDraftValue(mapping.targetSublist);
-      const row = sublistRows.get(key) || {};
+      const key = targetSublist;
+      const rows = sublistRows.get(key) || [{}];
+      const row = rows[0] || {};
       setNestedRecordValue(row, mapping.targetField, coerced);
-      sublistRows.set(key, row);
+      rows[0] = row;
+      sublistRows.set(key, rows);
     } else {
       setNestedRecordValue(body, mapping.targetField, coerced);
     }
   }
-  for (const [sublistId, row] of sublistRows.entries()) {
-    body[sublistId] = { items: [row] };
+
+  for (const [sublistId, expansion] of expandedSublists.entries()) {
+    const sublistMappings = mappings.filter((mapping) => cleanDraftValue(mapping.targetSublist) === sublistId);
+    const rows = [];
+    for (const selection of expansion.selections) {
+      const row = {};
+      const lineContext = {
+        ...context,
+        line: multiSelectSelectionLine(selection),
+        currentMultiSelectItem: selection,
+      };
+      for (const mapping of sublistMappings) {
+        const isExpander =
+          mapping.sourceType === "workflowInput" &&
+          cleanDraftValue(mapping.sourceInputType).toLowerCase() === "multiselect" &&
+          String(mapping.sourceInputId || "") === String(expansion.mapping.sourceInputId || "") &&
+          String(mapping.sourceInputFieldId || "") === String(expansion.mapping.sourceInputFieldId || "");
+        const value = isExpander
+          ? multiSelectSelectionValueForTarget(selection, mapping)
+          : await resolveCreateRecordMappingValue(mapping, lineContext, userId);
+        debugMappings.push({
+          targetField: mapping.targetSublist ? `${mapping.targetSublist}.${mapping.targetField}` : mapping.targetField,
+          sourceType: mapping.sourceType || "record",
+          sourceRecord: mapping.sourceRecord || createRecord.sourceRecord || context.sourceRecord || "",
+          sourceField: mapping.sourceType === "workflowInput" ? `${mapping.sourceInputId || ""}:${mapping.sourceInputFieldId || ""}` : mapping.sourceField || "",
+          value,
+          valueMode: mapping.valueMode || "id",
+          expandedFromMultiSelect: true,
+          selectedItemId: selection.id || "",
+          selectedLineId: selection.lineId || "",
+        });
+        const coerced = coerceMappedValueForTarget(value, mapping);
+        if (coerced === "") continue;
+        setNestedRecordValue(row, mapping.targetField, coerced);
+      }
+      if (row.item && !Object.prototype.hasOwnProperty.call(row, "quantity") && selection.quantity) {
+        row.quantity = coerceDecimalValue(selection.quantity);
+      }
+      if (row.item && !Object.prototype.hasOwnProperty.call(row, "rate") && selection.rate !== "") {
+        row.rate = coerceDecimalValue(selection.rate);
+      }
+      if (row.item && !Object.prototype.hasOwnProperty.call(row, "amount") && selection.amount !== "") {
+        row.amount = coerceDecimalValue(selection.amount);
+      }
+      if (row.item && !Object.prototype.hasOwnProperty.call(row, "grossamt") && selection.grossamt !== "") {
+        row.grossamt = coerceDecimalValue(selection.grossamt);
+      }
+      if (
+        row.item &&
+        !Object.prototype.hasOwnProperty.call(row, "price") &&
+        (Object.prototype.hasOwnProperty.call(row, "rate") || Object.prototype.hasOwnProperty.call(row, "amount"))
+      ) {
+        row.price = { id: "-1" };
+      }
+      if (Object.keys(row).length) rows.push(row);
+    }
+    sublistRows.set(sublistId, rows);
+  }
+
+  for (const [sublistId, rows] of sublistRows.entries()) {
+    body[sublistId] = { items: rows };
   }
   Object.defineProperty(body, "__debugMappings", {
     value: debugMappings,
@@ -2479,14 +2913,65 @@ async function getCustomerDepositCandidatesForRefund({ salesOrderId, customerId 
   }
 }
 
+async function getCreditMemoCandidatesForRefund({ customerId }, userId) {
+  const customerNumeric = Number(customerId);
+  if (!Number.isFinite(customerNumeric) || customerNumeric <= 0) return [];
+
+  const queries = [
+    `
+      SELECT DISTINCT
+        t.id,
+        t.tranid,
+        t.entity,
+        ABS(t.foreigntotal) AS total,
+        ABS(t.total) AS base_total
+      FROM transaction t
+      WHERE t.recordtype = 'creditmemo'
+        AND t.entity = ${customerNumeric}
+      ORDER BY t.id DESC
+    `,
+    `
+      SELECT
+        id,
+        tranid,
+        entity,
+        ABS(foreigntotal) AS total,
+        ABS(total) AS base_total
+      FROM creditMemo
+      WHERE entity = ${customerNumeric}
+      ORDER BY id DESC
+    `,
+  ];
+
+  for (const query of queries) {
+    try {
+      const result = await nsPostRaw(suiteQlUrl(), { q: query }, userId);
+      const rows = (Array.isArray(result?.items) ? result.items : []).map((row) => ({
+        id: cleanDraftValue(row.id || row.ID),
+        tranId: cleanDraftValue(row.tranid || row.TRANID),
+        customerId: cleanDraftValue(row.entity || row.ENTITY),
+        total: cleanDraftValue(row.total || row.TOTAL || row.base_total || row.BASE_TOTAL),
+      })).filter((row) => row.id);
+      if (rows.length) return rows;
+    } catch (err) {
+      console.warn("[workflow-create-record] Credit Memo candidate lookup attempt failed:", err.message || err);
+    }
+  }
+  return [];
+}
+
 async function createCustomerRefundViaRestlet(payload, userId, context = {}) {
   const restletUrl = workflowRestletUrl();
   const result = await nsRestlet(restletUrl, {
     action: "createCustomerRefund",
     payload,
+    refundSource: cleanDraftValue(context.refundSource),
     salesOrderId: cleanDraftValue(context.salesOrderId),
     refundAmount: cleanDraftValue(context.refundAmount),
     candidateDeposits: Array.isArray(context.candidateDeposits) ? context.candidateDeposits : [],
+    depositAllocations: Array.isArray(context.depositAllocations) ? context.depositAllocations : [],
+    candidateCredits: Array.isArray(context.candidateCredits) ? context.candidateCredits : [],
+    creditAllocations: Array.isArray(context.creditAllocations) ? context.creditAllocations : [],
   }, userId, "POST");
   if (!result || result.ok === false) {
     const err = new Error(result?.error || result?.message || "Customer Refund RESTlet create failed.");
@@ -2504,6 +2989,16 @@ function selectedDepositAllocations(context = {}) {
   return (Array.isArray(context.depositAllocations) ? context.depositAllocations : [])
     .map((allocation) => ({
       id: cleanDraftValue(allocation.id || allocation.depositId || allocation.doc),
+      tranId: cleanDraftValue(allocation.tranId || allocation.refNum || allocation.refnum),
+      amount: cleanDraftValue(allocation.amount),
+    }))
+    .filter((allocation) => allocation.id && Number(allocation.amount) > 0);
+}
+
+function selectedCreditAllocations(context = {}) {
+  return (Array.isArray(context.creditAllocations) ? context.creditAllocations : [])
+    .map((allocation) => ({
+      id: cleanDraftValue(allocation.id || allocation.creditId || allocation.doc),
       tranId: cleanDraftValue(allocation.tranId || allocation.refNum || allocation.refnum),
       amount: cleanDraftValue(allocation.amount),
     }))
@@ -2531,17 +3026,24 @@ async function createRecordWithOptionalStaging(config, payload, targetRecord, us
     return { created: await nsPost(config.endpoint, payload, userId), createPayload: payload, deferredPayload: null };
   }
 
+  const refundSource = context.refundSource === "creditMemo" ? "creditMemo" : "customerDeposit";
   const candidateDeposits = uniqueDepositCandidates(context.candidateDeposits);
-  const allocations = selectedDepositAllocations(context);
+  const candidateCredits = uniqueCreditCandidates(context.candidateCredits);
+  const candidates = refundSource === "creditMemo" ? candidateCredits : candidateDeposits;
+  const allocations = refundSource === "creditMemo" ? selectedCreditAllocations(context) : selectedDepositAllocations(context);
+  const needsInputName = refundSource === "creditMemo" ? "customerCreditMemoAllocation" : "customerDepositAllocation";
+  const needsInputMessage = refundSource === "creditMemo"
+    ? "Select which credit memo(s) to refund."
+    : "Select which customer deposit(s) to refund.";
   const expectedRefundAmount = Number(String(context.refundAmount || "").replace(/,/g, ""));
-  if (candidateDeposits.length > 1 && !allocations.length) {
+  if (candidates.length > 1 && !allocations.length) {
     return {
       created: {
         ok: false,
-        needsInput: "customerDepositAllocation",
-        message: "Select which customer deposit(s) to refund.",
+        needsInput: needsInputName,
+        message: needsInputMessage,
         expectedAmount: Number.isFinite(expectedRefundAmount) ? expectedRefundAmount : null,
-        deposits: candidateDeposits,
+        deposits: candidates,
       },
       createPayload: payload,
       deferredPayload: null,
@@ -2553,10 +3055,10 @@ async function createRecordWithOptionalStaging(config, payload, targetRecord, us
     return {
       created: {
         ok: false,
-        needsInput: "customerDepositAllocation",
+        needsInput: needsInputName,
         message: "The selected refund allocation exceeds the workflow refund amount.",
         expectedAmount: expectedRefundAmount,
-        deposits: candidateDeposits,
+        deposits: candidates,
         allocations,
       },
       createPayload: payload,
@@ -2570,16 +3072,38 @@ async function createRecordWithOptionalStaging(config, payload, targetRecord, us
     restletContext: {
       salesOrderId: cleanDraftValue(context.salesOrderId),
       refundAmount: cleanDraftValue(context.refundAmount),
+      refundSource,
       candidateDeposits,
-      depositAllocations: allocations,
+      depositAllocations: refundSource === "customerDeposit" ? allocations : [],
+      candidateCredits,
+      creditAllocations: refundSource === "creditMemo" ? allocations : [],
     },
   });
   const created = await createCustomerRefundViaRestlet(payload, userId, {
     ...context,
+    refundSource,
     candidateDeposits,
-    depositAllocations: allocations,
+    depositAllocations: refundSource === "customerDeposit" ? allocations : [],
+    candidateCredits,
+    creditAllocations: refundSource === "creditMemo" ? allocations : [],
   });
   return { created, createPayload: payload, deferredPayload: null };
+}
+
+async function approveReturnAuthorizationViaRestlet(returnAuthorizationId, userId) {
+  const id = cleanDraftValue(returnAuthorizationId);
+  if (!id) return null;
+  const result = await nsRestlet(workflowRestletUrl(), {
+    action: "approveReturnAuthorization",
+    returnAuthorizationId: id,
+    orderstatus: "B",
+  }, userId, "POST");
+  if (!result || result.ok === false) {
+    const err = new Error(result?.error || result?.message || "Return Authorisation approval failed.");
+    err.responseBody = result || null;
+    throw err;
+  }
+  return result;
 }
 
 async function executeCreateRecordAction({ caseId, action, checks = [], answers = [] }, userId) {
@@ -2605,6 +3129,9 @@ async function executeCreateRecordAction({ caseId, action, checks = [], answers 
     checks,
     answers,
   }, userId);
+  if (targetRecordType === "returnAuthorization" && !payload.entity && caseDetail.customerId) {
+    payload.entity = { id: caseDetail.customerId };
+  }
   if (targetRecordType === "customerRefund" && !payload.customer && caseDetail.customerId) {
     payload.customer = { id: caseDetail.customerId };
   }
@@ -2676,6 +3203,7 @@ async function executeCreateRecordAction({ caseId, action, checks = [], answers 
     throw err;
   }
   const id = cleanDraftValue(created.id);
+  let approvalResult = null;
   if (created.needsInput) {
     return {
       created,
@@ -2686,6 +3214,10 @@ async function executeCreateRecordAction({ caseId, action, checks = [], answers 
       needsInput: created.needsInput,
       document: { id: "", number: "", url: "" },
     };
+  }
+  if (targetRecordType === "returnAuthorization" && id) {
+    approvalResult = await approveReturnAuthorizationViaRestlet(id, userId);
+    created.approval = approvalResult;
   }
   let documentNumber = cleanDraftValue(created.tranId || created.tranid) || id;
   if (id) {
@@ -2704,6 +3236,105 @@ async function executeCreateRecordAction({ caseId, action, checks = [], answers 
       id,
       number: documentNumber,
       url: id && config.documentPath ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}${config.documentPath}?id=${encodeURIComponent(id)}` : "",
+    },
+  };
+}
+
+async function executeRefundCreditMemoAction({ caseId, action, checks = [], answers = [] }, userId) {
+  const createRecord = {
+    ...(action.createRecord && typeof action.createRecord === "object" ? action.createRecord : {}),
+    targetRecord: "customerRefund",
+    sourceRecord: action.createRecord?.sourceRecord || "storeSalesOrder",
+  };
+  const config = createRecordConfig("customerRefund");
+  const caseDetail = await getSupportCaseDetail(caseId, userId);
+  const salesOrderId = caseDetail.salesOrderId;
+  const intercompany = salesOrderId ? await getPairedIntercompanySalesOrderId(salesOrderId, userId).catch(() => null) : null;
+  const payload = await buildCreateRecordPayload({
+    ...action,
+    createRecord,
+  }, {
+    caseDetail,
+    salesOrderId,
+    intercompanySalesOrderId: intercompany?.id || "",
+    sourceRecord: createRecord.sourceRecord || "storeSalesOrder",
+    checks,
+    answers,
+  }, userId);
+
+  if (!payload.customer && caseDetail.customerId) {
+    payload.customer = { id: caseDetail.customerId };
+  }
+  if (!payload.paymentOption && !payload.paymentoption && !payload.paymentmethod && !payload.paymentMethod) {
+    const refundMethodId = workflowAnswerValueByLabel(answers, /refund method/i);
+    if (refundMethodId) {
+      payload.paymentMethod = customerRefundMethodInteger(refundMethodId) ?? refundMethodId;
+    }
+  }
+
+  const mappingDebug = payload.__debugMappings || [];
+  logCreateRecordDebug("refund credit memo resolved mappings", {
+    caseId,
+    actionNodeId: action.nodeId || "",
+    sourceRecord: createRecord.sourceRecord || "",
+    answers,
+    mappings: mappingDebug,
+  });
+
+  let created;
+  let createPayload = payload;
+  let deferredPayload = null;
+  try {
+    const candidateCredits = await getCreditMemoCandidatesForRefund({
+      customerId: caseDetail.customerId,
+    }, userId);
+    const createResult = await createRecordWithOptionalStaging(config, payload, "customerRefund", userId, {
+      refundSource: "creditMemo",
+      salesOrderId,
+      refundAmount: workflowAnswerValueByLabel(answers, /refund amount/i),
+      candidateCredits,
+      creditAllocations: action.creditAllocations,
+    });
+    created = createResult.created;
+    createPayload = createResult.createPayload || payload;
+    deferredPayload = createResult.deferredPayload || null;
+  } catch (err) {
+    err.workflowDebug = {
+      ...(err.workflowDebug || {}),
+      createRecordTarget: "customerRefund",
+      refundSource: "creditMemo",
+      payload,
+      createPayload,
+      deferredPayload,
+      mappings: mappingDebug,
+    };
+    throw err;
+  }
+
+  const id = cleanDraftValue(created.id);
+  if (created.needsInput) {
+    return {
+      created,
+      payload,
+      mappingDebug,
+      createPayload,
+      deferredPayload,
+      needsInput: created.needsInput,
+      document: { id: "", number: "", url: "" },
+    };
+  }
+
+  const documentNumber = cleanDraftValue(created.tranId || created.tranid) || id;
+  return {
+    created,
+    payload,
+    mappingDebug,
+    createPayload,
+    deferredPayload,
+    document: {
+      id,
+      number: documentNumber,
+      url: id ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}/app/accounting/transactions/custrfnd.nl?id=${encodeURIComponent(id)}` : "",
     },
   };
 }
@@ -2838,6 +3469,73 @@ async function patchSalesOrderItemLineFields(salesOrderId, targetLine, patch, us
   return {
     result: data,
     endpoint: "RESTlet salesOrder optionsOnly",
+    patch,
+    matchedRestLine: updatedLine || null,
+  };
+}
+
+function uniqueCreditCandidates(candidates = []) {
+  const seen = new Set();
+  return (Array.isArray(candidates) ? candidates : [])
+    .filter((credit) => {
+      const id = cleanDraftValue(credit.id);
+      if (!id || seen.has(id)) return false;
+      seen.add(id);
+      return true;
+    });
+}
+
+async function addSalesOrderItemLineFields(salesOrderId, patch, userId) {
+  const cleanSalesOrderId = cleanDraftValue(salesOrderId);
+  if (!cleanSalesOrderId) throw new Error("Missing Sales Order ID for add item line action.");
+  if (!patch || !Object.keys(patch).length) throw new Error("No item line field mappings were configured.");
+
+  const mappedItem = patch.itemId || patch.item;
+  const itemId = cleanDraftValue(mappedItem && typeof mappedItem === "object" ? mappedItem.id || mappedItem.value : mappedItem);
+  if (!itemId) throw new Error("Add Item Line requires a mapped Item field.");
+
+  const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
+  const buildRestletHeaders = async () => ({
+    ...(await getAuthHeader(restletUrl, "POST", userId, "sb")),
+    "Content-Type": "application/json",
+  });
+  const payload = {
+    id: cleanSalesOrderId,
+    recordType: "salesOrder",
+    optionsOnly: false,
+    commit: false,
+    lines: [
+      {
+        ...patch,
+        itemId,
+        isNew: true,
+        clientLineKey: `workflow_add_${Date.now()}`,
+      },
+    ],
+    deletedLineIds: [],
+    headerUpdates: {},
+  };
+
+  const { response, text, data } = await postRestletWithRecordChangedRetry(
+    restletUrl,
+    buildRestletHeaders,
+    JSON.stringify(payload),
+    "Add Sales Order line",
+    { maxAttempts: 5, baseDelayMs: 750 }
+  );
+
+  if (!response.ok || !data?.ok) {
+    const failure = Array.isArray(data?.failures) ? data.failures[0] : null;
+    const err = new Error(failure?.error || data?.error || text || "NetSuite RESTlet failed to add Sales Order line.");
+    err.responseBody = data || text;
+    throw err;
+  }
+
+  const updatedLine = Array.isArray(data.updatedLines) ? data.updatedLines[0] : null;
+  cacheDeleteSalesOrder(cleanSalesOrderId);
+  return {
+    result: data,
+    endpoint: "RESTlet salesOrder add line",
     patch,
     matchedRestLine: updatedLine || null,
   };
@@ -2995,6 +3693,289 @@ async function executeItemLineAction({ caseId, action, checks = [], answers = []
     line: resolved.line,
     patch,
     document,
+  };
+}
+
+async function executeAddItemLineAction({ caseId, action, answers = [] }, userId) {
+  const config = action.itemLineAction && typeof action.itemLineAction === "object" ? action.itemLineAction : {};
+  const target = (config.target || config.source) === "intercompanySalesOrder" ? "intercompanySalesOrder" : "storeSalesOrder";
+  const caseDetail = await getSupportCaseDetail(caseId, userId);
+  const salesOrderId = cleanDraftValue(caseDetail.salesOrderId);
+  const intercompanySalesOrder = target === "intercompanySalesOrder"
+    ? await getPairedIntercompanySalesOrderId(Number(salesOrderId), userId)
+    : null;
+  const targetSalesOrderId = target === "intercompanySalesOrder" ? intercompanySalesOrder?.id : salesOrderId;
+  if (!targetSalesOrderId) {
+    throw new Error(target === "intercompanySalesOrder"
+      ? "No paired Sales Order was found for this case."
+      : "No Sales Order was found for this case.");
+  }
+
+  const mappingContext = {
+    caseDetail,
+    salesOrderId,
+    intercompanySalesOrderId: intercompanySalesOrder?.id || "",
+    sourceRecord: config.sourceRecord || "storeSalesOrder",
+    answers,
+    line: {},
+  };
+  const patch = await itemLinePatchFromMappings(config.mappings, mappingContext, userId);
+  console.log("[workflow-add-item-line] resolved patch", {
+    caseId,
+    nodeId: action.nodeId || "",
+    target,
+    patch,
+    mappingCount: Array.isArray(config.mappings) ? config.mappings.length : 0,
+  });
+  const patchResult = await addSalesOrderItemLineFields(targetSalesOrderId, patch, userId);
+  const document = await getSalesOrderDocumentInfo(targetSalesOrderId, userId);
+  return {
+    patchResult,
+    source: {
+      ...caseDetail,
+      checkedSalesOrderId: targetSalesOrderId,
+      checkedSalesOrderDocumentNumber: document.documentNumber || document.number || "",
+      checkedSalesOrderUrl: document.url || salesOrderNetSuiteUrl(targetSalesOrderId),
+    },
+    line: patchResult.matchedRestLine || {},
+    patch,
+    document,
+  };
+}
+
+async function executeEmailAction({ caseId, action, checks = [] }, userId) {
+  const config = action.emailAction && typeof action.emailAction === "object" ? action.emailAction : {};
+  const target = config.target === "supplier" ? "supplier" : "customer";
+  const message = cleanDraftValue(config.message || action.message);
+  if (!message) throw new Error("Email action message is required.");
+
+  let recordType = "salesOrder";
+  let recordId = "";
+  let document = null;
+
+  if (target === "supplier") {
+    const resolved = await loadSupplierPurchaseOrderLineForCase(caseId, userId, checks);
+    recordType = "purchaseOrder";
+    recordId = cleanDraftValue(resolved.source?.supplierPurchaseOrderId || resolved.document?.id);
+    document = resolved.document || await getPurchaseOrderDocumentInfo(recordId, userId);
+  } else {
+    const caseDetail = await getSupportCaseDetail(caseId, userId);
+    recordId = cleanDraftValue(caseDetail.salesOrderId);
+    document = await getSalesOrderDocumentInfo(recordId, userId);
+  }
+
+  if (!recordId) {
+    throw new Error(target === "supplier"
+      ? "No Supplier Purchase Order was found for this case."
+      : "No Sales Order was found for this case.");
+  }
+
+  const patch = {
+    message,
+    tobeemailed: true,
+  };
+  const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
+  const buildRestletHeaders = async () => ({
+    ...(await getAuthHeader(restletUrl, "POST", userId, "sb")),
+    "Content-Type": "application/json",
+  });
+  const payload = {
+    id: recordId,
+    recordType,
+    workflowEmailAction: true,
+    message,
+  };
+  const { response, text, data } = await postRestletWithRecordChangedRetry(
+    restletUrl,
+    buildRestletHeaders,
+    JSON.stringify(payload),
+    "Trigger workflow email action",
+    { maxAttempts: 5, baseDelayMs: 750 }
+  );
+  if (!response.ok || !data?.ok) {
+    throw new Error(data?.error || text || `NetSuite RESTlet failed to update ${recordType} email fields.`);
+  }
+  return {
+    target,
+    recordType,
+    recordId,
+    patch,
+    result: data,
+    document: {
+      id: String(recordId),
+      number: String(document?.number || document?.documentNumber || document?.tranId || recordId),
+      url: document?.url || (
+        recordType === "purchaseOrder"
+          ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}/app/accounting/transactions/purchord.nl?id=${encodeURIComponent(recordId)}`
+          : salesOrderNetSuiteUrl(recordId)
+      ),
+    },
+  };
+}
+
+function returnAuthorizationIdFromChecks(checks = []) {
+  const matches = (Array.isArray(checks) ? checks : [])
+    .filter((check) => {
+      const recordType = cleanDraftValue(check.recordType || check.source?.type).toLowerCase();
+      return recordType === "returnauthorization" ||
+        recordType === "return_authorization" ||
+        recordType === "returnauthorisation" ||
+        recordType === "return_authorisation";
+    });
+  const latest = matches[matches.length - 1] || null;
+  return cleanDraftValue(latest?.source?.recordId || latest?.data?.id || latest?.data?.ID);
+}
+
+async function resolveReturnAuthorizationForCase(caseId, checks = [], userId) {
+  const checkedId = returnAuthorizationIdFromChecks(checks);
+  if (checkedId) return { id: checkedId, source: "check" };
+  const caseDetail = await getSupportCaseDetail(caseId, userId);
+  const candidates = await getWorkflowCheckRecordCandidates({
+    recordType: "returnAuthorization",
+    salesOrderId: caseDetail.salesOrderId,
+  }, userId);
+  if (candidates.length === 1) return { ...candidates[0], source: "lookup" };
+  if (candidates.length > 1) {
+    const err = new Error("Multiple Return Authorisations were found. Run a Return Authorisation check first so the workflow knows which RMA to credit.");
+    err.responseBody = { candidates };
+    throw err;
+  }
+  throw new Error("No Return Authorisation was found to credit.");
+}
+
+function workflowLotAssignmentsFromLine(line = {}) {
+  const quantity = Number(rowValue(line, "quantity", "QUANTITY") || 0) || 1;
+  const itemId = cleanDraftValue(rowValue(line, "item", "ITEM"));
+  const lineId = cleanDraftValue(rowValue(line, "lineid", "LINEID", "id", "ID"));
+  const inventoryMeta = cleanDraftValue(rowValue(line, "custcol_sb_epos_inventory_meta", "CUSTCOL_SB_EPOS_INVENTORY_META"));
+  const lotDetails = fillMissingLotDetailLocations(
+    rowValue(line, "custcol_sb_lot_details", "CUSTCOL_SB_LOT_DETAILS"),
+    inventoryMeta
+  );
+  const detailParts = inventoryMeta
+    ? String(inventoryMeta).split(";").map((part) => parseInventoryDetailPart(part))
+    : [];
+  const lotParts = lotDetails
+    ? String(lotDetails).split(";").map((part) => {
+        const tokens = String(part || "").split("|");
+        return {
+          locationId: cleanDraftValue(tokens[0]),
+          statusId: cleanDraftValue(tokens[1]),
+          inventoryNumberId: cleanDraftValue(tokens[2]),
+        };
+      })
+    : [];
+  const assignments = (detailParts.length ? detailParts : lotParts).map((part, index) => {
+    const detail = detailParts[index] || {};
+    const lot = lotParts[index] || {};
+    return {
+      itemId,
+      sourceLineId: lineId,
+      quantity: Number(detail.qty || quantity) || quantity,
+      locationId: cleanDraftValue(detail.locationId || lot.locationId),
+      inventoryStatusId: cleanDraftValue(detail.statusId || lot.statusId),
+      inventoryNumberId: cleanDraftValue(detail.inventoryNumberId || lot.inventoryNumberId),
+      inventoryNumberName: cleanDraftValue(detail.inventoryNumberName),
+    };
+  });
+  return assignments.filter((assignment) => assignment.itemId && assignment.inventoryNumberId);
+}
+
+async function enrichWorkflowLotAssignmentNames(assignments = [], userId) {
+  const source = Array.isArray(assignments) ? assignments : [];
+  const missingNameIds = source
+    .filter((assignment) => assignment.inventoryNumberId && !assignment.inventoryNumberName)
+    .map((assignment) => assignment.inventoryNumberId);
+  const inventoryNumberNameById = await suiteQlIdNameMap({
+    table: "inventorynumber",
+    ids: missingNameIds,
+    nameExpression: "inventorynumber",
+    userId,
+  });
+  return source.map((assignment) => ({
+    ...assignment,
+    inventoryNumberName: assignment.inventoryNumberName || inventoryNumberNameById[String(assignment.inventoryNumberId || "").trim()] || "",
+  }));
+}
+
+async function pairedSalesOrderLotAssignmentsForCase(caseId, userId) {
+  const caseDetail = await getSupportCaseDetail(caseId, userId);
+  const salesOrderId = Number(caseDetail.salesOrderId);
+  if (!Number.isFinite(salesOrderId) || salesOrderId <= 0) {
+    throw new Error("Case does not have a related sales order.");
+  }
+  const paired = await getPairedIntercompanySalesOrderId(salesOrderId, userId);
+  const result = await fetchSalesOrderLineSuiteQl(paired.id, userId);
+  const rows = Array.isArray(result?.items) ? result.items : [];
+  const assignments = await enrichWorkflowLotAssignmentNames(
+    rows.flatMap((line) => workflowLotAssignmentsFromLine(line)),
+    userId
+  );
+  return {
+    pairedSalesOrder: paired,
+    assignments,
+    source: assignments.length ? "suiteql" : "restlet-inventorydetail",
+  };
+}
+
+async function executeCreditRmaAction({ caseId, action, checks = [] }, userId) {
+  const rma = await resolveReturnAuthorizationForCase(caseId, checks, userId);
+  const returnAuthorizationId = cleanDraftValue(rma.id);
+  if (!returnAuthorizationId) throw new Error("Return Authorisation ID is required to create the Credit Memo.");
+  const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
+  const result = await nsRestlet(restletUrl, {
+    action: "creditReturnAuthorization",
+    returnAuthorizationId,
+    memo: action.response || action.message || "",
+  }, userId, "POST");
+  if (!result || result.ok === false) {
+    const err = new Error(result?.error || result?.message || "Credit RMA RESTlet failed.");
+    err.responseBody = result || null;
+    throw err;
+  }
+  const id = cleanDraftValue(result.id);
+  const number = cleanDraftValue(result.tranId || result.tranid || id);
+  return {
+    created: result,
+    returnAuthorization: rma,
+    document: {
+      id,
+      number,
+      url: id ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}/app/accounting/transactions/custcred.nl?id=${encodeURIComponent(id)}` : "",
+    },
+  };
+}
+
+async function executeReceiveRmaAction({ caseId, action, checks = [] }, userId) {
+  const rma = await resolveReturnAuthorizationForCase(caseId, checks, userId);
+  const returnAuthorizationId = cleanDraftValue(rma.id);
+  if (!returnAuthorizationId) throw new Error("Return Authorisation ID is required to create the Item Receipt.");
+  const lotSource = await pairedSalesOrderLotAssignmentsForCase(caseId, userId);
+  const restletUrl = `https://${process.env.NS_ACCOUNT_DASH}.restlets.api.netsuite.com/app/site/hosting/restlet.nl?script=customscript_sb_approve_sales_order&deploy=customdeploy_sb_epos_approve_so`;
+  const result = await nsRestlet(restletUrl, {
+    action: "receiveReturnAuthorization",
+    returnAuthorizationId,
+    memo: action.response || action.message || "",
+    lotAssignments: lotSource.assignments,
+    pairedSalesOrderId: lotSource.pairedSalesOrder.id,
+  }, userId, "POST");
+  if (!result || result.ok === false) {
+    const err = new Error(result?.error || result?.message || "Receive RMA RESTlet failed.");
+    err.responseBody = result || null;
+    throw err;
+  }
+  const id = cleanDraftValue(result.id);
+  const number = cleanDraftValue(result.tranId || result.tranid || id);
+  return {
+    created: result,
+    returnAuthorization: rma,
+    pairedSalesOrder: lotSource.pairedSalesOrder,
+    lotAssignments: lotSource.assignments,
+    document: {
+      id,
+      number,
+      url: id ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}/app/accounting/transactions/itemrcpt.nl?id=${encodeURIComponent(id)}` : "",
+    },
   };
 }
 
@@ -3508,23 +4489,40 @@ async function loadLatestWorkflowActions(workflowId, actions = []) {
       const node = nodes.find((item) => String(item.id) === String(action?.nodeId));
       const actionConfig = node?.actionConfig && typeof node.actionConfig === "object" ? node.actionConfig : null;
       if (!actionConfig) return action;
-      if (action.actionType === "itemLineAction" || actionConfig.type === "itemLineAction") {
+      if (action.actionType === "itemLineAction" || action.actionType === "addItemLine" || actionConfig.type === "itemLineAction" || actionConfig.type === "addItemLine") {
+        const actionType = actionConfig.type === "addItemLine" || action.actionType === "addItemLine" ? "addItemLine" : "itemLineAction";
         return {
           ...action,
-          actionType: "itemLineAction",
+          actionType,
           itemLineAction: {
             ...(action.itemLineAction || {}),
             ...(actionConfig.itemLineAction || {}),
           },
         };
       }
-      if (action.actionType === "createRecord" || actionConfig.type === "createRecord") {
+      if (action.actionType === "createRecord" || action.actionType === "refundCreditMemo" || actionConfig.type === "createRecord" || actionConfig.type === "refundCreditMemo") {
         return {
           ...action,
-          actionType: "createRecord",
+          actionType: actionConfig.type === "refundCreditMemo" || action.actionType === "refundCreditMemo" ? "refundCreditMemo" : "createRecord",
           createRecord: {
             ...(action.createRecord || {}),
             ...(actionConfig.createRecord || {}),
+          },
+        };
+      }
+      if (action.actionType === "creditRma" || action.actionType === "receiveRma" || actionConfig.type === "creditRma" || actionConfig.type === "receiveRma") {
+        return {
+          ...action,
+          actionType: actionConfig.type || action.actionType,
+        };
+      }
+      if (action.actionType === "email" || actionConfig.type === "email") {
+        return {
+          ...action,
+          actionType: "email",
+          emailAction: {
+            ...(action.emailAction || {}),
+            ...(actionConfig.emailAction || {}),
           },
         };
       }
@@ -3540,7 +4538,7 @@ async function executeWorkflowActions({ caseId, workflowId = "", actions = [], a
   const latestActions = await loadLatestWorkflowActions(workflowId, actions);
   const approvedActions = latestActions
     .filter((action, index) => approvals[index] === true || approvals[index] === "true")
-    .filter((action) => ["setCaseStatus", "itemLineAction", "closeSalesLine", "closeIntercompanyLine", "closeSupplierPurchaseOrderLine", "createRecord"].includes(action.actionType));
+    .filter((action) => ["setCaseStatus", "itemLineAction", "addItemLine", "email", "closeSalesLine", "closeIntercompanyLine", "closeSupplierPurchaseOrderLine", "refundCreditMemo", "creditRma", "receiveRma", "createRecord"].includes(action.actionType));
 
   const results = [];
   for (const action of approvedActions) {
@@ -3584,7 +4582,49 @@ async function executeWorkflowActions({ caseId, workflowId = "", actions = [], a
           nodeId: action.nodeId || "",
           label: action.label || workflowActionTypeLabel(action.actionType),
           actionType: action.actionType,
-          message: `${workflowActionTypeLabel(action.actionType)} created ${createResult.document.number || createResult.document.id || "record"}.`,
+          message: createResult.approvalResult?.approved
+            ? `${workflowActionTypeLabel(action.actionType)} created and approved ${createResult.document.number || createResult.document.id || "record"}.`
+            : `${workflowActionTypeLabel(action.actionType)} created ${createResult.document.number || createResult.document.id || "record"}.`,
+          document: createResult.document,
+          result: createResult.created,
+          debug: {
+            payload: createResult.payload,
+            createPayload: createResult.createPayload || createResult.payload,
+            deferredPayload: createResult.deferredPayload || null,
+            approval: createResult.approvalResult || null,
+            mappings: createResult.mappingDebug || [],
+          },
+        });
+        continue;
+      }
+
+      if (action.actionType === "refundCreditMemo") {
+        const createResult = await executeRefundCreditMemoAction({ caseId, action, checks, answers }, userId);
+        if (createResult.needsInput) {
+          results.push({
+            ok: false,
+            needsInput: createResult.needsInput,
+            nodeId: action.nodeId || "",
+            label: action.label || workflowActionTypeLabel(action.actionType),
+            actionType: action.actionType,
+            message: createResult.created?.message || "More information is needed before this action can run.",
+            deposits: createResult.created?.deposits || [],
+            expectedAmount: createResult.created?.expectedAmount ?? null,
+            allocations: createResult.created?.allocations || [],
+            debug: {
+              payload: createResult.payload,
+              createPayload: createResult.createPayload || createResult.payload,
+              mappings: createResult.mappingDebug || [],
+            },
+          });
+          continue;
+        }
+        results.push({
+          ok: true,
+          nodeId: action.nodeId || "",
+          label: action.label || workflowActionTypeLabel(action.actionType),
+          actionType: action.actionType,
+          message: `Refund Credit Memo created ${createResult.document.number || createResult.document.id || "customer refund"}.`,
           document: createResult.document,
           result: createResult.created,
           debug: {
@@ -3621,6 +4661,86 @@ async function executeWorkflowActions({ caseId, workflowId = "", actions = [], a
         continue;
       }
 
+      if (action.actionType === "addItemLine") {
+        const lineResult = await executeAddItemLineAction({ caseId, action, answers }, userId);
+        const documentNumber = lineResult.document?.number || lineResult.document?.documentNumber || lineResult.document?.id || "";
+        results.push({
+          ok: true,
+          nodeId: action.nodeId || "",
+          label: action.label || workflowActionTypeLabel(action.actionType),
+          actionType: action.actionType,
+          message: `Item line added to order ${documentNumber}.`,
+          document: {
+            id: String(lineResult.document?.id || lineResult.source?.checkedSalesOrderId || ""),
+            number: String(documentNumber || ""),
+            url: lineResult.document?.url || lineResult.source?.checkedSalesOrderUrl || "",
+          },
+          result: lineResult.patchResult,
+          debug: {
+            patch: lineResult.patch,
+            source: lineResult.source,
+            addedRestLine: lineResult.patchResult?.matchedRestLine || null,
+          },
+        });
+        continue;
+      }
+
+      if (action.actionType === "email") {
+        const emailResult = await executeEmailAction({ caseId, action, checks }, userId);
+        results.push({
+          ok: true,
+          nodeId: action.nodeId || "",
+          label: action.label || workflowActionTypeLabel(action.actionType),
+          actionType: action.actionType,
+          message: `${emailResult.target === "supplier" ? "Supplier" : "Customer"} email queued from ${emailResult.document.number || emailResult.recordId}.`,
+          document: emailResult.document,
+          result: emailResult.result,
+          debug: {
+            target: emailResult.target,
+            recordType: emailResult.recordType,
+            recordId: emailResult.recordId,
+            patch: emailResult.patch,
+          },
+        });
+        continue;
+      }
+
+      if (action.actionType === "creditRma") {
+        const creditResult = await executeCreditRmaAction({ caseId, action, checks }, userId);
+        results.push({
+          ok: true,
+          nodeId: action.nodeId || "",
+          label: action.label || workflowActionTypeLabel(action.actionType),
+          actionType: action.actionType,
+          message: `Credit RMA created ${creditResult.document.number || creditResult.document.id || "credit memo"}.`,
+          document: creditResult.document,
+          result: creditResult.created,
+          debug: {
+            returnAuthorization: creditResult.returnAuthorization,
+          },
+        });
+        continue;
+      }
+
+      if (action.actionType === "receiveRma") {
+        const receiptResult = await executeReceiveRmaAction({ caseId, action, checks }, userId);
+        results.push({
+          ok: true,
+          nodeId: action.nodeId || "",
+          label: action.label || workflowActionTypeLabel(action.actionType),
+          actionType: action.actionType,
+          message: `Receive RMA created ${receiptResult.document.number || receiptResult.document.id || "item receipt"}.`,
+          document: receiptResult.document,
+          result: receiptResult.created,
+          debug: {
+            returnAuthorization: receiptResult.returnAuthorization,
+            pairedSalesOrder: receiptResult.pairedSalesOrder,
+            lotAssignments: receiptResult.lotAssignments,
+          },
+        });
+        continue;
+      }
+
       const supplierPoAction = action.actionType === "closeSupplierPurchaseOrderLine";
       const { line, source, document } = supplierPoAction
         ? await loadSupplierPurchaseOrderLineForCase(caseId, userId, checks)
@@ -3649,11 +4769,12 @@ async function executeWorkflowActions({ caseId, workflowId = "", actions = [], a
         result: closeResult,
       });
     } catch (err) {
+      const actionError = netSuiteErrorText(err) || err.message || "Action failed";
       console.warn("[workflow-actions] Action failed", {
         caseId,
         nodeId: action.nodeId || "",
         actionType: action.actionType,
-        error: err.message || "Action failed",
+        error: actionError,
         details: err.responseBody || null,
       });
       results.push({
@@ -3662,7 +4783,7 @@ async function executeWorkflowActions({ caseId, workflowId = "", actions = [], a
         label: action.label || workflowActionTypeLabel(action.actionType),
         actionType: action.actionType,
         message: `${workflowActionTypeLabel(action.actionType)} failed.`,
-        error: err.message || "Action failed",
+        error: actionError,
         details: err.responseBody || null,
         debug: err.workflowDebug || null,
       });
@@ -3670,6 +4791,95 @@ async function executeWorkflowActions({ caseId, workflowId = "", actions = [], a
   }
 
   return { results };
+}
+
+async function ensureWorkflowProgressTable() {
+  if (workflowProgressTableReady) return;
+  if (workflowProgressTableInit) return workflowProgressTableInit;
+  workflowProgressTableInit = (async () => {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS cs_case_workflow_progress (
+        case_id TEXT NOT NULL,
+        workflow_id TEXT NOT NULL,
+        state JSONB NOT NULL DEFAULT '{}'::jsonb,
+        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+        PRIMARY KEY (case_id, workflow_id)
+      );
+    `);
+    workflowProgressTableReady = true;
+  })();
+  try {
+    await workflowProgressTableInit;
+  } finally {
+    workflowProgressTableInit = null;
+  }
+}
+
+async function getCaseWorkflowProgress(caseId, workflowId) {
+  const cleanCaseId = cleanDraftValue(caseId);
+  const cleanWorkflowId = cleanDraftValue(workflowId);
+  if (!cleanCaseId || !cleanWorkflowId) return null;
+  await ensureWorkflowProgressTable();
+  const result = await pool.query(
+    `SELECT state, updated_at FROM cs_case_workflow_progress WHERE case_id = $1 AND workflow_id = $2 LIMIT 1`,
+    [cleanCaseId, cleanWorkflowId]
+  );
+  const row = result.rows[0];
+  if (!row) return null;
+  return {
+    ...(row.state && typeof row.state === "object" ? row.state : {}),
+    updatedAt: row.updated_at,
+  };
+}
+
+async function listCaseWorkflowProgress(caseId) {
+  const cleanCaseId = cleanDraftValue(caseId);
+  if (!cleanCaseId) return [];
+  await ensureWorkflowProgressTable();
+  const result = await pool.query(
+    `SELECT workflow_id, state, updated_at
+       FROM cs_case_workflow_progress
+      WHERE case_id = $1
+      ORDER BY updated_at DESC`,
+    [cleanCaseId]
+  );
+  return result.rows.map((row) => ({
+    workflowId: cleanDraftValue(row.workflow_id),
+    ...(row.state && typeof row.state === "object" ? row.state : {}),
+    updatedAt: row.updated_at,
+  }));
+}
+
+async function saveCaseWorkflowProgress(caseId, workflowId, state = {}) {
+  const cleanCaseId = cleanDraftValue(caseId);
+  const cleanWorkflowId = cleanDraftValue(workflowId);
+  if (!cleanCaseId || !cleanWorkflowId) throw new Error("Case ID and workflow ID are required");
+  await ensureWorkflowProgressTable();
+  const cleanState = state && typeof state === "object" ? state : {};
+  const result = await pool.query(
+    `INSERT INTO cs_case_workflow_progress (case_id, workflow_id, state, updated_at)
+       VALUES ($1, $2, $3::jsonb, NOW())
+       ON CONFLICT (case_id, workflow_id)
+       DO UPDATE SET state = EXCLUDED.state, updated_at = NOW()
+       RETURNING state, updated_at`,
+    [cleanCaseId, cleanWorkflowId, JSON.stringify(cleanState)]
+  );
+  return {
+    ...(result.rows[0]?.state || {}),
+    updatedAt: result.rows[0]?.updated_at,
+  };
+}
+
+async function deleteCaseWorkflowProgress(caseId, workflowId) {
+  const cleanCaseId = cleanDraftValue(caseId);
+  const cleanWorkflowId = cleanDraftValue(workflowId);
+  if (!cleanCaseId || !cleanWorkflowId) return;
+  await ensureWorkflowProgressTable();
+  await pool.query(
+    `DELETE FROM cs_case_workflow_progress WHERE case_id = $1 AND workflow_id = $2`,
+    [cleanCaseId, cleanWorkflowId]
+  );
 }
 
 function normaliseCaseNote(row = {}) {
@@ -7172,6 +8382,7 @@ router.post("/cases/:caseId/workflow-check", async (req, res) => {
       inputValue: req.body?.inputValue,
       inputLabel: req.body?.inputLabel,
       inputSource: req.body?.inputSource,
+      selectedRecordId: req.body?.selectedRecordId,
     }, userId);
     return res.json({ ok: true, ...result });
   } catch (err) {
@@ -7222,6 +8433,66 @@ router.post("/cases/:caseId/workflow-actions/execute", async (req, res) => {
       ok: false,
       error: err.message || "Failed to execute workflow actions",
       details: err.responseBody || null,
+    });
+  }
+});
+
+router.get("/cases/:caseId/workflow-progress/:workflowId", async (req, res) => {
+  try {
+    sendNoStore(res);
+    await resolveUserIdFromRequest(req);
+    const progress = await getCaseWorkflowProgress(req.params.caseId, req.params.workflowId);
+    return res.json({ ok: true, progress });
+  } catch (err) {
+    console.error("GET /salesorder/cases/:caseId/workflow-progress/:workflowId error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to load workflow progress",
+    });
+  }
+});
+
+router.get("/cases/:caseId/workflow-progress", async (req, res) => {
+  try {
+    sendNoStore(res);
+    await resolveUserIdFromRequest(req);
+    const progress = await listCaseWorkflowProgress(req.params.caseId);
+    return res.json({ ok: true, progress });
+  } catch (err) {
+    console.error("GET /salesorder/cases/:caseId/workflow-progress error:", err.message);
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to load workflow progress",
+    });
+  }
+});
+
+router.put("/cases/:caseId/workflow-progress/:workflowId", async (req, res) => {
+  try {
+    sendNoStore(res);
+    await resolveUserIdFromRequest(req);
+    const progress = await saveCaseWorkflowProgress(req.params.caseId, req.params.workflowId, req.body?.progress || req.body || {});
+    return res.json({ ok: true, progress });
+  } catch (err) {
+    console.error("PUT /salesorder/cases/:caseId/workflow-progress/:workflowId error:", err.message);
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to save workflow progress",
+    });
+  }
+});
+
+router.delete("/cases/:caseId/workflow-progress/:workflowId", async (req, res) => {
+  try {
+    sendNoStore(res);
+    await resolveUserIdFromRequest(req);
+    await deleteCaseWorkflowProgress(req.params.caseId, req.params.workflowId);
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("DELETE /salesorder/cases/:caseId/workflow-progress/:workflowId error:", err.message);
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to clear workflow progress",
     });
   }
 });
@@ -7623,13 +8894,15 @@ router.get("/:id", async (req, res) => {
           const sign = isNegativeValueLine ? -1 : 1;
           net = isNegativeValueLine ? -Math.abs(net) : Math.abs(net);
 
-          // amount is the full displayed retail gross line total, signed.
+          // Keep retail/base-price totals separate from the actual transaction line values.
           const retailNet = parseFloat(info.baseprice || 0);
           const retailGross = +(retailNet * 1.2).toFixed(2);
-          const amount = +(retailGross * qty * sign).toFixed(2);
+          const retailAmount = +(retailGross * qty * sign).toFixed(2);
 
           const vat = vatFree ? 0 : +(net * 0.2).toFixed(2);
           const saleprice = +(net + vat).toFixed(2);
+          const grossAmount = saleprice;
+          const lineRate = qty ? +(net / qty).toFixed(6) : net;
 
           const fulfilId =
             r.fulfilmentlocation ||
@@ -7769,7 +9042,15 @@ router.get("/:id", async (req, res) => {
             item: { id: itemId, refName: itemName, class: info.class || "" },
             itemClass: info.class || "",
             quantity: qty,
-            amount,
+            amount: net,
+            netamount: net,
+            netAmount: net,
+            amountNetLine: net,
+            rate: lineRate,
+            grossAmount,
+            grossamt: grossAmount,
+            amountGrossLine: saleprice,
+            retailAmount,
             vat,
             saleprice,
             taxCode,
