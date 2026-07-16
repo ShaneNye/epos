@@ -339,17 +339,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       const qty = Math.abs(Number(line.quantity || 1)) || 1;
 
-      let retailGrossLineTotal = hasRealValue(line.amount) ? Number(line.amount) : 0;
-      let saleGrossLineTotal = hasRealValue(line.saleprice)
-        ? Number(line.saleprice)
-        : retailGrossLineTotal;
+      const normalisedLine = window.EposFinancials?.normaliseLine?.(line);
+      let retailGrossLineTotal = normalisedLine
+        ? Number(normalisedLine.retailGross)
+        : hasRealValue(line.amount) ? Number(line.amount) : 0;
+      let saleGrossLineTotal = normalisedLine
+        ? Number(normalisedLine.saleGross)
+        : hasRealValue(line.saleprice) ? Number(line.saleprice) : retailGrossLineTotal;
 
       if (!Number.isFinite(retailGrossLineTotal)) retailGrossLineTotal = 0;
       if (!Number.isFinite(saleGrossLineTotal)) saleGrossLineTotal = 0;
-
-      if (!hasRealValue(line.amount) && saleGrossLineTotal !== 0) {
-        retailGrossLineTotal = saleGrossLineTotal;
-      }
 
       const negativeLine = isNegativeValueLine(itemName);
 
@@ -453,17 +452,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       const itemName = String(line.item?.refName || "");
       const negativeLine = isNegativeValueLine(itemName);
 
-      let retailGrossLineTotal = hasRealValue(line.amount) ? Number(line.amount) : 0;
-      let saleGrossLineTotal = hasRealValue(line.saleprice)
-        ? Number(line.saleprice || 0)
-        : retailGrossLineTotal;
+      const normalisedLine = window.EposFinancials?.normaliseLine?.(line);
+      let retailGrossLineTotal = normalisedLine
+        ? Number(normalisedLine.retailGross)
+        : hasRealValue(line.amount) ? Number(line.amount) : 0;
+      let saleGrossLineTotal = normalisedLine
+        ? Number(normalisedLine.saleGross)
+        : hasRealValue(line.saleprice) ? Number(line.saleprice || 0) : retailGrossLineTotal;
+      const lineVat = normalisedLine ? Number(normalisedLine.vat) : null;
 
       if (!Number.isFinite(retailGrossLineTotal)) retailGrossLineTotal = 0;
       if (!Number.isFinite(saleGrossLineTotal)) saleGrossLineTotal = 0;
-
-      if (!hasRealValue(line.amount) && saleGrossLineTotal !== 0) {
-        retailGrossLineTotal = saleGrossLineTotal;
-      }
 
       if (negativeLine) {
         if (retailGrossLineTotal > 0) retailGrossLineTotal = -retailGrossLineTotal;
@@ -473,7 +472,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         if (saleGrossLineTotal < 0) saleGrossLineTotal = Math.abs(saleGrossLineTotal);
       }
 
-      const taxValue = saleGrossLineTotal / 6;
+      const taxValue = Number.isFinite(lineVat) ? lineVat : saleGrossLineTotal / 6;
 
       vatTotal += taxValue;
       salesTotal += saleGrossLineTotal;

@@ -62,6 +62,48 @@ test("negative promo/trade-in lines reduce totals consistently", () => {
   assert.equal(summary.discountTotal, 0);
 });
 
+test("net amount with gross sale price is not treated as a VAT discount", () => {
+  const financials = loadFinancials();
+  const summary = financials.summariseLines([
+    {
+      item: { refName: "Double Luxury Cotton Mattress Protector" },
+      quantity: 1,
+      amount: 112.5,
+      saleprice: 135,
+    },
+    {
+      item: { refName: "Indulgence Microfibre Pillow" },
+      quantity: 2,
+      amount: 80,
+      saleprice: 96,
+    },
+  ]);
+
+  assert.equal(summary.totalRetail, 231);
+  assert.equal(summary.grossTotal, 231);
+  assert.equal(summary.vatTotal, 38.5);
+  assert.equal(summary.discountTotal, 0);
+  assert.equal(summary.discountPct, 0);
+});
+
+test("retailAmount is preferred for original gross price when present", () => {
+  const financials = loadFinancials();
+  const summary = financials.summariseLines([
+    {
+      item: { refName: "Sale Mattress" },
+      quantity: 1,
+      amount: 100,
+      retailAmount: 180,
+      saleprice: 120,
+    },
+  ]);
+
+  assert.equal(summary.totalRetail, 180);
+  assert.equal(summary.grossTotal, 120);
+  assert.equal(summary.discountTotal, 60);
+  assert.equal(summary.discountPct, 33.33);
+});
+
 test("customer refund deposits are always treated as negative", () => {
   const financials = loadFinancials();
   const summary = financials.summariseLines(

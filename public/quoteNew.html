@@ -10,7 +10,7 @@
 
   <!-- Styles -->
   <link rel="stylesheet" href="/css/home.css" />
-  <link rel="stylesheet" href="/css/sales.css" />
+  <link rel="stylesheet" href="/css/sales.css?v=quote-tax-column-fix-1" />
   <link rel="stylesheet" href="/assistant/assistant.css" />
 
   <!-- Storage must be available before main.js -->
@@ -34,7 +34,7 @@
   <script src="/js/salesNewFetchify.js" defer></script>
   <script src="/js/salesCustomerLock.js" defer></script>
   <script src="/js/salesCustomerSearch.js" defer></script>
-  <script src="/js/quoteNewItemLine.js?v=vat-free-class-1" defer></script>
+  <script src="/js/quoteNewItemLine.js?v=quote-tax-column-fix-1" defer></script>
   <script src="/js/orderPromotions.js" defer></script>
 
   <!-- Virtual Sales Assistant -->
@@ -103,7 +103,7 @@
   }
 </style>
 
-<body>
+<body class="quote-page">
   <div id="menu"></div>
 
   <main class="content">
@@ -315,6 +315,7 @@
               <th>Quantity</th>
               <th>Amount</th>
               <th>Discount %</th>
+              <th id="taxHeader" class="tax-column" style="display:none;">Tax (20%)</th>
               <th>Sale Price</th>
               <th id="vatFreeHeader" style="display:none;">Vat Free</th>
 
@@ -349,6 +350,10 @@
 
               <td>
                 <input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" />
+              </td>
+
+              <td class="tax-cell" style="display:none;">
+                <input type="number" class="item-vat" value="0.00" step="0.01" readonly />
               </td>
 
               <td>

@@ -1,10 +1,18 @@
-const { nsPost, nsRestlet } = require("../netsuiteClient");
-
 function trim(value) {
   if (value && typeof value === "object") {
     return String(value.id || value.value || value.refName || value.name || "").trim();
   }
   return String(value || "").trim();
+}
+
+function customerCountyDisplayValue(customer = {}) {
+  return trim(
+    customer.countyName ||
+      customer.countyDisplay ||
+      customer.countyText ||
+      customer.stateName ||
+      customer.county
+  );
 }
 
 function normalizeCustomerPhone(value) {
@@ -78,7 +86,7 @@ function buildCustomerCreateBody(customer = {}) {
             addr1: trim(customer.address1),
             addr2: trim(customer.address2),
             city: trim(customer.address3),
-            state: trim(customer.county),
+            state: customerCountyDisplayValue(customer),
             zip: trim(customer.postcode),
           },
         },
@@ -101,6 +109,7 @@ function extractCustomerId(result) {
 }
 
 async function createNetSuiteCustomer(customer, userId) {
+  const { nsPost, nsRestlet } = require("../netsuiteClient");
   const body = buildCustomerCreateBody(customer);
   const restletUrl = trim(process.env.NETSUITE_CUSTOMER_CREATE_RESTLET_URL);
 
@@ -138,6 +147,7 @@ async function createNetSuiteCustomer(customer, userId) {
 module.exports = {
   buildCustomerCreateBody,
   createNetSuiteCustomer,
+  customerCountyDisplayValue,
   isLikelyEmail,
   normalizeCustomerEmail,
   normalizeCustomerPhone,

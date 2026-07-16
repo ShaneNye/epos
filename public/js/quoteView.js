@@ -671,7 +671,7 @@ function wireEditableQuoteRow(tr, line, idx) {
       />
     </td>
 
-    <td>
+    <td class="tax-cell" style="display:none;">
       <input
         type="number"
         class="item-vat"
@@ -723,6 +723,10 @@ function wireEditableQuoteRow(tr, line, idx) {
 
   if (typeof window.setupPriceSync === "function") {
     window.setupPriceSync(tr);
+  }
+
+  if (typeof window.ensureQuoteTaxCell === "function") {
+    window.ensureQuoteTaxCell(tr);
   }
 
   if (typeof window.ensure60NightTrialCell === "function") {

@@ -194,6 +194,8 @@ textarea:focus {
 }
 
 .order-table .tax-column,
+.quote-page .order-table thead th:nth-child(6),
+.order-table .tax-cell,
 .order-table .vat {
   display: none;
 }

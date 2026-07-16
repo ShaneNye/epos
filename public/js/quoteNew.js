@@ -446,6 +446,11 @@ if (window.location.pathname.includes("/quote/view/")) {
         address2: document.querySelector('input[name="address2"]')?.value || "",
         address3: document.querySelector('input[name="address3"]')?.value || "",
         county: document.querySelector('[name="county"]')?.value || "",
+        countyName:
+          window.EposCountySelect?.getName?.(document.querySelector('[name="county"]')) ||
+          document.querySelector('[name="county"]')?.selectedOptions?.[0]?.textContent?.trim() ||
+          document.querySelector('[name="county"]')?.value ||
+          "",
         shipAddress: window.selectedShipAddress || shipAddress,
         shipaddress: window.selectedShipAddress || shipAddress,
         contactNumber: document.querySelector('input[name="contactNumber"]')?.value || "",

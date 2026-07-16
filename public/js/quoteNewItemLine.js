@@ -579,17 +579,53 @@ function ensureVatFreeCell(row) {
   return td;
 }
 
+function ensureQuoteTaxCell(row) {
+  if (!row) return null;
+
+  let td = row.querySelector("td.tax-cell");
+  if (!td) {
+    td = document.createElement("td");
+    td.className = "tax-cell";
+    td.style.display = "none";
+    td.innerHTML = `
+      <input type="number" class="item-vat" value="0.00" step="0.01" readonly />
+    `;
+  }
+
+  const saleTd = row.querySelector(".item-saleprice")?.closest("td");
+  if (saleTd) {
+    if (td.parentNode === row) td.remove();
+    row.insertBefore(td, saleTd);
+  } else if (!td.parentNode) {
+    row.appendChild(td);
+  }
+
+  return td;
+}
+
 function updateVatFreeColumnVisibility() {
   const header = document.getElementById("vatFreeHeader");
+  const taxHeader =
+    document.getElementById("taxHeader") ||
+    [...document.querySelectorAll("#orderItemsTable thead th")].find((th) =>
+      String(th.textContent || "").toLowerCase().includes("tax")
+    );
   const rows = document.querySelectorAll("#orderItemsBody .order-line");
   if (!header) return;
 
-  rows.forEach((row) => ensureVatFreeCell(row));
+  rows.forEach((row) => {
+    ensureQuoteTaxCell(row);
+    ensureVatFreeCell(row);
+  });
 
   const anyAdjustable = [...rows].some((row) => rowHasAdjustableVatFreeFlag(row));
   header.style.display = anyAdjustable ? "table-cell" : "none";
+  if (taxHeader) taxHeader.style.display = anyAdjustable ? "table-cell" : "none";
 
   rows.forEach((row) => {
+    const taxCell = row.querySelector("td.tax-cell");
+    if (taxCell) taxCell.style.display = anyAdjustable ? "table-cell" : "none";
+
     const cell = row.querySelector("td.vat-free-cell");
     if (!cell) return;
 
@@ -1139,6 +1175,10 @@ function addNewRow() {
       <input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" />
     </td>
 
+    <td class="tax-cell" style="display:none;">
+      <input type="number" class="item-vat" value="0.00" step="0.01" readonly />
+    </td>
+
     <td>
       <input type="text" class="item-saleprice" placeholder="£" inputmode="decimal" autocomplete="off" />
     </td>
@@ -1192,6 +1232,7 @@ window.bindQuoteMoneyInput = bindMoneyInput;
 window.ensure60NightTrialCell = ensure60NightTrialCell;
 window.update60NightTrialColumnVisibility = update60NightTrialColumnVisibility;
 window.ensureVatFreeCell = ensureVatFreeCell;
+window.ensureQuoteTaxCell = ensureQuoteTaxCell;
 window.updateVatFreeColumnVisibility = updateVatFreeColumnVisibility;
 window.ensureNextEmptyRowAndFocus = ensureNextEmptyRowAndFocus;
 window.addNewRow = addNewRow;
@@ -1227,6 +1268,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   document.querySelectorAll("#orderItemsBody .order-line").forEach((row) => {
     setupAutocompleteForRow(row);
     setupPriceSync(row);
+    ensureQuoteTaxCell(row);
     ensure60NightTrialCell(row);
     ensureVatFreeCell(row);
 

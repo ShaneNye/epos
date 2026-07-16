@@ -1769,17 +1769,22 @@ function renderClosedSalesViewLines(lines = []) {
 
   const frag = document.createDocumentFragment();
   lines.forEach((line) => {
+    const financialLine = window.EposFinancials?.normaliseLine?.(line);
     const qty = Math.abs(Number(line.quantity || 1)) || 1;
-    const amount = salesViewMoney(line.amount);
-    const sale = salesViewMoney(line.saleprice ?? line.grossSaleprice ?? line.grossAmount ?? line.amount);
+    const amount = financialLine
+      ? salesViewMoney(financialLine.retailGross)
+      : salesViewMoney(line.amount);
+    const sale = financialLine
+      ? salesViewMoney(financialLine.saleGross)
+      : salesViewMoney(line.saleprice ?? line.grossSaleprice ?? line.grossAmount ?? line.amount);
     const taxCodeValues = salesViewRecordValues(line, ["taxCode", "taxcode", "tax_code", "Tax Code"]);
     const vatFree = taxCodeValues.some(isSalesViewVatFreeTaxCode);
-    const discountBasis = vatFree ? amount / 1.2 : amount;
-    const displaySale = vatFree && sale === amount ? discountBasis : sale;
+    const discountBasis = amount;
+    const displaySale = sale;
     const discountPct = discountBasis > 0
       ? Math.max(0, ((discountBasis - displaySale) / discountBasis) * 100)
       : 0;
-    const taxValue = vatFree ? 0 : displaySale / 6;
+    const taxValue = financialLine ? financialLine.vat : vatFree ? 0 : displaySale / 6;
     const optionsText = line.custcol_sb_itemoptionsdisplay || line.optionsDisplay || "";
     const fulfilment = line.custcol_sb_fulfilmentlocation?.refName || "";
     const inventoryDetail = existingInventoryDetail(line);
@@ -1895,8 +1900,13 @@ window.renderSalesViewLines = function renderSalesViewLines({
 
     const qty = Math.abs(Number(line.quantity || 1)) || 1;
 
-    let retailGrossLineTotal = Number(line.amount || 0);
-    let saleGrossLineTotal = Number(line.saleprice ?? 0);
+    const financialLine = window.EposFinancials?.normaliseLine?.(line);
+    let retailGrossLineTotal = financialLine
+      ? Number(financialLine.retailGross)
+      : Number(line.amount || 0);
+    let saleGrossLineTotal = financialLine
+      ? Number(financialLine.saleGross)
+      : Number(line.saleprice ?? 0);
 
     if (!Number.isFinite(retailGrossLineTotal)) retailGrossLineTotal = 0;
     if (!Number.isFinite(saleGrossLineTotal)) saleGrossLineTotal = 0;
@@ -1936,17 +1946,14 @@ window.renderSalesViewLines = function renderSalesViewLines({
     ]);
     const existingVatFree = existingTaxCodeValues.some(isSalesViewVatFreeTaxCode);
 
-    const discountBasis = existingVatFree ? retailGrossLineTotal / 1.2 : retailGrossLineTotal;
-    const displaySaleLineTotal =
-      existingVatFree && saleGrossLineTotal === retailGrossLineTotal
-        ? discountBasis
-        : saleGrossLineTotal;
+    const discountBasis = retailGrossLineTotal;
+    const displaySaleLineTotal = saleGrossLineTotal;
     const discountPct =
       discountBasis > 0
         ? Math.max(0, ((discountBasis - displaySaleLineTotal) / discountBasis) * 100)
         : 0;
 
-    const taxValue = existingVatFree ? 0 : displaySaleLineTotal / 6;
+    const taxValue = financialLine ? financialLine.vat : existingVatFree ? 0 : displaySaleLineTotal / 6;
 
     const optionsText = line.custcol_sb_itemoptionsdisplay || line.optionsDisplay || "";
     const optsHtml = buildOptionsSummaryHtml(optionsText);

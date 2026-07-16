@@ -1275,6 +1275,10 @@
       address2: String(byId("kioskCheckoutAddress2")?.value || "").trim(),
       address3: String(byId("kioskCheckoutAddress3")?.value || "").trim(),
       county: String(byId("kioskCheckoutCounty")?.value || "").trim(),
+      countyName:
+        window.EposCountySelect?.getName?.(byId("kioskCheckoutCounty")) ||
+        byId("kioskCheckoutCounty")?.selectedOptions?.[0]?.textContent?.trim() ||
+        String(byId("kioskCheckoutCounty")?.value || "").trim(),
       noAddressRequired: !!byId("kioskCheckoutNoAddress")?.checked,
       store: String(byId("kioskCheckoutStore")?.value || "").trim(),
       leadSource: String(byId("kioskCheckoutLeadSource")?.value || "").trim(),
@@ -1796,6 +1800,7 @@
           address2: values.address2,
           address3: values.address3,
           county: values.county,
+          countyName: values.countyName,
           contactNumber: values.contactNumber,
           altContactNumber: values.altContactNumber,
           email: values.email,

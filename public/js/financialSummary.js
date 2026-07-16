@@ -27,6 +27,11 @@
     );
   }
 
+  function isVatFreeTaxCode(value = "") {
+    const text = String(value || "").trim().toUpperCase();
+    return text === "7" || text === "VATFREE" || text.includes("VAT FREE") || text.includes("ZERO");
+  }
+
   function depositType(deposit) {
     return String(deposit?.type || deposit?.Type || deposit?.recordType || "").trim();
   }
@@ -46,9 +51,17 @@
 
 function normaliseLine(line) {
   const name = lineName(line);
+  const taxCode =
+    line?.taxCode || line?.taxcode || line?.tax_code || line?.["Tax Code"] || "";
+  const vatFree = isVatFreeTaxCode(taxCode);
+  const hasRetailGrossValue =
+    hasValue(line?.retailGrossLine) ||
+    hasValue(line?.retailGross) ||
+    hasValue(line?.retailAmount);
   const retailValue =
     hasValue(line?.retailGrossLine) ? line.retailGrossLine :
     hasValue(line?.retailGross) ? line.retailGross :
+    hasValue(line?.retailAmount) ? line.retailAmount :
     hasValue(line?.amountGrossLine) ? line.amountGrossLine :
     hasValue(line?.grossAmount) ? line.grossAmount :
     hasValue(line?.amount) ? line.amount :
@@ -71,7 +84,8 @@ function normaliseLine(line) {
 
   let retailGross = money(retailValue);
   let saleGross = money(saleValue);
-  let vat = hasValue(line?.vat) ? money(line.vat) : saleGross / 6;
+  let vat = hasValue(line?.vat) ? money(line.vat) : vatFree ? 0 : saleGross / 6;
+  const fallbackVat = vatFree ? 0 : saleGross / 6;
 
   // ✅ Only use sale as retail fallback if retail was genuinely missing,
   // not just because retail value is zero.
@@ -79,14 +93,25 @@ function normaliseLine(line) {
     retailGross = saleGross;
   }
 
+  if (
+    !hasRetailGrossValue &&
+    hasValue(line?.amount) &&
+    !vatFree &&
+    retailGross > 0 &&
+    saleGross > retailGross &&
+    Math.abs(retailGross * 1.2 - saleGross) < 0.02
+  ) {
+    retailGross = saleGross;
+  }
+
   if (negativeLine) {
     retailGross = -Math.abs(retailGross);
     saleGross = -Math.abs(saleGross);
-    vat = -Math.abs(vat || saleGross / 6);
+    vat = -Math.abs(hasValue(line?.vat) ? vat : fallbackVat);
   } else {
     retailGross = Math.abs(retailGross);
     saleGross = Math.abs(saleGross);
-    vat = Math.abs(vat || saleGross / 6);
+    vat = Math.abs(hasValue(line?.vat) ? vat : fallbackVat);
   }
 
   return {
@@ -142,6 +167,7 @@ function normaliseLine(line) {
     formatMoney,
     hasValue,
     isNegativeValueLine,
+    isVatFreeTaxCode,
     isCustomerRefund,
     depositAmount,
     normaliseLine,

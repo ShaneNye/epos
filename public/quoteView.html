@@ -10,7 +10,7 @@
 
     <!-- Styles -->
     <link rel="stylesheet" href="/css/home.css">
-    <link rel="stylesheet" href="/css/salesView.css">
+    <link rel="stylesheet" href="/css/salesView.css?v=quote-tax-column-fix-1">
     <script src="/js/storage.js"></script>
 
     <!-- Scripts -->
@@ -21,11 +21,11 @@
     <script src="/js/itemOptionsCache.js" defer></script>
     <script src="/js/pendingReceipt.js" defer></script>
     <script src="/js/transactionCustomFields.js" defer></script>
-    <script src="/js/quoteNewItemLine.js" defer></script>
+    <script src="/js/quoteNewItemLine.js?v=quote-tax-column-fix-1" defer></script>
     <script src="/js/orderPromotions.js" defer></script>
     <script src="/js/customerCountySelect.js" defer></script>
     <script src="/js/salesCustomerLock.js" defer></script>
-    <script src="/js/quoteView.js" defer></script> <!-- ✅ changed to quoteView.js -->
+    <script src="/js/quoteView.js?v=quote-tax-column-fix-1" defer></script> <!-- ✅ changed to quoteView.js -->
 
 </head>
 <style>
@@ -85,7 +85,7 @@
     }
 </style>
 
-<body>
+<body class="quote-page">
     <div id="menu"></div>
     <!-- 🌀 Loading Overlay -->
     <div id="loadingOverlay" class="loading-overlay hidden">
@@ -311,6 +311,9 @@
                             <td><input type="number" class="item-qty" value="1" min="1" step="1" /></td>
                             <td><input type="number" class="item-amount" placeholder="£" step="0.01" readonly /></td>
                             <td><input type="number" class="item-discount" value="0" min="0" max="100" step="0.1" />
+                            </td>
+                            <td class="tax-cell" style="display:none;">
+                                <input type="number" class="item-vat" value="0.00" step="0.01" readonly />
                             </td>
                             <td><input type="text" class="item-saleprice" placeholder="£" inputmode="decimal" autocomplete="off" /></td>
                             <td class="vat-free-cell" style="display:none;">

@@ -200,6 +200,12 @@ textarea:focus {
   background: #f1fbff;
 }
 
+.order-table .tax-column,
+.quote-page .order-table thead th:nth-child(6),
+.order-table .tax-cell {
+  display: none;
+}
+
 .order-table .vat-free-cell {
   text-align: center;
 }
