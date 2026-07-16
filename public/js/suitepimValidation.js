@@ -1,7 +1,12 @@
 (function () {
   const state = {
     environment: "production",
+    validationType: "feed",
     fields: [],
+    pricePolicy: {
+      priceLevels: [],
+      quantities: [],
+    },
     rows: [],
     filteredRows: [],
   };
@@ -11,12 +16,16 @@
   function initEls() {
     [
       "suitepimValidationSearch",
+      "suitepimValidationType",
       "suitepimValidationState",
       "suitepimValidationRefresh",
       "suitepimValidationPush",
       "suitepimValidationTotal",
+      "suitepimValidationTotalLabel",
       "suitepimValidationMissingRows",
+      "suitepimValidationMissingRowsLabel",
       "suitepimValidationMissingFields",
+      "suitepimValidationMissingFieldsLabel",
       "suitepimValidationVisible",
       "suitepimValidationStatus",
       "suitepimValidationReport",
@@ -88,8 +97,29 @@
   }
 
   async function loadValidation() {
-    setLoading("Loading validation data...");
+    state.validationType = el.suitepimValidationType.value || "feed";
+    const isPricePolicy = state.validationType === "price-policy";
+    setLoading(isPricePolicy ? "Loading price policy gaps..." : "Loading validation data...");
     showStatus("");
+    el.suitepimValidationReport.hidden = true;
+    el.suitepimValidationReport.innerHTML = "";
+    el.suitepimValidationPush.hidden = isPricePolicy;
+    el.suitepimValidationState.querySelector('option[value="complete"]').hidden = isPricePolicy;
+    if (isPricePolicy && el.suitepimValidationState.value === "complete") el.suitepimValidationState.value = "missing";
+
+    if (isPricePolicy) {
+      state.fields = [];
+      const data = await api("/validation/price-policy");
+      state.pricePolicy = {
+        priceLevels: data.priceLevels || [],
+        quantities: data.quantities || [],
+      };
+      state.rows = data.rows || [];
+      applyFilters();
+      showStatus(`Found ${state.rows.length.toLocaleString()} ${data.environment} item(s) missing required price rows.`, "success");
+      return;
+    }
+
     const config = await api("/validation/config");
     state.fields = config.fields || [];
     const data = await api("/validation");
@@ -99,6 +129,7 @@
   }
 
   function rowMissingFields(row) {
+    if (state.validationType === "price-policy") return Array.isArray(row.missingRows) ? row.missingRows : [];
     if (Array.isArray(row.missingFields)) return row.missingFields;
     return state.fields.filter((field) => !isPresent(row[field.name])).map((field) => field.name);
   }
@@ -109,10 +140,15 @@
 
     state.filteredRows = state.rows.filter((row) => {
       const missingCount = rowMissingFields(row).length;
-      if (mode === "missing" && missingCount === 0) return false;
-      if (mode === "complete" && missingCount > 0) return false;
+      if (state.validationType !== "price-policy") {
+        if (mode === "missing" && missingCount === 0) return false;
+        if (mode === "complete" && missingCount > 0) return false;
+      }
       if (term) {
-        const haystack = [row.Name, row.name, row.internalid, row["Internal ID"], row.id].map(valueText).join(" ").toLowerCase();
+        const haystack = [row.Name, row.name, row.itemid, row.displayname, row.internalid, row["Internal ID"], row.id]
+          .map(valueText)
+          .join(" ")
+          .toLowerCase();
         if (!haystack.includes(term)) return false;
       }
       return true;
@@ -125,6 +161,9 @@
   function updateSummary() {
     const missingRows = state.rows.filter((row) => rowMissingFields(row).length > 0).length;
     const missingFields = state.rows.reduce((sum, row) => sum + rowMissingFields(row).length, 0);
+    el.suitepimValidationTotalLabel.textContent = state.validationType === "price-policy" ? "items with gaps" : "records";
+    el.suitepimValidationMissingRowsLabel.textContent = state.validationType === "price-policy" ? "items missing rows" : "with missing data";
+    el.suitepimValidationMissingFieldsLabel.textContent = state.validationType === "price-policy" ? "missing price rows" : "missing fields";
     el.suitepimValidationTotal.textContent = state.rows.length.toLocaleString();
     el.suitepimValidationMissingRows.textContent = missingRows.toLocaleString();
     el.suitepimValidationMissingFields.textContent = missingFields.toLocaleString();
@@ -135,10 +174,15 @@
     if (!state.rows.length) {
       el.suitepimValidationMount.innerHTML = `
         <div class="suitepim-empty">
-          <h2>No validation records loaded</h2>
-          <p>Use refresh once the SuitePim validation feed is available.</p>
+          <h2>${state.validationType === "price-policy" ? "No price policy gaps found" : "No validation records loaded"}</h2>
+          <p>${state.validationType === "price-policy" ? "All active lot-numbered inventory items have Base Price and Sale Price rows for quantity levels 0 and 1." : "Use refresh once the SuitePim validation feed is available."}</p>
         </div>
       `;
+      return;
+    }
+
+    if (state.validationType === "price-policy") {
+      renderPricePolicyTable();
       return;
     }
 
@@ -175,6 +219,51 @@
 
     el.suitepimValidationMount.innerHTML = "";
     el.suitepimValidationMount.appendChild(table);
+  }
+
+  function renderPricePolicyTable() {
+    const table = document.createElement("table");
+    table.className = "suitepim-table suitepim-validation-table suitepim-price-policy-table";
+    table.innerHTML = `
+      <thead>
+        <tr>
+          <th>Item</th>
+          <th>Display Name</th>
+          <th>Internal ID</th>
+          <th>Missing Rows</th>
+          <th>Base Price Qty 0</th>
+          <th>Base Price Qty 1</th>
+          <th>Sale Price Qty 0</th>
+          <th>Sale Price Qty 1</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    `;
+
+    const tbody = table.querySelector("tbody");
+    state.filteredRows.forEach((row) => {
+      const missing = new Set((row.missingRows || []).map((item) => pricePolicyKey(item.priceLevel, item.quantity)));
+      const tr = document.createElement("tr");
+      tr.classList.add("is-dirty");
+      tr.innerHTML = `
+        <td><strong>${escapeHtml(row.itemid || "")}</strong></td>
+        <td>${escapeHtml(row.displayname || "")}</td>
+        <td>${escapeHtml(row.internalid || "")}</td>
+        <td><span class="suitepim-validation-count">${missing.size}</span></td>
+        ${["Base Price|0", "Base Price|1", "Sale Price|0", "Sale Price|1"].map((key) => {
+          const isMissing = missing.has(pricePolicyKey(...key.split("|")));
+          return `<td><span class="suitepim-validation-pill ${isMissing ? "is-missing" : "is-valid"}">${isMissing ? "Missing" : "OK"}</span></td>`;
+        }).join("")}
+      `;
+      tbody.appendChild(tr);
+    });
+
+    el.suitepimValidationMount.innerHTML = "";
+    el.suitepimValidationMount.appendChild(table);
+  }
+
+  function pricePolicyKey(priceLevel, quantity) {
+    return `${String(priceLevel || "").trim().toLowerCase()}|${Number(quantity)}`;
   }
 
   function buildValidationPayload() {
@@ -281,6 +370,7 @@
   function bindEvents() {
     el.suitepimValidationSearch.addEventListener("input", applyFilters);
     el.suitepimValidationState.addEventListener("change", applyFilters);
+    el.suitepimValidationType.addEventListener("change", () => loadValidation().catch((err) => showStatus(err.message, "error")));
     el.suitepimValidationRefresh.addEventListener("click", () => loadValidation().catch((err) => showStatus(err.message, "error")));
     el.suitepimValidationPush.addEventListener("click", pushMissingData);
   }

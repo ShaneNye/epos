@@ -1859,7 +1859,7 @@ body.suitepim-floorplan-dark .suitepim-floorplan-data-table td {
 }
 
 .suitepim-validation-toolbar {
-  grid-template-columns: minmax(260px, 1fr) 180px 42px auto;
+  grid-template-columns: minmax(260px, 1fr) 170px 180px 42px auto;
 }
 
 .suitepim-reasons-toolbar {

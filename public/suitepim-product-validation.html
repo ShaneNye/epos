@@ -93,6 +93,10 @@
         </svg>
         <input id="suitepimValidationSearch" type="search" placeholder="Search item or internal ID..." />
       </div>
+      <select id="suitepimValidationType" aria-label="Validation type">
+        <option value="feed">Product data</option>
+        <option value="price-policy">Price policy</option>
+      </select>
       <select id="suitepimValidationState" aria-label="Validation state filter">
         <option value="missing">Missing only</option>
         <option value="all">All records</option>
@@ -116,9 +120,9 @@
     </section>
 
     <section class="suitepim-summary" aria-label="Validation summary">
-      <div><span id="suitepimValidationTotal">0</span><small>records</small></div>
-      <div><span id="suitepimValidationMissingRows">0</span><small>with missing data</small></div>
-      <div><span id="suitepimValidationMissingFields">0</span><small>missing fields</small></div>
+      <div><span id="suitepimValidationTotal">0</span><small id="suitepimValidationTotalLabel">records</small></div>
+      <div><span id="suitepimValidationMissingRows">0</span><small id="suitepimValidationMissingRowsLabel">with missing data</small></div>
+      <div><span id="suitepimValidationMissingFields">0</span><small id="suitepimValidationMissingFieldsLabel">missing fields</small></div>
       <div><span id="suitepimValidationVisible">0</span><small>visible</small></div>
     </section>
 

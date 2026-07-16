@@ -1945,6 +1945,186 @@ function enrichValidationRow(row) {
   };
 }
 
+const PRICE_POLICY_LEVELS = ["Base Price", "Sale Price"];
+const PRICE_POLICY_QUANTITIES = [0, 1];
+
+function normalizePricePolicyName(value) {
+  return String(value || "").trim().toLowerCase();
+}
+
+function pricePolicyKey(priceLevel, priceQty) {
+  return `${normalizePricePolicyName(priceLevel)}|${Number(priceQty)}`;
+}
+
+function normalizePricePolicyQuantity(value) {
+  if (value === null || value === undefined || String(value).trim() === "") return 0;
+  return Number(value);
+}
+
+function buildPricePolicyItemQueries() {
+  return [
+    `
+      SELECT
+        Item.ID AS "internalid",
+        Item.ItemID AS "itemid",
+        Item.DisplayName AS "displayname",
+        'lotNumberedInventoryItem' AS "recordtype",
+        BUILTIN.DF(Item.ItemType) AS "itemtype"
+      FROM
+        Item
+      WHERE
+        Item.ItemType = 'InvtPart'
+        AND Item.IsLotItem = 'T'
+        AND Item.IsInactive = 'F'
+      ORDER BY
+        Item.ItemID
+    `,
+    `
+      SELECT
+        Item.ID AS "internalid",
+        Item.ItemID AS "itemid",
+        Item.DisplayName AS "displayname",
+        Item.RecordType AS "recordtype",
+        BUILTIN.DF(Item.ItemType) AS "itemtype"
+      FROM
+        Item
+      WHERE
+        Item.RecordType = 'lotnumberedinventoryitem'
+        AND Item.IsInactive = 'F'
+      ORDER BY
+        Item.ItemID
+    `,
+  ];
+}
+
+function buildPricePolicyPricingQueries() {
+  const priceLevels = PRICE_POLICY_LEVELS.map((level) => `'${sqlString(level)}'`).join(", ");
+
+  return [
+    `
+      SELECT
+        Pricing.Item AS "item",
+        PriceLevel.Name AS "pricelevel",
+        Pricing.PriceQty AS "priceqty"
+      FROM
+        Pricing
+        INNER JOIN PriceLevel ON PriceLevel.ID = Pricing.PriceLevel
+      WHERE
+        PriceLevel.Name IN (${priceLevels})
+      ORDER BY
+        Pricing.Item,
+        PriceLevel.Name,
+        Pricing.PriceQty
+    `,
+    `
+      SELECT
+        Pricing.Item AS "item",
+        BUILTIN.DF(Pricing.PriceLevel) AS "pricelevel",
+        Pricing.PriceQty AS "priceqty"
+      FROM
+        Pricing
+      WHERE
+        BUILTIN.DF(Pricing.PriceLevel) IN (${priceLevels})
+      ORDER BY
+        Pricing.Item,
+        BUILTIN.DF(Pricing.PriceLevel),
+        Pricing.PriceQty
+    `,
+  ];
+}
+
+async function fetchSuiteQLRowsFromAttempts(cfg, userId, queries, label) {
+  let lastError = null;
+  for (const query of queries) {
+    try {
+      return await fetchSuiteQLRows(cfg, userId, query);
+    } catch (err) {
+      lastError = err;
+      console.warn(`SuitePim ${label} SuiteQL attempt failed:`, err.message);
+    }
+  }
+  throw lastError || new Error(`${label} SuiteQL failed`);
+}
+
+async function fetchPricePolicyValidationRows(cfg, userId) {
+  const [items, pricingRows] = await Promise.all([
+    fetchSuiteQLRowsFromAttempts(cfg, userId, buildPricePolicyItemQueries(), "price policy item"),
+    fetchSuiteQLRowsFromAttempts(cfg, userId, buildPricePolicyPricingQueries(), "price policy pricing"),
+  ]);
+
+  return summarizePricePolicyRows(items, pricingRows);
+}
+
+function summarizePricePolicyRows(itemRows, pricingRows) {
+  const items = new Map();
+  const pricingByItemLevel = new Map();
+
+  itemRows.forEach((row) => {
+    const internalId = String(row.internalid || row.InternalID || row.id || row.ID || "").trim();
+    if (!internalId) return;
+
+    items.set(internalId, {
+      internalid: internalId,
+      itemid: row.itemid || row.ItemID || "",
+      displayname: row.displayname || row.DisplayName || "",
+      recordtype: row.recordtype || row.RecordType || "lotNumberedInventoryItem",
+      itemtype: row.itemtype || row.ItemType || "",
+      present: new Set(),
+    });
+  });
+
+  pricingRows.forEach((row) => {
+    const internalId = String(row.item || row.Item || row.internalid || row.InternalID || "").trim();
+    if (!internalId || !items.has(internalId)) return;
+
+    const priceLevel = row.pricelevel || row.PriceLevel || "";
+    if (!priceLevel) return;
+
+    const priceQty = normalizePricePolicyQuantity(row.priceqty ?? row.PriceQty);
+    const key = `${internalId}|${normalizePricePolicyName(priceLevel)}`;
+    if (!pricingByItemLevel.has(key)) pricingByItemLevel.set(key, { internalId, priceLevel, quantities: new Set() });
+    if (Number.isFinite(priceQty)) pricingByItemLevel.get(key).quantities.add(priceQty);
+  });
+
+  pricingByItemLevel.forEach((entry) => {
+    const item = items.get(entry.internalId);
+    if (!item) return;
+
+    const sortedQuantities = Array.from(entry.quantities).sort((a, b) => a - b);
+    if (!sortedQuantities.length) return;
+
+    // NetSuite's Pricing.PriceQty is the break value, not the matrix column
+    // index. The UI columns we care about are the first two matrix values:
+    // first returned break = Qty 0, second returned break = Qty 1.
+    sortedQuantities.slice(0, PRICE_POLICY_QUANTITIES.length).forEach((_, index) => {
+      item.present.add(pricePolicyKey(entry.priceLevel, PRICE_POLICY_QUANTITIES[index]));
+    });
+  });
+
+  return Array.from(items.values())
+    .map((item) => {
+      const missingRows = [];
+      PRICE_POLICY_LEVELS.forEach((priceLevel) => {
+        PRICE_POLICY_QUANTITIES.forEach((quantity) => {
+          if (!item.present.has(pricePolicyKey(priceLevel, quantity))) {
+            missingRows.push({ priceLevel, quantity });
+          }
+        });
+      });
+
+      return {
+        internalid: item.internalid,
+        itemid: item.itemid,
+        displayname: item.displayname,
+        recordtype: item.recordtype,
+        itemtype: item.itemtype,
+        missingRows,
+        missingCount: missingRows.length,
+      };
+    })
+    .filter((item) => item.missingRows.length > 0);
+}
+
 function normalizePerformanceRows(payload) {
   const rows = Array.isArray(payload) ? payload : payload.results || payload.items || payload.rows || [];
   return rows
@@ -3973,6 +4153,27 @@ router.get("/validation", async (req, res) => {
     });
   } catch (err) {
     console.error("SuitePim validation load failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.get("/validation/price-policy", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const rows = await fetchPricePolicyValidationRows(cfg, userId);
+
+    res.json({
+      ok: true,
+      environment: publicEnvironmentName(env),
+      priceLevels: PRICE_POLICY_LEVELS,
+      quantities: PRICE_POLICY_QUANTITIES,
+      rows,
+      count: rows.length,
+    });
+  } catch (err) {
+    console.error("SuitePim price policy validation failed:", err);
     res.status(500).json({ ok: false, error: err.message });
   }
 });
