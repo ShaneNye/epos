@@ -17,6 +17,10 @@
   const selectColumnWidth = 42;
   const minColumnWidth = 140;
   const maxColumnWidth = 720;
+  const searchDebounceMs = 180;
+  const rowSearchColumns = ["Internal ID", "Item ID", "Name", "Display Name", "Supplier Name", "Class", "Sub-Class"];
+  const rowSearchTextCache = new WeakMap();
+  let searchDebounceTimer = null;
 
   const state = {
     environment: "production",
@@ -1705,6 +1709,14 @@
     return String(value ?? "");
   }
 
+  function rowSearchText(row) {
+    const cached = rowSearchTextCache.get(row);
+    if (cached !== undefined) return cached;
+    const text = rowSearchColumns.map((column) => valueText(row[column])).join(" ").toLowerCase();
+    rowSearchTextCache.set(row, text);
+    return text;
+  }
+
   function sortLabel(field, direction) {
     const numeric = ["Currency", "Decimal", "Integer", "Float", "Number"].includes(field?.fieldType);
     if (numeric) return direction === "asc" ? "Low to high" : "High to low";
@@ -2153,16 +2165,7 @@
 
     state.filteredRows = state.rows.filter((row) => {
       if (search) {
-        const haystack = [
-          row["Internal ID"],
-          row["Item ID"],
-          row.Name,
-          row["Display Name"],
-          row["Supplier Name"],
-          row.Class,
-          row["Sub-Class"],
-        ].map(valueText).join(" ").toLowerCase();
-        if (!haystack.includes(search)) return false;
+        if (!rowSearchText(row).includes(search)) return false;
       }
 
       if (!showChildren && !boolValue(row["Is Parent"])) return false;
@@ -2196,6 +2199,7 @@
   }
 
   function filteredResultsArePaginated() {
+    if (el.suitepimSearch?.value.trim()) return true;
     return !hasActiveTableFilter();
   }
 
@@ -2417,6 +2421,15 @@
       });
     });
     setupColumnResizing(table, columns);
+  }
+
+  function scheduleSearchFilters() {
+    window.clearTimeout(searchDebounceTimer);
+    searchDebounceTimer = window.setTimeout(() => {
+      searchDebounceTimer = null;
+      state.page = 1;
+      applyFilters();
+    }, searchDebounceMs);
   }
 
   function createTableScrollSlider(position) {
@@ -4285,8 +4298,7 @@
   function bindEvents() {
     el.suitepimSearch.addEventListener("input", () => {
       preserveVisibleDrafts();
-      state.page = 1;
-      applyFilters();
+      scheduleSearchFilters();
     });
     el.suitepimStateFilter.addEventListener("change", () => {
       preserveVisibleDrafts();
