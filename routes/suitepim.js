@@ -2005,7 +2005,8 @@ function buildPricePolicyPricingQueries() {
       SELECT
         Pricing.Item AS "item",
         PriceLevel.Name AS "pricelevel",
-        Pricing.PriceQty AS "priceqty"
+        Pricing.PriceQty AS "priceqty",
+        Pricing.UnitPrice AS "unitprice"
       FROM
         Pricing
         INNER JOIN PriceLevel ON PriceLevel.ID = Pricing.PriceLevel
@@ -2020,7 +2021,8 @@ function buildPricePolicyPricingQueries() {
       SELECT
         Pricing.Item AS "item",
         BUILTIN.DF(Pricing.PriceLevel) AS "pricelevel",
-        Pricing.PriceQty AS "priceqty"
+        Pricing.PriceQty AS "priceqty",
+        Pricing.UnitPrice AS "unitprice"
       FROM
         Pricing
       WHERE
@@ -2070,6 +2072,7 @@ function summarizePricePolicyRows(itemRows, pricingRows) {
       recordtype: row.recordtype || row.RecordType || "lotNumberedInventoryItem",
       itemtype: row.itemtype || row.ItemType || "",
       present: new Set(),
+      values: {},
     });
   });
 
@@ -2082,22 +2085,30 @@ function summarizePricePolicyRows(itemRows, pricingRows) {
 
     const priceQty = normalizePricePolicyQuantity(row.priceqty ?? row.PriceQty);
     const key = `${internalId}|${normalizePricePolicyName(priceLevel)}`;
-    if (!pricingByItemLevel.has(key)) pricingByItemLevel.set(key, { internalId, priceLevel, quantities: new Set() });
-    if (Number.isFinite(priceQty)) pricingByItemLevel.get(key).quantities.add(priceQty);
+    if (!pricingByItemLevel.has(key)) pricingByItemLevel.set(key, { internalId, priceLevel, breaks: [] });
+    if (Number.isFinite(priceQty)) {
+      pricingByItemLevel.get(key).breaks.push({
+        quantity: priceQty,
+        unitPrice: row.unitprice ?? row.UnitPrice ?? row.price ?? row.Price ?? "",
+      });
+    }
   });
 
   pricingByItemLevel.forEach((entry) => {
     const item = items.get(entry.internalId);
     if (!item) return;
 
-    const sortedQuantities = Array.from(entry.quantities).sort((a, b) => a - b);
-    if (!sortedQuantities.length) return;
+    const sortedBreaks = entry.breaks.sort((a, b) => a.quantity - b.quantity);
+    if (!sortedBreaks.length) return;
 
     // NetSuite's Pricing.PriceQty is the break value, not the matrix column
     // index. The UI columns we care about are the first two matrix values:
     // first returned break = Qty 0, second returned break = Qty 1.
-    sortedQuantities.slice(0, PRICE_POLICY_QUANTITIES.length).forEach((_, index) => {
-      item.present.add(pricePolicyKey(entry.priceLevel, PRICE_POLICY_QUANTITIES[index]));
+    sortedBreaks.slice(0, PRICE_POLICY_QUANTITIES.length).forEach((priceBreak, index) => {
+      const quantityColumn = PRICE_POLICY_QUANTITIES[index];
+      const key = pricePolicyKey(entry.priceLevel, quantityColumn);
+      item.present.add(key);
+      item.values[key] = priceBreak.unitPrice;
     });
   });
 
@@ -2118,6 +2129,7 @@ function summarizePricePolicyRows(itemRows, pricingRows) {
         displayname: item.displayname,
         recordtype: item.recordtype,
         itemtype: item.itemtype,
+        values: item.values,
         missingRows,
         missingCount: missingRows.length,
       };

@@ -103,7 +103,10 @@
     showStatus("");
     el.suitepimValidationReport.hidden = true;
     el.suitepimValidationReport.innerHTML = "";
-    el.suitepimValidationPush.hidden = isPricePolicy;
+    el.suitepimValidationPush.hidden = false;
+    el.suitepimValidationPush.innerHTML = isPricePolicy
+      ? `<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 3v12"></path><path d="M7 10l5 5 5-5"></path><path d="M5 21h14"></path></svg>Download CSV`
+      : `<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M12 19V5"></path><path d="M6 11l6-6 6 6"></path></svg>Push missing data`;
     el.suitepimValidationState.querySelector('option[value="complete"]').hidden = isPricePolicy;
     if (isPricePolicy && el.suitepimValidationState.value === "complete") el.suitepimValidationState.value = "missing";
 
@@ -251,8 +254,12 @@
         <td>${escapeHtml(row.internalid || "")}</td>
         <td><span class="suitepim-validation-count">${missing.size}</span></td>
         ${["Base Price|0", "Base Price|1", "Sale Price|0", "Sale Price|1"].map((key) => {
-          const isMissing = missing.has(pricePolicyKey(...key.split("|")));
-          return `<td><span class="suitepim-validation-pill ${isMissing ? "is-missing" : "is-valid"}">${isMissing ? "Missing" : "OK"}</span></td>`;
+          const normalizedKey = pricePolicyKey(...key.split("|"));
+          const isMissing = missing.has(normalizedKey);
+          const value = row.values && Object.prototype.hasOwnProperty.call(row.values, normalizedKey)
+            ? row.values[normalizedKey]
+            : "OK";
+          return `<td><span class="suitepim-validation-pill ${isMissing ? "is-missing" : "is-valid"}">${isMissing ? "Missing" : escapeHtml(value)}</span></td>`;
         }).join("")}
       `;
       tbody.appendChild(tr);
@@ -264,6 +271,51 @@
 
   function pricePolicyKey(priceLevel, quantity) {
     return `${String(priceLevel || "").trim().toLowerCase()}|${Number(quantity)}`;
+  }
+
+  function csvCell(value) {
+    const text = String(value ?? "");
+    return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+  }
+
+  function pricePolicyCsvPrice(row) {
+    const values = row.values || {};
+    const keys = [
+      pricePolicyKey("Base Price", 0),
+      pricePolicyKey("Base Price", 1),
+      pricePolicyKey("Sale Price", 0),
+      pricePolicyKey("Sale Price", 1),
+    ];
+    const value = keys.map((key) => values[key]).find((item) => item !== null && item !== undefined && String(item).trim() !== "");
+    return value ?? 0;
+  }
+
+  function downloadPricePolicyCsv() {
+    const rows = state.rows || [];
+    if (!rows.length) {
+      showStatus("No price policy rows to download.", "warning");
+      return;
+    }
+
+    const csv = [
+      ["Internal id", "Price"].map(csvCell).join(","),
+      ...rows.map((row) => [
+        row.internalid || "",
+        pricePolicyCsvPrice(row),
+      ].map(csvCell).join(",")),
+    ].join("\r\n");
+
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `suitepim-price-policy-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showStatus(`Downloaded ${rows.length.toLocaleString()} price policy row(s).`, "success");
   }
 
   function buildValidationPayload() {
@@ -326,6 +378,11 @@
   }
 
   async function pushMissingData() {
+    if (state.validationType === "price-policy") {
+      downloadPricePolicyCsv();
+      return;
+    }
+
     const rows = buildValidationPayload();
     if (!rows.length) {
       showStatus("No missing validation fields to push.", "success");
