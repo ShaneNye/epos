@@ -1404,6 +1404,36 @@ async function loadWorkflowCheckTransactionRecord({ recordType, recordId, fields
   return Array.isArray(result?.items) ? result.items[0] || {} : {};
 }
 
+function workflowCheckSublistRows(record = {}, sublistId = "") {
+  const sublist = record?.[sublistId] ?? record?.sublists?.[sublistId];
+  if (Array.isArray(sublist)) return sublist;
+  if (Array.isArray(sublist?.items)) return sublist.items;
+  return [];
+}
+
+async function loadWorkflowCheckTransactionSublist({ recordType, recordId, sublistId }, userId) {
+  const id = Number(recordId);
+  const cleanSublistId = cleanDraftValue(sublistId);
+  if (!Number.isFinite(id) || id <= 0) throw new Error(`Could not resolve ${workflowCheckRecordLabel(recordType)} record`);
+  if (!/^[A-Za-z0-9_]+$/.test(cleanSublistId)) throw new Error("Invalid workflow check sublist");
+  const cleanRecordType = normaliseWorkflowCheckRecordType(recordType);
+  const directRows = [];
+  let directAvailable = false;
+  for (let offset = 0; offset < 10000; offset += 1000) {
+    const page = await nsGet(
+      `/${cleanRecordType}/${encodeURIComponent(id)}/${encodeURIComponent(cleanSublistId)}?limit=1000&offset=${offset}`,
+      userId
+    ).catch(() => null);
+    if (!page || !Array.isArray(page.items)) break;
+    directAvailable = true;
+    directRows.push(...page.items);
+    if (page.hasMore !== true || page.items.length < 1000) break;
+  }
+  if (directAvailable) return directRows;
+  const record = await nsGet(`/${cleanRecordType}/${encodeURIComponent(id)}?expandSubResources=true`, userId);
+  return workflowCheckSublistRows(record, cleanSublistId);
+}
+
 function evaluateWorkflowRecordRules(rules = [], row = {}) {
   return (Array.isArray(rules) ? rules : []).map((rule) => {
     const actual = workflowCriteriaValue(row, rule.field || "");
@@ -1429,6 +1459,20 @@ function evaluateWorkflowRecordRules(rules = [], row = {}) {
   });
 }
 
+function evaluateWorkflowSublistRules(rules = [], rows = []) {
+  const rowResults = rows.map((row, rowIndex) => {
+    const checks = evaluateWorkflowRecordRules(rules, row).map((check) => ({ ...check, rowIndex }));
+    return { rowIndex, row, checks, passed: checks.length > 0 && checks.every((check) => check.passed) };
+  });
+  const match = rowResults.find((row) => row.passed) || null;
+  return {
+    passed: !!match,
+    checks: match?.checks || rowResults.flatMap((row) => row.checks),
+    matchedRowIndex: match?.rowIndex ?? null,
+    rowResults,
+  };
+}
+
 function normaliseWorkflowLineQuantities(row = {}) {
   const output = { ...row };
   ["quantity", "quantitycommitted", "quantityfulfilled", "quantitybackordered"].forEach((key) => {
@@ -1451,6 +1495,8 @@ function compareWorkflowCheckValues(left, operator, right) {
 
   if (operator === "isSet") return leftText !== "";
   if (operator === "isNotSet") return leftText === "";
+  if (operator === "contains") return leftText.toLowerCase().includes(rightText.toLowerCase());
+  if (operator === "notContains") return !leftText.toLowerCase().includes(rightText.toLowerCase());
   if (operator === "notEquals") return bothNumeric ? leftNum !== rightNum : leftText.toLowerCase() !== rightText.toLowerCase();
   if (operator === "greaterThan") return bothNumeric ? leftNum > rightNum : leftText > rightText;
   if (operator === "lessThan") return bothNumeric ? leftNum < rightNum : leftText < rightText;
@@ -1797,6 +1843,12 @@ function compareWorkflowCriteriaValues(actual, operator, expected) {
   const expectedValues = workflowCriteriaComparable(expected);
   if (!expectedValues.length) expectedValues.push("");
   if (!actualValues.length) actualValues.push("");
+  if (operator === "contains") {
+    return actualValues.some((left) => expectedValues.some((right) => compareWorkflowCheckValues(left, "contains", right)));
+  }
+  if (operator === "notContains") {
+    return actualValues.every((left) => expectedValues.every((right) => compareWorkflowCheckValues(left, "notContains", right)));
+  }
   if (operator === "notEquals") {
     return actualValues.every((left) => expectedValues.every((right) => compareWorkflowCheckValues(left, "notEquals", right)));
   }
@@ -1930,6 +1982,7 @@ async function evaluateWorkflowCheck({ caseId, node, inputValue, inputLabel, inp
     ? configuredRecordType
     : await resolveWorkflowCheckRecordType(configuredRecordType);
   const affectedItemSource = config.affectedItemSource || "storeSalesOrder";
+  const sublist = cleanDraftValue(config.sublist);
   const rules = Array.isArray(config.rules) ? config.rules : [];
   if (!rules.length) {
     return {
@@ -2030,11 +2083,21 @@ async function evaluateWorkflowCheck({ caseId, node, inputValue, inputLabel, inp
       rule.field,
       rule.compareType === "field" ? rule.compareField : "",
     ]).filter(Boolean)));
-    const row = await loadWorkflowCheckTransactionRecord({ recordType, recordId, fields }, userId);
-    const checks = evaluateWorkflowRecordRules(rules, row);
-    const selected = normaliseWorkflowCheckRecordCandidate(row, recordType);
+    const rows = sublist
+      ? await loadWorkflowCheckTransactionSublist({ recordType, recordId, sublistId: sublist }, userId)
+      : [];
+    const sublistEvaluation = sublist ? evaluateWorkflowSublistRules(rules, rows) : null;
+    const matchedRow = sublistEvaluation?.rowResults.find((item) => item.passed)?.row || {};
+    const row = sublist
+      ? matchedRow
+      : await loadWorkflowCheckTransactionRecord({ recordType, recordId, fields }, userId);
+    const checks = sublist ? sublistEvaluation.checks : evaluateWorkflowRecordRules(rules, row);
+    const selected = candidates.find((candidate) => String(candidate.id) === String(recordId))
+      || normaliseWorkflowCheckRecordCandidate({ ...row, id: recordId }, recordType);
     return {
-      result: checks.every((check) => check.passed) ? "Pass" : "Fail",
+      result: sublistEvaluation
+        ? (sublistEvaluation.passed ? "Pass" : "Fail")
+        : (checks.every((check) => check.passed) ? "Pass" : "Fail"),
       recordType,
       affectedItemSource,
       source: {
@@ -2051,7 +2114,14 @@ async function evaluateWorkflowCheck({ caseId, node, inputValue, inputLabel, inp
         customerId: supportCase.customerId,
         customerName: supportCase.customerName,
       },
-      data: row,
+      data: sublist ? {
+        sublist,
+        rowCount: rows.length,
+        matchedRowIndex: sublistEvaluation.matchedRowIndex,
+        rows,
+        rowResults: sublistEvaluation.rowResults,
+      } : row,
+      message: sublist && !rows.length ? `No rows were found in the ${sublist} sublist.` : "",
       checks,
       candidates,
     };
@@ -2092,6 +2162,7 @@ function workflowActionTypeLabel(type = "") {
     closeIntercompanyLine: "Close Intercompany Line",
     closeSupplierPurchaseOrderLine: "Close Supplier Purchase Order Line",
     refundCreditMemo: "Refund Credit Memo",
+    applyCreditMemo: "Apply Credit Memo",
     creditRma: "Credit RMA",
     receiveRma: "Receive RMA",
     createRecord: "Create Record",
@@ -2123,7 +2194,33 @@ function createRecordConfig(targetRecord = "") {
 
 function fieldTypeUsesRef(fieldType = "") {
   const clean = String(fieldType || "").trim().toLowerCase();
-  return clean === "list/record" || clean === "multiple select";
+  return ["list/record", "list", "record", "select", "multiple select", "multiselect"].includes(clean);
+}
+
+function targetFieldUsesRef(fieldId = "") {
+  return new Set([
+    "account", "class", "createdfrom", "currency", "customer", "department", "employee",
+    "entity", "item", "location", "paymentoption", "price", "salesrep", "subsidiary", "vendor",
+  ]).has(cleanDraftValue(fieldId).toLowerCase());
+}
+
+function mappedScalarValue(value, valueMode = "id") {
+  let current = value;
+  for (let depth = 0; depth < 6 && current && typeof current === "object"; depth += 1) {
+    const candidate = valueMode === "name"
+      ? (current.refName ?? current.name ?? current.text ?? current.displayName ?? current.label)
+      : (current.id ?? current.internalId ?? current.internalid ?? current.value ?? current.itemId ?? current.itemid);
+    if (candidate === undefined || candidate === null || candidate === current) return "";
+    current = candidate;
+  }
+  return current && typeof current === "object" ? "" : current;
+}
+
+function normaliseAffectedItemMappedValue(value, sourceField = "") {
+  const field = cleanDraftValue(sourceField).toLowerCase();
+  if (!["amount", "netamount", "grossamt", "grossamount", "rate"].includes(field)) return value;
+  const numeric = Number(cleanDraftValue(value).replace(/,/g, ""));
+  return Number.isFinite(numeric) ? Math.abs(numeric) : value;
 }
 
 function fieldTypeUsesCheckbox(fieldType = "") {
@@ -2151,8 +2248,9 @@ function coerceDecimalValue(value) {
 }
 
 function coerceMappedValueForTarget(value, mapping = {}) {
-  const clean = cleanDraftValue(value);
-  if (value === undefined || value === null || clean === "") return "";
+  const scalar = mappedScalarValue(value, mapping.valueMode);
+  const clean = cleanDraftValue(scalar);
+  if (value === undefined || value === null || clean === "" || clean === "[object Object]") return "";
   const cast = cleanDraftValue(mapping.valueCast).toLowerCase();
   if (cast === "checkbox") return coerceCheckboxValue(clean);
   if (cast === "decimal") return coerceDecimalValue(clean);
@@ -2160,7 +2258,7 @@ function coerceMappedValueForTarget(value, mapping = {}) {
   if (cast === "text") return clean;
   if (fieldTypeUsesCheckbox(mapping.targetFieldType)) return coerceCheckboxValue(clean);
   if (fieldTypeUsesDecimal(mapping.targetFieldType)) return coerceDecimalValue(clean);
-  if (fieldTypeUsesRef(mapping.targetFieldType)) return { id: clean };
+  if (fieldTypeUsesRef(mapping.targetFieldType) || targetFieldUsesRef(mapping.targetField)) return { id: clean };
   return clean;
 }
 
@@ -2307,7 +2405,21 @@ async function resolveCreateRecordMappingValue(mapping = {}, context = {}, userI
       );
       if (cleanDraftValue(displayValue)) return displayValue;
     }
-    return rowValue(context.line, sourceField, sourceField.toLowerCase(), sourceField.toUpperCase());
+    const scalar = mappedScalarValue(
+      rowValue(context.line, sourceField, sourceField.toLowerCase(), sourceField.toUpperCase()),
+      mapping.valueMode
+    );
+    if (
+      (!cleanDraftValue(scalar) || cleanDraftValue(scalar) === "[object Object]") &&
+      mappingSourceRecord === "affectedItem" &&
+      sourceField.toLowerCase() === "item" &&
+      mapping.valueMode !== "name"
+    ) {
+      return cleanDraftValue(context.caseDetail?.itemId || context.caseDetail?.itemid);
+    }
+    return mappingSourceRecord === "affectedItem"
+      ? normaliseAffectedItemMappedValue(scalar, sourceField)
+      : scalar;
   }
 
   let sourceRecord = null;
@@ -3121,11 +3233,19 @@ async function executeCreateRecordAction({ caseId, action, checks = [], answers 
   const caseDetail = await getSupportCaseDetail(caseId, userId);
   const salesOrderId = caseDetail.salesOrderId;
   const intercompany = salesOrderId ? await getPairedIntercompanySalesOrderId(salesOrderId, userId).catch(() => null) : null;
+  const usesAffectedItem = createRecord.sourceRecord === "affectedItem"
+    || (Array.isArray(createRecord.mappings) && createRecord.mappings.some((mapping) => mapping.sourceRecord === "affectedItem"));
+  const affectedItemMappings = (Array.isArray(createRecord.mappings) ? createRecord.mappings : [])
+    .filter((mapping) => mapping.sourceRecord === "affectedItem" || (createRecord.sourceRecord === "affectedItem" && !mapping.sourceRecord));
+  const affectedItem = usesAffectedItem
+    ? await loadAffectedItemSalesOrderLineForCase(caseId, userId, "storeSalesOrder", affectedItemMappings)
+    : null;
   const payload = await buildCreateRecordPayload(action, {
     caseDetail,
     salesOrderId,
     intercompanySalesOrderId: intercompany?.id || "",
     sourceRecord: createRecord.sourceRecord || "storeSalesOrder",
+    line: affectedItem?.line || null,
     checks,
     answers,
   }, userId);
@@ -3336,6 +3456,55 @@ async function executeRefundCreditMemoAction({ caseId, action, checks = [], answ
       number: documentNumber,
       url: id ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}/app/accounting/transactions/custrfnd.nl?id=${encodeURIComponent(id)}` : "",
     },
+  };
+}
+
+async function executeApplyCreditMemoAction({ caseId, action }, userId) {
+  const caseDetail = await getSupportCaseDetail(caseId, userId);
+  const customerId = cleanDraftValue(caseDetail.customerId);
+  if (!customerId) throw new Error("The case does not have a customer to search for open transactions.");
+  const applications = Array.isArray(action.creditMemoApplications) ? action.creditMemoApplications : [];
+  if (!applications.length) {
+    const preview = await nsRestlet(workflowRestletUrl(), {
+      action: "applyCreditMemo",
+      preview: true,
+      customerId,
+    }, userId, "POST");
+    if (!preview || preview.ok === false) throw new Error(preview?.error || "Could not load open Invoices and Credit Memos.");
+    const invoices = Array.isArray(preview.invoices) ? preview.invoices : [];
+    const creditMemos = Array.isArray(preview.credits) ? preview.credits : [];
+    if (!invoices.length) throw new Error("No open Sales Invoices were found for this customer.");
+    if (!creditMemos.length) throw new Error("No open Credit Memos were found for this customer.");
+    if (invoices.length !== 1 || creditMemos.length !== 1) {
+      return {
+        ok: false,
+        needsInput: "creditMemoInvoiceApplication",
+        message: "Match each open Sales Invoice to the Credit Memo that should be applied.",
+        invoices,
+        creditMemos,
+      };
+    }
+    applications.push({
+      invoiceId: invoices[0].id,
+      creditMemoId: creditMemos[0].id,
+      amount: Math.min(Number(invoices[0].remaining || 0), Number(creditMemos[0].remaining || 0)).toFixed(2),
+    });
+  }
+  const result = await nsRestlet(workflowRestletUrl(), {
+    action: "applyCreditMemo",
+    customerId,
+    applications,
+  }, userId, "POST");
+  if (!result || result.ok === false) throw new Error(result?.error || "Credit Memo application failed.");
+  return {
+    ok: true,
+    message: `Applied Credit Memo by Customer Payment ${result.tranId || result.id}.`,
+    document: {
+      id: result.id,
+      number: result.tranId || result.id,
+      url: `${netSuiteAppBaseUrl().replace(/\/$/, "")}/app/accounting/transactions/custpymt.nl?id=${encodeURIComponent(result.id)}`,
+    },
+    result,
   };
 }
 
@@ -4538,7 +4707,7 @@ async function executeWorkflowActions({ caseId, workflowId = "", actions = [], a
   const latestActions = await loadLatestWorkflowActions(workflowId, actions);
   const approvedActions = latestActions
     .filter((action, index) => approvals[index] === true || approvals[index] === "true")
-    .filter((action) => ["setCaseStatus", "itemLineAction", "addItemLine", "email", "closeSalesLine", "closeIntercompanyLine", "closeSupplierPurchaseOrderLine", "refundCreditMemo", "creditRma", "receiveRma", "createRecord"].includes(action.actionType));
+    .filter((action) => ["setCaseStatus", "itemLineAction", "addItemLine", "email", "closeSalesLine", "closeIntercompanyLine", "closeSupplierPurchaseOrderLine", "refundCreditMemo", "applyCreditMemo", "creditRma", "receiveRma", "createRecord"].includes(action.actionType));
 
   const results = [];
   for (const action of approvedActions) {
@@ -4634,6 +4803,28 @@ async function executeWorkflowActions({ caseId, workflowId = "", actions = [], a
             mappings: createResult.mappingDebug || [],
           },
         });
+        continue;
+      }
+
+      if (action.actionType === "applyCreditMemo") {
+        const applyResult = await executeApplyCreditMemoAction({ caseId, action }, userId);
+        if (applyResult.needsInput) {
+          results.push({
+            ok: false,
+            nodeId: action.nodeId || "",
+            label: action.label || workflowActionTypeLabel(action.actionType),
+            actionType: action.actionType,
+            ...applyResult,
+          });
+        } else {
+          results.push({
+            ok: true,
+            nodeId: action.nodeId || "",
+            label: action.label || workflowActionTypeLabel(action.actionType),
+            actionType: action.actionType,
+            ...applyResult,
+          });
+        }
         continue;
       }
 

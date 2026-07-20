@@ -96,6 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function sourceRecordLabel(source = "storeSalesOrder") {
     const record = sourceRecord(source);
     if (source === "case") return record?.label || "Case";
+    if (source === "affectedItem") return "Affected Item";
     if (source === "intercompanySalesOrder") return record?.label ? `Paired ${record.label}` : "Paired Sales Order";
     return record?.label || "Sales Order";
   }
@@ -127,6 +128,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function sourceFields(source = state.createRecord.sourceRecord) {
+    if (source === "affectedItem") return [];
     return sourceRecord(source)?.fields || [];
   }
 
@@ -355,6 +357,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function sourceFieldOptionEntries(source = state.createRecord.sourceRecord) {
+    if (source === "affectedItem") return sourceLineFieldEntries(source);
     return sourceFieldEntries(source);
   }
 
@@ -733,6 +736,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     if (sourcePanel === "workflowInputs") renderWorkflowInputList(el.sourceFieldList);
     else if (sourcePanel === "lineFields") renderSourceLineFieldList(el.sourceFieldList);
+    else if (createConfig.sourceRecord === "affectedItem") renderSourceLineFieldList(el.sourceFieldList);
     else renderFieldList(el.sourceFieldList, sourceFields(), "source");
     renderTargetFieldList(el.targetFieldList);
     renderMappings();

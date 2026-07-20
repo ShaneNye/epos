@@ -263,6 +263,7 @@
                   <option value="email">Email</option>
                   <option value="closeSupplierPurchaseOrderLine">Close Supplier Purchase Order Line</option>
                   <option value="refundCreditMemo">Refund Credit Memo</option>
+                  <option value="applyCreditMemo">Apply Credit Memo</option>
                   <option value="creditRma">Credit RMA</option>
                   <option value="receiveRma">Receive RMA</option>
                   <option value="createRecord">Create Record</option>
@@ -359,6 +360,12 @@
                 <select id="checkRecordType">
                   <option value="affectedItem">Affected item</option>
                   <option value="input">Input</option>
+                </select>
+              </label>
+              <label id="checkSublistWrap" hidden>
+                Record Section
+                <select id="checkSublist">
+                  <option value="">Mainline</option>
                 </select>
               </label>
               <label id="checkInputSourceWrap" hidden>

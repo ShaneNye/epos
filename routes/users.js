@@ -14,6 +14,10 @@ const {
 } = require("../utils/userStatus");
 const { ensureUserThemeColumns, normalizeHexColor } = require("../utils/userTheme");
 const { ensureUserOfficeColumn, normalizeOfficeFlag } = require("../utils/userOffice");
+const {
+  ensureUserSeniorSalesApproverColumn,
+  normalizeSeniorSalesApproverFlag,
+} = require("../utils/userSeniorSalesApprover");
 
 
 /* -------------------- Helper -------------------- */
@@ -32,6 +36,7 @@ function maskUser(u) {
     themeHex: u.themehex || null,
     themeAccentHex: u.themeaccenthex || null,
     office: Boolean(u.office),
+    seniorSalesApprover: Boolean(u.senior_sales_approver),
     createdAt: u.createdat,
     roles: u.roles || [],
     location: u.location_id
@@ -49,6 +54,7 @@ router.get("/", async (req, res) => {
   try {
     await ensureUserThemeColumns();
     await ensureUserOfficeColumn();
+    await ensureUserSeniorSalesApproverColumn();
     await cleanupExpiredUserStatuses();
     res.set("Cache-Control", "no-store");
     const result = await pool.query(`
@@ -56,7 +62,7 @@ router.get("/", async (req, res) => {
     u.id, u.email, u.firstname, u.lastname, u.netsuiteid, u.profileimage,
     u.epos_status, u.epos_status_emoji, u.epos_status_text, u.epos_status_expires_at,
     u.themehex, u.themeaccenthex, u.createdat,
-    u.office,
+    u.office, u.senior_sales_approver,
     u.location_id, l.name AS location_name, l.netsuite_internal_id,
     STRING_AGG(r.name, ',' ORDER BY r.id) AS role_names,
     STRING_AGG(r.id::text, ',' ORDER BY r.id) AS role_ids,
@@ -184,6 +190,7 @@ router.put("/self-update", async (req, res) => {
   try {
     await ensureUserThemeColumns();
     await ensureUserOfficeColumn();
+    await ensureUserSeniorSalesApproverColumn();
     await cleanupExpiredUserStatuses();
     res.set("Cache-Control", "no-store");
     const authHeader = req.headers.authorization || "";
@@ -379,6 +386,7 @@ router.get("/:id", async (req, res) => {
   try {
     await cleanupExpiredUserStatuses();
     await ensureUserOfficeColumn();
+    await ensureUserSeniorSalesApproverColumn();
     const userResult = await pool.query(
       `
       SELECT 
@@ -420,6 +428,7 @@ router.post("/", async (req, res) => {
   const client = await pool.connect();
   try {
     await ensureUserOfficeColumn();
+    await ensureUserSeniorSalesApproverColumn();
     await client.query("BEGIN");
 
     const {
@@ -436,6 +445,7 @@ router.post("/", async (req, res) => {
       prod_netsuite_token_id,
       prod_netsuite_token_secret,
       office,
+      seniorSalesApprover,
     } = req.body;
 
     if (!email || !password) {
@@ -448,10 +458,10 @@ router.post("/", async (req, res) => {
       `
       INSERT INTO users
       (email, password_hash, firstname, lastname, netsuiteid, location_id, profileimage,
-       office,
+       office, senior_sales_approver,
        sb_netsuite_token_id, sb_netsuite_token_secret,
        prod_netsuite_token_id, prod_netsuite_token_secret)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
       RETURNING id;
       `,
       [
@@ -463,6 +473,7 @@ router.post("/", async (req, res) => {
         location_id || null,
         profileImage || null,
         normalizeOfficeFlag(office),
+        normalizeSeniorSalesApproverFlag(seniorSalesApprover),
         sb_netsuite_token_id || null,
         sb_netsuite_token_secret || null,
         prod_netsuite_token_id || null,
@@ -498,6 +509,7 @@ router.put("/:id", async (req, res) => {
   const client = await pool.connect();
   try {
     await ensureUserOfficeColumn();
+    await ensureUserSeniorSalesApproverColumn();
     await client.query("BEGIN");
 
     const {
@@ -514,6 +526,7 @@ router.put("/:id", async (req, res) => {
       prod_netsuite_token_id,
       prod_netsuite_token_secret,
       office,
+      seniorSalesApprover,
     } = req.body;
 
     const updates = {
@@ -524,6 +537,7 @@ router.put("/:id", async (req, res) => {
       location_id: location_id || null,
       profileimage: profileImage,
       office: normalizeOfficeFlag(office),
+      senior_sales_approver: normalizeSeniorSalesApproverFlag(seniorSalesApprover),
     };
 
     const tokenFields = {

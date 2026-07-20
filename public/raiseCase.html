@@ -1501,6 +1501,7 @@
         closeIntercompanyLine: "Close Intercompany Line",
         closeSupplierPurchaseOrderLine: "Close Supplier Purchase Order Line",
         refundCreditMemo: "Refund Credit Memo",
+        applyCreditMemo: "Apply Credit Memo",
         creditRma: "Credit RMA",
         receiveRma: "Receive RMA",
         createRecord: "Create Record",
@@ -1522,6 +1523,31 @@
     }
 
     function workflowActionAllocationHtml(action = {}, index = 0) {
+      if (action.executionState === "needsInput" && action.needsInput === "creditMemoInvoiceApplication") {
+        const invoices = Array.isArray(action.invoiceOptions) ? action.invoiceOptions : [];
+        const credits = Array.isArray(action.creditMemoOptions) ? action.creditMemoOptions : [];
+        const creditOptions = credits.map((credit) => `<option value="${escapeHtml(credit.id)}" data-remaining="${escapeHtml(credit.remaining || credit.total || "0")}">${escapeHtml(credit.tranId || credit.id)} — ${escapeHtml(credit.remaining || credit.total || "0")}</option>`).join("");
+        const rows = invoices.map((invoice, rowIndex) => `
+          <tr data-credit-application-row="${index}" data-row-index="${rowIndex}" data-invoice-id="${escapeHtml(invoice.id)}" data-invoice-remaining="${escapeHtml(invoice.remaining || invoice.total || "0")}">
+            <td>${escapeHtml(invoice.tranId || invoice.id)}<br><small>Open: ${escapeHtml(invoice.remaining || invoice.total || "0")}</small></td>
+            <td><select data-credit-application-credit="${index}"><option value="">Select Credit Memo</option>${creditOptions}</select></td>
+            <td><input type="number" min="0" step="0.01" data-credit-application-amount="${index}" placeholder="Amount"></td>
+          </tr>
+        `).join("");
+        return `
+          <div class="workflow-allocation-panel" data-credit-application-panel="${index}">
+            <div class="workflow-allocation-head"><strong>Apply Credit Memo</strong></div>
+            <table class="workflow-allocation-table">
+              <thead><tr><th>Open Sales Invoice</th><th>Available Credit Memo</th><th>Amount</th></tr></thead>
+              <tbody>${rows}</tbody>
+            </table>
+            <div class="workflow-allocation-actions">
+              <span class="workflow-action-error" data-credit-application-error="${index}" hidden></span>
+              <button type="button" class="btn-primary" data-credit-application-confirm="${index}">Apply Selected Credits</button>
+            </div>
+          </div>
+        `;
+      }
       if (
         action.executionState !== "needsInput" ||
         !["customerDepositAllocation", "customerCreditMemoAllocation"].includes(action.needsInput)
@@ -1741,6 +1767,8 @@
       const expected = normaliseWorkflowCompareValue(expectedValue);
       if (operator === "isSet") return actual !== "";
       if (operator === "isNotSet") return actual === "";
+      if (operator === "contains") return actual.toLowerCase().includes(expected.toLowerCase());
+      if (operator === "notContains") return !actual.toLowerCase().includes(expected.toLowerCase());
       const actualNumber = workflowNumericValue(actual);
       const expectedNumber = workflowNumericValue(expected);
       if (operator === "greaterThan" && actualNumber !== null && expectedNumber !== null) return actualNumber > expectedNumber;
@@ -2500,6 +2528,7 @@
         ? config.fields.map((field, index) => ({
           id: field.id || `field_${index}`,
           label: field.label || `Response ${index + 1}`,
+          mandatory: field.mandatory !== false,
           type: ["string", "currency", "list", "select", "multiSelect", "boolean"].includes(field.type) ? field.type : "string",
           listSource: field.listSource || "salesOrderItems",
           listField: field.listField || "",
@@ -2514,6 +2543,7 @@
         : [{
           id: "answer",
           label: "Response",
+          mandatory: config.mandatory !== false,
           type,
           listSource: config.listSource || "salesOrderItems",
           listField: config.listField || "",
@@ -2816,6 +2846,18 @@
         const rows = workflowInputSelectOptionRows(input);
         const fieldId = String(input.id || "");
         const selectedIndex = rows.findIndex((row) => String(row.value) === String(answer));
+        const staticOnly = rows.length > 0 && rows.every((row) => row.valueMode === "static");
+        if (staticOnly) {
+          return `
+            <label>
+              ${escapeHtml(label)}
+              <select data-workflow-static-select="${escapeHtml(fieldId)}" data-workflow-input-answer="${escapeHtml(fieldId)}">
+                <option value="">Select option</option>
+                ${rows.map((row) => `<option value="${escapeHtml(row.value)}" ${String(row.value) === String(answer) ? "selected" : ""}>${escapeHtml(row.label)}</option>`).join("")}
+              </select>
+            </label>
+          `;
+        }
         return `
           <div>
             <label>${escapeHtml(label)}</label>
@@ -3129,6 +3171,12 @@
       const labels = {};
       config.fields.forEach((field) => {
         if (field.type === "select") {
+          const staticSelect = runner.querySelector(`[data-workflow-static-select="${CSS.escape(String(field.id))}"]`);
+          if (staticSelect) {
+            answers[field.id] = staticSelect.value || "";
+            labels[field.id] = staticSelect.selectedOptions?.[0]?.textContent || "";
+            return;
+          }
           const checked = runner.querySelector(`[data-workflow-select-option="${CSS.escape(String(field.id))}"]:checked`);
           const row = checked?.closest("[data-workflow-select-row]");
           const mode = row?.dataset.workflowSelectMode || "";
@@ -3201,6 +3249,18 @@
         .filter(Boolean)
         .join("; ");
       return { summary, answers, labels };
+    }
+
+    function missingMandatoryWorkflowInputs(node = {}, collected = {}) {
+      const config = workflowInputConfig(node);
+      return config.fields.filter((field) => {
+        if (field.mandatory === false) return false;
+        const value = collected.answers?.[field.id];
+        if (field.type === "multiSelect") {
+          try { return !Array.isArray(JSON.parse(value || "[]")) || JSON.parse(value || "[]").length === 0; } catch { return true; }
+        }
+        return String(value ?? "").trim() === "";
+      });
     }
 
     function resetWorkflowRun(workflow = null) {
@@ -3631,6 +3691,21 @@
         const answer = isInput
           ? collectWorkflowInputAnswers(node, runner)
           : runner.querySelector('input[name="workflowAnswer"]:checked')?.value || "";
+        if (isInput) {
+          const missing = missingMandatoryWorkflowInputs(node, answer);
+          if (missing.length) {
+            const message = missing.map((field) => field.label).join(", ");
+            let error = runner.querySelector("[data-workflow-input-error]");
+            if (!error) {
+              error = document.createElement("p");
+              error.dataset.workflowInputError = "1";
+              error.className = "workflow-action-error";
+              runner.querySelector(".workflow-run-actions")?.before(error);
+            }
+            error.textContent = `Complete the mandatory input${missing.length === 1 ? "" : "s"}: ${message}`;
+            return;
+          }
+        }
         advanceWorkflow(answer);
       });
     }
@@ -4456,12 +4531,38 @@
                 <div data-workflow-action-allocation="${index}">${workflowActionAllocationHtml(action, index)}</div>
                 ${action.executionError ? `<div class="workflow-action-error" data-workflow-action-error="${index}">${escapeHtml(action.executionError)}</div>` : `<div class="workflow-action-error" data-workflow-action-error="${index}" hidden></div>`}
                 <div data-workflow-action-debug="${index}">${action.executionState === "failed" ? workflowActionDebugHtml(action.executionDebug) : ""}</div>
+                <div data-workflow-action-retry-wrap="${index}" ${action.executionState === "failed" ? "" : "hidden"}>
+                  <button type="button" class="btn-secondary" data-workflow-action-retry="${index}">Retry Action</button>
+                </div>
               </div>
             </div>
           </td>
         </tr>
       `);
       wireWorkflowAllocationControls(index);
+      wireWorkflowRetryControl(index);
+    }
+
+    function wireWorkflowRetryControl(index) {
+      const button = document.querySelector(`[data-workflow-action-retry="${index}"]`);
+      if (!button || button.dataset.wired === "1") return;
+      button.dataset.wired = "1";
+      button.addEventListener("click", async () => {
+        const action = workflowRun.actions[index];
+        if (!action || action.executionState !== "failed") return;
+        button.disabled = true;
+        button.textContent = "Retrying...";
+        try {
+          await executeWorkflowActionAtIndex(index);
+        } catch (err) {
+          if (err.message === "__WORKFLOW_ACTION_WAITING_FOR_INPUT__") return;
+          updateWorkflowActionRow(index, {
+            executionState: "failed",
+            executionMessage: action.message || "Action failed.",
+            executionError: err.message || "Action failed.",
+          });
+        }
+      });
     }
 
     function updateWorkflowActionRow(index, patch = {}) {
@@ -4474,6 +4575,7 @@
       const allocation = document.querySelector(`[data-workflow-action-allocation="${index}"]`);
       const error = document.querySelector(`[data-workflow-action-error="${index}"]`);
       const debug = document.querySelector(`[data-workflow-action-debug="${index}"]`);
+      const retryWrap = document.querySelector(`[data-workflow-action-retry-wrap="${index}"]`);
       if (icon) {
         icon.textContent = state === "success" ? "✓" : state === "failed" ? "×" : "…";
         icon.classList.toggle("success", state === "success");
@@ -4493,6 +4595,13 @@
         error.textContent = action.executionError || "";
       }
       if (debug) debug.innerHTML = state === "failed" ? workflowActionDebugHtml(action.executionDebug) : "";
+      if (retryWrap) {
+        retryWrap.hidden = state !== "failed";
+        retryWrap.innerHTML = state === "failed"
+          ? `<button type="button" class="btn-secondary" data-workflow-action-retry="${index}">Retry Action</button>`
+          : "";
+      }
+      wireWorkflowRetryControl(index);
       renderWorkflowStepsDrawer();
     }
 
@@ -4603,6 +4712,45 @@
     }
 
     function wireWorkflowAllocationControls(index) {
+      const creditPanel = document.querySelector(`[data-credit-application-panel="${index}"]`);
+      if (creditPanel && creditPanel.dataset.wired !== "1") {
+        creditPanel.dataset.wired = "1";
+        creditPanel.querySelectorAll(`[data-credit-application-credit="${index}"]`).forEach((select) => {
+          select.addEventListener("change", () => {
+            const row = select.closest(`[data-credit-application-row="${index}"]`);
+            const input = row?.querySelector(`[data-credit-application-amount="${index}"]`);
+            const invoiceRemaining = Number(row?.dataset.invoiceRemaining || 0);
+            const creditRemaining = Number(select.selectedOptions?.[0]?.dataset.remaining || 0);
+            if (input) input.value = select.value ? Math.min(invoiceRemaining, creditRemaining).toFixed(2) : "";
+          });
+        });
+        creditPanel.querySelector(`[data-credit-application-confirm="${index}"]`)?.addEventListener("click", async () => {
+          const action = workflowRun.actions[index];
+          const error = creditPanel.querySelector(`[data-credit-application-error="${index}"]`);
+          const applications = Array.from(creditPanel.querySelectorAll(`[data-credit-application-row="${index}"]`)).map((row) => ({
+            invoiceId: row.dataset.invoiceId || "",
+            creditMemoId: row.querySelector(`[data-credit-application-credit="${index}"]`)?.value || "",
+            amount: row.querySelector(`[data-credit-application-amount="${index}"]`)?.value || "",
+          })).filter((item) => item.invoiceId && item.creditMemoId && Number(item.amount) > 0);
+          if (!applications.length) {
+            if (error) { error.hidden = false; error.textContent = "Select at least one Invoice and Credit Memo."; }
+            return;
+          }
+          action.creditMemoApplications = applications;
+          stopWorkflowBong();
+          await executeWorkflowActionAtIndex(index);
+          if (workflowRun.actions[index]?.executionState === "success") {
+            for (let nextIndex = index + 1; nextIndex < workflowRun.actions.length; nextIndex += 1) {
+              if (workflowActionSkippedByUser(nextIndex)) {
+                markWorkflowActionSkipped(nextIndex);
+                continue;
+              }
+              await executeWorkflowActionAtIndex(nextIndex);
+            }
+          }
+        });
+        return;
+      }
       const panel = document.querySelector(`[data-allocation-panel="${index}"]`);
       if (!panel || panel.dataset.wired === "1") return;
       panel.dataset.wired = "1";
@@ -4717,7 +4865,7 @@
       const data = await res.json().catch(() => ({}));
       if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
       const result = Array.isArray(data.results) ? data.results[0] : null;
-      if (["customerDepositAllocation", "customerCreditMemoAllocation"].includes(result?.needsInput)) {
+      if (["customerDepositAllocation", "customerCreditMemoAllocation", "creditMemoInvoiceApplication"].includes(result?.needsInput)) {
         updateWorkflowActionRow(index, {
           executionState: "needsInput",
           executionMessage: result.message || "Choose refund allocation.",
@@ -4725,6 +4873,8 @@
           needsInput: result.needsInput,
           depositOptions: Array.isArray(result.deposits) ? result.deposits : [],
           expectedAmount: result.expectedAmount || 0,
+          invoiceOptions: Array.isArray(result.invoices) ? result.invoices : [],
+          creditMemoOptions: Array.isArray(result.creditMemos) ? result.creditMemos : [],
           executionDebug: result.debug || null,
         });
         startWorkflowBong();

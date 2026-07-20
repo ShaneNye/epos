@@ -145,6 +145,8 @@ document.addEventListener("DOMContentLoaded", () => {
     actionWrap: document.getElementById("actionMessageWrap"),
     checkWrap: document.getElementById("checkConfigWrap"),
     checkRecordType: document.getElementById("checkRecordType"),
+    checkSublistWrap: document.getElementById("checkSublistWrap"),
+    checkSublist: document.getElementById("checkSublist"),
     checkInputSourceWrap: document.getElementById("checkInputSourceWrap"),
     checkInputSource: document.getElementById("checkInputSource"),
     affectedItemSourceWrap: document.getElementById("affectedItemSourceWrap"),
@@ -1076,6 +1078,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function ensureCheckConfig(node) {
     node.checkConfig = node.checkConfig || {};
     node.checkConfig.recordType = node.checkConfig.recordType || "affectedItem";
+    node.checkConfig.sublist = node.checkConfig.sublist || "";
     node.checkConfig.inputNodeId = node.checkConfig.inputNodeId || "";
     node.checkConfig.affectedItemSource = node.checkConfig.affectedItemSource || "storeSalesOrder";
     node.checkConfig.rules = Array.isArray(node.checkConfig.rules) ? node.checkConfig.rules : [];
@@ -1091,6 +1094,7 @@ document.addEventListener("DOMContentLoaded", () => {
       node.inputConfig.fields = [{
         id: `input_${Date.now()}`,
         label: node.question || node.label || "Response",
+        mandatory: true,
         type: node.inputConfig.type || "string",
         listSource: node.inputConfig.listSource || "salesOrderItems",
         listField: node.inputConfig.listField || "",
@@ -1099,6 +1103,7 @@ document.addEventListener("DOMContentLoaded", () => {
     node.inputConfig.fields = node.inputConfig.fields.map((field, index) => ({
       id: field.id || `input_${Date.now()}_${index}`,
       label: field.label || `Response ${index + 1}`,
+      mandatory: field.mandatory !== false,
       type: ["string", "currency", "list", "boolean", "select", "multiSelect"].includes(field.type) ? field.type : "string",
       listSource: field.listSource || "salesOrderItems",
       listField: field.listField || "",
@@ -1657,7 +1662,7 @@ document.addEventListener("DOMContentLoaded", () => {
     document.getElementById("deleteNodeBtn").hidden = node.type === "start";
   }
 
-  function checkFieldOptions(recordType) {
+  function checkFieldOptions(recordType, sublistInternalId = "") {
     if (recordType === "affectedItem") {
       const fields = salesOrderItemSublist()?.fields || [];
       if (fields.length) {
@@ -1674,13 +1679,16 @@ document.addEventListener("DOMContentLoaded", () => {
     if (BUILT_IN_CHECK_FIELD_OPTIONS[recordType]) return BUILT_IN_CHECK_FIELD_OPTIONS[recordType];
     const recordId = customRecordIdFromValue(recordType);
     const record = state.records.find((item) => String(item.id) === String(recordId));
-    return (record?.fields || []).map((field) => ({
+    const sublist = (record?.sublists || []).find((item) => item.internalId === sublistInternalId);
+    const fields = sublistInternalId ? (sublist?.fields || []) : (record?.fields || []);
+    return fields.map((field) => ({
       value: field.internalId,
       label: field.label,
       id: field.id,
-      recordTypeId: field.recordTypeId,
+      recordTypeId: field.recordTypeId || record?.id,
       fieldType: field.fieldType,
       listValuesQuery: field.listValuesQuery || "",
+      isSublist: !!sublistInternalId,
     }));
   }
 
@@ -1793,6 +1801,10 @@ document.addEventListener("DOMContentLoaded", () => {
               Type
               <select data-input-field-type="${escapeHtml(field.id)}">${inputTypeOptions(field.type)}</select>
             </label>
+            <label class="workflow-checkbox-row">
+              <input data-input-field-mandatory="${escapeHtml(field.id)}" type="checkbox" ${field.mandatory !== false ? "checked" : ""}>
+              Mandatory
+            </label>
             <label ${isList || isMultiSelect ? "" : "hidden"}>
               Source
               <select data-input-field-source="${escapeHtml(field.id)}">
@@ -1866,7 +1878,7 @@ document.addEventListener("DOMContentLoaded", () => {
   function renderActionConfig(node) {
     if (!node || node.type !== "action" || !el.actionConfigWrap) return;
     const config = ensureActionConfig(node);
-    const validTypes = new Set(["", "itemLineAction", "addItemLine", "email", "closeSalesLine", "closeIntercompanyLine", "closeSupplierPurchaseOrderLine", "refundCreditMemo", "creditRma", "receiveRma", "createRecord"]);
+    const validTypes = new Set(["", "itemLineAction", "addItemLine", "email", "closeSalesLine", "closeIntercompanyLine", "closeSupplierPurchaseOrderLine", "refundCreditMemo", "applyCreditMemo", "creditRma", "receiveRma", "createRecord"]);
     if (el.actionType && ![...el.actionType.options].some((option) => option.value === "creditRma")) {
       const option = document.createElement("option");
       option.value = "creditRma";
@@ -2080,16 +2092,16 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function checkFieldOption(recordType, fieldValue = "") {
-    return checkFieldOptions(recordType).find((field) => field.value === fieldValue) || null;
+  function checkFieldOption(recordType, fieldValue = "", sublist = "") {
+    return checkFieldOptions(recordType, sublist).find((field) => field.value === fieldValue) || null;
   }
 
   function fieldUsesSearchOptions(field = null) {
-    return !!field && fieldUsesListQuery(field.fieldType) && !!String(field.listValuesQuery || "").trim() && field.id && field.recordTypeId;
+    return !!field && !field.isSublist && fieldUsesListQuery(field.fieldType) && !!String(field.listValuesQuery || "").trim() && field.id && field.recordTypeId;
   }
 
-  function renderFieldOptions(recordType, selectedValue = "") {
-    return checkFieldOptions(recordType).map((field) => `
+  function renderFieldOptions(recordType, selectedValue = "", sublist = "") {
+    return checkFieldOptions(recordType, sublist).map((field) => `
       <option value="${escapeHtml(field.value)}" ${field.value === selectedValue ? "selected" : ""}>${escapeHtml(field.label)}</option>
     `).join("");
   }
@@ -2133,6 +2145,18 @@ document.addEventListener("DOMContentLoaded", () => {
       config.recordType = "affectedItem";
     }
     el.checkRecordType.value = config.recordType;
+    const recordId = customRecordIdFromValue(config.recordType);
+    const record = state.records.find((item) => String(item.id) === String(recordId));
+    const sublists = record?.sublists || [];
+    if (el.checkSublistWrap) el.checkSublistWrap.hidden = !sublists.length;
+    if (el.checkSublist) {
+      if (!sublists.some((sublist) => sublist.internalId === config.sublist)) config.sublist = "";
+      el.checkSublist.innerHTML = [
+        '<option value="">Mainline</option>',
+        ...sublists.map((sublist) => `<option value="${escapeHtml(sublist.internalId)}">${escapeHtml(sublist.label)}</option>`),
+      ].join("");
+      el.checkSublist.value = config.sublist;
+    }
     if (el.affectedItemSourceWrap) el.affectedItemSourceWrap.hidden = config.recordType !== "affectedItem";
     if (el.checkAffectedItemSource) el.checkAffectedItemSource.value = config.affectedItemSource || "storeSalesOrder";
     if (el.checkInputSourceWrap) {
@@ -2149,14 +2173,14 @@ document.addEventListener("DOMContentLoaded", () => {
       }
     }
     el.checkRules.innerHTML = config.rules.length
-      ? config.rules.map((rule, index) => renderCheckRule(checkFieldRecordType(config), rule, index)).join("")
+      ? config.rules.map((rule, index) => renderCheckRule(checkFieldRecordType(config), rule, index, config.sublist)).join("")
       : `<p class="workflow-status">No checks added for ${escapeHtml(checkRecordLabel(config.recordType))}.</p>`;
   }
 
-  function renderCheckRule(recordType, rule = {}, index = 0) {
+  function renderCheckRule(recordType, rule = {}, index = 0, sublist = "") {
     const isInputRecord = recordType === "input";
     const compareType = isInputRecord ? "static" : (rule.compareType || "field");
-    const selectedField = checkFieldOption(recordType, rule.field || "");
+    const selectedField = checkFieldOption(recordType, rule.field || "", sublist);
     const useSearchValue = compareType === "static" && fieldUsesSearchOptions(selectedField);
     return `
       <div class="check-rule-row" data-check-rule-index="${index}">
@@ -2164,7 +2188,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <label>
             Field
             <select data-check-field="${index}">
-              ${renderFieldOptions(recordType, rule.field || "")}
+              ${renderFieldOptions(recordType, rule.field || "", sublist)}
             </select>
           </label>
           <label>
@@ -2172,6 +2196,8 @@ document.addEventListener("DOMContentLoaded", () => {
             <select data-check-operator="${index}">
               <option value="equals" ${rule.operator === "equals" ? "selected" : ""}>Equals</option>
               <option value="notEquals" ${rule.operator === "notEquals" ? "selected" : ""}>Does not equal</option>
+              <option value="contains" ${rule.operator === "contains" ? "selected" : ""}>Contains</option>
+              <option value="notContains" ${rule.operator === "notContains" ? "selected" : ""}>Does not contain</option>
               <option value="greaterThan" ${rule.operator === "greaterThan" ? "selected" : ""}>Greater than</option>
               <option value="lessThan" ${rule.operator === "lessThan" ? "selected" : ""}>Less than</option>
               <option value="isSet" ${rule.operator === "isSet" ? "selected" : ""}>Is set</option>
@@ -2190,7 +2216,7 @@ document.addEventListener("DOMContentLoaded", () => {
           <label>
             Value
             ${compareType === "field"
-              ? `<select data-check-compare-field="${index}">${renderFieldOptions(recordType, rule.compareField || "")}</select>`
+              ? `<select data-check-compare-field="${index}">${renderFieldOptions(recordType, rule.compareField || "", sublist)}</select>`
               : useSearchValue
                 ? `<div class="check-option-search" data-check-option-search="${index}" data-record-id="${escapeHtml(selectedField.recordTypeId)}" data-field-id="${escapeHtml(selectedField.id)}">
                     <input type="search" data-check-option-search-input="${index}" value="${escapeHtml(rule.staticValueLabel || rule.staticValue || "")}" placeholder="Search ${escapeHtml(selectedField.label)}" autocomplete="off">
@@ -2995,6 +3021,7 @@ document.addEventListener("DOMContentLoaded", () => {
       id: `input_${Date.now()}`,
       label: `Response ${config.fields.length + 1}`,
       type: "string",
+      mandatory: true,
       listSource: "salesOrderItems",
       listField: "",
     });
@@ -3032,9 +3059,10 @@ document.addEventListener("DOMContentLoaded", () => {
     const typeId = event.target.dataset.inputFieldType;
     const sourceId = event.target.dataset.inputFieldSource;
     const listFieldId = event.target.dataset.inputFieldListField;
+    const mandatoryId = event.target.dataset.inputFieldMandatory;
     const optionModeId = event.target.dataset.inputSelectOptionMode;
     const optionFieldId = event.target.dataset.inputSelectOptionField;
-    const id = typeId || sourceId || listFieldId || optionModeId || optionFieldId;
+    const id = typeId || sourceId || listFieldId || mandatoryId || optionModeId || optionFieldId;
     const field = config.fields.find((item) => String(item.id) === String(id));
     if (!field) return;
     if (typeId) {
@@ -3063,6 +3091,7 @@ document.addEventListener("DOMContentLoaded", () => {
       field.listField = Array.isArray(record?.fields) && record.fields.length ? record.fields[0].internalId || "" : "";
     }
     if (listFieldId) field.listField = event.target.value || "";
+    if (mandatoryId) field.mandatory = event.target.checked;
     if (optionModeId || optionFieldId) {
       const optionId = event.target.dataset.optionId || "";
       const option = (field.selectOptions || []).find((item) => String(item.id) === String(optionId));
@@ -3425,6 +3454,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const before = snapshot();
     const config = ensureCheckConfig(node);
     config.recordType = el.checkRecordType.value || "affectedItem";
+    config.sublist = "";
     config.affectedItemSource = config.affectedItemSource || "storeSalesOrder";
     if (config.recordType === "input") {
       const inputs = availableInputNodesForCheck(node);
@@ -3433,9 +3463,27 @@ document.addEventListener("DOMContentLoaded", () => {
     const fieldRecordType = checkFieldRecordType(config);
     config.rules = config.rules.map((rule) => ({
       ...rule,
-      field: checkFieldOptions(fieldRecordType)[0]?.value || "",
-      compareField: checkFieldOptions(fieldRecordType)[1]?.value || checkFieldOptions(fieldRecordType)[0]?.value || "",
+      field: checkFieldOptions(fieldRecordType, config.sublist)[0]?.value || "",
+      compareField: checkFieldOptions(fieldRecordType, config.sublist)[1]?.value || checkFieldOptions(fieldRecordType, config.sublist)[0]?.value || "",
       compareType: fieldRecordType === "input" ? "static" : rule.compareType || "field",
+    }));
+    render();
+    el.checkWrap.open = true;
+    pushHistory(before);
+  });
+
+  el.checkSublist?.addEventListener("change", () => {
+    const node = selectedNode();
+    if (!node || node.type !== "check") return;
+    const before = snapshot();
+    const config = ensureCheckConfig(node);
+    config.sublist = el.checkSublist.value || "";
+    const fieldRecordType = checkFieldRecordType(config);
+    const fields = checkFieldOptions(fieldRecordType, config.sublist);
+    config.rules = config.rules.map((rule) => ({
+      ...rule,
+      field: fields[0]?.value || "",
+      compareField: fields[1]?.value || fields[0]?.value || "",
     }));
     render();
     el.checkWrap.open = true;
@@ -3451,8 +3499,8 @@ document.addEventListener("DOMContentLoaded", () => {
     const fieldRecordType = checkFieldRecordType(config);
     config.rules = config.rules.map((rule) => ({
       ...rule,
-      field: checkFieldOptions(fieldRecordType)[0]?.value || "",
-      compareField: checkFieldOptions(fieldRecordType)[1]?.value || checkFieldOptions(fieldRecordType)[0]?.value || "",
+      field: checkFieldOptions(fieldRecordType, config.sublist)[0]?.value || "",
+      compareField: checkFieldOptions(fieldRecordType, config.sublist)[1]?.value || checkFieldOptions(fieldRecordType, config.sublist)[0]?.value || "",
       compareType: fieldRecordType === "input" ? "static" : "field",
     }));
     render();
@@ -3477,7 +3525,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const before = snapshot();
     const config = ensureCheckConfig(node);
     const fieldRecordType = checkFieldRecordType(config);
-    const fields = checkFieldOptions(fieldRecordType);
+    const fields = checkFieldOptions(fieldRecordType, config.sublist);
     config.rules.push({
       ...defaultCheckRule(),
       field: fields[1]?.value || fields[0]?.value || "",
@@ -3604,7 +3652,7 @@ document.addEventListener("DOMContentLoaded", () => {
       config.rules[index].staticValueLabel = "";
     }
     if (property === "compareType") {
-      const fields = checkFieldOptions(checkFieldRecordType(config));
+      const fields = checkFieldOptions(checkFieldRecordType(config), config.sublist);
       config.rules[index].compareField = config.rules[index].compareField || fields[0]?.value || "";
       config.rules[index].staticValue = config.rules[index].staticValue || "";
     }

@@ -36,6 +36,7 @@ const { getNetSuiteAccountDash, getNetSuiteHomeUrl } = require("./utils/netsuite
 const { ensureUserStatusColumn } = require("./utils/userStatus");
 const { ensureUserThemeColumns } = require("./utils/userTheme");
 const { ensureUserOfficeColumn } = require("./utils/userOffice");
+const { ensureUserSeniorSalesApproverColumn } = require("./utils/userSeniorSalesApprover");
 const { nsPostRaw } = require("./netsuiteClient");
 
 const app = express();
@@ -1956,6 +1957,9 @@ app.listen(PORT, () => {
   });
   ensureUserOfficeColumn().catch((err) => {
     console.error("Failed to initialize user office column:", err.message);
+  });
+  ensureUserSeniorSalesApproverColumn().catch((err) => {
+    console.error("Failed to initialize senior sales approver column:", err.message);
   });
 
 });

@@ -2276,6 +2276,75 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
     };
   }
 
+  function paymentSublistValue(rec, sublistId, fieldId, line) {
+    try {
+      return rec.getSublistValue({ sublistId: sublistId, fieldId: fieldId, line: line });
+    } catch (e) {
+      return "";
+    }
+  }
+
+  function customerPaymentOpenRows(rec, sublistId) {
+    var count = rec.getLineCount({ sublistId: sublistId });
+    var rows = [];
+    for (var line = 0; line < count; line += 1) {
+      var id = paymentSublistValue(rec, sublistId, "internalid", line) || paymentSublistValue(rec, sublistId, "doc", line);
+      var due = paymentSublistValue(rec, sublistId, "due", line);
+      var total = paymentSublistValue(rec, sublistId, "total", line);
+      var remaining = Math.abs(Number(due || total || 0));
+      if (!id || remaining <= 0) continue;
+      rows.push({
+        id: String(id),
+        tranId: String(paymentSublistValue(rec, sublistId, "refnum", line) || paymentSublistValue(rec, sublistId, "tranid", line) || id),
+        date: String(paymentSublistValue(rec, sublistId, "applydate", line) || ""),
+        total: String(Math.abs(Number(total || remaining))),
+        remaining: String(remaining),
+        line: line,
+      });
+    }
+    return rows;
+  }
+
+  function createCreditApplicationPayment(context) {
+    var customerId = Number(context && context.customerId);
+    if (!customerId) throw new Error("Customer ID is required to apply a Credit Memo.");
+    var payment = record.create({ type: record.Type.CUSTOMER_PAYMENT, isDynamic: false });
+    payment.setValue({ fieldId: "customer", value: customerId });
+    var invoices = customerPaymentOpenRows(payment, "apply");
+    var credits = customerPaymentOpenRows(payment, "credit");
+    if (context && context.preview === true) {
+      return { ok: true, customerId: String(customerId), invoices: invoices, credits: credits };
+    }
+
+    var applications = Array.isArray(context && context.applications) ? context.applications : [];
+    if (!applications.length) throw new Error("Select an Invoice and Credit Memo to apply.");
+    var applied = [];
+    var creditTotals = {};
+    applications.forEach(function (application) {
+      var invoice = invoices.filter(function (row) { return String(row.id) === String(application.invoiceId); })[0];
+      var credit = credits.filter(function (row) { return String(row.id) === String(application.creditMemoId); })[0];
+      if (!invoice || !credit) throw new Error("The selected Invoice or Credit Memo is no longer open.");
+      var requested = Math.abs(Number(application.amount || 0));
+      var amount = Math.min(requested || Number(invoice.remaining), Number(invoice.remaining), Number(credit.remaining));
+      if (!(amount > 0)) throw new Error("Enter a positive Credit Memo application amount.");
+      payment.setSublistValue({ sublistId: "apply", fieldId: "apply", line: invoice.line, value: true });
+      payment.setSublistValue({ sublistId: "apply", fieldId: "amount", line: invoice.line, value: amount });
+      creditTotals[credit.id] = (creditTotals[credit.id] || 0) + amount;
+      if (creditTotals[credit.id] - Number(credit.remaining) > 0.0001) throw new Error("Selected applications exceed the available Credit Memo amount.");
+      applied.push({ invoiceId: invoice.id, invoiceTranId: invoice.tranId, creditMemoId: credit.id, creditMemoTranId: credit.tranId, amount: amount });
+    });
+    credits.forEach(function (credit) {
+      var amount = creditTotals[credit.id] || 0;
+      if (!(amount > 0)) return;
+      payment.setSublistValue({ sublistId: "credit", fieldId: "apply", line: credit.line, value: true });
+      payment.setSublistValue({ sublistId: "credit", fieldId: "amount", line: credit.line, value: amount });
+    });
+    payment.setValue({ fieldId: "payment", value: 0 });
+    var paymentId = payment.save({ enableSourcing: true, ignoreMandatoryFields: false });
+    var saved = record.load({ type: record.Type.CUSTOMER_PAYMENT, id: paymentId, isDynamic: false });
+    return { ok: true, id: String(paymentId), tranId: String(saved.getValue({ fieldId: "tranid" }) || paymentId), applied: applied };
+  }
+
   const post = (context) => {
     try {
       log.audit("🔁 RESTlet Triggered", context);
@@ -2294,6 +2363,10 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
 
       if (context && context.action === "approveReturnAuthorization") {
         return approveReturnAuthorization(context);
+      }
+
+      if (context && context.action === "applyCreditMemo") {
+        return createCreditApplicationPayment(context);
       }
 
       if (!context.id) {
@@ -2717,7 +2790,8 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
         });
         soRec.setValue({
           fieldId: "tobeemailed",
-          value: true,
+          // Customer emails are handled by the NetSuite email workflow.
+          value: false,
         });
         if (context.email) {
           soRec.setValue({

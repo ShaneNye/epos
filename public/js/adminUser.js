@@ -124,6 +124,7 @@ async function openModalForEdit(userId) {
     form.password.value = "";
     form.netsuiteId.value = user.netsuiteId || ""; // ✅ new field populated
     form.office.checked = Boolean(user.office);
+    form.seniorSalesApprover.checked = Boolean(user.seniorSalesApprover);
 
     const roleSelect = document.querySelector("#userModal:not(.hidden) #roleSelect");
     const locationSelect = document.querySelector("#userModal:not(.hidden) #locationSelect");
@@ -155,6 +156,7 @@ async function openModalForCreate() {
   form.reset();
   form.netsuiteId.value = ""; // ✅ clear field
   form.office.checked = false;
+  form.seniorSalesApprover.checked = false;
   showModal();
   await new Promise(r => setTimeout(r, 50));
   await loadRoleAndLocationOptions();
@@ -210,7 +212,8 @@ document.addEventListener("DOMContentLoaded", () => {
         role_ids: selectedRoleIds,
         location_id: form.locationSelect.value || null,
         profileImage: form.profileImage.value,
-        office: form.office.checked
+        office: form.office.checked,
+        seniorSalesApprover: form.seniorSalesApprover.checked
       };
 
       if (form.password.value) body.password = form.password.value;
