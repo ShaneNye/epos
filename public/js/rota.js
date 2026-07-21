@@ -122,6 +122,10 @@ document.addEventListener("DOMContentLoaded", () => {
   function setLoading(isLoading) {
     els.loading.classList.toggle("hidden", !isLoading);
     els.refresh.disabled = isLoading;
+    els.previousWeek.disabled = isLoading;
+    els.thisWeek.disabled = isLoading;
+    els.nextWeek.disabled = isLoading;
+    if (isLoading) els.empty.classList.add("hidden");
   }
 
   function uniqueSorted(values) {
@@ -931,23 +935,23 @@ document.addEventListener("DOMContentLoaded", () => {
     renderCalendar();
   }
 
-  function shiftWeek(days) {
+  async function shiftWeek(days) {
     const start = parseRotaDate(els.startDate.value) || startOfWeek(new Date());
     const nextStart = addDays(start, days);
     els.startDate.value = toIsoDate(nextStart);
     els.endDate.value = toIsoDate(addDays(nextStart, 6));
-    renderCalendar();
+    await fetchRota();
   }
 
   [els.startDate, els.endDate, els.employee, els.location].forEach((input) => {
     input.addEventListener("change", renderCalendar);
   });
   els.refresh.addEventListener("click", refreshRota);
-  els.previousWeek.addEventListener("click", () => shiftWeek(-7));
-  els.nextWeek.addEventListener("click", () => shiftWeek(7));
+  els.previousWeek.addEventListener("click", () => { void shiftWeek(-7); });
+  els.nextWeek.addEventListener("click", () => { void shiftWeek(7); });
   els.thisWeek.addEventListener("click", () => {
     setDefaultWeek();
-    renderCalendar();
+    void fetchRota();
   });
 
   setDefaultWeek();
