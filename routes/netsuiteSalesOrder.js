@@ -1289,6 +1289,7 @@ function normaliseWorkflowCheckRecordCandidate(row = {}, recordType = "") {
     tranId,
     date: cleanDraftValue(rowValue(row, "trandate", "TRANDATE")),
     status: cleanDraftValue(rowValue(row, "status_display", "STATUS_DISPLAY", "status", "STATUS")),
+    customForm: cleanDraftValue(rowValue(row, "customform_display", "CUSTOMFORM_DISPLAY")),
     total: cleanDraftValue(rowValue(row, "total", "TOTAL", "foreigntotal", "FOREIGNTOTAL")),
     url: page && id ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}/app/accounting/transactions/${page}?id=${encodeURIComponent(id)}` : "",
   };
@@ -1364,6 +1365,7 @@ async function getWorkflowCheckRecordCandidates({ recordType, salesOrderId }, us
           trandate,
           status,
           BUILTIN.DF(status) AS status_display,
+          BUILTIN.DF(customform) AS customform_display,
           total,
           foreigntotal
         FROM transaction

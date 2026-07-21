@@ -720,7 +720,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return (Array.isArray(criteria) ? criteria : []).map((rule) => ({
       source: ["case", "salesOrder", "intercompanySalesOrder"].includes(rule?.source) ? rule.source : "case",
       field: String(rule?.field || ""),
-      operator: ["equals", "notEquals", "greaterThan", "lessThan", "isSet", "isNotSet"].includes(rule?.operator) ? rule.operator : "equals",
+      operator: ["equals", "notEquals", "contains", "notContains", "greaterThan", "lessThan", "isSet", "isNotSet"].includes(rule?.operator) ? rule.operator : "equals",
       compareType: rule?.compareType === "field" ? "field" : "static",
       compareField: String(rule?.compareField || ""),
       staticValue: String(rule?.staticValue || ""),
@@ -826,6 +826,8 @@ document.addEventListener("DOMContentLoaded", () => {
               <select data-workflow-criteria-operator="${index}">
                 <option value="equals" ${rule.operator === "equals" ? "selected" : ""}>Equals</option>
                 <option value="notEquals" ${rule.operator === "notEquals" ? "selected" : ""}>Does not equal</option>
+                <option value="contains" ${rule.operator === "contains" ? "selected" : ""}>Contains</option>
+                <option value="notContains" ${rule.operator === "notContains" ? "selected" : ""}>Does not contain</option>
                 <option value="greaterThan" ${rule.operator === "greaterThan" ? "selected" : ""}>Greater than</option>
                 <option value="lessThan" ${rule.operator === "lessThan" ? "selected" : ""}>Less than</option>
                 <option value="isSet" ${rule.operator === "isSet" ? "selected" : ""}>Is set</option>

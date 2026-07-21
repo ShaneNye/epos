@@ -1649,7 +1649,8 @@ async function patchReasonsToBuyItems(cfg, userId, reasonId, itemIds) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const err = new Error(`Reasons To Buy linked items update failed (${res.status})`);
+    const detail = body?.["o:errorDetails"]?.[0]?.detail;
+    const err = new Error(`Reasons To Buy linked items update failed (${res.status})${detail ? `: ${detail}` : ""}`);
     err.diagnostics = { url, method: "PATCH", status: res.status, statusText: res.statusText, payload, response: body };
     throw err;
   }
@@ -1665,18 +1666,26 @@ async function syncReasonsToBuyItemLinks({ cfg, userId, itemId, previousIds = []
   const reasonIds = Array.from(new Set([...previous, ...next]));
   if (!reasonIds.length) return [];
 
-  const rows = await fetchReasonsToBuyRows(cfg, userId);
+  const [rows, activeItemOptions] = await Promise.all([
+    fetchReasonsToBuyRows(cfg, userId),
+    fetchItemOptions(cfg, userId),
+  ]);
+  const activeItemIds = new Set(activeItemOptions.map((option) => String(option.id)));
   const byId = new Map(rows.map((row) => [String(row["Internal ID"] || ""), row]));
   const results = [];
 
   for (const reasonId of reasonIds) {
     const row = byId.get(String(reasonId));
     if (!row) continue;
-    const currentItems = new Set(netSuiteInternalIds(row.Items_InternalId));
+
+    // NetSuite rejects a complete multiselect replacement if it contains even one
+    // inactive/deleted historic item. Retain only currently selectable item IDs.
+    const existingIds = netSuiteInternalIds(row.Items_InternalId);
+    const currentItems = new Set(existingIds.filter((id) => activeItemIds.has(String(id))));
     if (next.has(reasonId)) currentItems.add(itemInternalId);
     else currentItems.delete(itemInternalId);
 
-    const before = Array.from(new Set(netSuiteInternalIds(row.Items_InternalId))).sort();
+    const before = Array.from(new Set(existingIds)).sort();
     const after = Array.from(currentItems).sort();
     if (JSON.stringify(before) === JSON.stringify(after)) {
       results.push({ reasonId, status: "Unchanged", itemCount: after.length });
@@ -1688,6 +1697,7 @@ async function syncReasonsToBuyItemLinks({ cfg, userId, itemId, previousIds = []
       reasonId,
       status: next.has(reasonId) ? "Added" : "Removed",
       itemCount: after.length,
+      removedInvalidItemIds: before.filter((id) => !activeItemIds.has(String(id))),
       response,
     });
   }

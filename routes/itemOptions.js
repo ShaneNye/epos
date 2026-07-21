@@ -171,6 +171,14 @@ function makePageUrl(page, pageSize) {
   return url.toString();
 }
 
+function makeOptionIdsUrl(optionIds) {
+  const url = new URL(OPTIONS_URL);
+  url.searchParams.set("only", optionIds.join(","));
+  url.searchParams.set("page", "1");
+  url.searchParams.set("pageSize", String(Math.min(100, Math.max(1, optionIds.length))));
+  return url.toString();
+}
+
 async function fetchJsonWithTimeout(url) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
@@ -738,6 +746,66 @@ async function syncItemOptions() {
   return syncInFlight;
 }
 
+async function syncItemOptionsForItem(itemId) {
+  const id = cleanText(itemId);
+  if (!id) throw new Error("itemId is required");
+
+  await ensureTables();
+  const excludedNames = await getExcludedOptionFieldNames();
+  const fieldResult = await pool.query(
+    `
+      SELECT DISTINCT field_id
+      FROM item_option_applied_items
+      WHERE item_id = $1
+      ORDER BY field_id
+    `,
+    [id]
+  );
+  const fieldIds = fieldResult.rows.map((row) => cleanText(row.field_id)).filter(Boolean);
+
+  if (!fieldIds.length) {
+    responseCache.delete(`item:${id}`);
+    return { ok: true, itemId: id, synced: 0, options: {} };
+  }
+
+  const refreshedOptions = [];
+  for (const fieldIdBatch of chunks(fieldIds, 100)) {
+    const payload = await fetchJsonWithTimeout(makeOptionIdsUrl(fieldIdBatch));
+    if (payload?.ok === false) {
+      throw new Error(payload.error || "NetSuite item options refresh failed");
+    }
+    if (Array.isArray(payload?.results)) refreshedOptions.push(...payload.results);
+  }
+
+  const rows = buildRowsFromOptions(refreshedOptions, excludedNames);
+  const refreshedFieldIds = rows.fieldRows.map((row) => row.id);
+  const client = await pool.connect();
+
+  try {
+    await client.query("BEGIN");
+    if (refreshedFieldIds.length) {
+      await client.query("DELETE FROM item_option_values WHERE field_id = ANY($1::text[])", [refreshedFieldIds]);
+    }
+    await insertOptionRows(client, rows);
+    await client.query("COMMIT");
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
+
+  responseCache.delete(`item:${id}`);
+  const options = await getOptions(id);
+  return {
+    ok: true,
+    itemId: id,
+    synced: rows.fieldRows.length,
+    options: options[id] || {},
+    excludedFieldNames: excludedNames,
+  };
+}
+
 function rowsToOptionMap(rows) {
   const byItemId = {};
 
@@ -869,6 +937,16 @@ router.post("/sync", async (req, res) => {
   }
 });
 
+router.post("/refresh", async (req, res) => {
+  try {
+    const result = await syncItemOptionsForItem(req.body?.itemId);
+    return res.json(result);
+  } catch (err) {
+    console.error("POST /api/item-options/refresh error:", err.message);
+    return res.status(500).json({ ok: false, error: err.message || "Failed to refresh item options" });
+  }
+});
+
 function startScheduler() {
   if (schedulerStarted) return;
   schedulerStarted = true;
@@ -890,5 +968,6 @@ module.exports = {
   router,
   startScheduler,
   syncItemOptions,
+  syncItemOptionsForItem,
   ensureTables,
 };

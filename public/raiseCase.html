@@ -1292,6 +1292,7 @@
       stepHistory: [],
       answers: [],
       actions: [],
+      auditActions: [],
       actionApprovals: [],
       actionEnableds: [],
       executedActionNodeIds: [],
@@ -1651,12 +1652,14 @@
 
     function workflowCheckRecordSelectionHtml(node = {}, data = {}) {
       const candidates = Array.isArray(data.candidates) ? data.candidates : [];
+      const isSalesOrder = ["salesorder", "sales_order"].includes(String(data.recordType || "").replace(/^record:/i, "").toLowerCase());
       const label = ({
         returnAuthorization: "Return Authorisation",
         creditMemo: "Credit Memo",
         customerRefund: "Customer Refund",
         customerDeposit: "Customer Deposit",
         salesOrder: "Sales Order",
+        salesorder: "Sales Order",
       })[data.recordType] || data.recordType || "record";
       return `
         <div class="workflow-run-shell">
@@ -1668,6 +1671,7 @@
                 <tr>
                   <th>Choose</th>
                   <th>${escapeHtml(label)}</th>
+                  ${isSalesOrder ? "<th>Custom Form</th>" : ""}
                   <th>Status</th>
                   <th>Date</th>
                   <th>Total</th>
@@ -1678,11 +1682,12 @@
                   <tr>
                     <td><input type="radio" name="workflowCheckRecord" data-workflow-check-record="${escapeHtml(candidate.id)}" ${index === 0 ? "checked" : ""}></td>
                     <td>${candidate.url ? `<a href="${escapeHtml(candidate.url)}" class="related-popup-link">${escapeHtml(candidate.tranId || candidate.id)}</a>` : escapeHtml(candidate.tranId || candidate.id)}</td>
+                    ${isSalesOrder ? `<td>${escapeHtml(candidate.customForm || "-")}</td>` : ""}
                     <td>${escapeHtml(candidate.status || "-")}</td>
                     <td>${escapeHtml(candidate.date || "-")}</td>
                     <td>${escapeHtml(candidate.total || "-")}</td>
                   </tr>
-                `).join("") || '<tr><td colspan="5">No matching records were found.</td></tr>'}
+                `).join("") || `<tr><td colspan="${isSalesOrder ? 6 : 5}">No matching records were found.</td></tr>`}
               </tbody>
             </table>
             <div class="workflow-run-actions">
@@ -3272,6 +3277,7 @@
       workflowRun.stepHistory = [];
       workflowRun.answers = [];
       workflowRun.actions = [];
+      workflowRun.auditActions = [];
       workflowRun.actionApprovals = [];
       workflowRun.actionEnableds = [];
       workflowRun.executedActionNodeIds = [];
@@ -3327,7 +3333,7 @@
         stepHistory: workflowRun.stepHistory || [],
         answers: workflowRun.answers || [],
         checks: workflowRun.checks || [],
-        actions: workflowRun.actions || [],
+        actions: workflowCheckpointActions(),
         executedActionNodeIds: workflowRun.executedActionNodeIds || [],
         debugNodeIds: workflowRun.debugNodeIds || [],
         debugEdgeIds: workflowRun.debugEdgeIds || [],
@@ -3335,6 +3341,10 @@
         savedAt: new Date().toISOString(),
         ...extra,
       };
+    }
+
+    function workflowCheckpointActions() {
+      return [...(workflowRun.auditActions || []), ...(workflowRun.actions || [])];
     }
 
     async function loadWorkflowProgress(workflow = workflowRun.selected) {
@@ -3398,6 +3408,7 @@
       workflowRun.answers = Array.isArray(progress.answers) ? progress.answers : [];
       workflowRun.checks = Array.isArray(progress.checks) ? progress.checks : [];
       workflowRun.actions = Array.isArray(progress.actions) ? progress.actions : [];
+      workflowRun.auditActions = [];
       workflowRun.executedActionNodeIds = Array.isArray(progress.executedActionNodeIds) ? progress.executedActionNodeIds.map(String) : [];
       workflowRun.debugNodeIds = Array.isArray(progress.debugNodeIds) ? progress.debugNodeIds : [];
       workflowRun.debugEdgeIds = Array.isArray(progress.debugEdgeIds) ? progress.debugEdgeIds : [];
@@ -4444,6 +4455,7 @@
       workflowRun.awaitingActionApproval = false;
       workflowRun.terminalNodeId = "";
       workflowRun.currentNodeId = "";
+      workflowRun.auditActions = workflowCheckpointActions();
       workflowRun.actions = [];
       workflowRun.actionApprovals = [];
       workflowRun.actionEnableds = [];
