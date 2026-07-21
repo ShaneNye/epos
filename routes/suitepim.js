@@ -1723,7 +1723,8 @@ async function patchItemFaqItems(cfg, userId, faqId, itemIds) {
     body: JSON.stringify(payload),
   });
   if (!res.ok) {
-    const err = new Error(`Item FAQ linked items update failed (${res.status})`);
+    const detail = body?.["o:errorDetails"]?.[0]?.detail;
+    const err = new Error(`Item FAQ linked items update failed (${res.status})${detail ? `: ${detail}` : ""}`);
     err.diagnostics = { url, method: "PATCH", status: res.status, statusText: res.statusText, payload, response: body };
     throw err;
   }
@@ -1739,18 +1740,26 @@ async function syncItemFaqLinks({ cfg, userId, itemId, previousIds = [], nextIds
   const faqIds = Array.from(new Set([...previous, ...next]));
   if (!faqIds.length) return [];
 
-  const rows = await fetchItemFaqRows(cfg, userId);
+  const [rows, activeItemOptions] = await Promise.all([
+    fetchItemFaqRows(cfg, userId),
+    fetchItemOptions(cfg, userId),
+  ]);
+  const activeItemIds = new Set(activeItemOptions.map((option) => String(option.id)));
   const byId = new Map(rows.map((row) => [String(row["Internal ID"] || ""), row]));
   const results = [];
 
   for (const faqId of faqIds) {
     const row = byId.get(String(faqId));
     if (!row) continue;
-    const currentItems = new Set(netSuiteInternalIds(row.Items_InternalId));
+
+    // A stale inactive/deleted item makes NetSuite reject the complete
+    // multiselect replacement, so retain only currently selectable items.
+    const existingIds = netSuiteInternalIds(row.Items_InternalId);
+    const currentItems = new Set(existingIds.filter((id) => activeItemIds.has(String(id))));
     if (next.has(faqId)) currentItems.add(itemInternalId);
     else currentItems.delete(itemInternalId);
 
-    const before = Array.from(new Set(netSuiteInternalIds(row.Items_InternalId))).sort();
+    const before = Array.from(new Set(existingIds)).sort();
     const after = Array.from(currentItems).sort();
     if (JSON.stringify(before) === JSON.stringify(after)) {
       results.push({ faqId, status: "Unchanged", itemCount: after.length });
@@ -1762,6 +1771,7 @@ async function syncItemFaqLinks({ cfg, userId, itemId, previousIds = [], nextIds
       faqId,
       status: next.has(faqId) ? "Added" : "Removed",
       itemCount: after.length,
+      removedInvalidItemIds: before.filter((id) => !activeItemIds.has(String(id))),
       response,
     });
   }
