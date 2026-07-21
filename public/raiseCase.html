@@ -1315,6 +1315,7 @@
       complete: false,
       actionsRendered: false,
       timer: null,
+      pendingSalesOrderTabs: new Map(),
     };
 
     function params() {
@@ -1517,7 +1518,10 @@
       const number = String(action.executionDocumentNumber || "").trim();
       const context = response ? `<div>${escapeHtml(response)}</div>` : "";
       if (!url || !number) return `${context}${text}`;
-      const link = `<a href="${escapeHtml(url)}" class="related-popup-link" title="Open in NetSuite">${escapeHtml(number)}</a>`;
+      const opensInNewTab = action.executionDocumentOpenInNewTab === true;
+      const link = opensInNewTab
+        ? `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" title="Open in a new tab">${escapeHtml(number)}</a>`
+        : `<a href="${escapeHtml(url)}" class="related-popup-link" title="Open in NetSuite">${escapeHtml(number)}</a>`;
       const escapedNumber = escapeHtml(number);
       const linkedText = text.includes(escapedNumber) ? text.replace(escapedNumber, link) : `${text} ${link}`;
       return `${context}${linkedText}`;
@@ -3271,6 +3275,10 @@
     function resetWorkflowRun(workflow = null) {
       window.clearInterval(workflowRun.timer);
       endWorkflowDebug();
+      workflowRun.pendingSalesOrderTabs.forEach((tab) => {
+        if (tab && !tab.closed) tab.close();
+      });
+      workflowRun.pendingSalesOrderTabs.clear();
       workflowRun.selected = workflow;
       workflowRun.currentNodeId = "";
       workflowRun.started = false;
@@ -3919,6 +3927,7 @@
       });
       document.getElementById("executeWorkflowActionsBtn")?.addEventListener("click", async () => {
         if (!workflowMandatoryActionsApproved()) return;
+        reserveWorkflowSalesOrderTabs();
         const execute = document.getElementById("executeWorkflowActionsBtn");
         if (execute) {
           execute.disabled = true;
@@ -3929,6 +3938,76 @@
         renderWorkflowRunner();
         await executeWorkflowRunActions();
       });
+    }
+
+    function workflowActionCreatesSalesOrder(action = {}) {
+      const target = String(action.createRecord?.targetRecord || "").replace(/[^a-z]/gi, "").toLowerCase();
+      return action.actionType === "createRecord" && target === "salesorder";
+    }
+
+    function reserveWorkflowSalesOrderTabs() {
+      workflowRun.actions.forEach((action, index) => {
+        if (!workflowActionCreatesSalesOrder(action) || workflowActionSkippedByUser(index)) return;
+        reserveWorkflowSalesOrderTab(index);
+      });
+    }
+
+    function reserveWorkflowSalesOrderTab(index) {
+      const existing = workflowRun.pendingSalesOrderTabs.get(index);
+      if (existing && !existing.closed) return;
+      const tabHost = window.opener && !window.opener.closed ? window.opener : window;
+      const tabName = `WorkflowSalesOrder_${Date.now()}_${index}`;
+      let tab = null;
+      try {
+        const anchor = tabHost.document.createElement("a");
+        anchor.href = "about:blank";
+        anchor.target = tabName;
+        anchor.hidden = true;
+        tabHost.document.body.appendChild(anchor);
+        anchor.click();
+        anchor.remove();
+        tab = tabHost.open("", tabName);
+      } catch (err) {
+        console.warn("Could not reserve the Sales Order tab through the main app window:", err);
+      }
+      if (!tab) tab = window.open("about:blank", tabName);
+      if (tab) {
+        workflowRun.pendingSalesOrderTabs.set(index, tab);
+        renderPendingSalesOrderTab(tab);
+      }
+    }
+
+    function renderPendingSalesOrderTab(tab) {
+      try {
+        tab.document.title = "Creating Customer Service Order";
+        tab.document.body.innerHTML = `
+          <main style="min-height:100vh;display:grid;place-items:center;background:#f4f7f9;font-family:Arial,sans-serif;color:#17324d;">
+            <section style="display:flex;flex-direction:column;align-items:center;gap:22px;text-align:center;padding:40px;">
+              <span aria-hidden="true" style="width:54px;height:54px;border:6px solid #d8e4ea;border-top-color:#0784a8;border-radius:50%;animation:customer-service-order-spin .8s linear infinite;"></span>
+              <h1 style="margin:0;font-size:24px;font-weight:700;">Please Wait for Customer Service Order</h1>
+              <p style="margin:0;color:#607486;font-size:15px;">The new sales order is being created.</p>
+            </section>
+          </main>
+        `;
+        const style = tab.document.createElement("style");
+        style.textContent = "@keyframes customer-service-order-spin { to { transform: rotate(360deg); } }";
+        tab.document.head.appendChild(style);
+      } catch (err) {
+        console.warn("Could not render the Sales Order waiting screen:", err);
+      }
+    }
+
+    function completeWorkflowSalesOrderTab(index, url = "") {
+      const tab = workflowRun.pendingSalesOrderTabs.get(index);
+      workflowRun.pendingSalesOrderTabs.delete(index);
+      if (!tab || tab.closed) return false;
+      if (!url) {
+        tab.close();
+        return false;
+      }
+      tab.location.href = new URL(url, window.location.origin).href;
+      tab.focus();
+      return true;
     }
 
     function renderWorkflowStepsDrawer() {
@@ -4562,12 +4641,14 @@
       button.addEventListener("click", async () => {
         const action = workflowRun.actions[index];
         if (!action || action.executionState !== "failed") return;
+        if (workflowActionCreatesSalesOrder(action)) reserveWorkflowSalesOrderTab(index);
         button.disabled = true;
         button.textContent = "Retrying...";
         try {
           await executeWorkflowActionAtIndex(index);
         } catch (err) {
           if (err.message === "__WORKFLOW_ACTION_WAITING_FOR_INPUT__") return;
+          completeWorkflowSalesOrderTab(index);
           updateWorkflowActionRow(index, {
             executionState: "failed",
             executionMessage: action.message || "Action failed.",
@@ -4875,7 +4956,10 @@
         }),
       });
       const data = await res.json().catch(() => ({}));
-      if (!res.ok || data?.ok === false) throw new Error(data?.error || `HTTP ${res.status}`);
+      if (!res.ok || data?.ok === false) {
+        completeWorkflowSalesOrderTab(index);
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
       const result = Array.isArray(data.results) ? data.results[0] : null;
       if (["customerDepositAllocation", "customerCreditMemoAllocation", "creditMemoInvoiceApplication"].includes(result?.needsInput)) {
         updateWorkflowActionRow(index, {
@@ -4903,9 +4987,13 @@
         executionMessage: result?.message || action.message || "Workflow action completed.",
         executionDocumentNumber: result?.document?.number || "",
         executionDocumentUrl: result?.document?.url || "",
+        executionDocumentOpenInNewTab: result?.document?.openInNewTab === true,
         executionError: result?.ok === false ? result?.error || "Action failed." : "",
         executionDebug: result?.debug || null,
       });
+      if (workflowActionCreatesSalesOrder(action)) {
+        completeWorkflowSalesOrderTab(index, result?.ok === false ? "" : result?.document?.url || "");
+      }
       if (result?.ok !== false) {
         const nodeId = action.nodeId || "";
         if (nodeId && !workflowRun.executedActionNodeIds.includes(String(nodeId))) {
@@ -4930,6 +5018,7 @@
           await executeWorkflowActionAtIndex(index);
         } catch (err) {
           if (err.message === "__WORKFLOW_ACTION_WAITING_FOR_INPUT__") return;
+          completeWorkflowSalesOrderTab(index);
           stopWorkflowBong();
           updateWorkflowActionRow(index, {
             executionState: "failed",

@@ -2305,19 +2305,53 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
     return rows;
   }
 
+  function setDynamicPaymentLine(rec, sublistId, line, values) {
+    rec.selectLine({ sublistId: sublistId, line: line });
+    Object.keys(values).forEach(function (fieldId) {
+      rec.setCurrentSublistValue({
+        sublistId: sublistId,
+        fieldId: fieldId,
+        value: values[fieldId],
+        ignoreFieldChange: false,
+      });
+    });
+    rec.commitLine({ sublistId: sublistId });
+  }
+
   function createCreditApplicationPayment(context) {
     var customerId = Number(context && context.customerId);
     if (!customerId) throw new Error("Customer ID is required to apply a Credit Memo.");
-    var payment = record.create({ type: record.Type.CUSTOMER_PAYMENT, isDynamic: false });
-    payment.setValue({ fieldId: "customer", value: customerId });
+    var applications = Array.isArray(context && context.applications) ? context.applications : [];
+    if (!applications.length) throw new Error("Select an Invoice and Credit Memo to apply.");
+    var sourceInvoiceId = Number(applications[0] && applications[0].invoiceId);
+    if (!sourceInvoiceId) throw new Error("A valid Invoice ID is required to apply a Credit Memo.");
+    // Starting from the selected invoice gives the payment a concrete transaction,
+    // currency and subsidiary context and sources the applicable credit lines.
+    var payment = record.transform({
+      fromType: record.Type.INVOICE,
+      fromId: sourceInvoiceId,
+      toType: record.Type.CUSTOMER_PAYMENT,
+      isDynamic: true,
+    });
     var invoices = customerPaymentOpenRows(payment, "apply");
     var credits = customerPaymentOpenRows(payment, "credit");
     if (context && context.preview === true) {
-      return { ok: true, customerId: String(customerId), invoices: invoices, credits: credits };
+      return {
+        ok: true,
+        customerId: String(customerId),
+        invoices: invoices,
+        credits: credits,
+        diagnostics: {
+          applyLineCount: payment.getLineCount({ sublistId: "apply" }),
+          creditLineCount: payment.getLineCount({ sublistId: "credit" }),
+          customer: String(payment.getValue({ fieldId: "customer" }) || payment.getValue({ fieldId: "entity" }) || ""),
+          subsidiary: String(payment.getValue({ fieldId: "subsidiary" }) || ""),
+          currency: String(payment.getValue({ fieldId: "currency" }) || ""),
+        },
+      };
     }
 
-    var applications = Array.isArray(context && context.applications) ? context.applications : [];
-    if (!applications.length) throw new Error("Select an Invoice and Credit Memo to apply.");
+    payment.setValue({ fieldId: "payment", value: 0 });
     var applied = [];
     var creditTotals = {};
     applications.forEach(function (application) {
@@ -2327,8 +2361,7 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
       var requested = Math.abs(Number(application.amount || 0));
       var amount = Math.min(requested || Number(invoice.remaining), Number(invoice.remaining), Number(credit.remaining));
       if (!(amount > 0)) throw new Error("Enter a positive Credit Memo application amount.");
-      payment.setSublistValue({ sublistId: "apply", fieldId: "apply", line: invoice.line, value: true });
-      payment.setSublistValue({ sublistId: "apply", fieldId: "amount", line: invoice.line, value: amount });
+      setDynamicPaymentLine(payment, "apply", invoice.line, { apply: true, amount: amount });
       creditTotals[credit.id] = (creditTotals[credit.id] || 0) + amount;
       if (creditTotals[credit.id] - Number(credit.remaining) > 0.0001) throw new Error("Selected applications exceed the available Credit Memo amount.");
       applied.push({ invoiceId: invoice.id, invoiceTranId: invoice.tranId, creditMemoId: credit.id, creditMemoTranId: credit.tranId, amount: amount });
@@ -2336,10 +2369,8 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
     credits.forEach(function (credit) {
       var amount = creditTotals[credit.id] || 0;
       if (!(amount > 0)) return;
-      payment.setSublistValue({ sublistId: "credit", fieldId: "apply", line: credit.line, value: true });
-      payment.setSublistValue({ sublistId: "credit", fieldId: "amount", line: credit.line, value: amount });
+      setDynamicPaymentLine(payment, "credit", credit.line, { apply: true, amount: amount });
     });
-    payment.setValue({ fieldId: "payment", value: 0 });
     var paymentId = payment.save({ enableSourcing: true, ignoreMandatoryFields: false });
     var saved = record.load({ type: record.Type.CUSTOMER_PAYMENT, id: paymentId, isDynamic: false });
     return { ok: true, id: String(paymentId), tranId: String(saved.getValue({ fieldId: "tranid" }) || paymentId), applied: applied };

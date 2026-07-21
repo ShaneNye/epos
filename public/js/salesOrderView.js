@@ -1158,6 +1158,50 @@ document.addEventListener("DOMContentLoaded", async () => {
   const overlay = document.getElementById("loadingOverlay");
   overlay?.classList.remove("hidden");
 
+  function parseSalesOrderCustomFormId(so) {
+    if (!so) return "";
+    const rawValue =
+      so.customform ||
+      so.customForm ||
+      so.customform?.id ||
+      so.customform?.internalId ||
+      so.customForm?.id ||
+      so.customForm?.internalId ||
+      so.customform?.value ||
+      so.customform?.text ||
+      "";
+
+    if (typeof rawValue === "number" && Number.isFinite(rawValue)) {
+      return String(rawValue).trim();
+    }
+    if (typeof rawValue === "string") {
+      return rawValue.trim();
+    }
+    if (typeof rawValue === "object" && rawValue) {
+      return String(rawValue.id || rawValue.internalId || rawValue.value || rawValue.text || "").trim();
+    }
+    return "";
+  }
+
+  function updateSalesOrderViewTitleForCustomerService(so) {
+    const pageTitle = document.querySelector(".page-title");
+    if (!pageTitle) return;
+
+    const customFormId = parseSalesOrderCustomFormId(so);
+    const isCustomerService = String(customFormId) === "245";
+    pageTitle.classList.toggle("customer-service-title", isCustomerService);
+
+    const titleText = isCustomerService ? "Customer Service" : "Sales Order";
+    const titleNode = pageTitle.firstChild;
+    if (titleNode && titleNode.nodeType === Node.TEXT_NODE) {
+      titleNode.textContent = `${titleText} `;
+    } else {
+      pageTitle.prepend(document.createTextNode(`${titleText} `));
+    }
+
+    document.title = `EPOS : ${titleText}`;
+  }
+
   // ---- Auth / token ----
   let saved = storageGet?.();
   if (!saved || !saved.token) {
@@ -1338,6 +1382,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const so = soJson.salesOrder || soJson;
     window._currentSalesOrder = so;
     if (!so) throw new Error("No salesOrder object in response");
+    updateSalesOrderViewTitleForCustomerService(so);
     console.log("✅ Sales Order loaded:", so.tranId || tranId);
     const salesOrderInternalIdForCustomFields =
       so?.id || so?.internalId || so?.internalid || tranId;

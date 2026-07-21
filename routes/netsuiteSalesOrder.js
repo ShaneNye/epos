@@ -3074,6 +3074,41 @@ async function getCreditMemoCandidatesForRefund({ customerId }, userId) {
   return [];
 }
 
+async function getOpenInvoiceAndCreditMemoCandidates(customerId, userId) {
+  const customerNumeric = Number(customerId);
+  if (!Number.isFinite(customerNumeric) || customerNumeric <= 0) {
+    return { invoices: [], creditMemos: [] };
+  }
+
+  const loadCandidates = async (tableName) => {
+    const result = await nsPostRaw(suiteQlUrl(), { q: `
+      SELECT
+        id,
+        entity,
+        tranid,
+        amountpaid,
+        amountremaining
+      FROM ${tableName}
+      WHERE entity = ${customerNumeric}
+        AND amountremaining > 0
+      ORDER BY id DESC
+    ` }, userId);
+    return (Array.isArray(result?.items) ? result.items : []).map((row) => ({
+      id: cleanDraftValue(row.id || row.ID),
+      tranId: cleanDraftValue(row.tranid || row.TRANID) || cleanDraftValue(row.id || row.ID),
+      customerId: cleanDraftValue(row.entity || row.ENTITY),
+      amountPaid: cleanDraftValue(row.amountpaid || row.AMOUNTPAID || "0"),
+      remaining: cleanDraftValue(row.amountremaining || row.AMOUNTREMAINING || "0"),
+    })).filter((row) => row.id && Number(row.remaining) > 0);
+  };
+
+  const [invoices, creditMemos] = await Promise.all([
+    loadCandidates("Invoice"),
+    loadCandidates("CreditMemo"),
+  ]);
+  return { invoices, creditMemos };
+}
+
 async function createCustomerRefundViaRestlet(payload, userId, context = {}) {
   const restletUrl = workflowRestletUrl();
   const result = await nsRestlet(restletUrl, {
@@ -3357,7 +3392,12 @@ async function executeCreateRecordAction({ caseId, action, checks = [], answers 
     document: {
       id,
       number: documentNumber,
-      url: id && config.documentPath ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}${config.documentPath}?id=${encodeURIComponent(id)}` : "",
+      url: id && targetRecordType === "salesOrder"
+        ? `/sales/view/${encodeURIComponent(id)}`
+        : id && config.documentPath
+          ? `${netSuiteAppBaseUrl().replace(/\/$/, "")}${config.documentPath}?id=${encodeURIComponent(id)}`
+          : "",
+      openInNewTab: targetRecordType === "salesOrder",
     },
   };
 }
@@ -3467,14 +3507,9 @@ async function executeApplyCreditMemoAction({ caseId, action }, userId) {
   if (!customerId) throw new Error("The case does not have a customer to search for open transactions.");
   const applications = Array.isArray(action.creditMemoApplications) ? action.creditMemoApplications : [];
   if (!applications.length) {
-    const preview = await nsRestlet(workflowRestletUrl(), {
-      action: "applyCreditMemo",
-      preview: true,
-      customerId,
-    }, userId, "POST");
-    if (!preview || preview.ok === false) throw new Error(preview?.error || "Could not load open Invoices and Credit Memos.");
-    const invoices = Array.isArray(preview.invoices) ? preview.invoices : [];
-    const creditMemos = Array.isArray(preview.credits) ? preview.credits : [];
+    const candidates = await getOpenInvoiceAndCreditMemoCandidates(customerId, userId);
+    const invoices = candidates.invoices;
+    const creditMemos = candidates.creditMemos;
     if (!invoices.length) throw new Error("No open Sales Invoices were found for this customer.");
     if (!creditMemos.length) throw new Error("No open Credit Memos were found for this customer.");
     if (invoices.length !== 1 || creditMemos.length !== 1) {
@@ -6219,6 +6254,7 @@ function buildSalesOrderFields() {
     // addresses (again, may vary)
     "billAddress",
     "shipAddress",
+    "customform",
   ].join(",");
 }
 
