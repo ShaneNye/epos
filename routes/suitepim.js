@@ -282,9 +282,64 @@ async function ensureSuitePimSettingsTables() {
 
     CREATE INDEX IF NOT EXISTS idx_suitepim_field_mappings_environment
       ON suitepim_field_mappings(environment, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS suitepim_item_reasons_display (
+      environment TEXT NOT NULL CHECK (environment IN ('sandbox', 'production')),
+      item_internal_id TEXT NOT NULL,
+      config JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_by TEXT,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (environment, item_internal_id)
+    );
   `);
 
   suitePimSettingsInitialized = true;
+}
+
+function normalizeReasonsDisplayConfig(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  return Object.fromEntries(
+    Object.entries(value)
+      .map(([reasonId, entry]) => {
+        const id = String(reasonId || "").trim();
+        if (!id || !entry || typeof entry !== "object") return null;
+        const order = Number(entry.order);
+        return [id, {
+          feature: entry.feature !== false,
+          short: entry.short !== false,
+          order: Number.isFinite(order) && order > 0 ? order : 999,
+          name: String(entry.name || "").trim(),
+        }];
+      })
+      .filter(Boolean)
+  );
+}
+
+async function saveReasonsDisplayConfig(env, itemInternalId, config, updatedBy = "") {
+  const itemId = String(itemInternalId || "").trim();
+  if (!itemId) return;
+  await ensureSuitePimSettingsTables();
+  await pool.query(
+    `INSERT INTO suitepim_item_reasons_display
+       (environment, item_internal_id, config, updated_by, updated_at)
+     VALUES ($1, $2, $3::jsonb, $4, NOW())
+     ON CONFLICT (environment, item_internal_id)
+     DO UPDATE SET config = EXCLUDED.config, updated_by = EXCLUDED.updated_by, updated_at = NOW()`,
+    [normalizeEnvironment(env), itemId, JSON.stringify(normalizeReasonsDisplayConfig(config)), String(updatedBy || "")]
+  );
+  webManagementCache.delete(webManagementCacheKey(normalizeEnvironment(env)));
+}
+
+async function loadReasonsDisplayConfigs(env) {
+  await ensureSuitePimSettingsTables();
+  const result = await pool.query(
+    "SELECT item_internal_id, config FROM suitepim_item_reasons_display WHERE environment = $1",
+    [normalizeEnvironment(env)]
+  );
+  return new Map(result.rows.map((row) => [
+    String(row.item_internal_id),
+    normalizeReasonsDisplayConfig(row.config),
+  ]));
 }
 
 const SUITEPIM_FEATURE_SETTINGS_KEY = "suitepim.features.enabled";
@@ -2702,7 +2757,16 @@ async function processRow(row, job) {
     }
 
     const hasPriceError = result.response.prices.some((p) => p.success === false);
-    const changed = result.response.main || result.response.prices.length || result.response.images.length || result.response.supplier || result.response.reasonsToBuyLinks?.length || result.response.itemFaqLinks?.length;
+    if (!hasPriceError && Object.prototype.hasOwnProperty.call(row, "__reasonsToBuyConfig")) {
+      await saveReasonsDisplayConfig(
+        job.environment,
+        internalId,
+        row.__reasonsToBuyConfig,
+        job.userId
+      );
+      result.response.reasonsToBuyDisplay = { status: "Saved" };
+    }
+    const changed = result.response.main || result.response.prices.length || result.response.images.length || result.response.supplier || result.response.reasonsToBuyLinks?.length || result.response.itemFaqLinks?.length || result.response.reasonsToBuyDisplay;
     result.status = hasPriceError ? "Error" : changed ? "Success" : "Skipped";
     return result;
   } catch (err) {
@@ -3261,6 +3325,7 @@ function enqueueSuitePimPushJob({ rows, env, cfg, userId, mappedFields, schedule
     fields: mappedFields,
     cfg,
     userId,
+    env,
     environment: publicEnvironmentName(env),
     createdAt: new Date().toISOString(),
     scheduledExportId,
@@ -3622,11 +3687,17 @@ async function fetchWebManagementRows(cfg) {
 
 async function buildWebManagementPayload(env, cfg, userId = null) {
   const startedAt = Date.now();
-  const [rawRows, optionMap] = await Promise.all([
+  const [rawRows, optionMap, reasonsDisplayConfigs] = await Promise.all([
     fetchWebManagementRows(cfg),
     loadMultipleSelectOptionMap(env, cfg, userId),
+    loadReasonsDisplayConfigs(env),
   ]);
-  const rows = rawRows.map((row) => recalcRow(normalizeMultipleSelects(normalizeRowAliases(row), optionMap)));
+  const rows = rawRows.map((row) => {
+    const normalized = recalcRow(normalizeMultipleSelects(normalizeRowAliases(row), optionMap));
+    const itemId = String(normalized["Internal ID"] || "").trim();
+    const savedConfig = reasonsDisplayConfigs.get(itemId);
+    return savedConfig ? { ...normalized, __reasonsToBuyConfig: savedConfig } : normalized;
+  });
 
   return {
     ok: true,

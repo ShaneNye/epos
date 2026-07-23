@@ -11,29 +11,58 @@
   <script src="/js/menu.js" defer></script>
   <script src="/js/financeSettings.js" defer></script>
 </head>
-<body>
+<body class="finance-settings-body">
   <div id="menu"></div>
   <main class="content finance-settings-page">
-    <div class="finance-page-heading">
+    <header class="finance-page-heading">
       <div>
         <p class="finance-eyebrow">Sales tools</p>
-        <h1>Finance calculator settings</h1>
-        <p>Set the finance options offered for each sale amount band.</p>
+        <h1>Finance calculator</h1>
+        <p>Define which finance terms customers can explore at each purchase value.</p>
       </div>
-      <button class="finance-primary" id="saveFinanceSettings" type="button">Save settings</button>
-    </div>
-    <div id="financeSettingsStatus" class="finance-status" role="status"></div>
-    <section class="finance-settings-card">
-      <div class="finance-settings-intro">
-        <h2>Sale amount bands</h2>
-        <button class="finance-secondary" id="addFinanceTier" type="button">+ Add band</button>
+      <div class="finance-page-actions">
+        <button class="finance-secondary finance-preview-button" id="previewFinanceCalculator" type="button">
+          <span aria-hidden="true">↗</span> Preview calculator
+        </button>
+        <button class="finance-primary" id="saveFinanceSettings" type="button">Save changes</button>
       </div>
-      <div class="finance-tier-head" aria-hidden="true">
-        <span>Sale amount from</span><span>Sale amount to</span><span>Terms (months)</span>
-        <span>Minimum deposit</span><span>Interest</span><span>APR</span><span></span>
-      </div>
-      <div id="financeTierRows"></div>
+    </header>
+
+    <div id="financeSettingsStatus" class="finance-status finance-settings-status" role="status" aria-live="polite"></div>
+
+    <section class="finance-settings-overview" aria-label="Finance configuration summary">
+      <article>
+        <span>Active bands</span>
+        <strong id="financeBandCount">0</strong>
+        <small>purchase-value ranges</small>
+      </article>
+      <article>
+        <span>Configured range</span>
+        <strong id="financeCoverageRange">—</strong>
+        <small>eligible purchase values</small>
+      </article>
+      <article>
+        <span>Customer experience</span>
+        <strong>Live calculation</strong>
+        <small>results update as controls move</small>
+      </article>
     </section>
+
+    <section class="finance-settings-card" aria-labelledby="financeBandsTitle">
+      <div class="finance-settings-intro">
+        <div>
+          <p class="finance-section-kicker">Configuration</p>
+          <h2 id="financeBandsTitle">Purchase-value bands</h2>
+          <p>Each purchase value should fit into one band. Keep ranges distinct to avoid conflicting finance terms.</p>
+        </div>
+        <button class="finance-secondary" id="addFinanceTier" type="button"><span aria-hidden="true">+</span> Add band</button>
+      </div>
+      <div id="financeTierRows" class="finance-tier-list" aria-live="polite"></div>
+    </section>
+
+    <div class="finance-mobile-save">
+      <button class="finance-primary" id="saveFinanceSettingsMobile" type="button">Save changes</button>
+    </div>
   </main>
 </body>
 </html>
