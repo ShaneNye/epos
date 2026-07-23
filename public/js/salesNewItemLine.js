@@ -1011,7 +1011,8 @@ async function openOptionsWindow(row) {
   }
 
   const existingSelections = row.querySelector(".item-options-json")?.value || "{}";
-  const url = `/options.html?itemId=${encodeURIComponent(itemId)}&selections=${encodeURIComponent(existingSelections)}`;
+  const lineIndex = row.dataset.line || "";
+  const url = `/options.html?itemId=${encodeURIComponent(itemId)}&selections=${encodeURIComponent(existingSelections)}&lineIndex=${encodeURIComponent(lineIndex)}`;
   const win = window.open(url, "ItemOptions", "width=600,height=500,resizable=yes,scrollbars=yes");
   win.focus();
 }
@@ -1026,8 +1027,18 @@ function openInventoryWindow(row) {
 }
 
 // === Callbacks from popup ===
-window.onOptionsSaved = function(itemId, selections) {
-  const row = document.querySelector(`.order-line .item-internal-id[value="${itemId}"]`)?.closest(".order-line");
+window.onOptionsSaved = function(itemId, selections, lineIndex) {
+  let row = null;
+
+  if (lineIndex != null && String(lineIndex) !== "") {
+    row = [...document.querySelectorAll("#orderItemsBody .order-line")]
+      .find((candidate) => String(candidate.dataset.line || "") === String(lineIndex));
+  }
+
+  if (!row) {
+    row = document.querySelector(`.order-line .item-internal-id[value="${itemId}"]`)?.closest(".order-line");
+  }
+
   if (!row) return;
   row.querySelector(".item-options-json").value = JSON.stringify(selections);
   row.querySelector(".options-summary").innerHTML = selectionsToSummary(selections);

@@ -395,10 +395,19 @@ function openInventoryWindow(row, lineIndexOverride) {
   );
   win?.focus();
 }
-  window.onOptionsSaved = function (itemId, selections) {
-    const row = document
-      .querySelector(`.order-line .item-internal-id[value="${itemId}"]`)
-      ?.closest(".order-line");
+  window.onOptionsSaved = function (itemId, selections, lineIndex) {
+    let row = null;
+
+    if (lineIndex != null && String(lineIndex) !== "") {
+      row = [...document.querySelectorAll("#orderItemsBody .order-line")]
+        .find((candidate) => String(candidate.dataset.line || "") === String(lineIndex));
+    }
+
+    if (!row) {
+      row = document
+        .querySelector(`.order-line .item-internal-id[value="${itemId}"]`)
+        ?.closest(".order-line");
+    }
     if (!row) return;
 
     const jsonEl = row.querySelector(".item-options-json");

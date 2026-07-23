@@ -719,7 +719,9 @@ async function openOptionsWindow(row) {
 
   const url = `/options.html?itemId=${encodeURIComponent(
     itemId
-  )}&selections=${encodeURIComponent(JSON.stringify(existingSelections))}`;
+  )}&selections=${encodeURIComponent(
+    JSON.stringify(existingSelections)
+  )}&lineIndex=${encodeURIComponent(row.dataset.line || "")}`;
 
   const win = window.open(
     url,
@@ -735,11 +737,17 @@ async function openOptionsWindow(row) {
   win.focus();
 }
 
-window.onOptionsSaved = function (itemId, selections) {
+window.onOptionsSaved = function (itemId, selections, lineIndex) {
   let row = null;
 
-  if (window.__quoteOptionsTargetLine != null) {
-    row = document.querySelector(`.order-line[data-line="${window.__quoteOptionsTargetLine}"]`);
+  const targetLine =
+    lineIndex != null && String(lineIndex) !== ""
+      ? String(lineIndex)
+      : window.__quoteOptionsTargetLine;
+
+  if (targetLine != null) {
+    row = [...document.querySelectorAll(".order-line")]
+      .find((candidate) => String(candidate.dataset.line || "") === String(targetLine));
   }
 
   if (!row && activeRow) {
