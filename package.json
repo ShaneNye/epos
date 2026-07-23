@@ -3,6 +3,7 @@
   "version": "0.0.1",
   "main": "server.js",
   "scripts": {
+    "postinstall": "puppeteer browsers install chrome",
     "start": "node server.js",
     "test": "node --test"
   },
@@ -25,7 +26,7 @@
     "nodemailer": "^7.0.6",
     "oauth-1.0a": "^2.2.6",
     "pg": "^8.16.3",
-    "puppeteer": "^24.35.0",
+    "puppeteer": "24.35.0",
     "qrcode": "^1.5.4"
   }
 }
