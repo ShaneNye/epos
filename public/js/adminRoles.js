@@ -15,6 +15,8 @@ document.addEventListener("DOMContentLoaded", () => {
     { value: "quote/new", label: "New Quote" },
     { value: "orders", label: "Order Management" },
     { value: "sales-tools", label: "Sales Tools" },
+    { value: "finance-settings", label: "Finance Calculator Settings" },
+    { value: "qr-generator", label: "QR Generator" },
     { value: "reports", label: "Reports" },
     { value: "product-hub", label: "Product Hub" },
     { value: "eod", label: "End Of Day" },

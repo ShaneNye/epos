@@ -1,0 +1,68 @@
+:root { --quote-brand:#007c9f; --quote-ink:#102f3a; --quote-muted:#5d737b; --quote-line:#d7e4e7; }
+* { box-sizing: border-box; }
+body { margin: 0; }
+.quote-page { width: min(920px, 100%); min-height: 100vh; margin: auto; padding: 28px 24px 60px; }
+.quote-card { padding: 28px; border: 1px solid var(--quote-line); border-radius: 18px; background: #fff; }
+#quoteDetailsPanel { margin-top: 24px; }
+.quote-section-heading { display: flex; align-items: center; gap: 13px; margin-bottom: 20px; }
+.quote-section-heading > span { display: grid; flex: 0 0 34px; width: 34px; height: 34px; place-items: center; border-radius: 50%; background: #e8f6f9; color: var(--quote-brand); font-size: .82rem; font-weight: 850; }
+.quote-section-heading h2 { margin: 0; font-size: 1.12rem; }
+.quote-section-heading p { margin: 3px 0 0; color: var(--quote-muted); font-size: .78rem; }
+.quote-address-heading { margin-top: 32px; padding-top: 28px; border-top: 1px solid #e5edef; }
+.quote-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.quote-form-grid label { display: grid; gap: 8px; color: var(--quote-ink); font-size: .8rem; font-weight: 750; }
+.quote-form-grid input, .quote-form-grid select { width: 100%; padding: 11px 13px; }
+.quote-postcode > span { display: flex; }
+.quote-postcode input { border-radius: 11px 0 0 11px !important; }
+.quote-postcode button { min-width: 116px; min-height: 48px; border: 1px solid #bfcfd3; border-left: 0; border-radius: 0 11px 11px 0; padding: 0 14px; background: #e8f6f9; color: #005d78; font-weight: 800; white-space: nowrap; cursor: pointer; }
+.quote-postcode button:hover { background: #d9eff4; }
+.quote-address-results:has(select[hidden]) { display: none; }
+.quote-primary { width: 100%; margin-top: 28px; padding: 13px 18px; }
+.quote-status { margin: 16px 0 0; }
+.quote-summary { margin-top: 8px; }
+.quote-summary-title { display: flex; justify-content: space-between; align-items: start; gap: 20px; margin-bottom: 20px; }
+.quote-summary-title h2 { margin: 4px 0; font-size: clamp(1.6rem, 4vw, 2.1rem); letter-spacing: -.025em; }
+.quote-eyebrow { margin: 0; color: var(--quote-brand); font-size: .72rem; font-weight: 850; text-transform: uppercase; letter-spacing: .12em; }
+.quote-summary-title > span { padding: 8px 12px; border-radius: 20px; background: #e8f6f9; color: #005d78; font-size: .75rem; font-weight: 800; white-space: nowrap; }
+.quote-summary-grid { display: grid; grid-template-columns: 1fr 1.15fr; gap: 18px; }
+.quote-card h3 { margin: 0 0 18px; font-size: 1.05rem; }
+.quote-card p { line-height: 1.6; color: var(--quote-muted); }
+.quote-card small { color: var(--quote-muted); }
+.quote-card dl { margin: 0; }
+.quote-card dl div { display: flex; justify-content: space-between; gap: 15px; padding: 9px 0; border-bottom: 1px solid #edf1f2; }
+.quote-card dl div:last-child { border-bottom: 0; }
+.quote-card dt { color: var(--quote-muted); }
+.quote-card dd { margin: 0; font-weight: 800; text-align: right; }
+.quote-items-card { margin-top: 18px; }
+.quote-finance-card { margin-top: 18px; }
+.quote-item-row { display: flex; justify-content: space-between; gap: 20px; padding: 16px 0; border-bottom: 1px solid #e7edef; }
+.quote-item-row > div { display: grid; gap: 4px; }
+.quote-item-row span, .quote-item-row small { color: var(--quote-muted); }
+.quote-total { display: flex; justify-content: space-between; padding-top: 20px; font-size: 1.15rem; font-weight: 750; }
+.quote-total strong { color: var(--quote-brand); font-size: 1.3rem; }
+.quote-disclaimer { max-width: 620px; margin: 22px auto 0; text-align: center; color: var(--quote-muted); font-size: .78rem; line-height: 1.5; }
+.quote-send { width: 100%; margin-top: 18px; padding: 13px 18px; }
+.quote-send + .quote-status { margin: 12px 0 0; text-align: center; }
+.quote-status[data-tone="success"] { background: #eaf7ef; color: #167044; }
+@media (min-width: 701px) {
+  .quote-summary .quote-card { padding: 20px 24px; }
+  .quote-summary .quote-item-row { padding: 11px 0; }
+  .quote-summary .quote-card dl { display: grid; grid-template-columns: 1fr 1fr; gap: 0 28px; }
+}
+@media (max-width: 700px) {
+  .quote-page { padding: 26px 15px 50px; }
+  .quote-form-grid, .quote-summary-grid { grid-template-columns: 1fr; }
+  .quote-contact-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 12px; }
+  .quote-contact-grid label:nth-child(n+3) { grid-column: 1 / -1; }
+  .quote-card { padding: 20px; }
+  .quote-section-heading { align-items: start; }
+  .quote-summary-title { display: grid; }
+  .quote-summary-title > span { justify-self: start; }
+}
+@media (max-width: 420px) {
+  .quote-page { padding-inline: 12px; }
+  .quote-card { padding: 18px 16px; }
+  .quote-postcode > span { display: grid; gap: 8px; }
+  .quote-postcode input, .quote-postcode button { width: 100%; border: 1px solid #bfcfd3 !important; border-radius: 11px !important; }
+  .quote-item-row { align-items: start; }
+}

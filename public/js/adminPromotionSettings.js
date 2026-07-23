@@ -46,8 +46,10 @@
     const fields = [
       ["adminProductionUpsellsEnabled", production.upsellsEnabled],
       ["adminProductionBasketDiscountsEnabled", production.basketDiscountsEnabled],
+      ["adminProductionFinanceCalculatorEnabled", production.financeCalculatorEnabled],
       ["adminSandboxUpsellsEnabled", sandbox.upsellsEnabled],
       ["adminSandboxBasketDiscountsEnabled", sandbox.basketDiscountsEnabled],
+      ["adminSandboxFinanceCalculatorEnabled", sandbox.financeCalculatorEnabled],
     ];
 
     fields.forEach(([id, value]) => {
@@ -65,7 +67,8 @@
       const wanted = expected[environment] || {};
       const received = actual[environment] || {};
       return received.upsellsEnabled === wanted.upsellsEnabled
-        && received.basketDiscountsEnabled === wanted.basketDiscountsEnabled;
+        && received.basketDiscountsEnabled === wanted.basketDiscountsEnabled
+        && received.financeCalculatorEnabled === wanted.financeCalculatorEnabled;
     });
   }
 
@@ -95,10 +98,12 @@
         production: {
           upsellsEnabled: !!byId("adminProductionUpsellsEnabled")?.checked,
           basketDiscountsEnabled: !!byId("adminProductionBasketDiscountsEnabled")?.checked,
+          financeCalculatorEnabled: !!byId("adminProductionFinanceCalculatorEnabled")?.checked,
         },
         sandbox: {
           upsellsEnabled: !!byId("adminSandboxUpsellsEnabled")?.checked,
           basketDiscountsEnabled: !!byId("adminSandboxBasketDiscountsEnabled")?.checked,
+          financeCalculatorEnabled: !!byId("adminSandboxFinanceCalculatorEnabled")?.checked,
         },
       },
     };

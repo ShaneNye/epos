@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script src="/js/browserLogFilter.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Choose your products</title>
+  <link rel="stylesheet" href="/css/qrFinance.css">
+  <link rel="stylesheet" href="/css/customerJourney.css">
+  <script src="/js/qrShop.js" defer></script>
+</head>
+<body class="qr-shop-page">
+  <main class="qr-shop-shell">
+    <ol class="journey-progress" aria-label="Quote progress"><li aria-current="step">Products</li><li>Finance</li><li>Your details</li></ol>
+    <header class="journey-header"><p class="qr-eyebrow journey-eyebrow" id="qrShopStore"></p><h1>Choose your products</h1><p>Add the products you’re interested in, then choose the available options for each one.</p></header>
+    <section class="qr-product-picker">
+      <label id="qrProductPickerLabel">Add a product</label>
+      <button id="qrProductPickerButton" type="button" aria-expanded="false" aria-haspopup="listbox" aria-labelledby="qrProductPickerLabel qrProductPickerButton">
+        <span>Select a product</span><b aria-hidden="true">⌄</b>
+      </button>
+      <div id="qrProductPickerMenu" class="qr-product-picker-menu" role="listbox" aria-label="Available products" hidden></div>
+    </section>
+    <section aria-labelledby="qrSelectionHeading">
+      <div class="qr-selection-heading"><h2 id="qrSelectionHeading">Your selection</h2><span id="qrSelectionCount">0 products</span></div>
+      <div id="qrProductList" class="qr-product-list"><p class="qr-empty-state">No products added yet. Choose a product above to get started.</p></div>
+    </section>
+    <footer class="qr-shop-footer">
+      <div><span>Selected total</span><strong id="qrSelectedTotal">£0.00</strong></div>
+      <button id="qrContinue" class="journey-button" type="button" disabled>Continue to finance</button>
+    </footer>
+    <p id="qrShopStatus" class="qr-status journey-status" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

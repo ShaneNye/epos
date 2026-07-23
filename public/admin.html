@@ -432,7 +432,7 @@
         <!-- === Sales Features === -->
         <div id="sales-features" class="tab-content hidden">
             <h2>Sales Features</h2>
-            <p>Turn promotion helpers on or off for new sales orders and new quotes.</p>
+            <p>Control optional tools available during the sales workflow.</p>
 
             <section class="admin-feature-panel" aria-labelledby="promotionFeatureTitle">
                 <div>
@@ -457,6 +457,13 @@
                             </span>
                             <input id="adminProductionBasketDiscountsEnabled" type="checkbox">
                         </label>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Finance Calculator</strong>
+                                <small>Show the finance calculator launcher on Sales New.</small>
+                            </span>
+                            <input id="adminProductionFinanceCalculatorEnabled" type="checkbox">
+                        </label>
                     </div>
 
                     <div class="admin-environment-card">
@@ -475,11 +482,18 @@
                             </span>
                             <input id="adminSandboxBasketDiscountsEnabled" type="checkbox">
                         </label>
+                        <label class="admin-toggle-row">
+                            <span>
+                                <strong>Finance Calculator</strong>
+                                <small>Show the finance calculator launcher on Sales New.</small>
+                            </span>
+                            <input id="adminSandboxFinanceCalculatorEnabled" type="checkbox">
+                        </label>
                     </div>
                 </div>
 
                 <div class="admin-feature-actions">
-                    <button id="adminSavePromotionSettings" type="button" class="btn-primary">Save Promotion Settings</button>
+                    <button id="adminSavePromotionSettings" type="button" class="btn-primary">Save Sales Features</button>
                     <span id="adminPromotionSettingsStatus" class="admin-feature-status" aria-live="polite"></span>
                 </div>
             </section>

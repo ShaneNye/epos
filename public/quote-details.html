@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quote details</title>
+  <link rel="stylesheet" href="/css/quoteSummary.css">
+  <link rel="stylesheet" href="/css/customerJourney.css">
+  <script src="/js/quoteDetails.js" defer></script>
+</head>
+<body>
+  <main class="quote-page">
+    <ol id="quoteJourneyProgress" class="journey-progress" aria-label="Quote progress"><li class="is-complete">Products</li><li class="is-complete">Finance</li><li aria-current="step">Your details</li></ol>
+    <header class="quote-header journey-header"><p class="quote-eyebrow journey-eyebrow" id="quoteStore"></p><h1>A few details about you</h1><p>We’ll use these details to prepare your personalised quote summary.</p></header>
+    <section id="quoteDetailsPanel" class="quote-card journey-card" aria-labelledby="quoteFormHeading">
+      <form id="quoteDetailsForm">
+        <div class="quote-section-heading"><span>1</span><div><h2 id="quoteFormHeading">Contact details</h2><p>Fields marked with * are required.</p></div></div>
+        <div class="quote-form-grid quote-contact-grid">
+          <label>First name *<input class="journey-field" name="firstName" required autocomplete="given-name"></label>
+          <label>Last name *<input class="journey-field" name="lastName" required autocomplete="family-name"></label>
+          <label>Contact number *<input class="journey-field" name="contactNumber" required type="tel" autocomplete="tel" inputmode="tel"></label>
+          <label>Email address *<input class="journey-field" name="email" required type="email" autocomplete="email" inputmode="email"></label>
+        </div>
+        <div class="quote-section-heading quote-address-heading"><span>2</span><div><h2>Address</h2><p>Find your address by postcode or enter it manually.</p></div></div>
+        <div class="quote-form-grid">
+          <label class="quote-postcode">Postcode *<span><input class="journey-field" name="postcode" required autocomplete="postal-code"><button id="quoteFindAddress" type="button">Find address</button></span></label>
+          <label class="quote-address-results">Choose address<select class="journey-field" id="quoteAddressResults" hidden><option value="">Select an address</option></select></label>
+          <label>Address line 1 *<input class="journey-field" name="address1" required autocomplete="address-line1"></label>
+          <label>Address line 2<input class="journey-field" name="address2" autocomplete="address-line2"></label>
+          <label>Address line 3<input class="journey-field" name="address3" autocomplete="address-line3"></label>
+          <label>County<input class="journey-field" name="county" autocomplete="address-level1"></label>
+        </div>
+        <button class="quote-primary journey-button" type="submit">Summarise</button>
+        <p id="quoteStatus" class="quote-status journey-status" role="status" aria-live="polite"></p>
+      </form>
+    </section>
+    <section id="quoteSummary" class="quote-summary" hidden>
+      <div class="quote-summary-title"><div><p class="quote-eyebrow">Quote summary</p><h2>Your selected package</h2></div><span id="quoteReference" hidden></span></div>
+      <article class="quote-card journey-card"><h3>Your details</h3><div id="quoteCustomerSummary"></div></article>
+      <article class="quote-card journey-card quote-items-card"><h3>Items to be quoted</h3><div id="quoteItemsSummary"></div><div class="quote-total"><span>Product total</span><strong id="quoteItemsTotal"></strong></div></article>
+      <article class="quote-card journey-card quote-finance-card"><h3>Finance calculation</h3><div id="quoteFinanceSummary"></div></article>
+      <p class="quote-disclaimer">This is an illustration only. Final finance and product availability are subject to confirmation.</p>
+      <button id="quoteSendButton" class="quote-send journey-button" type="button">Send Quote</button>
+      <p id="quoteSendStatus" class="quote-status journey-status" role="status" aria-live="polite"></p>
+    </section>
+  </main>
+</body>
+</html>

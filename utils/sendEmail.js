@@ -31,7 +31,7 @@ async function sendEmail(to, subject, html, options = {}) {
     });
 
     await transporter.sendMail({
-      from: `"EPOS System" <${process.env.GMAIL_USER}>`,
+      from: `"${String(options.fromName || "EPOS System").replace(/["\r\n]/g, "")}" <${process.env.GMAIL_USER}>`,
       to,
       subject,
       html,

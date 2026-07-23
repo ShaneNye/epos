@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script src="/js/browserLogFilter.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Finance Calculator</title>
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <link rel="stylesheet" href="/css/finance.css">
+  <link rel="stylesheet" href="/css/customerJourney.css">
+  <script src="/js/storage.js"></script>
+  <script src="/js/financeCalculator.js" defer></script>
+</head>
+<body class="finance-popup-page">
+  <main class="finance-popup-shell">
+    <ol id="financeJourneyProgress" class="journey-progress" aria-label="Quote progress"><li class="is-complete">Products</li><li aria-current="step">Finance</li><li>Your details</li></ol>
+    <header class="journey-header"><p class="finance-eyebrow journey-eyebrow">Finance illustration</p><h1>Shape your monthly payment</h1><p>Adjust the deposit and term to find an illustration that works for you.</p></header>
+    <label class="finance-sale-label">Purchase total<div class="finance-prefix"><b aria-hidden="true">£</b><input id="financeSaleAmount" class="journey-field" type="number" min="0" step="0.01" inputmode="decimal"></div></label>
+    <div id="financeLoading" class="finance-loading journey-card" role="status" aria-live="polite">
+      <span class="finance-loading-spinner" aria-hidden="true"></span>
+      <div><strong>Preparing your finance options</strong><small>This should only take a moment.</small></div>
+    </div>
+    <p id="financeUnavailable" class="finance-unavailable" hidden></p>
+    <div id="financeControls" hidden>
+      <div class="finance-calculator-fields">
+        <label class="finance-slider-control">
+          <span class="finance-slider-heading"><span>Deposit</span><output id="financeDepositValue">£0.00</output></span>
+          <input id="financeDeposit" type="range" min="0" step="1">
+          <small id="financeDepositHelp"></small>
+        </label>
+        <label class="finance-slider-control">
+          <span class="finance-slider-heading"><span>Term</span><output id="financeTermValue">0 months</output></span>
+          <input id="financeTerm" type="range" min="1" step="1">
+          <small id="financeTermHelp"></small>
+        </label>
+      </div>
+      <section class="finance-result" aria-labelledby="financeResultLabel">
+        <div class="finance-budget-toggle-row">
+          <span id="financeResultLabel">Estimated monthly payment</span>
+          <label class="finance-budget-toggle">
+            <input id="financeBudgetToggle" type="checkbox">
+            <i aria-hidden="true"></i><span>Set a monthly budget</span>
+          </label>
+        </div>
+        <strong id="financeMonthly" contenteditable="false" role="textbox" aria-label="Estimated monthly payment">£0.00</strong>
+        <em id="financeApr"></em>
+        <small id="financeBudgetHelp" class="finance-budget-help" hidden></small>
+      </section>
+      <dl class="finance-summary"><div><dt>Amount financed</dt><dd id="financeBorrowed"></dd></div><div><dt>Total payable</dt><dd id="financeTotalPayable"></dd></div></dl>
+      <button id="financeQuoteButton" class="finance-quote-button journey-button" type="button" hidden>Continue to your details</button>
+    </div>
+    <p id="financePopupStatus" class="finance-status journey-status" role="status" aria-live="polite"></p>
+  </main>
+</body>
+</html>

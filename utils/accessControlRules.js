@@ -15,6 +15,8 @@ const publicPrefixes = [
   "/api/forgot-password/",
   "/api/reset-password/",
   "/assistant",
+  "/api/qr-journeys/public/",
+  "/api/fetchify/postcode/",
 ];
 
 const alwaysAllowedPrefixes = [

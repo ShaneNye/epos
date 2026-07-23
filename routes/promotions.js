@@ -256,6 +256,7 @@ function promotionSettingKeys(env) {
   return {
     upsells: `promotions.${normalized}.upsells.enabled`,
     basketDiscounts: `promotions.${normalized}.basket_discounts.enabled`,
+    financeCalculator: `sales.${normalized}.finance_calculator.enabled`,
     legacyUpsells: "promotions.upsells.enabled",
     legacyBasketDiscounts: "promotions.basket_discounts.enabled",
   };
@@ -266,7 +267,7 @@ async function getPromotionFeatureSettings(env) {
   const keys = promotionSettingKeys(env);
   const result = await pool.query(
     "SELECT key, value FROM app_settings WHERE key = ANY($1::text[])",
-    [[keys.upsells, keys.basketDiscounts, keys.legacyUpsells, keys.legacyBasketDiscounts]]
+    [[keys.upsells, keys.basketDiscounts, keys.financeCalculator, keys.legacyUpsells, keys.legacyBasketDiscounts]]
   );
   const settings = Object.fromEntries(result.rows.map((row) => [row.key, row.value]));
   return {
@@ -276,6 +277,7 @@ async function getPromotionFeatureSettings(env) {
       settings[keys.basketDiscounts] ?? settings[keys.legacyBasketDiscounts],
       true
     ),
+    financeCalculatorEnabled: settingBool(settings[keys.financeCalculator], true),
   };
 }
 
@@ -293,6 +295,7 @@ async function savePromotionFeatureSettings(payload, env) {
   const settings = {
     [keys.upsells]: settingBool(payload?.upsellsEnabled, true),
     [keys.basketDiscounts]: settingBool(payload?.basketDiscountsEnabled, true),
+    [keys.financeCalculator]: settingBool(payload?.financeCalculatorEnabled, true),
   };
 
   for (const [key, value] of Object.entries(settings)) {

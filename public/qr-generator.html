@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <script src="/js/browserLogFilter.js"></script>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>EPOS QR Generator</title>
+  <link rel="stylesheet" href="/css/home.css">
+  <link rel="stylesheet" href="/css/qrFinance.css">
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js" defer></script>
+  <script src="/js/qrGenerator.js" defer></script>
+</head>
+<body>
+  <div id="menu"></div>
+  <main class="content qr-admin-page">
+    <header class="qr-page-heading">
+      <p class="qr-eyebrow">Finance journeys</p>
+      <h1>QR Generator</h1>
+      <p>Create a customer-facing product and finance journey for a showroom bin.</p>
+    </header>
+    <section class="qr-card qr-generator-form">
+      <label>Location<select id="qrLocation"><option value="">Loading locations…</option></select></label>
+      <label>Bin<select id="qrBin" disabled><option value="">Select a location first</option></select></label>
+      <button id="generateQr" type="button" disabled>Generate QR code</button>
+      <p id="qrGeneratorStatus" class="qr-status" role="status"></p>
+    </section>
+    <section id="qrResult" class="qr-card qr-result" hidden>
+      <div><p class="qr-eyebrow">Ready to use</p><h2 id="qrResultTitle"></h2><a id="qrJourneyUrl" target="_blank" rel="noopener"></a></div>
+      <img id="qrImage" alt="Generated QR code">
+      <div class="qr-result-actions">
+        <button id="downloadQr" type="button">Download QR</button>
+        <button id="copyQrLink" type="button" class="qr-secondary">Copy link</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
