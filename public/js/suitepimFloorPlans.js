@@ -21,15 +21,18 @@
   ];
   const state = {
     locations: [],
+    classes: [],
     plans: [],
     activePlan: null,
     selectedLocationId: "",
+    selectedClass: "",
     editMode: false,
     tool: "line",
     lockGrid: true,
     draft: null,
     movingAsset: null,
     resizingElement: null,
+    resizingStencil: null,
     selectedElementId: "",
     selectedAssetIds: new Set(),
     zoom: 1,
@@ -72,6 +75,7 @@
   function initEls() {
     [
       "suitepimFloorPlanLocation",
+      "suitepimFloorPlanClass",
       "suitepimFloorPlanFootfallTotal",
       "suitepimFloorPlanDateRange",
       "suitepimFloorPlanHeatmap",
@@ -109,6 +113,9 @@
       "suitepimFloorPlanRotateLeft",
       "suitepimFloorPlanRotateRight",
       "suitepimFloorPlanAssetEdit",
+      "suitepimFloorPlanAddImage",
+      "suitepimFloorPlanImageInput",
+      "suitepimFloorPlanDeleteSelected",
       "suitepimFloorPlanRotationLabel",
     ].forEach((id) => {
       el[id] = document.getElementById(id);
@@ -237,6 +244,34 @@
     return state.locations.find((location) => String(location.id) === id)?.name || "";
   }
 
+  function classParams(params = {}) {
+    return state.selectedClass ? { ...params, class: state.selectedClass } : params;
+  }
+
+  function renderClasses() {
+    if (!el.suitepimFloorPlanClass) return;
+    el.suitepimFloorPlanClass.innerHTML = [
+      '<option value="">All classes</option>',
+      ...state.classes.map((className) => `<option value="${clean(className)}">${clean(className)}</option>`),
+    ].join("");
+    el.suitepimFloorPlanClass.value = state.selectedClass;
+  }
+
+  async function loadClasses() {
+    if (!state.selectedLocationId) {
+      state.classes = [];
+      state.selectedClass = "";
+      renderClasses();
+      return;
+    }
+    const data = await api(`/api/suitepim/floor-plan-classes?${new URLSearchParams({
+      locationId: state.selectedLocationId,
+    }).toString()}`);
+    state.classes = data.classes || [];
+    if (!state.classes.includes(state.selectedClass)) state.selectedClass = "";
+    renderClasses();
+  }
+
   function floorPlanBinLabel(value) {
     return String(value || "").trim().replace(/^[A-Za-z]{3}\s+/, "");
   }
@@ -300,6 +335,7 @@
     state.draft = null;
     state.movingAsset = null;
     state.resizingElement = null;
+    state.resizingStencil = null;
     setDirty();
     renderCanvas();
   }
@@ -316,6 +352,7 @@
     state.selectedElementId = "";
     state.movingAsset = null;
     state.resizingElement = null;
+    state.resizingStencil = null;
   }
 
   function undo() {
@@ -357,7 +394,7 @@
     el.suitepimFloorPlanCanvas.classList.toggle("is-select-tool", state.editMode && state.tool === "select");
     el.suitepimFloorPlanCanvasWrap?.classList.toggle("is-editing", state.editMode);
     el.suitepimFloorPlanCanvasWrap?.classList.toggle("is-select-tool", state.editMode && state.tool === "select");
-    document.querySelectorAll("[data-floorplan-tool], #suitepimFloorPlanLockGrid").forEach((control) => {
+    document.querySelectorAll("[data-floorplan-tool], #suitepimFloorPlanLockGrid, #suitepimFloorPlanAddImage").forEach((control) => {
       control.disabled = !state.editMode;
     });
     updateSidebarMode();
@@ -395,6 +432,10 @@
   }
 
   function updateRotationControls() {
+    if (el.suitepimFloorPlanDeleteSelected) {
+      el.suitepimFloorPlanDeleteSelected.disabled = !state.editMode ||
+        (!state.selectedElementId && !state.selectedAssetIds.size);
+    }
     if (!el.suitepimFloorPlanRotationControls) return;
     const selectedAssets = selectedAssetElements();
     const selectedAsset = selectedAssets[0] || null;
@@ -406,12 +447,14 @@
           : `${Number(selectedAsset.rotation) || 0} deg`;
       }
       if (el.suitepimFloorPlanAssetEdit) {
+        el.suitepimFloorPlanAssetEdit.hidden = selectedAssets.every((asset) => asset.isStencil);
         el.suitepimFloorPlanAssetEdit.dataset.selectedAssets = selectedAssets.map((asset) => asset.id).join(",");
       }
       return;
     }
     el.suitepimFloorPlanRotationControls.hidden = true;
     if (el.suitepimFloorPlanAssetEdit) {
+      el.suitepimFloorPlanAssetEdit.hidden = false;
       el.suitepimFloorPlanAssetEdit.dataset.selectedAssets = "";
     }
     return;
@@ -462,13 +505,16 @@
 
     el.suitepimFloorPlanList.innerHTML = state.plans
       .map((plan) => `
-        <button type="button" class="${state.activePlan?.id === plan.id ? "active" : ""}" data-floorplan-id="${clean(plan.id)}">
-          <span class="suitepim-floorplan-list-title">
-            <strong>${clean(plan.name)}</strong>
-            ${plan.isCurrent ? '<span class="suitepim-floorplan-current-badge">Current</span>' : ""}
-          </span>
-          <small>${clean(plan.data?.elements?.length ? `${plan.data.elements.length} items` : "Empty")} - ${plan.updatedAt ? new Date(plan.updatedAt).toLocaleDateString("en-GB") : "Unsaved"}</small>
-        </button>
+        <div class="suitepim-floorplan-list-row">
+          <button type="button" class="${state.activePlan?.id === plan.id ? "active" : ""}" data-floorplan-id="${clean(plan.id)}">
+            <span class="suitepim-floorplan-list-title">
+              <strong>${clean(plan.name)}</strong>
+              ${plan.isCurrent ? '<span class="suitepim-floorplan-current-badge">Current</span>' : ""}
+            </span>
+            <small>${clean(plan.data?.elements?.length ? `${plan.data.elements.length} items` : "Empty")} - ${plan.updatedAt ? new Date(plan.updatedAt).toLocaleDateString("en-GB") : "Unsaved"}</small>
+          </button>
+          <button type="button" class="suitepim-floorplan-duplicate" data-floorplan-duplicate="${clean(plan.id)}" title="Duplicate ${clean(plan.name)}">Duplicate</button>
+        </div>
       `)
       .join("");
 
@@ -485,6 +531,32 @@
         resetHistory();
         renderAll();
         loadAnalytics();
+      });
+    });
+    el.suitepimFloorPlanList.querySelectorAll("[data-floorplan-duplicate]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        const plan = state.plans.find((item) => String(item.id) === button.dataset.floorplanDuplicate);
+        if (!plan) return;
+        button.disabled = true;
+        showStatus("Duplicating floor plan...", "loading");
+        try {
+          const result = await api("/api/suitepim/floor-plans", {
+            method: "POST",
+            body: JSON.stringify({
+              locationId: Number(plan.locationId || state.selectedLocationId),
+              name: `${plan.name} - Copy`,
+              isCurrent: false,
+              data: plan.data,
+            }),
+          });
+          await loadPlans(result.floorPlan?.id);
+          state.editMode = true;
+          updateEditControls();
+          showStatus("Floor plan duplicated. Edit the copy and save when ready.", "success");
+        } catch (err) {
+          button.disabled = false;
+          showStatus(err.message, "error");
+        }
       });
     });
   }
@@ -773,6 +845,7 @@
       locationId: state.selectedLocationId,
       startDate: state.footfallStartDate,
       endDate: state.footfallEndDate,
+      class: state.selectedClass,
       assets: assets.map((asset) => ({
         id: asset.id,
         bin: asset.bin,
@@ -920,6 +993,26 @@
     const centerX = x + w / 2;
     const centerY = y + h / 2;
     const rotationTransform = rotation !== 0 ? ` rotate(${rotation} ${centerX.toFixed(2)} ${centerY.toFixed(2)})` : "";
+    if (element.isStencil && element.imageData) {
+      const handles = state.editMode && selected
+        ? `
+          <g class="suitepim-floorplan-stencil-handles">
+            <circle cx="${x.toFixed(2)}" cy="${y.toFixed(2)}" r="8" data-stencil-handle="nw" />
+            <circle cx="${(x + w).toFixed(2)}" cy="${y.toFixed(2)}" r="8" data-stencil-handle="ne" />
+            <circle cx="${x.toFixed(2)}" cy="${(y + h).toFixed(2)}" r="8" data-stencil-handle="sw" />
+            <circle cx="${(x + w).toFixed(2)}" cy="${(y + h).toFixed(2)}" r="8" data-stencil-handle="se" />
+          </g>
+        `
+        : "";
+      return `
+        <g class="suitepim-floorplan-placed-asset suitepim-floorplan-stencil${selected ? " is-selected" : ""}" data-element-id="${clean(element.id)}"${rotationTransform ? ` transform="${rotationTransform}"` : ""}>
+          <title>${clean(element.name || "Floor plan stencil")}</title>
+          <image href="${clean(element.imageData)}" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" preserveAspectRatio="none" />
+          <rect class="suitepim-floorplan-stencil-outline" x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" />
+          ${handles}
+        </g>
+      `;
+    }
     const heatmapActive = state.heatmapMode !== "none" && state.heatmapMode !== "movement";
     const heatmapByFloor = heatmapActive && state.heatmapScope === "squareFootage";
     const heatmapValue = heatmapDisplayValue(element);
@@ -1238,7 +1331,11 @@
     const heatmapOverlay = heatmapFloorOverlayMarkup(data);
     const movementOverlay = movementOverlayMarkup(data);
     const highlightOverlay = highlightMarkup();
-    const elements = data.elements.map((element) => elementMarkup(element)).join("");
+    const orderedElements = [
+      ...data.elements.filter((element) => element.isStencil),
+      ...data.elements.filter((element) => !element.isStencil),
+    ];
+    const elements = orderedElements.map((element) => elementMarkup(element)).join("");
     const draft = state.draft ? elementMarkup(state.draft, true) : "";
 
     el.suitepimFloorPlanCanvas.setAttribute("viewBox", `0 0 ${widthPx} ${heightPx}`);
@@ -1545,6 +1642,53 @@
     renderCanvas();
   }
 
+  function readStencilImage(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onerror = () => reject(new Error("Unable to read that image"));
+      reader.onload = () => {
+        const image = new Image();
+        image.onerror = () => reject(new Error("That image format could not be loaded"));
+        image.onload = () => resolve({ dataUrl: reader.result, width: image.naturalWidth, height: image.naturalHeight });
+        image.src = reader.result;
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function addStencilImage(file) {
+    if (!state.editMode || !file) return;
+    if (file.size > 3 * 1024 * 1024) throw new Error("Please choose an image smaller than 3 MB");
+    const loaded = await readStencilImage(file);
+    const data = planData();
+    const ratio = loaded.width / Math.max(1, loaded.height);
+    let width = Math.min(40, data.widthMeters * 0.7);
+    let height = width / ratio;
+    if (height > data.heightMeters * 0.7) {
+      height = data.heightMeters * 0.7;
+      width = height * ratio;
+    }
+    pushHistory();
+    const element = {
+      id: `stencil-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`,
+      type: "asset",
+      isStencil: true,
+      imageData: loaded.dataUrl,
+      name: file.name || "Floor plan stencil",
+      x: Math.max(0, Math.round(((data.widthMeters - width) / 2) * 100) / 100),
+      y: Math.max(0, Math.round(((data.heightMeters - height) / 2) * 100) / 100),
+      width: Math.round(width * 100) / 100,
+      height: Math.round(height * 100) / 100,
+      rotation: 0,
+    };
+    data.elements.push(element);
+    setPlanData(data);
+    selectAsset(element.id);
+    setDirty();
+    renderCanvas();
+    showStatus("Image added. Drag it into position, then trace over it.", "success");
+  }
+
   function startHighlightSelection(event) {
     if (state.editMode || !event.shiftKey || event.button !== 0) return false;
     event.preventDefault();
@@ -1630,6 +1774,7 @@
     if (!state.editMode || event.button !== 0) return false;
     const point = canvasPoint(event);
     const asset = assetAtPoint(point);
+    if (asset?.isStencil && state.tool !== "select") return false;
     if (!asset) {
       state.selectedElementId = "";
       state.selectedAssetIds.clear();
@@ -1680,6 +1825,73 @@
   function finishAssetMove() {
     if (!state.movingAsset) return false;
     state.movingAsset = null;
+    renderCanvas();
+    return true;
+  }
+
+  function startStencilResize(event) {
+    if (!state.editMode || state.tool !== "select" || event.button !== 0) return false;
+    const handleNode = event.target.closest?.("[data-stencil-handle]");
+    const stencilNode = handleNode?.closest?.("[data-element-id]");
+    if (!handleNode || !stencilNode) return false;
+    const data = planData();
+    const element = data.elements.find((item) => item.id === stencilNode.dataset.elementId && item.isStencil);
+    if (!element) return false;
+    event.preventDefault();
+    event.stopPropagation();
+    const handle = handleNode.dataset.stencilHandle;
+    const x = Number(element.x) || 0;
+    const y = Number(element.y) || 0;
+    const width = Number(element.width) || 1;
+    const height = Number(element.height) || 1;
+    state.resizingStencil = {
+      id: element.id,
+      handle,
+      anchorX: handle.includes("w") ? x + width : x,
+      anchorY: handle.includes("n") ? y + height : y,
+      ratio: width / height,
+      historyPushed: false,
+    };
+    el.suitepimFloorPlanCanvas.setPointerCapture?.(event.pointerId);
+    return true;
+  }
+
+  function updateStencilResize(event) {
+    if (!state.resizingStencil) return false;
+    const data = planData();
+    const resize = state.resizingStencil;
+    const element = data.elements.find((item) => item.id === resize.id && item.isStencil);
+    if (!element) {
+      state.resizingStencil = null;
+      return false;
+    }
+    if (!resize.historyPushed) {
+      pushHistory();
+      resize.historyPushed = true;
+    }
+    const point = canvasPoint(event, { snap: false });
+    const horizontal = Math.abs(point.x - resize.anchorX);
+    const vertical = Math.abs(point.y - resize.anchorY);
+    let width = Math.max(1, horizontal, vertical * resize.ratio);
+    let height = width / resize.ratio;
+    const maxWidth = resize.handle.includes("w") ? resize.anchorX : data.widthMeters - resize.anchorX;
+    const maxHeight = resize.handle.includes("n") ? resize.anchorY : data.heightMeters - resize.anchorY;
+    const scale = Math.min(1, maxWidth / width, maxHeight / height);
+    width *= scale;
+    height *= scale;
+    element.width = Math.round(width * 100) / 100;
+    element.height = Math.round(height * 100) / 100;
+    element.x = resize.handle.includes("w") ? resize.anchorX - element.width : resize.anchorX;
+    element.y = resize.handle.includes("n") ? resize.anchorY - element.height : resize.anchorY;
+    setPlanData(data);
+    setDirty();
+    renderCanvas();
+    return true;
+  }
+
+  function finishStencilResize() {
+    if (!state.resizingStencil) return false;
+    state.resizingStencil = null;
     renderCanvas();
     return true;
   }
@@ -1739,11 +1951,14 @@
   }
 
   function deleteElements(ids) {
+    if (!state.editMode) return;
     const selectedIds = Array.isArray(ids) ? ids.filter(Boolean) : [ids].filter(Boolean);
     if (!selectedIds.length) return;
     const idSet = new Set(selectedIds);
     const data = planData();
     const before = data.elements.length;
+    if (!data.elements.some((element) => idSet.has(element.id))) return;
+    pushHistory();
     data.elements = data.elements.filter((element) => !idSet.has(element.id));
     if (data.elements.length === before) return;
     setPlanData(data);
@@ -1957,12 +2172,12 @@
     renderHeatmapDataPanel();
     showStatus("Loading heat map", "loading");
     if (state.heatmapMode === "movement") {
-      const movementPayload = await api(`/api/suitepim/floor-plan-inventory-movement?${new URLSearchParams({
+      const movementPayload = await api(`/api/suitepim/floor-plan-inventory-movement?${new URLSearchParams(classParams({
         locationId: state.selectedLocationId,
         startDate: state.footfallStartDate,
         endDate: state.footfallEndDate,
         includeRows: "1",
-      }).toString()}`).catch((err) => ({ error: err.message, movements: [] }));
+      })).toString()}`).catch((err) => ({ error: err.message, movements: [] }));
       state.heatmapValues = {};
       state.heatmapMax = 0;
       state.movementPaths = movementPayload.movements || [];
@@ -1985,6 +2200,7 @@
         locationId: state.selectedLocationId,
         startDate: state.footfallStartDate,
         endDate: state.footfallEndDate,
+        class: state.selectedClass,
         assets: assets.map((asset) => ({
           id: asset.id,
           bin: asset.bin,
@@ -2005,12 +2221,12 @@
   async function loadHeatmapDetailRows() {
     try {
       if (state.heatmapMode === "sold" || state.heatmapMode === "revenue") {
-        const payload = await api(`/api/suitepim/floor-plan-sales-data?${new URLSearchParams({
+        const payload = await api(`/api/suitepim/floor-plan-sales-data?${new URLSearchParams(classParams({
           locationId: state.selectedLocationId,
           startDate: state.footfallStartDate,
           endDate: state.footfallEndDate,
           includeRows: "1",
-        }).toString()}`);
+        })).toString()}`);
         state.heatmapDetailRows = payload.rows || [];
         state.heatmapDetailError = payload.error || "";
       } else if (state.heatmapMode === "inventory") {
@@ -2018,10 +2234,10 @@
         const uniqueBins = [...new Set(data.elements
           .filter((element) => element.type === "asset" && element.bin?.number)
           .map((element) => element.bin.number))];
-        const payloads = await mapWithConcurrency(uniqueBins, 6, (bin) => api(`/api/suitepim/floor-plan-bin-inventory?${new URLSearchParams({
+        const payloads = await mapWithConcurrency(uniqueBins, 6, (bin) => api(`/api/suitepim/floor-plan-bin-inventory?${new URLSearchParams(classParams({
           locationId: state.selectedLocationId,
           bin,
-        }).toString()}`).catch((err) => ({ error: err.message, rows: [] })));
+        })).toString()}`).catch((err) => ({ error: err.message, rows: [] })));
         state.heatmapDetailRows = payloads.flatMap((payload) => payload.rows || []);
         state.heatmapDetailError = payloads.find((payload) => payload.error)?.error || "";
       }
@@ -2042,11 +2258,11 @@
       .map((id) => data.elements.find((element) => element.id === id && element.type === "asset"))
       .filter((asset) => asset?.bin?.number);
 
-    const rangeParams = {
+    const rangeParams = classParams({
       locationId: state.selectedLocationId,
       startDate: state.footfallStartDate,
       endDate: state.footfallEndDate,
-    };
+    });
     const [salesPayload, footfallPayload] = await Promise.all([
       api(`/api/suitepim/floor-plan-sales-data?${new URLSearchParams(rangeParams).toString()}`).catch((err) => ({ error: err.message, aggregate: {} })),
       api(`/api/suitepim/footfall?${new URLSearchParams(rangeParams).toString()}`).catch((err) => ({ error: err.message, total: 0 })),
@@ -2059,6 +2275,7 @@
       const params = new URLSearchParams({
         locationId: state.selectedLocationId,
         bin: asset.bin.number,
+        ...(state.selectedClass ? { class: state.selectedClass } : {}),
       });
       try {
         const payload = await api(`/api/suitepim/floor-plan-bin-inventory?${params.toString()}`);
@@ -2305,10 +2522,36 @@
       state.binsLoadedForLocationId = "";
       state.binSearch = "";
       if (el.suitepimFloorPlanBinSearch) el.suitepimFloorPlanBinSearch.value = "";
+      await loadClasses().catch((err) => showStatus(err.message, "error"));
       loadFootfall();
       await loadPlans().catch((err) => showStatus(err.message, "error"));
       loadAnalytics();
       if (state.heatmapMode !== "none") loadHeatmapData();
+    });
+
+    el.suitepimFloorPlanClass?.addEventListener("change", () => {
+      state.selectedClass = el.suitepimFloorPlanClass.value || "";
+      loadAnalytics();
+      if (state.heatmapMode !== "none") loadHeatmapData();
+    });
+
+    el.suitepimFloorPlanAddImage?.addEventListener("click", () => {
+      if (!state.editMode) return;
+      el.suitepimFloorPlanImageInput?.click();
+    });
+
+    el.suitepimFloorPlanImageInput?.addEventListener("change", async () => {
+      const file = el.suitepimFloorPlanImageInput.files?.[0];
+      el.suitepimFloorPlanImageInput.value = "";
+      if (!file) return;
+      showStatus("Adding image...", "loading");
+      await addStencilImage(file).catch((err) => showStatus(err.message, "error"));
+    });
+    el.suitepimFloorPlanDeleteSelected?.addEventListener("click", () => {
+      const selectedIds = state.selectedAssetIds.size
+        ? Array.from(state.selectedAssetIds)
+        : [state.selectedElementId].filter(Boolean);
+      deleteElements(selectedIds);
     });
 
     el.suitepimFloorPlanSidebarToggle?.addEventListener("click", () => {
@@ -2437,7 +2680,8 @@
     document.addEventListener("keydown", (event) => {
       const key = event.key.toLowerCase();
       const floorPlansPanel = document.getElementById("suitepimFloorPlansPanel");
-      if (!floorPlansPanel || floorPlansPanel.hidden) return;
+      if (floorPlansPanel?.hidden) return;
+      if (!document.getElementById("suitepimFloorPlanApp")) return;
       if (event.target.closest?.("input, textarea, select, [contenteditable='true']")) return;
 
       // Undo/Redo shortcuts
@@ -2505,6 +2749,7 @@
           return;
         }
       }
+      if (startStencilResize(event)) return;
       if (startViewportPan(event)) return;
       if (startStructuralEdit(event)) return;
       if (startAssetMove(event)) return;
@@ -2512,6 +2757,7 @@
     });
     el.suitepimFloorPlanCanvas.addEventListener("pointermove", (event) => {
       if (updateHighlightSelection(event)) return;
+      if (updateStencilResize(event)) return;
       if (updateViewportPan(event)) return;
       if (updateStructuralResize(event)) return;
       if (updateAssetMove(event)) return;
@@ -2540,6 +2786,7 @@
     });
     window.addEventListener("pointerup", () => {
       if (finishHighlightSelection()) return;
+      if (finishStencilResize()) return;
       if (finishViewportPan()) return;
       if (finishStructuralResize()) return;
       if (finishAssetMove()) return;
@@ -2559,6 +2806,7 @@
     updateZoomLabel();
     syncFootfallDateInputs();
     await loadLocations();
+    await loadClasses();
     await loadFootfall();
     await loadPlans();
   }

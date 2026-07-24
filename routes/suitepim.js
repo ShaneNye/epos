@@ -24,15 +24,20 @@ const BIN_NUMBER_CACHE_TTL_MS = Number(process.env.SUITEPIM_BIN_NUMBER_CACHE_TTL
 const FLOOR_PLAN_SALES_CACHE_TTL_MS = Number(process.env.SUITEPIM_FLOOR_PLAN_SALES_CACHE_TTL_MS || 3 * 60 * 60 * 1000);
 const FLOOR_PLAN_INVENTORY_CACHE_TTL_MS = Number(process.env.SUITEPIM_FLOOR_PLAN_INVENTORY_CACHE_TTL_MS || 10 * 60 * 1000);
 const FLOOR_PLAN_CACHE_STALE_MS = Number(process.env.SUITEPIM_FLOOR_PLAN_CACHE_STALE_MS || 24 * 60 * 60 * 1000);
-const FLOOR_PLAN_SALES_CACHE_VERSION = "v9-suiteql-sales-tranid";
-const FLOOR_PLAN_INVENTORY_CACHE_VERSION = "v3-suiteql-inventory-parent";
+const FLOOR_PLAN_SALES_CACHE_VERSION = "v10-suiteql-sales-class";
+const FLOOR_PLAN_INVENTORY_CACHE_VERSION = "v4-suiteql-inventory-class";
 const REASONS_TO_BUY_RECORD_TYPE = "customrecord_sb_reasons_to_buy";
 const REASONS_TO_BUY_ICON_RECORD_TYPE =
   process.env.SUITEPIM_REASONS_TO_BUY_ICONS_RECORD_TYPE || "customrecord_sb_reasons_to_buy_icons";
 const ITEM_FAQ_RECORD_TYPE = process.env.SUITEPIM_ITEM_FAQ_RECORD_TYPE || "customrecord_sb_web_faq";
+const REASONS_TO_BUY_PRIORITY_FIELD =
+  process.env.SUITEPIM_REASONS_TO_BUY_PRIORITY_FIELD || "custrecord_sb_rtb_display_prioity";
 const reasonsToBuyFields = [
   { name: "Internal ID", internalid: "id", fieldType: "Free-Form Text", disableField: true },
   { name: "Name", internalid: "name", fieldType: "Free-Form Text", required: true },
+  { name: "Priority", internalid: REASONS_TO_BUY_PRIORITY_FIELD, fieldType: "Integer" },
+  { name: "Short Description Default", internalid: "custrecord_sb_default_desc_default", fieldType: "Checkbox" },
+  { name: "Detailed Description Default", internalid: "custrecord_sb_details_desc_default", fieldType: "Checkbox" },
   { name: "Description", internalid: "custrecord_sb_rtb_description", fieldType: "Text Area" },
   { name: "Icon", internalid: "custrecord_sb_rtb_icon", fieldType: "image", optionFeed: "Web Product Icons" },
   { name: "Icon Selector", internalid: "custrecord_sb_rtb_icon_selector", fieldType: "List/Record", optionFeed: "Reasons To Buy Icons" },
@@ -307,7 +312,10 @@ function normalizeReasonsDisplayConfig(value) {
         return [id, {
           feature: entry.feature !== false,
           short: entry.short !== false,
+          ...(entry.manualFeature === undefined ? {} : { manualFeature: entry.manualFeature === true }),
+          ...(entry.manualShort === undefined ? {} : { manualShort: entry.manualShort === true }),
           order: Number.isFinite(order) && order > 0 ? order : 999,
+          ...(entry.manualOrder === undefined ? {} : { manualOrder: entry.manualOrder === true }),
           name: String(entry.name || "").trim(),
         }];
       })
@@ -1562,6 +1570,13 @@ function normalizeReasonsToBuyRow(row, cfg) {
   return {
     "Internal ID": String(row.id || row.ID || row.internalid || row["Internal ID"] || "").trim(),
     Name: String(row.name || row.Name || "").trim(),
+    Priority: row[REASONS_TO_BUY_PRIORITY_FIELD] ?? row.Priority ?? "",
+    "Short Description Default":
+      row.custrecord_sb_default_desc_default === true ||
+      String(row.custrecord_sb_default_desc_default || "").toUpperCase() === "T",
+    "Detailed Description Default":
+      row.custrecord_sb_details_desc_default === true ||
+      String(row.custrecord_sb_details_desc_default || "").toUpperCase() === "T",
     Description: row.custrecord_sb_rtb_description || row.Description || "",
     Icon: iconName,
     Icon_InternalId: icon.id,
@@ -1579,6 +1594,9 @@ async function fetchReasonsToBuyRows(cfg, userId) {
     SELECT
       id,
       name,
+      ${REASONS_TO_BUY_PRIORITY_FIELD},
+      custrecord_sb_default_desc_default,
+      custrecord_sb_details_desc_default,
       custrecord_sb_rtb_description,
       custrecord_sb_rtb_icon,
       BUILTIN.DF(custrecord_sb_rtb_icon) AS custrecord_sb_rtb_icon_text,
@@ -1602,6 +1620,10 @@ async function fetchReasonsToBuyRows(cfg, userId) {
 
 function reasonsValueForPayload(field, value, internalIds) {
   if (field.fieldType === "Checkbox") return value === true || String(value || "").toLowerCase() === "true";
+  if (field.fieldType === "Integer") {
+    const parsed = Number.parseInt(String(value ?? "").trim(), 10);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
   if (field.fieldType === "List/Record" || field.fieldType === "image") {
     const id = String(internalIds || value || "").trim();
     if (!id) return null;
@@ -2467,6 +2489,106 @@ function wooApiUrl(cfg, path) {
 
 function wooAuthHeader(cfg) {
   return `Basic ${Buffer.from(`${cfg.wooConsumerKey}:${cfg.wooConsumerSecret}`).toString("base64")}`;
+}
+
+const IMAGERY_SYNC_FIELDS = [
+  "Internal ID",
+  "Woo ID",
+  "Name",
+  "Catalogue Image One",
+  "Catalogue Image Two",
+  "Catalogue Image Three",
+  "Catalogue Image Four",
+  "Catalogue Image Five",
+];
+
+function imagerySyncImageUrl(value) {
+  if (!value) return "";
+  if (typeof value === "object") {
+    return imagerySyncImageUrl(
+      value.url || value.URL || value.src || value.href || value["File URL"] || value.imageUrl
+    );
+  }
+
+  const text = String(value).trim();
+  const taggedUrl =
+    text.match(/<img[^>]+src=["']([^"']+)["']/i)?.[1] ||
+    text.match(/<a[^>]+href=["']([^"']+)["']/i)?.[1];
+  const rawUrl = (taggedUrl || text.match(/https?:\/\/[^\s"'<>]+/i)?.[0] || "")
+    .replace(/&amp;/gi, "&");
+  if (!rawUrl) return "";
+
+  try {
+    const parsed = new URL(rawUrl);
+    return ["http:", "https:"].includes(parsed.protocol) ? parsed.toString() : "";
+  } catch {
+    return "";
+  }
+}
+
+function imagerySyncWooUpdate(row, mapImageUrl = (url) => url) {
+  const wooId = Number.parseInt(String(row?.["Woo ID"] || "").trim(), 10);
+  if (!Number.isSafeInteger(wooId) || wooId <= 0) {
+    throw new Error(`Invalid Woo ID for ${row?.Name || row?.["Internal ID"] || "item"}.`);
+  }
+
+  const urls = IMAGERY_SYNC_FIELDS.slice(3)
+    .map((fieldName) => imagerySyncImageUrl(row[fieldName]))
+    .filter(Boolean)
+    .filter((url, index, all) => all.indexOf(url) === index);
+
+  if (!urls.length) {
+    throw new Error(`No catalogue images found for ${row?.Name || `Woo ID ${wooId}`}.`);
+  }
+
+  return {
+    id: wooId,
+    images: urls.map((src) => ({ src: mapImageUrl(src) })),
+  };
+}
+
+function imagerySyncPublicOrigin(req) {
+  const configured = String(process.env.APP_BASE_URL || process.env.PUBLIC_BASE_URL || "").trim().replace(/\/+$/, "");
+  const forwardedProtocol = String(req.get("x-forwarded-proto") || "").split(",")[0].trim();
+  const protocol = forwardedProtocol || req.protocol || "https";
+  const candidate = configured || `${protocol}://${req.get("host")}`;
+
+  try {
+    const hostname = new URL(candidate).hostname.toLowerCase();
+    const isPrivate =
+      hostname === "localhost" ||
+      hostname === "::1" ||
+      hostname === "0.0.0.0" ||
+      hostname.endsWith(".local") ||
+      /^127\./.test(hostname) ||
+      /^10\./.test(hostname) ||
+      /^192\.168\./.test(hostname) ||
+      /^172\.(1[6-9]|2\d|3[01])\./.test(hostname);
+    return isPrivate ? "" : candidate;
+  } catch {
+    return "";
+  }
+}
+
+function imagerySyncWooSourceUrl(req, sourceUrl) {
+  try {
+    const parsed = new URL(sourceUrl);
+    const isNetSuiteMedia =
+      /(^|\.)netsuite\.com$/i.test(parsed.hostname) &&
+      /\/core\/media\/media\.nl$/i.test(parsed.pathname);
+    if (!isNetSuiteMedia) return sourceUrl;
+    const publicOrigin = imagerySyncPublicOrigin(req);
+    if (!publicOrigin) return sourceUrl;
+    const sourceId = String(parsed.searchParams.get("id") || "catalogue-image").replace(/[^a-z0-9_-]/gi, "");
+    const proxy = new URL(
+      `/api/suitepim/image-proxy/netsuite-${sourceId || "catalogue-image"}.jpg`,
+      `${publicOrigin}/`
+    );
+    proxy.searchParams.set("url", sourceUrl);
+    return proxy.toString();
+  } catch {
+    return sourceUrl;
+  }
 }
 
 async function callWooProductBatch({ cfg, updates }) {
@@ -3835,7 +3957,7 @@ function startWebManagementCacheRefreshTimer() {
   }, WEB_MANAGEMENT_REFRESH_INTERVAL_MS);
 }
 
-router.get("/image-proxy", async (req, res) => {
+router.get(["/image-proxy", "/image-proxy/:filename"], async (req, res) => {
   try {
     const rawUrl = String(req.query.url || "").trim();
     if (!rawUrl) return res.status(400).send("Missing image URL");
@@ -3870,6 +3992,10 @@ router.get("/image-proxy", async (req, res) => {
     }
 
     res.setHeader("Content-Type", contentType);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${String(req.params.filename || "catalogue-image.jpg").replace(/[^a-z0-9._-]/gi, "")}"`
+    );
     res.setHeader("Cache-Control", "public, max-age=86400");
     upstream.body.pipe(res);
   } catch (err) {
@@ -4222,6 +4348,101 @@ router.get("/web-management", async (req, res) => {
   }
 });
 
+router.get("/imagery-sync", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    if (!cfg.webManagementUrl) {
+      return res.status(500).json({ ok: false, error: "Missing SuitePim web management feed URL" });
+    }
+
+    const forceRefresh = req.query.refresh === "1" || req.query.force === "1";
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const payload = await getWebManagementPayload(env, cfg, { forceRefresh, userId });
+    const rows = (payload.rows || [])
+      .filter((row) => String(row?.["Woo ID"] || "").trim())
+      .map((row) => Object.fromEntries(IMAGERY_SYNC_FIELDS.map((fieldName) => [fieldName, row[fieldName] ?? ""])));
+
+    res.json({
+      ok: true,
+      environment: publicEnvironmentName(env),
+      wooCommerceConfigured: wooConfigured(cfg),
+      fields: IMAGERY_SYNC_FIELDS,
+      rows,
+      count: rows.length,
+      cache: payload.cache || null,
+    });
+  } catch (err) {
+    console.error("SuitePim imagery sync load failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post("/imagery-sync/push", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.body?.environment || req.query.environment);
+    const cfg = envConfig(env);
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (!rows.length) return res.status(400).json({ ok: false, error: "Select at least one item to push." });
+    if (!wooConfigured(cfg)) {
+      return res.status(500).json({
+        ok: false,
+        error: "Missing WooCommerce config. Set WOO_STORE_URL, WOO_CONSUMER_KEY, and WOO_CONSUMER_SECRET.",
+      });
+    }
+
+    const updates = rows.map((row) =>
+      imagerySyncWooUpdate(row, (sourceUrl) => imagerySyncWooSourceUrl(req, sourceUrl))
+    );
+    const updatedProducts = [];
+    for (let index = 0; index < updates.length; index += 100) {
+      const result = await callWooProductBatch({ cfg, updates: updates.slice(index, index + 100) });
+      updatedProducts.push(...(Array.isArray(result?.update) ? result.update : []));
+    }
+
+    const returnedById = new Map(updatedProducts.map((product) => [String(product?.id || ""), product]));
+    const expectedById = new Map(updates.map((update) => [String(update.id), update.images.length]));
+    const results = rows.map((row) => {
+      const wooId = String(Number.parseInt(String(row["Woo ID"]), 10));
+      const product = returnedById.get(wooId);
+      const embeddedError = product?.error;
+      const expectedImageCount = expectedById.get(wooId) || 0;
+      const actualImageCount = Array.isArray(product?.images) ? product.images.length : 0;
+      const success = !!product && !embeddedError && actualImageCount >= expectedImageCount;
+      return {
+        wooId,
+        name: row.Name || "",
+        success,
+        expectedImageCount,
+        imageCount: actualImageCount,
+        error: embeddedError?.message ||
+          (!product
+            ? "WooCommerce did not return the updated product."
+            : actualImageCount < expectedImageCount
+              ? `WooCommerce returned ${actualImageCount} of ${expectedImageCount} expected images.`
+              : ""),
+      };
+    });
+
+    const failures = results.filter((result) => !result.success);
+    const responsePayload = {
+      ok: !failures.length,
+      environment: publicEnvironmentName(env),
+      success: results.filter((result) => result.success).length,
+      failed: failures.length,
+      results,
+      error: failures.length
+        ? failures.map((result) => `${result.name || `Woo ID ${result.wooId}`}: ${result.error}`).join(" ")
+        : "",
+    };
+    res.status(failures.length ? 502 : 200).json(responsePayload);
+  } catch (err) {
+    console.error("SuitePim imagery sync push failed:", err);
+    const status = /Invalid Woo ID|No catalogue images|Select at least/i.test(err.message) ? 400 : 500;
+    res.status(status).json({ ok: false, error: err.message });
+  }
+});
+
 router.get("/validation/config", (req, res) => {
   const env = normalizeEnvironment(req.query.environment);
   const cfg = envConfig(env);
@@ -4403,6 +4624,30 @@ router.get("/bins", async (req, res) => {
   }
 });
 
+router.get("/floor-plan-classes", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const locationId = Number(req.query.locationId || 0);
+    if (!Number.isInteger(locationId) || locationId <= 0) {
+      return res.status(400).json({ ok: false, error: "Invalid location id" });
+    }
+    const locationResult = await pool.query("SELECT id, name FROM locations WHERE id = $1", [locationId]);
+    if (!locationResult.rowCount) return res.status(404).json({ ok: false, error: "Location not found" });
+
+    const inventoryRows = await fetchFloorPlanInventoryRows(cfg, locationResult.rows[0].name || "", userId);
+    const classes = [...new Set(inventoryRows
+      .map((row) => String(inventoryFieldValue(row, ["Class", "class", "Class Name", "className"])).trim())
+      .filter(Boolean))]
+      .sort((a, b) => a.localeCompare(b, "en-GB", { numeric: true, sensitivity: "base" }));
+    res.json({ ok: true, locationId, classes });
+  } catch (err) {
+    console.error("SuitePim floor plan class load failed:", err);
+    res.status(500).json({ ok: false, error: err.message || "Failed to load item classes" });
+  }
+});
+
 router.get("/footfall", async (req, res) => {
   try {
     const env = normalizeEnvironment(req.query.environment);
@@ -4472,12 +4717,14 @@ router.get("/floor-plan-sales-data", async (req, res) => {
 
     const locationName = locationResult.rows[0].name || "";
     const salesPayload = await fetchFloorPlanSalesRows(cfg, rangeStart, rangeEnd, userId, locationName);
+    const selectedClass = String(req.query.class || "").trim();
     const rows = salesPayload.rows.filter((row) => {
       const rowDate = parseFloorPlanDate(row.date);
       return rowDate &&
         rowDate >= rangeStart &&
         rowDate <= rangeEnd &&
-        locationNamesMatch(stripFootfallStorePrefix(row.store), locationName);
+        locationNamesMatch(stripFootfallStorePrefix(row.store), locationName) &&
+        itemClassMatches(row.className, selectedClass);
     });
     const aggregate = aggregateFloorPlanSales(rows);
 
@@ -4509,6 +4756,7 @@ router.post("/floor-plan-heatmap-values", async (req, res) => {
     }
 
     const mode = ["inventory", "sold", "revenue"].includes(req.body?.mode) ? req.body.mode : "inventory";
+    const selectedClass = String(req.body?.class || "").trim();
     const assets = Array.isArray(req.body?.assets) ? req.body.assets.slice(0, 1000) : [];
     const startDate = parseFloorPlanDate(req.body?.startDate);
     const endDate = parseFloorPlanDate(req.body?.endDate);
@@ -4531,7 +4779,8 @@ router.post("/floor-plan-heatmap-values", async (req, res) => {
       return rowDate &&
         rowDate >= rangeStart &&
         rowDate <= rangeEnd &&
-        locationNamesMatch(stripFootfallStorePrefix(row.store), locationName);
+        locationNamesMatch(stripFootfallStorePrefix(row.store), locationName) &&
+        itemClassMatches(row.className, selectedClass);
     }));
 
     const values = {};
@@ -4539,9 +4788,11 @@ router.post("/floor-plan-heatmap-values", async (req, res) => {
       const assetId = String(asset?.id || "").trim();
       const binNumber = String(asset?.bin?.number || asset?.binNumber || "").trim();
       if (!assetId || !binNumber) return;
-      const rows = inventoryRows.filter((row) => normalizeInventoryFilterLocal(inventoryFieldValue(row, [
-        "Bin Number", "Bin", "bin", "binNumber", "binnumber", "Bin Name",
-      ])) === normalizeInventoryFilterLocal(binNumber));
+      const rows = inventoryRows.filter((row) =>
+        normalizeInventoryFilterLocal(inventoryFieldValue(row, [
+          "Bin Number", "Bin", "bin", "binNumber", "binnumber", "Bin Name",
+        ])) === normalizeInventoryFilterLocal(binNumber) &&
+        itemClassMatches(inventoryFieldValue(row, ["Class", "class", "Class Name", "className"]), selectedClass));
       const countedSalesKeys = new Set();
       values[assetId] = rows.reduce((sum, row) => {
         if (mode === "inventory") return sum + numericInventoryField(row, ["On Hand", "onHand", "OnHand", "Quantity On Hand"]);
@@ -4592,7 +4843,9 @@ router.get("/floor-plan-inventory-movement", async (req, res) => {
     const locationName = locationResult.rows[0].name || "";
     const rangeStart = startDate <= endDate ? startDate : endDate;
     const rangeEnd = endDate >= startDate ? endDate : startDate;
-    const rows = await fetchFloorPlanBinTransferRows(cfg, rangeStart, rangeEnd, locationName);
+    const selectedClass = String(req.query.class || "").trim();
+    const rows = (await fetchFloorPlanBinTransferRows(cfg, rangeStart, rangeEnd, locationName))
+      .filter((row) => itemClassMatches(floorPlanMovementValue(row, ["Class", "class", "Class Name", "className"]), selectedClass));
     const paired = pairFloorPlanBinTransfers(rows, rangeStart, rangeEnd, locationName);
     const movements = aggregateFloorPlanBinMovements(paired);
 
@@ -4630,9 +4883,12 @@ router.get("/floor-plan-bin-inventory", async (req, res) => {
 
     const locationName = locationResult.rows[0].name || "";
     const inventoryRows = await fetchFloorPlanInventoryRows(cfg, locationName, userId);
-    const rows = inventoryRows.filter((row) => normalizeInventoryFilterLocal(inventoryFieldValue(row, [
-      "Bin Number", "Bin", "bin", "binNumber", "binnumber", "Bin Name",
-    ])) === normalizeInventoryFilterLocal(binNumber));
+    const selectedClass = String(req.query.class || "").trim();
+    const rows = inventoryRows.filter((row) =>
+      normalizeInventoryFilterLocal(inventoryFieldValue(row, [
+        "Bin Number", "Bin", "bin", "binNumber", "binnumber", "Bin Name",
+      ])) === normalizeInventoryFilterLocal(binNumber) &&
+      itemClassMatches(inventoryFieldValue(row, ["Class", "class", "Class Name", "className"]), selectedClass));
 
     res.json({
       ok: true,
@@ -4699,6 +4955,7 @@ function normalizeFloorPlanSalesRow(row) {
   const parentId = String(rowValue(row, ["Parent ID", "Parent Internal ID", "parent_id", "parentId", "parentid", "parentInternalId"])).trim();
   const item = String(rowValue(row, ["Item", "item", "item_name", "itemName", "Name", "name"])).trim();
   const displayName = String(rowValue(row, ["Display Name", "displayName", "displayname", "DisplayName", "item_name", "itemName"])).trim();
+  const className = String(rowValue(row, ["Class", "class", "class_name", "className"])).trim();
   const saleId = String(rowValue(row, ["Sales Order ID", "sale_id", "saleId", "transaction", "transactionId"])).trim();
   const saleTranid = String(rowValue(row, [
     "Sales Order Number",
@@ -4720,6 +4977,7 @@ function normalizeFloorPlanSalesRow(row) {
     parentId,
     item,
     displayName,
+    className,
     saleId,
     saleTranid,
     quantity,
@@ -4739,6 +4997,7 @@ function floorPlanSalesSuiteQl(dateFrom, dateTo, locationName = "") {
       BUILTIN.DF(t.subsidiary) AS "subsidiary",
       BUILTIN.DF(t.subsidiary) AS "Store",
       BUILTIN.DF(tl.item) AS "item_name",
+      BUILTIN.DF(i.class) AS "class_name",
       ABS(tl.quantity) AS "Quantity",
       ABS(tl.netamount) AS "line_amount"
     FROM
@@ -4925,6 +5184,11 @@ function normalizeInventoryFilterLocal(value) {
   return String(value || "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function itemClassMatches(value, selectedClass) {
+  const selected = normalizeInventoryFilterLocal(selectedClass);
+  return !selected || normalizeInventoryFilterLocal(value) === selected;
+}
+
 function numericInventoryField(row, keys) {
   return Number(String(inventoryFieldValue(row, keys) || "0").replace(/,/g, "")) || 0;
 }
@@ -5042,6 +5306,7 @@ function compactInventoryRow(row) {
     "Parent ID": String(inventoryFieldValue(row, ["Parent ID", "parentId", "parentid", "Parent Internal ID", "parentInternalId"])).trim(),
     Item: String(inventoryFieldValue(row, ["Item", "item", "Item Name", "itemName", "Name"])).trim(),
     "Display Name": String(inventoryFieldValue(row, ["Display Name", "displayName", "displayname", "DisplayName"])).trim(),
+    Class: String(inventoryFieldValue(row, ["Class", "class", "Class Name", "className"])).trim(),
     "Inventory Number": String(inventoryFieldValue(row, ["Inventory Number", "inventoryNumber", "inventorynumber", "Lot Number", "lotNumber", "Lot", "Serial/Lot Number"])).trim(),
     "On Hand": numericInventoryField(row, ["On Hand", "onHand", "OnHand", "Quantity On Hand"]),
   };
@@ -5056,6 +5321,7 @@ function normalizeSuiteQlInventoryBalanceRow(row) {
     "Parent ID": row.parent_id || row.parentId || row.parentid,
     Item: row.item_label || row.itemLabel || row.ITEM,
     "Display Name": row.item_label || row.itemLabel || row.ITEM,
+    Class: row.class_label || row.classLabel || row.class_name || row.className,
     "Inventory Number": row.inventorynumber_label || row.inventoryNumberLabel || row.inventorynumber,
     "On Hand": row.quantityonhand || row.quantityOnHand || row.QuantityOnHand,
   });
@@ -5087,10 +5353,12 @@ function floorPlanInventorySuiteQl(locationName) {
       ib.binnumber AS "bin_id",
       ib.ITEM AS "item_id",
       i.parent AS "parent_id",
+      i.class AS "class_id",
       ib.inventorynumber AS "inventorynumber_id",
       ib.location AS "location_id",
       BUILTIN.DF(ib.binnumber) AS "bin_label",
       BUILTIN.DF(ib.ITEM) AS "item_label",
+      BUILTIN.DF(i.class) AS "class_label",
       BUILTIN.DF(ib.inventorynumber) AS "inventorynumber_label",
       BUILTIN.DF(ib.location) AS "location_label",
       ib.quantityOnHand AS "quantityOnHand"
@@ -5484,6 +5752,10 @@ function cleanFloorPlanData(value) {
               zone: String(element.bin.zone || "").slice(0, 80),
             }
           : null;
+        const imageData = String(element.imageData || "");
+        const isStencil = element.isStencil === true &&
+          /^data:image\/(?:png|jpeg|webp|gif);base64,[a-z0-9+/=\r\n]+$/i.test(imageData) &&
+          imageData.length <= 4_500_000;
         return {
           id: String(element.id || crypto.randomBytes(6).toString("hex")).slice(0, 40),
           type,
@@ -5491,9 +5763,10 @@ function cleanFloorPlanData(value) {
           name: String(element.name || "Asset").slice(0, 120),
           x: Number(element.x) || 0,
           y: Number(element.y) || 0,
-          width: Math.min(20, Math.max(0.1, Number(element.width) || 1)),
-          height: Math.min(20, Math.max(0.1, Number(element.height) || 1)),
+          width: Math.min(isStencil ? 200 : 20, Math.max(0.1, Number(element.width) || 1)),
+          height: Math.min(isStencil ? 200 : 20, Math.max(0.1, Number(element.height) || 1)),
           rotation: ((Number(element.rotation) || 0) % 360 + 360) % 360,
+          ...(isStencil ? { isStencil: true, imageData } : {}),
           ...(cleanFloorPlanColor(element.mainColor) ? { mainColor: cleanFloorPlanColor(element.mainColor) } : {}),
           ...(cleanFloorPlanColor(element.textColor) ? { textColor: cleanFloorPlanColor(element.textColor) } : {}),
           ...(String(element.note || "").trim() ? { note: String(element.note || "").trim().slice(0, 1000) } : {}),

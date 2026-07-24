@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/js/browserLogFilter.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" type="image/x-icon" href="/assets/moon-man-logo.ico">
+  <title>SuitePim Imagery Sync</title>
+  <link rel="stylesheet" href="/assistant/assistant.css">
+  <link rel="stylesheet" href="/css/home.css">
+  <link rel="stylesheet" href="/css/suitepim.css">
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/assistant/assistant.js"></script>
+  <script type="module" src="/assistant/assistantHooks.js"></script>
+  <script src="/js/suitepimImagerySync.js" defer></script>
+</head>
+<body>
+  <div id="menu"></div>
+  <main class="content suitepim-page suitepim-page-wide">
+    <header class="suitepim-header">
+      <div>
+        <p class="suitepim-kicker">SuitePim</p>
+        <h1>Imagery Sync</h1>
+      </div>
+    </header>
+
+    <nav class="suitepim-subnav" aria-label="SuitePim sections">
+      <a class="suitepim-subnav-link" href="/suitepim">Dashboard</a>
+      <a class="suitepim-subnav-link" href="/suitepim/web-management">Item Management</a>
+      <a class="suitepim-subnav-link active" href="/suitepim/imagery-sync">Imagery Sync</a>
+      <a class="suitepim-subnav-link" href="/suitepim/campaigns">Campaigns</a>
+      <a class="suitepim-subnav-link" href="/suitepim/product-validation">Product Validation</a>
+      <a class="suitepim-subnav-link" href="/suitepim/reasons-to-buy">Reasons To Buy</a>
+      <a class="suitepim-subnav-link" href="/suitepim/item-faqs">Item Faq's</a>
+      <a class="suitepim-subnav-link" href="/suitepim/settings">Settings</a>
+    </nav>
+
+    <section class="suitepim-toolbar suitepim-toolbar-web" aria-label="Imagery Sync controls">
+      <div class="suitepim-search">
+        <input id="imagerySyncSearch" type="search" placeholder="Search ID, Woo ID or name...">
+      </div>
+      <button id="imagerySyncRefresh" class="suitepim-icon-btn" type="button" title="Refresh" aria-label="Refresh">↻</button>
+      <button id="imagerySyncPush" class="suitepim-primary-btn" type="button">Push selected to WooCommerce</button>
+    </section>
+
+    <section id="imagerySyncStatus" class="suitepim-status" aria-live="polite"></section>
+    <section id="imagerySyncMount" class="suitepim-shell" aria-label="Imagery Sync workspace">
+      <div class="suitepim-loading"><div class="suitepim-spinner" aria-hidden="true"></div><p>Loading Imagery Sync...</p></div>
+    </section>
+    <div class="suitepim-pagination" aria-label="Imagery Sync pagination">
+      <button id="imagerySyncPrev" type="button">Previous</button>
+      <span id="imagerySyncPage">Page 1</span>
+      <button id="imagerySyncNext" type="button">Next</button>
+    </div>
+  </main>
+
+  <div id="imagerySyncModal" class="suitepim-modal hidden" role="dialog" aria-modal="true" aria-labelledby="imagerySyncModalTitle">
+    <div class="suitepim-modal-panel">
+      <div class="suitepim-modal-header">
+        <h2 id="imagerySyncModalTitle">Select image</h2>
+        <button id="imagerySyncModalClose" class="suitepim-icon-btn" type="button" aria-label="Close">×</button>
+      </div>
+      <input id="imagerySyncModalSearch" type="search" placeholder="Search images...">
+      <div id="imagerySyncModalOptions" class="suitepim-modal-options"></div>
+      <div class="suitepim-modal-actions">
+        <button id="imagerySyncModalClear" type="button">Clear image</button>
+        <button id="imagerySyncModalCancel" type="button">Cancel</button>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

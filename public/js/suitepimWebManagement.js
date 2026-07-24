@@ -531,13 +531,33 @@
     const saved = row.__reasonsToBuyConfig && typeof row.__reasonsToBuyConfig === "object"
       ? row.__reasonsToBuyConfig
       : {};
+    const options = state.options.get("reasons to buy") || [];
     const config = {};
     selectedIds.forEach((id, index) => {
       const existing = saved[id] || {};
+      const option = options.find((item) => String(item.id) === String(id));
+      const priority = Number(option?.raw?.Priority);
+      const defaultOrder = Number.isFinite(priority) && priority > 0 ? priority : index + 1;
+      const defaultFeature = boolValue(option?.raw?.["Detailed Description Default"]);
+      const defaultShort = boolValue(option?.raw?.["Short Description Default"]);
+      const savedOrder = Number(existing.order);
+      const hasSavedOrder = Number.isFinite(savedOrder) && savedOrder > 0;
+      const manualOrder = existing.manualOrder === true ||
+        (existing.manualOrder === undefined && hasSavedOrder && savedOrder !== defaultOrder);
+      const manualFeature = existing.manualFeature === true ||
+        (existing.manualFeature === undefined && existing.feature !== undefined && (existing.feature !== false) !== defaultFeature);
+      const manualShort = existing.manualShort === true ||
+        (existing.manualShort === undefined && existing.short !== undefined && (existing.short !== false) !== defaultShort);
       config[id] = {
-        feature: existing.feature !== false,
-        short: existing.short !== false,
-        order: Number.isFinite(Number(existing.order)) ? Number(existing.order) : index + 1,
+        feature: manualFeature ? existing.feature !== false : defaultFeature,
+        short: manualShort ? existing.short !== false : defaultShort,
+        defaultFeature,
+        defaultShort,
+        manualFeature,
+        manualShort,
+        order: manualOrder && hasSavedOrder ? savedOrder : defaultOrder,
+        defaultOrder,
+        manualOrder,
         name: existing.name || selectedNames[index] || "",
       };
     });
@@ -1095,7 +1115,7 @@
   }
 
   function canManageFeatureDescription(row) {
-    return boolValue(row?.["Is Parent"]);
+    return !!row;
   }
 
   function isCalculatedPriceField(column) {
@@ -1363,7 +1383,13 @@
       if (key === "Internal ID" || key === "Item ID" || key === "Name") return;
       if (key.endsWith("_InternalId")) return;
       if (key.startsWith("__")) {
-        if (key === "__reasonsToBuyConfig") shouldPushWebDescription = true;
+        if (
+          key === "__reasonsToBuyConfig" &&
+          JSON.stringify(clean[key] ?? {}) !== JSON.stringify(base[key] ?? {})
+        ) {
+          payload.__reasonsToBuyConfig = clean[key];
+          shouldPushWebDescription = true;
+        }
         if (key === "__itemFaqConfig") shouldPushWebDescription = true;
         return;
       }
@@ -3383,7 +3409,7 @@
       button.textContent = isGenerating ? "Generating..." : "Generate";
       button.disabled = isGenerating || !state.aiGenerationConfigured || !canGenerate;
       button.title = !canGenerate
-        ? "AI descriptions can only be generated on parent lines."
+        ? "This item line is unavailable."
         : !state.aiGenerationConfigured
         ? "OpenAI generation is not configured on the server."
         : state.aiGenerationModel
@@ -3472,7 +3498,7 @@
       textarea.rows = 2;
       textarea.value = valueText(value);
       textarea.disabled = !canEditFeatureDescription;
-      textarea.title = canEditFeatureDescription ? "" : "Feature descriptions can only be edited on parent lines.";
+      textarea.title = canEditFeatureDescription ? "" : "This item line is unavailable.";
       if (canEditFeatureDescription) {
         textarea.addEventListener("input", () => updateCell(row, column, textarea.value));
       }
@@ -3485,7 +3511,7 @@
       button.textContent = isGenerating ? "Generating..." : "Generate";
       button.disabled = isGenerating || !state.aiGenerationConfigured || !canEditFeatureDescription;
       button.title = !canEditFeatureDescription
-        ? "AI descriptions can only be generated on parent lines."
+        ? "This item line is unavailable."
         : !state.aiGenerationConfigured
         ? "OpenAI generation is not configured on the server."
         : state.aiGenerationModel
@@ -3594,7 +3620,7 @@
     const row = state.rows.find((item) => item._suitepimKey === rowKeyValue);
     if (!row) return;
     if (!canManageFeatureDescription(row)) {
-      showStatus("AI descriptions can only be generated on parent lines.", "warning");
+      showStatus("This item line is unavailable.", "warning");
       return;
     }
     if (!state.aiGenerationConfigured) {
@@ -3629,7 +3655,6 @@
 
   async function generateDescriptionsBulk(targetRows) {
     const rowsToGenerate = targetRows.filter(canManageFeatureDescription);
-    const skippedRows = targetRows.length - rowsToGenerate.length;
 
     if (!rowsToGenerate.length) {
       showStatus("No rows match the selected bulk action scope.", "warning");
@@ -3638,8 +3663,7 @@
 
     let completed = 0;
     let totalTokens = 0;
-    const skippedSuffix = skippedRows ? ` (${skippedRows.toLocaleString()} non-parent row(s) skipped)` : "";
-    showStatus(`Generating descriptions for ${rowsToGenerate.length.toLocaleString()} parent row(s)${skippedSuffix}...`, "info");
+    showStatus(`Generating descriptions for ${rowsToGenerate.length.toLocaleString()} row(s)...`, "info");
 
     for (const targetRow of rowsToGenerate) {
       const row = state.rows.find((item) => item._suitepimKey === targetRow._suitepimKey);
@@ -3667,7 +3691,7 @@
       showStatus(`Generated ${completed}/${rowsToGenerate.length} description(s)...`, "info");
     }
 
-    showStatus(`Generated descriptions for ${completed.toLocaleString()} parent row(s) using ${totalTokens.toLocaleString()} tokens.${skippedSuffix} Review before pushing.`, "success");
+    showStatus(`Generated descriptions for ${completed.toLocaleString()} row(s) using ${totalTokens.toLocaleString()} tokens. Review before pushing.`, "success");
   }
 
   async function ensureOptions(field) {
@@ -3683,6 +3707,7 @@
     showStatus(`Loading ${field.name} options...`);
     const options = await ensureOptions(field);
     showStatus("");
+    row = latestRow(row) || row;
     const currentIds = Array.isArray(row[`${field.name}_InternalId`])
       ? row[`${field.name}_InternalId`].map(String)
       : String(row[`${field.name}_InternalId`] || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
@@ -3704,10 +3729,20 @@
       Array.from(selected).forEach((id, index) => {
         const option = options.find((item) => String(item.id) === String(id));
         const saved = existing[id] || {};
+        const priority = Number(option?.raw?.Priority);
+        const defaultOrder = Number.isFinite(priority) && priority > 0 ? priority : index + 1;
+        const defaultFeature = boolValue(option?.raw?.["Detailed Description Default"]);
+        const defaultShort = boolValue(option?.raw?.["Short Description Default"]);
         config[id] = {
-          feature: saved.feature !== false,
-          short: saved.short !== false,
-          order: Number.isFinite(Number(saved.order)) ? Number(saved.order) : index + 1,
+          feature: saved.feature === undefined ? defaultFeature : saved.feature !== false,
+          short: saved.short === undefined ? defaultShort : saved.short !== false,
+          defaultFeature,
+          defaultShort,
+          manualFeature: saved.manualFeature === true,
+          manualShort: saved.manualShort === true,
+          order: Number.isFinite(Number(saved.order)) ? Number(saved.order) : defaultOrder,
+          defaultOrder: Number.isFinite(Number(saved.defaultOrder)) ? Number(saved.defaultOrder) : defaultOrder,
+          manualOrder: saved.manualOrder === true,
           name: saved.name || option?.name || currentNames[index] || "",
         };
       });
@@ -3767,10 +3802,20 @@
     if (!id) return null;
     if (!state.modal.config[id]) {
       const usedOrders = Object.values(state.modal.config || {}).map((item) => Number(item.order)).filter(Number.isFinite);
+      const priority = Number(option?.raw?.Priority);
+      const defaultOrder = Number.isFinite(priority) && priority > 0
+        ? priority
+        : usedOrders.length ? Math.max(...usedOrders) + 1 : 1;
       state.modal.config[id] = {
-        feature: true,
-        short: true,
-        order: usedOrders.length ? Math.max(...usedOrders) + 1 : 1,
+        feature: boolValue(option?.raw?.["Detailed Description Default"]),
+        short: boolValue(option?.raw?.["Short Description Default"]),
+        defaultFeature: boolValue(option?.raw?.["Detailed Description Default"]),
+        defaultShort: boolValue(option?.raw?.["Short Description Default"]),
+        manualFeature: false,
+        manualShort: false,
+        order: defaultOrder,
+        defaultOrder,
+        manualOrder: false,
         name: option.name || "",
       };
     }
@@ -3799,6 +3844,7 @@
       const selected = modal.selected.has(id);
       const config = ensureReasonModalConfig(option);
       const tr = document.createElement("tr");
+      tr.dataset.reasonId = id;
       if (selected) tr.classList.add("is-selected");
 
       const selectInput = document.createElement("input");
@@ -3816,22 +3862,29 @@
 
       const featureInput = document.createElement("input");
       featureInput.type = "checkbox";
+      featureInput.dataset.reasonField = "feature";
       featureInput.checked = config.feature !== false;
       featureInput.disabled = !selected;
       featureInput.addEventListener("change", () => {
-        ensureReasonModalConfig(option).feature = featureInput.checked;
+        const current = ensureReasonModalConfig(option);
+        current.feature = featureInput.checked;
+        current.manualFeature = current.feature !== current.defaultFeature;
       });
 
       const shortInput = document.createElement("input");
       shortInput.type = "checkbox";
+      shortInput.dataset.reasonField = "short";
       shortInput.checked = config.short !== false;
       shortInput.disabled = !selected;
       shortInput.addEventListener("change", () => {
-        ensureReasonModalConfig(option).short = shortInput.checked;
+        const current = ensureReasonModalConfig(option);
+        current.short = shortInput.checked;
+        current.manualShort = current.short !== current.defaultShort;
       });
 
       const orderInput = document.createElement("input");
       orderInput.type = "number";
+      orderInput.dataset.reasonField = "order";
       orderInput.min = "1";
       orderInput.step = "1";
       orderInput.value = Number.isFinite(Number(config.order)) ? String(config.order) : "";
@@ -3902,7 +3955,10 @@
       orderInput.disabled = !selected;
       orderInput.addEventListener("input", () => {
         const value = Number(orderInput.value);
-        ensureReasonModalConfig(option).order = Number.isFinite(value) && value > 0 ? value : 999;
+        const current = ensureReasonModalConfig(option);
+        current.order = Number.isFinite(value) && value > 0 ? value : 999;
+        current.manualOrder = current.order !== Number(current.defaultOrder);
+        orderTd.classList.toggle("is-manual-order", current.manualOrder);
       });
 
       const selectTd = document.createElement("td");
@@ -3910,6 +3966,7 @@
       const nameTd = document.createElement("td");
       nameTd.innerHTML = `<strong>${escapeHtml(option.name)}</strong><small>${escapeHtml(optionMetaText(option))}</small>`;
       const orderTd = document.createElement("td");
+      orderTd.classList.toggle("is-manual-order", config.manualOrder === true);
       orderTd.appendChild(orderInput);
       tr.append(selectTd, nameTd, orderTd);
       tbody.appendChild(tr);
@@ -3989,9 +4046,31 @@
     el.suitepimModal.classList.add("hidden");
   }
 
+  function captureReasonModalInputs() {
+    const modal = state.modal;
+    if (modal?.field?.name !== "reasons to buy") return;
+
+    el.suitepimModalOptions.querySelectorAll("tr[data-reason-id]").forEach((row) => {
+      const id = String(row.dataset.reasonId || "");
+      if (!id || !modal.selected.has(id)) return;
+      const option = modal.options.find((item) => String(item.id) === id);
+      const config = modal.config[id] || ensureReasonModalConfig(option);
+      if (!config) return;
+
+      config.feature = !!row.querySelector('[data-reason-field="feature"]')?.checked;
+      config.short = !!row.querySelector('[data-reason-field="short"]')?.checked;
+      config.manualFeature = config.feature !== config.defaultFeature;
+      config.manualShort = config.short !== config.defaultShort;
+      const order = Number(row.querySelector('[data-reason-field="order"]')?.value);
+      config.order = Number.isFinite(order) && order > 0 ? order : 999;
+      config.manualOrder = config.order !== Number(config.defaultOrder);
+    });
+  }
+
   function saveModalSelection() {
     const modal = state.modal;
     if (!modal) return;
+    captureReasonModalInputs();
     const ids = modal.field?.name === "reasons to buy" || isFaqFieldName(modal.field?.name)
       ? Array.from(modal.selected).sort((left, right) => {
           const leftOrder = Number(modal.config?.[left]?.order);
@@ -4024,7 +4103,10 @@
         config[id] = {
           feature: saved.feature !== false,
           short: saved.short !== false,
+          manualFeature: saved.manualFeature === true,
+          manualShort: saved.manualShort === true,
           order: Number.isFinite(Number(saved.order)) ? Number(saved.order) : index + 1,
+          manualOrder: saved.manualOrder === true,
           name: option.name,
         };
       });

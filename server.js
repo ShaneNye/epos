@@ -191,7 +191,7 @@ function sendNoCacheFile(res, filePath) {
 }
 
 app.use(compression());
-app.use(express.json());
+app.use(express.json({ limit: "5mb" }));
 app.use(express.urlencoded({ extended: true }));
 
 app.use("/assistant", (req, res, next) => {
@@ -1880,6 +1880,9 @@ app.get("/cs-workflows/create-record-map", (req, res) => sendNoCacheFile(res, pa
 app.get("/rota", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "rota.html")))
 app.get("/suitepim/product-data", (req, res) => res.redirect(302, "/suitepim/web-management"))
 app.get("/suitepim/web-management", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-web-management.html")))
+app.get(["/suitepim/imagery-sync", "/suitepim/imagery-sync.html"], (req, res) =>
+  sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-imagery-sync.html"))
+)
 app.get("/suitepim/scheduled-exports", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-scheduled-exports.html")))
 app.get("/suitepim/product-validation", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-product-validation.html")))
 app.get("/suitepim/campaigns", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-campaigns.html")))
