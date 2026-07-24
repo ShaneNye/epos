@@ -4357,10 +4357,16 @@ router.get("/imagery-sync", async (req, res) => {
     }
 
     const forceRefresh = req.query.refresh === "1" || req.query.force === "1";
+    const search = String(req.query.search || "").trim().toLowerCase();
     const userId = req.eposSession.user_id || req.eposSession.id;
     const payload = await getWebManagementPayload(env, cfg, { forceRefresh, userId });
     const rows = (payload.rows || [])
       .filter((row) => String(row?.["Woo ID"] || "").trim())
+      .filter((row) => !search || [
+        row?.["Internal ID"],
+        row?.["Woo ID"],
+        row?.Name,
+      ].some((value) => String(value || "").toLowerCase().includes(search)))
       .map((row) => Object.fromEntries(IMAGERY_SYNC_FIELDS.map((fieldName) => [fieldName, row[fieldName] ?? ""])));
 
     res.json({
@@ -4370,6 +4376,7 @@ router.get("/imagery-sync", async (req, res) => {
       fields: IMAGERY_SYNC_FIELDS,
       rows,
       count: rows.length,
+      search: String(req.query.search || "").trim(),
       cache: payload.cache || null,
     });
   } catch (err) {

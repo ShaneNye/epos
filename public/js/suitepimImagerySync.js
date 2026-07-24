@@ -269,7 +269,12 @@
     el.imagerySyncMount.innerHTML = `<div class="suitepim-loading"><div class="suitepim-spinner"></div><p>${forceRefresh ? "Refreshing" : "Loading"} Imagery Sync...</p></div>`;
     showStatus("");
     try {
-      const data = await api(`/imagery-sync${forceRefresh ? "?refresh=1" : ""}`);
+      const search = String(el.imagerySyncSearch.value || "").trim();
+      const params = new URLSearchParams();
+      if (forceRefresh) params.set("refresh", "1");
+      if (search) params.set("search", search);
+      const query = params.toString();
+      const data = await api(`/imagery-sync${query ? `?${query}` : ""}`);
       state.rows = (data.rows || []).map((row, index) => ({ ...row, _key: rowKey(row, index) }));
       state.filtered = [...state.rows];
       state.selected.clear();
@@ -278,7 +283,7 @@
       el.imagerySyncPush.disabled = !state.wooConfigured;
       render();
       showStatus(
-        `Loaded ${state.rows.length.toLocaleString()} Woo-linked item(s).${state.wooConfigured ? "" : " WooCommerce credentials are not configured."}`,
+        `${forceRefresh ? "Refreshed" : "Loaded"} ${state.rows.length.toLocaleString()} Woo-linked item(s)${search ? ` matching “${search}”` : ""}.${state.wooConfigured ? "" : " WooCommerce credentials are not configured."}`,
         state.wooConfigured ? "success" : "warning"
       );
     } catch (err) {

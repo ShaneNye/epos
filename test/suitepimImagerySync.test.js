@@ -24,6 +24,13 @@ test("Imagery Sync is fixed to Woo-linked item image fields", () => {
   assert.match(htmlSource, /<h1>Imagery Sync<\/h1>/);
 });
 
+test("Imagery Sync refresh narrows the server response using the existing search", () => {
+  assert.match(routeSource, /const search = String\(req\.query\.search/);
+  assert.match(routeSource, /row\?\.\["Woo ID"\]/);
+  assert.match(browserSource, /params\.set\("search", search\)/);
+  assert.match(browserSource, /matching “\$\{search\}”/);
+});
+
 test("Imagery Sync maps ordered catalogue images to the Woo product images array", () => {
   assert.match(routeSource, /function imagerySyncWooUpdate/);
   assert.match(routeSource, /images: urls\.map\(\(src\) => \(\{ src: mapImageUrl\(src\) \}\)\)/);
