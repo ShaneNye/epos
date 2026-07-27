@@ -648,6 +648,28 @@
     }, 150);
   }
 
+  function moveAutomaticPromotionsToBottom() {
+    if (documentPromotionContext() !== "sales_order") return;
+
+    const body = document.getElementById("orderItemsBody");
+    if (!body) return;
+
+    const currentRows = rows();
+    const manualRows = currentRows.filter(
+      (row) => hasItem(row) && !row.classList.contains("promotion-auto-line")
+    );
+    const automaticRows = currentRows.filter((row) => row.classList.contains("promotion-auto-line"));
+    const blankRows = currentRows.filter((row) => !hasItem(row));
+    const desiredOrder = [...manualRows, ...automaticRows, ...blankRows];
+
+    if (
+      desiredOrder.length === currentRows.length &&
+      desiredOrder.some((row, index) => row !== currentRows[index])
+    ) {
+      desiredOrder.forEach((row) => body.appendChild(row));
+    }
+  }
+
   function markBasketRow(row, desired) {
     const mandatory = promotionMandatoryForDocument(desired.promotion);
     row.dataset.promotionKind = "basket_discount";
@@ -800,6 +822,7 @@
         if (row) applyDesiredLine(row, line);
       });
 
+      moveAutomaticPromotionsToBottom();
       ensureBlankRow();
       renderUpsellPanel();
       recalcTotals();
