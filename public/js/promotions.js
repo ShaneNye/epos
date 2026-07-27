@@ -557,6 +557,10 @@
     byId("basketDiscountPromotionId").value = "";
     byId("basketDiscountIsActive").checked = true;
     byId("basketDiscountExcludeClearance").checked = false;
+    byId("basketDiscountQuoteEnabled").checked = true;
+    byId("basketDiscountQuoteMandatory").checked = true;
+    byId("basketDiscountSalesOrderEnabled").checked = true;
+    byId("basketDiscountSalesOrderMandatory").checked = true;
     byId("basketDiscountModalTitle").textContent = "Add Basket Discount";
     const body = byId("basketRulesBody");
     body.innerHTML = "";
@@ -573,6 +577,10 @@
     byId("basketDiscountEndDate").value = promotion.endDate || "";
     byId("basketDiscountIsActive").checked = promotion.isActive !== false;
     byId("basketDiscountExcludeClearance").checked = promotion.excludeClearance === true;
+    byId("basketDiscountQuoteEnabled").checked = promotion.quoteEnabled !== false;
+    byId("basketDiscountQuoteMandatory").checked = promotion.quoteMandatory !== false;
+    byId("basketDiscountSalesOrderEnabled").checked = promotion.salesOrderEnabled !== false;
+    byId("basketDiscountSalesOrderMandatory").checked = promotion.salesOrderMandatory !== false;
     byId("basketDiscountModalTitle").textContent = "Edit Basket Discount";
 
     const body = byId("basketRulesBody");
@@ -647,6 +655,10 @@
       title,
       message: String(byId("basketDiscountMessage").value || "").trim(),
       excludeClearance: !!byId("basketDiscountExcludeClearance").checked,
+      quoteEnabled: !!byId("basketDiscountQuoteEnabled").checked,
+      quoteMandatory: !!byId("basketDiscountQuoteMandatory").checked,
+      salesOrderEnabled: !!byId("basketDiscountSalesOrderEnabled").checked,
+      salesOrderMandatory: !!byId("basketDiscountSalesOrderMandatory").checked,
       startDate,
       endDate,
       isActive: !!byId("basketDiscountIsActive").checked,

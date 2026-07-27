@@ -210,6 +210,37 @@
 
                     <div class="promotions-rules-head">
                         <div>
+                            <strong>Quote and Sales Order Behaviour</strong>
+                            <p>Enabled controls where this promotion applies. Mandatory prevents an automatically added line from being removed.</p>
+                        </div>
+                    </div>
+
+                    <div class="table-scroll-wrapper">
+                        <table class="promotions-table promotions-document-controls">
+                            <thead>
+                                <tr>
+                                    <th>Record</th>
+                                    <th>Enabled</th>
+                                    <th>Mandatory</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td><strong>Quote</strong></td>
+                                    <td><input id="basketDiscountQuoteEnabled" type="checkbox" checked></td>
+                                    <td><input id="basketDiscountQuoteMandatory" type="checkbox" checked></td>
+                                </tr>
+                                <tr>
+                                    <td><strong>Sales Order</strong></td>
+                                    <td><input id="basketDiscountSalesOrderEnabled" type="checkbox" checked></td>
+                                    <td><input id="basketDiscountSalesOrderMandatory" type="checkbox" checked></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <div class="promotions-rules-head">
+                        <div>
                             <strong>Basket Value Rules</strong>
                             <p>Each rule maps a basket range to the negative-value item and discount amount that should be forced into the cart.</p>
                         </div>

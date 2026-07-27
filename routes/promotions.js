@@ -185,6 +185,10 @@ async function ensureTables() {
       suggested_item_name TEXT,
       discount_percent NUMERIC(5,2),
       exclude_clearance BOOLEAN NOT NULL DEFAULT FALSE,
+      quote_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      quote_mandatory BOOLEAN NOT NULL DEFAULT TRUE,
+      sales_order_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      sales_order_mandatory BOOLEAN NOT NULL DEFAULT TRUE,
       start_date DATE NOT NULL,
       end_date DATE NOT NULL,
       is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -227,6 +231,10 @@ async function ensureTables() {
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_size TEXT;
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_category TEXT;
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS exclude_clearance BOOLEAN NOT NULL DEFAULT FALSE;
+    ALTER TABLE promotions ADD COLUMN IF NOT EXISTS quote_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE promotions ADD COLUMN IF NOT EXISTS quote_mandatory BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE promotions ADD COLUMN IF NOT EXISTS sales_order_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE promotions ADD COLUMN IF NOT EXISTS sales_order_mandatory BOOLEAN NOT NULL DEFAULT TRUE;
     ALTER TABLE promotion_basket_rules ADD COLUMN IF NOT EXISTS discount_type TEXT NOT NULL DEFAULT 'item_price';
     ALTER TABLE promotion_basket_rules ADD COLUMN IF NOT EXISTS discount_value NUMERIC(10,2) NOT NULL DEFAULT 0;
     ALTER TABLE promotion_basket_rules ADD COLUMN IF NOT EXISTS auto_apply BOOLEAN NOT NULL DEFAULT FALSE;
@@ -343,6 +351,10 @@ async function listPromotions() {
       p.suggested_item_name,
       p.discount_percent,
       p.exclude_clearance,
+      p.quote_enabled,
+      p.quote_mandatory,
+      p.sales_order_enabled,
+      p.sales_order_mandatory,
       p.start_date,
       p.end_date,
       p.is_active,
@@ -397,6 +409,10 @@ async function listPromotions() {
     suggestedItemName: row.suggested_item_name || "",
     discountPercent: Number(row.discount_percent || 0),
     excludeClearance: !!row.exclude_clearance,
+    quoteEnabled: row.quote_enabled !== false,
+    quoteMandatory: row.quote_mandatory !== false,
+    salesOrderEnabled: row.sales_order_enabled !== false,
+    salesOrderMandatory: row.sales_order_mandatory !== false,
     startDate: formatDateOnly(row.start_date),
     endDate: formatDateOnly(row.end_date),
     isActive: !!row.is_active,
@@ -543,6 +559,10 @@ async function savePromotion(client, promotionId, payload, createdBy) {
   const rules = Array.isArray(payload.rules) ? payload.rules.map(normalizeRule) : [];
   const ruleError = validateBasketRules(rules);
   const excludeClearance = payload.excludeClearance === true;
+  const quoteEnabled = payload.quoteEnabled !== false;
+  const quoteMandatory = payload.quoteMandatory !== false;
+  const salesOrderEnabled = payload.salesOrderEnabled !== false;
+  const salesOrderMandatory = payload.salesOrderMandatory !== false;
   if (ruleError) {
     throw new Error(ruleError);
   }
@@ -566,14 +586,30 @@ async function savePromotion(client, promotionId, payload, createdBy) {
                suggested_item_name = NULL,
                discount_percent = NULL,
                exclude_clearance = $3,
-               start_date = $4,
-               end_date = $5,
-               is_active = $6,
+               quote_enabled = $4,
+               quote_mandatory = $5,
+               sales_order_enabled = $6,
+               sales_order_mandatory = $7,
+               start_date = $8,
+               end_date = $9,
+               is_active = $10,
                updated_at = NOW()
-         WHERE id = $7
+         WHERE id = $11
          RETURNING id
       `,
-      [title, message, excludeClearance, startDate, endDate, isActive, promotionId]
+      [
+        title,
+        message,
+        excludeClearance,
+        quoteEnabled,
+        quoteMandatory,
+        salesOrderEnabled,
+        salesOrderMandatory,
+        startDate,
+        endDate,
+        isActive,
+        promotionId,
+      ]
     );
     await client.query("DELETE FROM promotion_basket_rules WHERE promotion_id = $1", [promotionId]);
   } else {
@@ -584,15 +620,31 @@ async function savePromotion(client, promotionId, payload, createdBy) {
           title,
           message,
           exclude_clearance,
+          quote_enabled,
+          quote_mandatory,
+          sales_order_enabled,
+          sales_order_mandatory,
           start_date,
           end_date,
           is_active,
           created_by
         )
-        VALUES ('basket_discount',$1,$2,$3,$4,$5,$6,$7)
+        VALUES ('basket_discount',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
         RETURNING id
       `,
-      [title, message, excludeClearance, startDate, endDate, isActive, cleanNullableText(createdBy)]
+      [
+        title,
+        message,
+        excludeClearance,
+        quoteEnabled,
+        quoteMandatory,
+        salesOrderEnabled,
+        salesOrderMandatory,
+        startDate,
+        endDate,
+        isActive,
+        cleanNullableText(createdBy),
+      ]
     );
   }
 

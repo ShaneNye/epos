@@ -17,7 +17,30 @@
     initialized: false,
     dismissedStockAlternatives: new Set(),
     stockAlternativeIndexes: new Map(),
+    dismissedBasketPromotions: new Set(),
   };
+
+  function documentPromotionContext() {
+    return String(window.location.pathname || "").toLowerCase().includes("quote")
+      ? "quote"
+      : "sales_order";
+  }
+
+  function promotionEnabledForDocument(promotion) {
+    return documentPromotionContext() === "quote"
+      ? promotion?.quoteEnabled !== false
+      : promotion?.salesOrderEnabled !== false;
+  }
+
+  function promotionMandatoryForDocument(promotion) {
+    return documentPromotionContext() === "quote"
+      ? promotion?.quoteMandatory !== false
+      : promotion?.salesOrderMandatory !== false;
+  }
+
+  function activeBasketPromotions() {
+    return (state.promotions.basketDiscounts || []).filter(promotionEnabledForDocument);
+  }
 
   function money(value) {
     const amount = Number(value || 0);
@@ -434,7 +457,7 @@
     if (row?.dataset?.promotionKind === "basket_discount") return true;
     const id = String(row?.querySelector(".item-internal-id")?.value || "").trim();
     if (!id) return false;
-    return (state.promotions.basketDiscounts || []).some((promotion) =>
+    return activeBasketPromotions().some((promotion) =>
       (promotion.rules || []).some((rule) => String(rule.itemId || "").trim() === id)
     );
   }
@@ -533,7 +556,8 @@
     const desired = [];
     const missing = [];
 
-    (state.promotions.basketDiscounts || []).forEach((promotion) => {
+    activeBasketPromotions().forEach((promotion) => {
+      if (state.dismissedBasketPromotions.has(String(promotion.id))) return;
       const rule = (promotion.rules || []).find((entry) => {
         const subtotal = subtotalForBasketRules(promotion, entry);
         const min = Number(entry.minValue || 0);
@@ -570,7 +594,7 @@
     const rowItemId = String(row?.querySelector(".item-internal-id")?.value || "").trim();
     if (!rowItemId) return null;
 
-    for (const promotion of state.promotions.basketDiscounts || []) {
+    for (const promotion of activeBasketPromotions()) {
       const rule = (promotion.rules || []).find((entry) => {
         const subtotal = subtotalForBasketRules(promotion, entry);
         const min = Number(entry.minValue || 0);
@@ -625,10 +649,12 @@
   }
 
   function markBasketRow(row, desired) {
+    const mandatory = promotionMandatoryForDocument(desired.promotion);
     row.dataset.promotionKind = "basket_discount";
     row.dataset.promotionId = String(desired.promotion.id || "");
     row.dataset.promotionSignature = desired.signature;
     row.dataset.promotionAutoApply = "1";
+    row.dataset.promotionMandatory = mandatory ? "1" : "0";
     row.classList.add("promotion-auto-line");
 
     const search = row.querySelector(".item-search");
@@ -645,8 +671,10 @@
     if (discount) discount.readOnly = true;
     if (salePrice) salePrice.readOnly = true;
     if (deleteBtn) {
-      deleteBtn.disabled = true;
-      deleteBtn.title = "Automatic basket promotion";
+      deleteBtn.disabled = mandatory;
+      deleteBtn.title = mandatory
+        ? "This basket promotion is mandatory"
+        : "Remove this promotion from the current document";
     }
   }
 
@@ -671,6 +699,7 @@
     delete row.dataset.promotionId;
     delete row.dataset.promotionSignature;
     delete row.dataset.promotionAutoApply;
+    delete row.dataset.promotionMandatory;
     delete row.dataset.promotionDiscountAmount;
 
     const salePrice = row.querySelector(".item-saleprice");
@@ -1357,7 +1386,16 @@
       body.addEventListener("input", scheduleSync);
       body.addEventListener("change", scheduleSync);
       body.addEventListener("click", (event) => {
-        if (event.target.closest(".delete-row")) setTimeout(scheduleSync, 0);
+        const deleteButton = event.target.closest(".delete-row");
+        const promotionRow = deleteButton?.closest(".order-line");
+        if (
+          promotionRow?.dataset?.promotionKind === "basket_discount" &&
+          promotionRow.dataset.promotionAutoApply === "1" &&
+          promotionRow.dataset.promotionMandatory === "0"
+        ) {
+          state.dismissedBasketPromotions.add(String(promotionRow.dataset.promotionId || ""));
+        }
+        if (deleteButton) setTimeout(scheduleSync, 0);
       });
 
       const observer = new MutationObserver(() => scheduleSync());
