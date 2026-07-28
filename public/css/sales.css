@@ -161,6 +161,16 @@ textarea:focus {
   border-bottom: none;
 }
 
+.test-customer-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 12px;
+}
+
+.test-customer-actions.hidden {
+  display: none;
+}
+
 /* === TABLE === */
 .order-table {
   width: 100%;

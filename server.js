@@ -240,6 +240,11 @@ app.get("/favicon.ico", (req, res) =>
   res.sendFile(path.join(__dirname, "public", "assets", "moon-man-logo.ico"))
 );
 
+app.get("/api/config/environment", (req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ ok: true, environment: process.env.ENVIRONMENT });
+});
+
 
 const suiteletCache = new Map();
 
