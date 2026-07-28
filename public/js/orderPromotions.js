@@ -38,7 +38,15 @@
       : promotion?.salesOrderMandatory !== false;
   }
 
+  function isNewDocumentPage() {
+    const pathname = String(window.location.pathname || "")
+      .toLowerCase()
+      .replace(/\/+$/, "");
+    return pathname === "/quote/new" || pathname === "/sales/new";
+  }
+
   function activeBasketPromotions() {
+    if (!isNewDocumentPage()) return [];
     return (state.promotions.basketDiscounts || []).filter(promotionEnabledForDocument);
   }
 
