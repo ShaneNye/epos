@@ -523,6 +523,18 @@
     return String(raw || "").split(/[\u0005,]/).map((item) => item.trim()).filter(Boolean);
   }
 
+  function reasonPriority(option, fallbackOrder) {
+    const priority = Number(option?.raw?.Priority);
+    return Number.isFinite(priority) && priority > 0 ? priority : fallbackOrder;
+  }
+
+  function sortShortReasons(items) {
+    return items.sort((left, right) => {
+      const priorityDiff = Number(left.shortOrder || 0) - Number(right.shortOrder || 0);
+      return priorityDiff || left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+    });
+  }
+
   function reasonDisplayConfig(row) {
     const selectedIds = Array.isArray(row["reasons to buy_InternalId"])
       ? row["reasons to buy_InternalId"].map((item) => String(item).trim()).filter(Boolean)
@@ -536,8 +548,7 @@
     selectedIds.forEach((id, index) => {
       const existing = saved[id] || {};
       const option = options.find((item) => String(item.id) === String(id));
-      const priority = Number(option?.raw?.Priority);
-      const defaultOrder = Number.isFinite(priority) && priority > 0 ? priority : index + 1;
+      const defaultOrder = reasonPriority(option, index + 1);
       const defaultFeature = boolValue(option?.raw?.["Detailed Description Default"]);
       const defaultShort = boolValue(option?.raw?.["Short Description Default"]);
       const savedOrder = Number(existing.order);
@@ -590,10 +601,10 @@
           feature: displayConfig[id]?.feature !== false,
           short: displayConfig[id]?.short !== false,
           order: Number.isFinite(Number(displayConfig[id]?.order)) ? Number(displayConfig[id].order) : index + 1,
+          shortOrder: Number.isFinite(Number(displayConfig[id]?.order)) ? Number(displayConfig[id].order) : index + 1,
         };
       }).filter((item) => item.name).sort((left, right) => {
-        const orderDiff = Number(left.order || 0) - Number(right.order || 0);
-        return orderDiff || left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+        return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
       });
     }
 
@@ -621,10 +632,10 @@
         feature: displayConfig[selectedId]?.feature !== false,
         short: displayConfig[selectedId]?.short !== false,
         order: Number.isFinite(Number(displayConfig[selectedId]?.order)) ? Number(displayConfig[selectedId].order) : index + 1,
+        shortOrder: Number.isFinite(Number(displayConfig[selectedId]?.order)) ? Number(displayConfig[selectedId].order) : index + 1,
       };
     }).filter((item) => item.name).sort((left, right) => {
-      const orderDiff = Number(left.order || 0) - Number(right.order || 0);
-      return orderDiff || left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
+      return left.name.localeCompare(right.name, undefined, { sensitivity: "base" });
     });
   }
 
@@ -750,20 +761,14 @@
   }
 
   function webShortDescriptionHtml(row) {
-    const shortReasons = reasonsMeta(row).filter((item) => item.short !== false).slice(0, 8);
+    const shortReasons = sortShortReasons(
+      reasonsMeta(row).filter((item) => item.short !== false)
+    ).slice(0, 10);
     if (!shortReasons.length) return "";
     const rows = [];
     for (let index = 0; index < shortReasons.length; index += 5) {
       rows.push(shortReasons.slice(index, index + 5));
     }
-    const centredSlots = [2, 1, 3, 0, 4];
-    const rowSlots = (rowItems, rowIndex) => {
-      const slots = Array.from({ length: 5 }, () => null);
-      rowItems.forEach((reason, index) => {
-        slots[rowIndex === 0 ? index : centredSlots[index]] = reason;
-      });
-      return slots;
-    };
     const iconCell = (reason) => reason
       ? `
         <td align="center" style="width:64px; text-align:center; vertical-align:top; padding:0 4px;">
@@ -773,15 +778,26 @@
         </td>
       `
       : `<td style="width:64px; padding:0 4px;">&nbsp;</td>`;
+    const iconRow = (rowItems, rowIndex) => {
+      const staggered = rowIndex === 1 && rowItems.length < 5;
+      const rowWidth = staggered ? rowItems.length * 72 : 360;
+      return `
+        <tr>
+          <td align="center" style="width:360px; padding:0; text-align:center;">
+            <table role="presentation" align="center" cellpadding="0" cellspacing="0" style="width:${rowWidth}px; border-collapse:collapse; table-layout:fixed; margin:0 auto; text-align:center;">
+              <tbody>
+                <tr>${rowItems.map(iconCell).join("")}</tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      `;
+    };
     return `
       <div style="display:block; clear:both; width:360px; max-width:100%; margin:0 0 14px 0; padding:0; overflow:hidden;">
         <table role="presentation" cellpadding="0" cellspacing="0" style="width:360px; max-width:360px; border-collapse:separate; border-spacing:0 14px; margin:0; text-align:center;">
           <tbody>
-            ${rows.map((rowItems, rowIndex) => `
-              <tr>
-                ${rowSlots(rowItems, rowIndex).map(iconCell).join("")}
-              </tr>
-            `).join("")}
+            ${rows.map(iconRow).join("")}
           </tbody>
         </table>
       </div>
@@ -903,7 +919,6 @@
     const images = previewImages(row);
     const hero = images[0] || "";
     const thumbs = images.slice(0, 4);
-    const reasonItems = reasonsMeta(row);
     const sizes = sizeOptions(row);
     const title = escapeHtml(row.Name || row["Display Name"] || "Product Preview");
     const className = escapeHtml(valueText(row.Class));
@@ -911,7 +926,7 @@
     const purchaseText = formatCurrency(row["Purchase Price"]);
     const baseText = formatCurrency(row["Base Price"]);
     const leadTime = escapeHtml(valueText(row["Lead Time"]));
-    const summaryReasons = reasonItems.filter((item) => item.short !== false).slice(0, 8);
+    const shortDescriptionIconsHtml = webShortDescriptionHtml(row);
     const productDescriptionHtml = webDescriptionHtml(row);
 
     return `<!doctype html>
@@ -1030,13 +1045,7 @@
         <div class="eyebrow">${className || "Web preview"}</div>
         <h1>${title}</h1>
         <div class="summary-top">
-          ${summaryReasons.length ? `<div class="summary-icons">${summaryReasons.slice(0, 8).map((reason) => `
-            <div class="summary-icon">
-              <div class="summary-icon-badge">
-                ${reason.iconUrl ? `<img src="${escapeHtml(reason.iconUrl)}" alt="${escapeHtml(reason.name)} icon">` : `<span>${escapeHtml(reason.name.slice(0, 1).toUpperCase())}</span>`}
-              </div>
-            </div>
-          `).join("")}</div>` : ""}
+          ${shortDescriptionIconsHtml}
         </div>
         ${leadTime ? `<div class="delivery-note">Order now and get by ${leadTime}</div>` : ""}
         ${retailText ? `<div class="price-row">${baseText ? `<div class="was-price">${baseText}</div>` : ""}<div class="price">${retailText}</div><div class="price-note">from</div></div>` : ""}
@@ -3729,8 +3738,7 @@
       Array.from(selected).forEach((id, index) => {
         const option = options.find((item) => String(item.id) === String(id));
         const saved = existing[id] || {};
-        const priority = Number(option?.raw?.Priority);
-        const defaultOrder = Number.isFinite(priority) && priority > 0 ? priority : index + 1;
+        const defaultOrder = reasonPriority(option, index + 1);
         const defaultFeature = boolValue(option?.raw?.["Detailed Description Default"]);
         const defaultShort = boolValue(option?.raw?.["Short Description Default"]);
         config[id] = {
@@ -3802,10 +3810,10 @@
     if (!id) return null;
     if (!state.modal.config[id]) {
       const usedOrders = Object.values(state.modal.config || {}).map((item) => Number(item.order)).filter(Number.isFinite);
-      const priority = Number(option?.raw?.Priority);
-      const defaultOrder = Number.isFinite(priority) && priority > 0
-        ? priority
-        : usedOrders.length ? Math.max(...usedOrders) + 1 : 1;
+      const defaultOrder = reasonPriority(
+        option,
+        usedOrders.length ? Math.max(...usedOrders) + 1 : 1
+      );
       state.modal.config[id] = {
         feature: boolValue(option?.raw?.["Detailed Description Default"]),
         short: boolValue(option?.raw?.["Short Description Default"]),

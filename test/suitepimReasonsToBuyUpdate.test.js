@@ -70,3 +70,37 @@ test("Reasons To Buy description defaults flow into Item Management with manual 
   assert.match(itemManagementSource, /manualFeature/);
   assert.match(itemManagementSource, /manualShort/);
 });
+
+test("Reasons To Buy Priority defaults short-description order while features stay alphabetical", () => {
+  const itemManagementSource = fs.readFileSync(
+    path.join(root, "public", "js", "suitepimWebManagement.js"),
+    "utf8"
+  );
+
+  assert.match(itemManagementSource, /function reasonPriority\(/);
+  assert.match(itemManagementSource, /shortOrder: Number\.isFinite\(Number\(displayConfig/);
+  assert.match(itemManagementSource, /function sortShortReasons\(/);
+  assert.match(itemManagementSource, /webShortDescriptionHtml[\s\S]*sortShortReasons\(/);
+  assert.match(
+    itemManagementSource,
+    /const defaultOrder = reasonPriority\(option, index \+ 1\)/
+  );
+  assert.match(
+    itemManagementSource,
+    /\.filter\(\(item\) => item\.name\)\.sort\(\(left, right\) => \{\s*return left\.name\.localeCompare/
+  );
+});
+
+test("short descriptions show up to ten icons with a centred partial second row", () => {
+  const itemManagementSource = fs.readFileSync(
+    path.join(root, "public", "js", "suitepimWebManagement.js"),
+    "utf8"
+  );
+
+  assert.match(itemManagementSource, /\.slice\(0, 10\)/);
+  assert.match(itemManagementSource, /rowIndex === 1 && rowItems\.length < 5/);
+  assert.match(itemManagementSource, /rowItems\.length \* 72/);
+  assert.match(itemManagementSource, /margin:0 auto/);
+  assert.match(itemManagementSource, /const shortDescriptionIconsHtml = webShortDescriptionHtml\(row\)/);
+  assert.doesNotMatch(itemManagementSource, /summaryReasons\.slice\(0, 8\)/);
+});

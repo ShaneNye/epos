@@ -2325,11 +2325,13 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
     if (!applications.length) throw new Error("Select an Invoice and Credit Memo to apply.");
     var sourceInvoiceId = Number(applications[0] && applications[0].invoiceId);
     if (!sourceInvoiceId) throw new Error("A valid Invoice ID is required to apply a Credit Memo.");
-    // Starting from the selected invoice gives the payment a concrete transaction,
-    // currency and subsidiary context and sources the applicable credit lines.
+    // Customer Payment is a supported transform from Customer, not Invoice.
+    // Transforming the invoice can misleadingly fail with "That record does not
+    // exist" even when the selected invoice is valid. The customer's payment
+    // apply/credit lists contain the open invoices and credit memos we match below.
     var payment = record.transform({
-      fromType: record.Type.INVOICE,
-      fromId: sourceInvoiceId,
+      fromType: record.Type.CUSTOMER,
+      fromId: customerId,
       toType: record.Type.CUSTOMER_PAYMENT,
       isDynamic: true,
     });
@@ -2351,7 +2353,9 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
       };
     }
 
-    payment.setValue({ fieldId: "payment", value: 0 });
+    // Do not explicitly set the body payment amount to zero. NetSuite rejects
+    // zero through setValue in accounts where the field has a positive minimum.
+    // The invoice and credit sublist allocations below source the net amount.
     var applied = [];
     var creditTotals = {};
     applications.forEach(function (application) {
