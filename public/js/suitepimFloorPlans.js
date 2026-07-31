@@ -2520,9 +2520,22 @@
 
   async function loadLocations() {
     const path = state.viewOnly ? "/api/suitepim/floor-plan-current-locations" : "/api/meta/locations";
-    const data = await api(path, { headers: { "Content-Type": "application/json" } });
+    const [data, currentUser] = await Promise.all([
+      api(path, { headers: { "Content-Type": "application/json" } }),
+      api("/api/me").catch(() => null),
+    ]);
     state.locations = (data.locations || []).filter((location) => location.id && location.name);
-    state.selectedLocationId = String(state.locations[0]?.id || "");
+    const savedSession = typeof storageGet === "function" ? storageGet() : null;
+    const primaryStoreId = currentUser?.user?.primaryStore ||
+      savedSession?.user?.primaryStore ||
+      savedSession?.user?.location?.id ||
+      savedSession?.user?.location_id ||
+      savedSession?.location_id ||
+      "";
+    const primaryStore = state.locations.find(
+      (location) => String(location.id) === String(primaryStoreId)
+    );
+    state.selectedLocationId = String(primaryStore?.id || state.locations[0]?.id || "");
     renderLocations();
   }
 
