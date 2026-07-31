@@ -1599,7 +1599,7 @@
       `;
     }
 
-    function workflowHistorySegmentHtml() {
+    function workflowHistorySegmentHtml(savedWorkflowId = "") {
       const checkpointActions = Array.isArray(workflowRun.checkpoint?.actions) ? workflowRun.checkpoint.actions : [];
       const completedActions = checkpointActions.filter((action) =>
         ["success", "failed", "skipped"].includes(String(action.executionState || "").toLowerCase())
@@ -1620,6 +1620,13 @@
                   <span class="case-status"> ${escapeHtml(workflowActionTypeLabel(action.actionType))} - ${escapeHtml(stateLabel)}</span>
                   <div>${workflowActionMessageHtml(action)}</div>
                   ${action.executionError ? `<div class="workflow-action-error">${escapeHtml(action.executionError)}</div>` : ""}
+                  ${state === "failed" && savedWorkflowId ? `
+                    <div class="workflow-allocation-actions">
+                      <button type="button" class="btn-secondary"
+                        data-retry-saved-workflow="${escapeHtml(savedWorkflowId)}"
+                        data-retry-saved-action="${escapeHtml(action.nodeId || "")}">Retry Action</button>
+                    </div>
+                  ` : ""}
                 </div>
               </div>
             </td>
@@ -3506,6 +3513,40 @@
           });
         });
       });
+      banner.querySelectorAll("[data-retry-saved-workflow]").forEach((button) => {
+        button.addEventListener("click", async (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const workflowId = button.dataset.retrySavedWorkflow || "";
+          const nodeId = button.dataset.retrySavedAction || "";
+          button.disabled = true;
+          button.textContent = "Retrying...";
+          try {
+            await selectWorkflowProgress(workflowId);
+            const index = workflowRun.actions.findIndex((action) => String(action.nodeId || "") === String(nodeId));
+            if (index < 0) throw new Error("The saved workflow action could not be found.");
+            await executeWorkflowActionAtIndex(index);
+            await saveWorkflowProgress({ status: "completed", breakNodeId: "" });
+            renderWorkflowProgressBanner();
+          } catch (err) {
+            if (err.message === "__WORKFLOW_ACTION_WAITING_FOR_INPUT__") {
+              renderWorkflowExecutionTable();
+              renderWorkflowRunner();
+              return;
+            }
+            const index = workflowRun.actions.findIndex((action) => String(action.nodeId || "") === String(nodeId));
+            if (index >= 0) {
+              updateWorkflowActionRow(index, {
+                executionState: "failed",
+                executionMessage: workflowRun.actions[index]?.message || "Action failed.",
+                executionError: err.message || "Action failed.",
+              });
+              await saveWorkflowProgress({ status: "completed", breakNodeId: "" }).catch(() => {});
+            }
+            renderWorkflowProgressBanner();
+          }
+        });
+      });
     }
 
     function workflowProgressAuditHtml(entry = {}) {
@@ -3539,16 +3580,16 @@
             ${actionButton}
           </summary>
           <div class="workflow-progress-body">
-            ${workflowProgressHistoryHtml(progress)}
+            ${workflowProgressHistoryHtml(progress, entry.workflowId)}
           </div>
         </details>
       `;
     }
 
-    function workflowProgressHistoryHtml(progress = {}) {
+    function workflowProgressHistoryHtml(progress = {}, workflowId = "") {
       const previousCheckpoint = workflowRun.checkpoint;
       workflowRun.checkpoint = progress;
-      const html = workflowHistorySegmentHtml() || '<p class="case-status">No recorded actions or checks were saved for this workflow.</p>';
+      const html = workflowHistorySegmentHtml(workflowId) || '<p class="case-status">No recorded actions or checks were saved for this workflow.</p>';
       workflowRun.checkpoint = previousCheckpoint;
       return html;
     }

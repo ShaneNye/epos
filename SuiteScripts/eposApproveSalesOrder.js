@@ -2325,13 +2325,20 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
     if (!applications.length) throw new Error("Select an Invoice and Credit Memo to apply.");
     var sourceInvoiceId = Number(applications[0] && applications[0].invoiceId);
     if (!sourceInvoiceId) throw new Error("A valid Invoice ID is required to apply a Credit Memo.");
-    // Customer Payment is a supported transform from Customer, not Invoice.
-    // Transforming the invoice can misleadingly fail with "That record does not
-    // exist" even when the selected invoice is valid. The customer's payment
-    // apply/credit lists contain the open invoices and credit memos we match below.
+    var sourceInvoice = record.load({
+      type: record.Type.INVOICE,
+      id: sourceInvoiceId,
+      isDynamic: false,
+    });
+    var invoiceCustomerId = Number(sourceInvoice.getValue({ fieldId: "entity" }) || 0);
+    if (invoiceCustomerId !== customerId) {
+      throw new Error("The selected Invoice does not belong to the case customer.");
+    }
+    // Transform the selected invoice so NetSuite sources the exact currency,
+    // subsidiary and A/R account context used by Accept Payment in the UI.
     var payment = record.transform({
-      fromType: record.Type.CUSTOMER,
-      fromId: customerId,
+      fromType: record.Type.INVOICE,
+      fromId: sourceInvoiceId,
       toType: record.Type.CUSTOMER_PAYMENT,
       isDynamic: true,
     });
@@ -2361,7 +2368,14 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
     applications.forEach(function (application) {
       var invoice = invoices.filter(function (row) { return String(row.id) === String(application.invoiceId); })[0];
       var credit = credits.filter(function (row) { return String(row.id) === String(application.creditMemoId); })[0];
-      if (!invoice || !credit) throw new Error("The selected Invoice or Credit Memo is no longer open.");
+      if (!invoice || !credit) {
+        var missing = !invoice && !credit ? "Invoice and Credit Memo" : !invoice ? "Invoice" : "Credit Memo";
+        throw new Error(
+          "The selected " + missing + " was not available on the Customer Payment. " +
+          "NetSuite returned invoices [" + invoices.map(function (row) { return row.tranId; }).join(", ") +
+          "] and credits [" + credits.map(function (row) { return row.tranId; }).join(", ") + "]."
+        );
+      }
       var requested = Math.abs(Number(application.amount || 0));
       var amount = Math.min(requested || Number(invoice.remaining), Number(invoice.remaining), Number(credit.remaining));
       if (!(amount > 0)) throw new Error("Enter a positive Credit Memo application amount.");

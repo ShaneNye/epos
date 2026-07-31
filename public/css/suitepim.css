@@ -1144,6 +1144,20 @@ body.suitepim-nav-open .suitepim-side-nav-tab {
     #fdfdfb;
 }
 
+.suitepim-floorplan-asset-preview-corner-left {
+  clip-path: polygon(0 0, 100% 0, 100% 42%, 42% 42%, 42% 100%, 0 100%);
+}
+
+.suitepim-floorplan-asset-preview-corner-right {
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 58% 100%, 58% 42%, 0 42%);
+}
+
+.suitepim-floorplan-asset-preview-chair {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px 11px 7px 7px;
+}
+
 .suitepim-floorplan-assets strong,
 .suitepim-floorplan-bins strong {
   font-size: 0.9rem;
@@ -1816,7 +1830,8 @@ body.suitepim-floorplan-dark .suitepim-floorplan-data-table td {
 }
 
 .suitepim-floorplan-placed-asset rect,
-.suitepim-floorplan-placed-asset circle {
+.suitepim-floorplan-placed-asset circle,
+.suitepim-floorplan-placed-asset polygon {
   fill: rgba(253, 253, 251, 0.94);
   stroke: #1b1f21;
   stroke-width: 1.1;
@@ -1851,10 +1866,48 @@ body.suitepim-floorplan-dark .suitepim-floorplan-data-table td {
 }
 
 .suitepim-floorplan-placed-asset.is-selected rect,
-.suitepim-floorplan-placed-asset.is-selected circle {
+.suitepim-floorplan-placed-asset.is-selected circle,
+.suitepim-floorplan-placed-asset.is-selected polygon {
   stroke: #0081ab;
   stroke-width: 2;
   filter: drop-shadow(0 0 2px rgba(0, 129, 171, 0.35));
+}
+
+.suitepim-floorplan-placed-asset.has-duplicate-bin > rect,
+.suitepim-floorplan-placed-asset.has-duplicate-bin > circle,
+.suitepim-floorplan-placed-asset.has-duplicate-bin > polygon {
+  stroke: #d7263d;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 2px rgba(215, 38, 61, 0.4));
+}
+
+.suitepim-floorplan-placed-asset.has-missing-bin > rect,
+.suitepim-floorplan-placed-asset.has-missing-bin > circle,
+.suitepim-floorplan-placed-asset.has-missing-bin > polygon {
+  stroke: #d7263d;
+  stroke-width: 2.5;
+  filter: drop-shadow(0 0 2px rgba(215, 38, 61, 0.4));
+}
+
+.suitepim-floorplan-duplicate-bin-warning,
+.suitepim-floorplan-missing-bin-warning {
+  pointer-events: none;
+}
+
+.suitepim-floorplan-placed-asset .suitepim-floorplan-duplicate-bin-warning circle,
+.suitepim-floorplan-placed-asset .suitepim-floorplan-missing-bin-warning circle {
+  fill: #d7263d;
+  stroke: #fff;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 1px 2px rgba(79, 11, 20, 0.4));
+}
+
+.suitepim-floorplan-placed-asset .suitepim-floorplan-duplicate-bin-warning text,
+.suitepim-floorplan-placed-asset .suitepim-floorplan-missing-bin-warning text {
+  fill: #fff;
+  stroke: none;
+  font-size: 10px;
+  font-weight: 900;
 }
 
 .suitepim-floorplan-stencil image {
@@ -1898,7 +1951,8 @@ body.suitepim-floorplan-dark .suitepim-floorplan-data-table td {
 }
 
 .suitepim-floorplan-canvas.is-editing .suitepim-floorplan-placed-asset rect,
-.suitepim-floorplan-canvas.is-editing .suitepim-floorplan-placed-asset circle {
+.suitepim-floorplan-canvas.is-editing .suitepim-floorplan-placed-asset circle,
+.suitepim-floorplan-canvas.is-editing .suitepim-floorplan-placed-asset polygon {
   cursor: move;
 }
 

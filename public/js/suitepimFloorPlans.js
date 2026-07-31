@@ -15,6 +15,9 @@
     { key: "wide-display-stand", name: "Wide display stand", width: 2.4, height: 0.8 },
     { key: "circle-coffee-table", name: "Circle coffee table", width: 0.9, height: 0.9, shape: "circle" },
     { key: "desk", name: "Desk", width: 1.2, height: 0.6 },
+    { key: "corner-desk-left", name: "Corner desk (left)", width: 1.8, height: 1.5, shape: "corner-left" },
+    { key: "corner-desk-right", name: "Corner desk (right)", width: 1.8, height: 1.5, shape: "corner-right" },
+    { key: "office-chair", name: "Office chair", width: 0.65, height: 0.65, shape: "chair" },
     { key: "sofa-small", name: "Sofa (small)", width: 1.5, height: 0.8 },
     { key: "sofa-medium", name: "Sofa (medium)", width: 2.0, height: 0.9 },
     { key: "sofa-large", name: "Sofa (large)", width: 2.5, height: 1.0 },
@@ -29,6 +32,7 @@
     editMode: false,
     tool: "line",
     lockGrid: true,
+    measurementsVisible: true,
     draft: null,
     movingAsset: null,
     resizingElement: null,
@@ -98,6 +102,7 @@
       "suitepimFloorPlanBins",
       "suitepimFloorPlanName",
       "suitepimFloorPlanLockGrid",
+      "suitepimFloorPlanMeasurements",
       "suitepimFloorPlanCurrent",
       "suitepimFloorPlanZoomOut",
       "suitepimFloorPlanZoomIn",
@@ -569,7 +574,7 @@
         draggable="true"
         data-floorplan-asset="${clean(asset.key)}"
         aria-label="Drag ${clean(asset.name)} onto the floor plan">
-        <span class="suitepim-floorplan-asset-preview" style="--asset-ratio:${asset.width / asset.height}"></span>
+        <span class="suitepim-floorplan-asset-preview suitepim-floorplan-asset-preview-${clean(asset.shape || "standard")}" style="--asset-ratio:${asset.width / asset.height}"></span>
         <strong>${clean(asset.name)}</strong>
       </button>
     `).join("");
@@ -956,6 +961,7 @@
   }
 
   function dimensionMarkup(element) {
+    if (!state.measurementsVisible) return "";
     const g = lineGeometry(element);
     const offset = 18;
     const tick = 5;
@@ -977,7 +983,7 @@
     `;
   }
 
-  function assetMarkup(element) {
+  function assetMarkup(element, duplicateBinNumbers = new Set()) {
     const asset = assetByKey(element.assetKey);
     const width = Number(element.width) || asset?.width || 1;
     const height = Number(element.height) || asset?.height || 1;
@@ -987,6 +993,9 @@
     const h = height * PX_PER_METER;
     const label = asset?.name || element.name || "Asset";
     const binLabel = floorPlanBinLabel(element.bin?.number || "");
+    const binNumberKey = String(element.bin?.number || "").trim().toLocaleLowerCase();
+    const hasDuplicateBin = Boolean(binNumberKey && duplicateBinNumbers.has(binNumberKey));
+    const hasMissingBin = !state.editMode && !binNumberKey;
     const mainLabel = binLabel || label;
     const selected = state.selectedElementId === element.id || state.selectedAssetIds.has(element.id);
     const rotation = Number(element.rotation) || 0;
@@ -1029,23 +1038,62 @@
       ? `<title>${clean([element.bin?.number, heatmapTitle, element.note].filter(Boolean).join(" - "))}</title>`
       : "";
     const shape = element.shape || asset?.shape || "";
-    const body = shape === "circle"
+    const duplicateWarning = hasDuplicateBin
       ? `
+        <g class="suitepim-floorplan-duplicate-bin-warning" aria-label="Duplicate bin">
+          <circle cx="${(x + w + 7).toFixed(2)}" cy="${(y + 7).toFixed(2)}" r="7" />
+          <text x="${(x + w + 7).toFixed(2)}" y="${(y + 7.5).toFixed(2)}">!</text>
+        </g>
+      `
+      : "";
+    const missingBinWarning = hasMissingBin
+      ? `
+        <g class="suitepim-floorplan-missing-bin-warning" aria-label="No bin assigned">
+          <circle cx="${(x + w + 7).toFixed(2)}" cy="${(y + 7).toFixed(2)}" r="7" />
+          <text x="${(x + w + 7).toFixed(2)}" y="${(y + 7.5).toFixed(2)}">?</text>
+        </g>
+      `
+      : "";
+    let body;
+    if (shape === "circle") {
+      body = `
         <circle cx="${centerX.toFixed(2)}" cy="${centerY.toFixed(2)}" r="${(Math.min(w, h) / 2).toFixed(2)}"${rectStyle} />
         <line x1="${(centerX - w * 0.22).toFixed(2)}" y1="${(centerY - h * 0.22).toFixed(2)}" x2="${(centerX + w * 0.22).toFixed(2)}" y2="${(centerY + h * 0.22).toFixed(2)}" />
         <line x1="${(centerX - w * 0.22).toFixed(2)}" y1="${(centerY + h * 0.22).toFixed(2)}" x2="${(centerX + w * 0.22).toFixed(2)}" y2="${(centerY - h * 0.22).toFixed(2)}" />
-      `
-      : `
+      `;
+    } else if (shape === "corner-left" || shape === "corner-right") {
+      const leftHanded = shape === "corner-left";
+      const points = leftHanded
+        ? `${x},${y} ${x + w},${y} ${x + w},${y + h * 0.42} ${x + w * 0.42},${y + h * 0.42} ${x + w * 0.42},${y + h} ${x},${y + h}`
+        : `${x},${y} ${x + w},${y} ${x + w},${y + h} ${x + w * 0.58},${y + h} ${x + w * 0.58},${y + h * 0.42} ${x},${y + h * 0.42}`;
+      const returnX = leftHanded ? x + w * 0.21 : x + w * 0.79;
+      body = `
+        <polygon points="${points}"${rectStyle} />
+        <line x1="${(x + 4).toFixed(2)}" y1="${(y + h * 0.21).toFixed(2)}" x2="${(x + w - 4).toFixed(2)}" y2="${(y + h * 0.21).toFixed(2)}" />
+        <line x1="${returnX.toFixed(2)}" y1="${(y + h * 0.42).toFixed(2)}" x2="${returnX.toFixed(2)}" y2="${(y + h - 4).toFixed(2)}" />
+      `;
+    } else if (shape === "chair") {
+      body = `
+        <rect x="${(x + w * 0.18).toFixed(2)}" y="${(y + h * 0.22).toFixed(2)}" width="${(w * 0.64).toFixed(2)}" height="${(h * 0.56).toFixed(2)}" rx="${(Math.min(w, h) * 0.12).toFixed(2)}"${rectStyle} />
+        <rect x="${(x + w * 0.12).toFixed(2)}" y="${(y + h * 0.06).toFixed(2)}" width="${(w * 0.76).toFixed(2)}" height="${(h * 0.2).toFixed(2)}" rx="${(Math.min(w, h) * 0.08).toFixed(2)}"${rectStyle} />
+        <line x1="${centerX.toFixed(2)}" y1="${(y + h * 0.78).toFixed(2)}" x2="${centerX.toFixed(2)}" y2="${(y + h * 0.93).toFixed(2)}" />
+        <line x1="${(x + w * 0.2).toFixed(2)}" y1="${(y + h * 0.93).toFixed(2)}" x2="${(x + w * 0.8).toFixed(2)}" y2="${(y + h * 0.93).toFixed(2)}" />
+      `;
+    } else {
+      body = `
         <rect x="${x.toFixed(2)}" y="${y.toFixed(2)}" width="${w.toFixed(2)}" height="${h.toFixed(2)}" rx="1.5"${rectStyle} />
         <line x1="${(x + 4).toFixed(2)}" y1="${(y + 4).toFixed(2)}" x2="${(x + w - 4).toFixed(2)}" y2="${(y + 4).toFixed(2)}" />
         <line x1="${(x + 4).toFixed(2)}" y1="${(y + h / 2).toFixed(2)}" x2="${(x + w - 4).toFixed(2)}" y2="${(y + h / 2).toFixed(2)}" />
       `;
+    }
     return `
-      <g class="suitepim-floorplan-placed-asset${selected ? " is-selected" : ""}" data-element-id="${clean(element.id)}"${rotationTransform ? ` transform="${rotationTransform}"` : ""}>
+      <g class="suitepim-floorplan-placed-asset${selected ? " is-selected" : ""}${hasDuplicateBin ? " has-duplicate-bin" : ""}${hasMissingBin ? " has-missing-bin" : ""}" data-element-id="${clean(element.id)}"${rotationTransform ? ` transform="${rotationTransform}"` : ""}>
         ${title}
         ${body}
         <text class="suitepim-floorplan-asset-bin-main" x="${(x + w / 2).toFixed(2)}" y="${(y + h / 2).toFixed(2)}"${textStyle}>${clean(mainLabel)}</text>
         <text class="suitepim-floorplan-asset-size-label" x="${(x + w / 2).toFixed(2)}" y="${(y + h - 4).toFixed(2)}"${textStyle}>${clean(label)}</text>
+        ${duplicateWarning}
+        ${missingBinWarning}
       </g>
     `;
   }
@@ -1060,8 +1108,8 @@
     `;
   }
 
-  function elementMarkup(element, isDraft = false) {
-    if (element.type === "asset") return assetMarkup(element);
+  function elementMarkup(element, isDraft = false, duplicateBinNumbers = new Set()) {
+    if (element.type === "asset") return assetMarkup(element, duplicateBinNumbers);
     const selected = state.selectedElementId === element.id;
     const body = element.type === "door"
       ? `${openingMarkup(element, "suitepim-floorplan-door")}${doorSwingMarkup(element)}`
@@ -1335,7 +1383,18 @@
       ...data.elements.filter((element) => element.isStencil),
       ...data.elements.filter((element) => !element.isStencil),
     ];
-    const elements = orderedElements.map((element) => elementMarkup(element)).join("");
+    const binCounts = new Map();
+    data.elements.forEach((element) => {
+      if (element.type !== "asset") return;
+      const binNumberKey = String(element.bin?.number || "").trim().toLocaleLowerCase();
+      if (binNumberKey) binCounts.set(binNumberKey, (binCounts.get(binNumberKey) || 0) + 1);
+    });
+    const duplicateBinNumbers = new Set(
+      [...binCounts.entries()]
+        .filter(([, count]) => count > 1)
+        .map(([binNumber]) => binNumber)
+    );
+    const elements = orderedElements.map((element) => elementMarkup(element, false, duplicateBinNumbers)).join("");
     const draft = state.draft ? elementMarkup(state.draft, true) : "";
 
     el.suitepimFloorPlanCanvas.setAttribute("viewBox", `0 0 ${widthPx} ${heightPx}`);
@@ -2659,6 +2718,10 @@
     el.suitepimFloorPlanLockGrid?.addEventListener("change", () => {
       state.lockGrid = el.suitepimFloorPlanLockGrid.checked;
     });
+    el.suitepimFloorPlanMeasurements?.addEventListener("change", () => {
+      state.measurementsVisible = el.suitepimFloorPlanMeasurements.checked;
+      renderCanvas();
+    });
     el.suitepimFloorPlanZoomOut?.addEventListener("click", () => setZoom(state.zoom - 0.15));
     el.suitepimFloorPlanZoomIn?.addEventListener("click", () => setZoom(state.zoom + 0.15));
 
@@ -2798,7 +2861,13 @@
     initEls();
     if (!el.suitepimFloorPlanCanvas) return;
     state.viewOnly = document.getElementById("suitepimFloorPlanApp")?.dataset.floorplanViewOnly === "true";
-    if (state.viewOnly) state.editMode = false;
+    if (state.viewOnly) {
+      state.editMode = false;
+      state.measurementsVisible = false;
+    }
+    if (el.suitepimFloorPlanMeasurements) {
+      el.suitepimFloorPlanMeasurements.checked = state.measurementsVisible;
+    }
     applyFloorPlanTheme(localStorage.getItem(THEME_STORAGE_KEY) || "light");
     bindEvents();
     updateEditControls();
