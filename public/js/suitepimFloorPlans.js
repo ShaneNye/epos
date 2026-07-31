@@ -1519,6 +1519,24 @@
     if (!state.editMode || event.button !== 0 || state.tool === "select") return false;
     if (event.target.closest?.(".suitepim-floorplan-placed-asset")) return false;
     const point = canvasPoint(event);
+    if (state.tool === "custom-asset") {
+      event.preventDefault();
+      state.draft = {
+        id: `draft-${Date.now()}`,
+        type: "asset",
+        assetKey: "custom",
+        name: "Custom asset",
+        x: point.x,
+        y: point.y,
+        width: 0.1,
+        height: 0.1,
+        rotation: 0,
+        draftOriginX: point.x,
+        draftOriginY: point.y,
+      };
+      renderCanvas();
+      return true;
+    }
     state.draft = {
       id: `draft-${Date.now()}`,
       type: state.tool,
@@ -1533,6 +1551,17 @@
 
   function updateDrawing(event) {
     if (!state.draft) return;
+    if (state.draft.type === "asset" && state.draft.assetKey === "custom") {
+      const end = canvasPoint(event);
+      const originX = Number(state.draft.draftOriginX) || 0;
+      const originY = Number(state.draft.draftOriginY) || 0;
+      state.draft.x = Math.min(originX, end.x);
+      state.draft.y = Math.min(originY, end.y);
+      state.draft.width = Math.max(0.1, Math.abs(end.x - originX));
+      state.draft.height = Math.max(0.1, Math.abs(end.y - originY));
+      renderCanvas();
+      return;
+    }
     const start = { x: state.draft.x1, y: state.draft.y1 };
     const end = lockedEndPoint(start, canvasPoint(event));
     const data = planData();
@@ -1545,6 +1574,29 @@
     if (!state.draft) return false;
     const draft = state.draft;
     state.draft = null;
+    if (draft.type === "asset" && draft.assetKey === "custom") {
+      if (draft.width < 0.2 || draft.height < 0.2) {
+        renderCanvas();
+        showStatus("Drag to create a custom asset area", "warning");
+        return true;
+      }
+      pushHistory();
+      const data = planData();
+      delete draft.draftOriginX;
+      delete draft.draftOriginY;
+      draft.id = `asset-${Date.now()}-${Math.random().toString(16).slice(2, 8)}`;
+      draft.x = Math.round(draft.x * 100) / 100;
+      draft.y = Math.round(draft.y * 100) / 100;
+      draft.width = Math.round(draft.width * 100) / 100;
+      draft.height = Math.round(draft.height * 100) / 100;
+      data.elements.push(draft);
+      setPlanData(data);
+      selectAsset(draft.id);
+      setDirty();
+      showStatus("Custom asset created. Drag a bin onto it to assign the area.", "success");
+      renderCanvas();
+      return true;
+    }
     if (draft.x1 === draft.x2 && draft.y1 === draft.y2) {
       renderCanvas();
       return true;
@@ -2810,6 +2862,9 @@
         });
         updateEditControls();
         renderCanvas();
+        if (state.tool === "custom-asset") {
+          showStatus("Click and drag on the floor plan to create a custom asset area.", "info");
+        }
       });
     });
 
