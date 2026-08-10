@@ -1701,7 +1701,14 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
       const invId = invIds[0];
 
       setCurrentIfDefined(soRec, "custcol_sb_lotnumber", invId);
-      clearCurrentField(soRec, "custcol_sb_epos_inventory_meta");
+      // Transfer Order automation needs the complete allocation (quantity,
+      // source location, status and inventory number). Retain EPOS Inv Meta
+      // when NetSuite can also store the allocation as a single lot number.
+      setCurrentIfDefined(
+        soRec,
+        "custcol_sb_epos_inventory_meta",
+        inventoryDetail
+      );
 
       log.debug("🔧 Current line inventory applied as lot only", {
         warehouseId,

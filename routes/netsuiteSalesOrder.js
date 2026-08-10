@@ -5802,6 +5802,32 @@ async function createLinkedTransferOrdersForSalesOrder({
   };
 }
 
+async function loadPersistedTransferOrderLines(salesOrderId, userId) {
+  const internalId = await resolveSalesOrderInternalId(salesOrderId, userId);
+  const suiteql = await fetchSalesOrderLineSuiteQl(internalId, userId);
+  const rows = Array.isArray(suiteql?.items) ? suiteql.items : [];
+
+  return rows.map((row) => ({
+    lineId: String(row.lineid || row.LINEID || "").trim(),
+    itemId: String(row.item || row.ITEM || "").trim(),
+    item: { id: String(row.item || row.ITEM || "").trim() },
+    quantity: Math.abs(Number(row.quantity ?? row.QUANTITY) || 0),
+    fulfilmentMethod: String(
+      row.custcol_sb_fulfilmentlocation ||
+        row.CUSTCOL_SB_FULFILMENTLOCATION ||
+        ""
+    ).trim(),
+    inventoryMeta: normalizeInventoryDetailString(
+      row.custcol_sb_epos_inventory_meta ||
+        row.CUSTCOL_SB_EPOS_INVENTORY_META ||
+        ""
+    ),
+    takenFromStore: [true, "T", "true", "1", 1].includes(
+      row.custcol_sb_taken_from_store ?? row.CUSTCOL_SB_TAKEN_FROM_STORE
+    ),
+  }));
+}
+
 async function forceSalesOrderPendingApproval(salesOrderId, userId) {
   const attempts = [
     { orderstatus: SALES_ORDER_PENDING_APPROVAL_LEGACY_STATUS },
@@ -9623,10 +9649,28 @@ router.post("/:id/commit", async (req, res) => {
 
     const pairedMemoSync = await ensurePairedSalesOrderMemoSync(id, headerUpdates, userId, data);
 
+    let transferOrderLines = normalizedLines;
+    const transferLineWarnings = [];
+    try {
+      const persistedLines = await loadPersistedTransferOrderLines(id, userId);
+      if (persistedLines.length) {
+        transferOrderLines = persistedLines;
+      } else {
+        transferLineWarnings.push(
+          "NetSuite returned no persisted Sales Order lines; transfer automation used the submitted lines."
+        );
+      }
+    } catch (err) {
+      console.error("Could not reload persisted Sales Order lines for transfer automation:", err.message);
+      transferLineWarnings.push(
+        `Could not reload persisted Sales Order lines; transfer automation used the submitted lines (${err.message}).`
+      );
+    }
+
     const transferCreation = await createLinkedTransferOrdersForSalesOrder({
       salesOrderId: id,
       order: headerUpdates,
-      items: normalizedLines,
+      items: transferOrderLines,
       storeName: patchStoreName,
       userId,
     }).catch((err) => {
@@ -9699,6 +9743,7 @@ router.post("/:id/commit", async (req, res) => {
         ...((transferCreation.warnings || []).map(
           (warning) => `Linked Transfer Order pre-check warning: ${warning}`
         )),
+        ...transferLineWarnings,
         ...(comsSalesValue.ok ? [] : [comsSalesValue.error]),
         ...(customerEmailSentFlag.ok
           ? []

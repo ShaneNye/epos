@@ -29,3 +29,13 @@ test("Sales Order RESTlet reports line-processing failures", () => {
   );
 });
 
+test("Sales Order saves retain EPOS Inv Meta when a lot number is also set", () => {
+  assert.match(
+    source,
+    /if \(canSetLot\) \{[\s\S]*?"custcol_sb_lotnumber", invId[\s\S]*?"custcol_sb_epos_inventory_meta",[\s\S]*?inventoryDetail/
+  );
+  assert.doesNotMatch(
+    source,
+    /if \(canSetLot\) \{[\s\S]*?clearCurrentField\(soRec, "custcol_sb_epos_inventory_meta"\)/
+  );
+});
