@@ -1465,11 +1465,30 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
       suiteQlLineId: true,
       itemId: true,
       item: true,
+      class: true,
       lineIndex: true,
       isNew: true,
       clientLineKey: true,
       options: true,
       optionsSummary: true,
+      fulfilmentMethod: true,
+      inventoryDetail: true,
+      inventoryMeta: true,
+      lotnumber: true,
+      lotDetails: true,
+      discountPct: true,
+      discount: true,
+      saleGrossPerUnit: true,
+      saleGrossLine: true,
+      amountGrossLine: true,
+      grossAmount: true,
+      grossSaleprice: true,
+      netAmount: true,
+      saleprice: true,
+      trialOption: true,
+      takenFromStore: true,
+      taxCode: true,
+      taxcode: true,
       closed: true,
       isClosed: true,
     };
@@ -2709,6 +2728,7 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
 
       const removedLineIds = removeDeletedLines(soRec, deletedLineIds);
       const processedLines = [];
+      const lineFailures = [];
 
       if (Array.isArray(updates) && updates.length) {
         log.audit(
@@ -2813,12 +2833,29 @@ define(["N/record", "N/log", "N/error", "N/email", "N/render", "N/runtime", "N/s
               quantity: u.quantity,
             });
           } catch (lineErr) {
+            lineFailures.push({
+              lineId: String(u.lineId || ""),
+              itemId: String(u.itemId || ""),
+              clientLineKey: String(u.clientLineKey || ""),
+              error: lineErr.message || String(lineErr),
+            });
             log.error(
               `⚠️ Failed to process line ${u.lineId || u.itemId || "unknown"}`,
               lineErr
             );
           }
         });
+      }
+
+      if (lineFailures.length) {
+        log.error("Sales Order line updates failed", lineFailures);
+        return {
+          ok: false,
+          id,
+          committed: false,
+          failures: lineFailures,
+          error: "One or more Sales Order lines could not be saved.",
+        };
       }
 
       /**

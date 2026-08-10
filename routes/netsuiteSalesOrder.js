@@ -10145,23 +10145,71 @@ router.post("/:id/save", async (req, res) => {
     });
 
     // ✅ IMPORTANT: tell RESTlet NOT to approve
-    const payload = {
-      id,
-      lines: normalizedLines,
-      headerUpdates,
-      deletedLineIds,
-      commit: false,
-    };
-
-    const payloadText = JSON.stringify(payload);
-    console.log("Calling NetSuite RESTlet (save-only) with payload bytes:", payloadText.length);
-
-    const { response, text, data, attempt } = await postRestletWithRecordChangedRetry(
-      restletUrl,
-      buildRestletHeaders,
-      payloadText,
-      "Save Sales Order"
+    const hasNewLines = normalizedLines.some(
+      (line) => !String(line.lineId || "").trim() || line.isNew === true
     );
+    const splitDeleteAndInsertSave = deletedLineIds.length > 0 && hasNewLines;
+
+    let deletionResult = null;
+    let response;
+    let text;
+    let data;
+
+    if (splitDeleteAndInsertSave) {
+      const deletionPayloadText = JSON.stringify({
+        id,
+        lines: [],
+        headerUpdates: {},
+        deletedLineIds,
+        commit: false,
+      });
+      const deletionCall = await postRestletWithRecordChangedRetry(
+        restletUrl,
+        buildRestletHeaders,
+        deletionPayloadText,
+        "Save Sales Order deletions"
+      );
+      if (!deletionCall.response.ok || !deletionCall.data.ok) {
+        return res.status(500).json({
+          ok: false,
+          error: deletionCall.data?.error || "NetSuite deletion save failed",
+          raw: deletionCall.text,
+        });
+      }
+      deletionResult = deletionCall.data;
+
+      const linesPayloadText = JSON.stringify({
+        id,
+        lines: normalizedLines,
+        headerUpdates,
+        deletedLineIds: [],
+        commit: false,
+      });
+      ({ response, text, data } = await postRestletWithRecordChangedRetry(
+        restletUrl,
+        buildRestletHeaders,
+        linesPayloadText,
+        "Save Sales Order lines after deletions"
+      ));
+    } else {
+      // Preserve the established request path for ordinary saves, including
+      // adding a line without deleting another line.
+      const payload = {
+        id,
+        lines: normalizedLines,
+        headerUpdates,
+        deletedLineIds,
+        commit: false,
+      };
+      const payloadText = JSON.stringify(payload);
+      console.log("Calling NetSuite RESTlet (save-only) with payload bytes:", payloadText.length);
+      ({ response, text, data } = await postRestletWithRecordChangedRetry(
+        restletUrl,
+        buildRestletHeaders,
+        payloadText,
+        "Save Sales Order"
+      ));
+    }
 
     if (!response.ok || !data.ok) {
       console.error("❌ RESTlet returned error (save-only):", text);
@@ -10187,6 +10235,7 @@ router.post("/:id/save", async (req, res) => {
       ok: true,
       message: data.message || "Sales Order saved (not committed)",
       restletResult: data,
+      deletionResult,
       warnings: pairedMemoSync.ok
         ? []
         : [pairedMemoSync.error || "Paired Sales Order memo was not updated."],
