@@ -2588,6 +2588,19 @@ function hideCommitInline() {
   document.getElementById("commitInlineStatus")?.classList.add("hidden");
 }
 
+function validateSalesViewPaymentInfo() {
+  const paymentInfo = document.getElementById("paymentInfo");
+  if (!paymentInfo) return true;
+
+  paymentInfo.classList.remove("field-error");
+  if (String(paymentInfo.value || "").trim()) return true;
+
+  paymentInfo.classList.add("field-error");
+  paymentInfo.focus();
+  alert("Payment Info is required before saving or committing the sales order.");
+  return false;
+}
+
 function validateSalesViewItemsBeforeSave() {
   const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
   const errors = [];
@@ -3200,6 +3213,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
       const token = savedAuth?.token;
       if (!token) return (window.location.href = "/index.html");
 
+      if (!validateSalesViewPaymentInfo()) return;
       if (isPendingApproval && !validateSalesViewItemsBeforeSave()) return;
 
       setOrderMutationBusy(true);
@@ -3344,6 +3358,7 @@ window.onInventorySaved = function (itemId, detailString, lineIndex) {
     const token = savedAuth?.token;
     if (!token) return (window.location.href = "/index.html");
 
+    if (!validateSalesViewPaymentInfo()) return;
     if (!validateSalesViewItemsBeforeSave()) return;
 
     setOrderMutationBusy(true);

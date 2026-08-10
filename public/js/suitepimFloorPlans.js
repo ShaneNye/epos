@@ -59,6 +59,8 @@
     heatmapDetailRows: [],
     heatmapDetailLoading: false,
     heatmapDetailError: "",
+    heatmapRequestId: 0,
+    analyticsRequestId: 0,
     dataPanelCollapsed: true,
     analyticsLoading: false,
     analytics: {
@@ -841,6 +843,7 @@
 
   async function loadAnalytics() {
     if (!state.selectedLocationId || !state.footfallStartDate || !state.footfallEndDate) return;
+    const requestId = ++state.analyticsRequestId;
     const data = planData();
     const assets = data.elements.filter((element) => element.type === "asset" && element.bin?.number);
     state.analyticsLoading = true;
@@ -872,14 +875,18 @@
           body: JSON.stringify({ ...bodyBase, mode: "revenue" }),
         }),
       ]);
+      if (requestId !== state.analyticsRequestId) return;
       state.analytics.footfall = Number(footfallPayload.total || 0);
       state.analytics.soldValues = soldPayload.values || {};
       state.analytics.revenueValues = revenuePayload.values || {};
     } catch (err) {
+      if (requestId !== state.analyticsRequestId) return;
       state.analytics.error = err.message || "Unable to load analytics";
     } finally {
+      if (requestId !== state.analyticsRequestId) return;
       state.analyticsLoading = false;
       renderAnalytics();
+      renderCanvas();
     }
   }
 
@@ -1034,8 +1041,15 @@
     const heatmapTitle = heatmapActive
       ? `${state.heatmapMode}${heatmapByFloor ? " per sq ft" : ""}: ${heatmapMetricLabel(heatmapValue)}`
       : "";
-    const title = element.note || element.bin?.number || heatmapTitle
-      ? `<title>${clean([element.bin?.number, heatmapTitle, element.note].filter(Boolean).join(" - "))}</title>`
+    const hoverAnalytics = !state.editMode && element.bin?.number
+      ? [
+          `No. items sold: ${number(state.analytics.soldValues?.[element.id] || 0, { maximumFractionDigits: 1 })}`,
+          `Total revenue: ${money(state.analytics.revenueValues?.[element.id] || 0)}`,
+        ]
+      : [];
+    const titleLines = [element.bin?.number, heatmapTitle, ...hoverAnalytics, element.note].filter(Boolean);
+    const title = titleLines.length
+      ? `<title>${clean(titleLines.join("\n"))}</title>`
       : "";
     const shape = element.shape || asset?.shape || "";
     const duplicateWarning = hasDuplicateBin
@@ -2250,6 +2264,8 @@
   }
 
   async function loadHeatmapData() {
+    const requestId = ++state.heatmapRequestId;
+    const selectedClass = state.selectedClass;
     if (state.heatmapMode === "none") {
       state.heatmapValues = {};
       state.heatmapMax = 0;
@@ -2288,7 +2304,9 @@
         startDate: state.footfallStartDate,
         endDate: state.footfallEndDate,
         includeRows: "1",
+        ...(selectedClass ? { class: selectedClass } : {}),
       })).toString()}`).catch((err) => ({ error: err.message, movements: [] }));
+      if (requestId !== state.heatmapRequestId) return;
       state.heatmapValues = {};
       state.heatmapMax = 0;
       state.movementPaths = movementPayload.movements || [];
@@ -2311,33 +2329,37 @@
         locationId: state.selectedLocationId,
         startDate: state.footfallStartDate,
         endDate: state.footfallEndDate,
-        class: state.selectedClass,
+        class: selectedClass,
         assets: assets.map((asset) => ({
           id: asset.id,
           bin: asset.bin,
         })),
       }),
     }).catch((err) => ({ error: err.message, values: {} }));
+    if (requestId !== state.heatmapRequestId) return;
     const values = heatmapPayload.values || {};
 
     state.heatmapValues = values;
     state.heatmapMax = Math.max(0, ...Object.values(values).map((value) => Number(value) || 0));
-    await loadHeatmapDetailRows();
+    await loadHeatmapDetailRows(selectedClass, requestId);
+    if (requestId !== state.heatmapRequestId) return;
     state.heatmapLoading = false;
     renderCanvas();
     const loadError = heatmapPayload.error;
     showStatus(loadError ? `Heat map loaded with limited data: ${loadError}` : "Heat map loaded", loadError ? "warning" : "success");
   }
 
-  async function loadHeatmapDetailRows() {
+  async function loadHeatmapDetailRows(selectedClass = state.selectedClass, requestId = state.heatmapRequestId) {
     try {
       if (state.heatmapMode === "sold" || state.heatmapMode === "revenue") {
-        const payload = await api(`/api/suitepim/floor-plan-sales-data?${new URLSearchParams(classParams({
+        const payload = await api(`/api/suitepim/floor-plan-sales-data?${new URLSearchParams({
           locationId: state.selectedLocationId,
           startDate: state.footfallStartDate,
           endDate: state.footfallEndDate,
           includeRows: "1",
-        })).toString()}`);
+          ...(selectedClass ? { class: selectedClass } : {}),
+        }).toString()}`);
+        if (requestId !== state.heatmapRequestId) return;
         state.heatmapDetailRows = payload.rows || [];
         state.heatmapDetailError = payload.error || "";
       } else if (state.heatmapMode === "inventory") {
@@ -2345,17 +2367,21 @@
         const uniqueBins = [...new Set(data.elements
           .filter((element) => element.type === "asset" && element.bin?.number)
           .map((element) => element.bin.number))];
-        const payloads = await mapWithConcurrency(uniqueBins, 6, (bin) => api(`/api/suitepim/floor-plan-bin-inventory?${new URLSearchParams(classParams({
+        const payloads = await mapWithConcurrency(uniqueBins, 6, (bin) => api(`/api/suitepim/floor-plan-bin-inventory?${new URLSearchParams({
           locationId: state.selectedLocationId,
           bin,
-        })).toString()}`).catch((err) => ({ error: err.message, rows: [] })));
+          ...(selectedClass ? { class: selectedClass } : {}),
+        }).toString()}`).catch((err) => ({ error: err.message, rows: [] })));
+        if (requestId !== state.heatmapRequestId) return;
         state.heatmapDetailRows = payloads.flatMap((payload) => payload.rows || []);
         state.heatmapDetailError = payloads.find((payload) => payload.error)?.error || "";
       }
     } catch (err) {
+      if (requestId !== state.heatmapRequestId) return;
       state.heatmapDetailRows = [];
       state.heatmapDetailError = err.message || "Unable to load heat map data rows";
     } finally {
+      if (requestId !== state.heatmapRequestId) return;
       state.heatmapDetailLoading = false;
       renderHeatmapDataPanel();
     }
@@ -2655,6 +2681,9 @@
 
     el.suitepimFloorPlanClass?.addEventListener("change", () => {
       state.selectedClass = el.suitepimFloorPlanClass.value || "";
+      state.heatmapValues = {};
+      state.heatmapMax = 0;
+      renderCanvas();
       loadAnalytics();
       if (state.heatmapMode !== "none") loadHeatmapData();
     });

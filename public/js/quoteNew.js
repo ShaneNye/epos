@@ -46,6 +46,90 @@ if (window.location.pathname.includes("/quote/view/")) {
     const toast = document.getElementById("orderToast");
     const spinnerText = document.getElementById("orderSpinnerTitle");
 
+    function randomItem(items) {
+      return items[Math.floor(Math.random() * items.length)];
+    }
+
+    function setFieldValue(selector, value) {
+      const field = document.querySelector(selector);
+      if (!field) return;
+      field.value = value;
+      field.dispatchEvent(new Event("input", { bubbles: true }));
+      field.dispatchEvent(new Event("change", { bubbles: true }));
+    }
+
+    function selectRandomOption(selector) {
+      const select = document.querySelector(selector);
+      if (!select) return false;
+
+      const options = Array.from(select.options).filter(
+        (option) => !option.disabled && String(option.value || "").trim()
+      );
+      if (!options.length) return false;
+
+      select.value = randomItem(options).value;
+      select.dispatchEvent(new Event("input", { bubbles: true }));
+      select.dispatchEvent(new Event("change", { bubbles: true }));
+      return true;
+    }
+
+    function fillTestCustomer() {
+      const firstNames = ["Amelia", "Oliver", "Isla", "George", "Freya", "Theo", "Mia", "Arthur"];
+      const lastNames = ["Bennett", "Clarke", "Hughes", "Morgan", "Patel", "Taylor", "Walker", "Wilson"];
+      const streets = ["High Street", "Station Road", "Church Lane", "Mill Road", "Victoria Close"];
+      const towns = ["Brighton", "Eastbourne", "Hastings", "Lewes", "Worthing"];
+      const postcodeAreas = ["BN1", "BN7", "BN11", "BN21", "TN34"];
+      const postcodeLetters = "ABCDEFGHJKLMNPRSTUVWXYZ".split("");
+      const firstName = randomItem(firstNames);
+      const lastName = randomItem(lastNames);
+      const uniqueNumber = `${Date.now()}${Math.floor(Math.random() * 1000)}`;
+      const houseNumber = Math.floor(Math.random() * 199) + 1;
+      const postcode = `${randomItem(postcodeAreas)} ${Math.floor(Math.random() * 9) + 1}${randomItem(
+        postcodeLetters
+      )}${randomItem(postcodeLetters)}`;
+      const phone = `07700 ${String(Math.floor(Math.random() * 1000000)).padStart(6, "0")}`;
+
+      window.currentCustomerId = null;
+      setFieldValue('input[name="firstName"]', firstName);
+      setFieldValue('input[name="lastName"]', lastName);
+      setFieldValue('input[name="postcode"]', postcode);
+      setFieldValue('input[name="address1"]', `${houseNumber} ${randomItem(streets)}`);
+      setFieldValue('input[name="address2"]', randomItem(towns));
+      setFieldValue('input[name="contactNumber"]', phone);
+      setFieldValue(
+        'input[name="email"]',
+        `${firstName}.${lastName}.${uniqueNumber}@example.com`.toLowerCase()
+      );
+
+      const missingDropdowns = [
+        ["#store", "Store"],
+        ['select[name="leadSource"]', "Lead Source"],
+        ["#warehouse", "Warehouse"],
+      ].filter(([selector]) => !selectRandomOption(selector));
+
+      if (missingDropdowns.length) {
+        alert(
+          `Customer details were generated, but these options have not loaded yet: ${missingDropdowns
+            .map(([, label]) => label)
+            .join(", ")}. Please try again in a moment.`
+        );
+      }
+    }
+
+    const testCustomerActions = document.getElementById("testCustomerActions");
+    const testCustomerButton = document.getElementById("testCustomerBtn");
+    testCustomerButton?.addEventListener("click", fillTestCustomer);
+
+    try {
+      const environmentResponse = await fetch("/api/config/environment", { cache: "no-store" });
+      const environmentData = await environmentResponse.json();
+      if (environmentResponse.ok && environmentData.environment === "SANDBOX") {
+        testCustomerActions?.classList.remove("hidden");
+      }
+    } catch (error) {
+      console.warn("Unable to determine whether Test Customer should be available:", error);
+    }
+
     ["firstName", "lastName"].forEach((name) => {
       const field = document.querySelector(`input[name="${name}"]`);
       field?.addEventListener("blur", () => normalizeCustomerNameField(field));

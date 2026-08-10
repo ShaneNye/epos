@@ -1042,6 +1042,23 @@ function stableSaveSignature(payload) {
   return JSON.stringify(payload || {});
 }
 
+function quoteHasUnsavedChanges() {
+  try {
+    return stableSaveSignature(buildQuoteSavePayload()) !== window._lastQuoteSaveSignature;
+  } catch (err) {
+    console.warn("Could not compare Quote save signature:", err.message || err);
+    return true;
+  }
+}
+
+function refreshConvertToSaleButtonLabel() {
+  const button = document.getElementById("convertToSaleBtn");
+  if (!button) return;
+  button.textContent = quoteHasUnsavedChanges()
+    ? "Save & Convert to Sale"
+    : "Convert to Sale";
+}
+
 /* =========================================================
    Quote action buttons
 ========================================================= */
@@ -1058,6 +1075,33 @@ function updateActionButtonForQuote() {
   const saveBtn = document.getElementById("saveQuoteBtn");
   const closeBtn = document.getElementById("closeQuoteBtn");
   const convertBtn = document.getElementById("convertToSaleBtn");
+
+  const scheduleConvertButtonRefresh = () => {
+    if (typeof window.requestAnimationFrame === "function") {
+      window.requestAnimationFrame(refreshConvertToSaleButtonLabel);
+    } else {
+      refreshConvertToSaleButtonLabel();
+    }
+  };
+
+  const quoteRoot = document.querySelector("main") || document;
+  if (quoteRoot.dataset.quoteDirtyTrackingBound !== "1") {
+    quoteRoot.dataset.quoteDirtyTrackingBound = "1";
+    quoteRoot.addEventListener("input", scheduleConvertButtonRefresh);
+    quoteRoot.addEventListener("change", scheduleConvertButtonRefresh);
+    quoteRoot.addEventListener("click", (event) => {
+      if (
+        event.target.closest(".delete-row") ||
+        event.target.closest("#addItemBtn") ||
+        event.target.closest(".open-inventory") ||
+        event.target.closest(".open-options")
+      ) {
+        setTimeout(refreshConvertToSaleButtonLabel, 0);
+      }
+    });
+  }
+
+  refreshConvertToSaleButtonLabel();
 
   saveBtn?.addEventListener("click", async () => {
     let savedAuth = storageGet?.();
@@ -1122,6 +1166,7 @@ function updateActionButtonForQuote() {
       const customStatus = document.getElementById("customFieldsStatus");
       if (customStatus) customStatus.textContent = "";
       window._lastQuoteSaveSignature = stableSaveSignature(buildQuoteSavePayload());
+      refreshConvertToSaleButtonLabel();
     } catch (err) {
       console.error("❌ Save quote error:", err.message || err);
       showToast?.(`❌ ${err.message || err}`, "error");
@@ -1133,6 +1178,7 @@ function updateActionButtonForQuote() {
       saveBtn.classList.remove("locked-input");
       closeBtn?.classList.remove("locked-input");
       convertBtn?.classList.remove("locked-input");
+      refreshConvertToSaleButtonLabel();
     }
   });
 
@@ -1221,12 +1267,13 @@ function updateActionButtonForQuote() {
     try {
       if (!validateQuoteItemsBeforeSave()) return;
 
-      showConvertSpinner(true, "Saving quote before conversion...");
-      showToast?.("Saving quote before conversion...", "success");
-
       const payload = buildQuoteSavePayload();
       const signature = stableSaveSignature(payload);
-      if (signature !== window._lastQuoteSaveSignature) {
+      const requiresSaveFirst = signature !== window._lastQuoteSaveSignature;
+      if (requiresSaveFirst) {
+        showConvertSpinner(true, "Saving quote before conversion...");
+        showToast?.("Saving quote before conversion...", "success");
+
         const saveRes = await fetch(
           `/api/netsuite/quote/${encodeURIComponent(quoteIdOrTran)}/save`,
           {
@@ -1242,6 +1289,7 @@ function updateActionButtonForQuote() {
         }
 
         window._lastQuoteSaveSignature = stableSaveSignature(buildQuoteSavePayload());
+        refreshConvertToSaleButtonLabel();
       }
 
       showConvertSpinner(true, "Converting quote to sales order...");
