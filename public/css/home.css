@@ -120,7 +120,8 @@ body.sidebar-expanded {
   order: 999;
 }
 
-.news-notification-dot {
+.news-notification-dot,
+.available-shifts-notification-dot {
   position: absolute;
   top: 12px;
   right: 16px;
@@ -132,11 +133,13 @@ body.sidebar-expanded {
   box-shadow: 0 0 0 2px rgba(255, 215, 0, 0.22);
 }
 
-.news-notification-dot.hidden {
+.news-notification-dot.hidden,
+.available-shifts-notification-dot.hidden {
   display: none;
 }
 
-.sidebar.expanded .news-notification-dot {
+.sidebar.expanded .news-notification-dot,
+.sidebar.expanded .available-shifts-notification-dot {
   right: 18px;
 }
 

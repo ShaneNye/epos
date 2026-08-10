@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/js/browserLogFilter.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/assets/moon-man-logo.ico">
+  <title>Available Shifts</title>
+  <link rel="stylesheet" href="/css/available-shifts.css">
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js"></script>
+  <script src="/js/available-shifts.js" defer></script>
+</head>
+<body>
+  <div id="menu"></div>
+  <main class="content shifts-page">
+    <header class="shifts-header">
+      <div>
+        <h1>Available Shifts</h1>
+        <p>See which shifts need covering and let the team know if you can help.</p>
+      </div>
+      <button type="button" class="btn-primary" id="addShiftBtn">+ Add shift</button>
+    </header>
+
+    <div id="shiftNotice" class="shift-notice hidden" role="status"></div>
+    <section id="shiftLoading" class="shift-state">Loading available shifts...</section>
+    <section id="shiftEmpty" class="shift-state hidden">
+      <h2>No shifts need covering</h2>
+      <p>When someone adds a shift, it will appear here.</p>
+    </section>
+    <section id="shiftList" class="shift-grid" aria-live="polite"></section>
+  </main>
+
+  <div class="modal-backdrop hidden" id="shiftModal" role="dialog" aria-modal="true" aria-labelledby="shiftModalTitle">
+    <div class="shift-modal-card">
+      <div class="modal-heading">
+        <div>
+          <span class="eyebrow">Cover request</span>
+          <h2 id="shiftModalTitle">Add an available shift</h2>
+        </div>
+        <button type="button" class="modal-close" id="closeShiftModal" aria-label="Close">&times;</button>
+      </div>
+      <form id="shiftForm">
+        <label>Location <span aria-hidden="true">*</span>
+          <select id="shiftLocation" required><option value="">Select a location</option></select>
+        </label>
+        <label>Date <span aria-hidden="true">*</span>
+          <input type="date" id="shiftDate" required>
+        </label>
+        <label>Notes
+          <textarea id="shiftNotes" rows="5" maxlength="2000" placeholder="Add any important information about this shift..."></textarea>
+        </label>
+        <div class="modal-actions">
+          <button type="button" class="btn-secondary" id="cancelShiftModal">Cancel</button>
+          <button type="submit" class="btn-primary" id="saveShiftBtn">Add shift</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

@@ -588,6 +588,7 @@ app.use("/api/meta", require("./routes/meta"));
 app.use("/api/custom-fields", require("./routes/customFields"));
 app.use("/api/email-alerts", require("./routes/emailAlerts"));
 app.use("/api/news", require("./routes/news"));
+app.use("/api/available-shifts", require("./routes/availableShifts"));
 app.use("/api/session/role", require("./routes/sessionRole"));
 app.use("/api/forgot-password", require("./routes/forgotPassword"));
 app.use("/api/reset-password", require("./routes/resetPassword"));
@@ -1883,6 +1884,7 @@ app.get("/cs-workflows", (req, res) => sendNoCacheFile(res, path.join(__dirname,
 app.get("/cs-workflows/suiteql-studio", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cs-suiteql-studio.html")))
 app.get("/cs-workflows/create-record-map", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cs-create-record-map.html")))
 app.get("/rota", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "rota.html")))
+app.get("/available-shifts", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "available-shifts.html")))
 app.get("/suitepim/product-data", (req, res) => res.redirect(302, "/suitepim/web-management"))
 app.get("/suitepim/web-management", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-web-management.html")))
 app.get(["/suitepim/imagery-sync", "/suitepim/imagery-sync.html"], (req, res) =>

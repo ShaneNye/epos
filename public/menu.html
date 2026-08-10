@@ -148,6 +148,13 @@
                 <path class="epos-icon" d="M3 14h18" />
             </symbol>
 
+            <!-- Available Shifts (calendar exchange) -->
+            <symbol id="icon-available-shifts" viewBox="0 0 24 24">
+                <rect class="epos-icon" x="3" y="4" width="18" height="17" rx="2" />
+                <path class="epos-icon" d="M8 2v4M16 2v4M3 9h18" />
+                <path class="epos-icon" d="M7 13h9l-2.5-2.5M17 17H8l2.5 2.5" />
+            </symbol>
+
             <symbol id="icon-floor-plans" viewBox="0 0 24 24">
                 <path class="epos-icon" d="M4 4h16v16H4z" />
                 <path class="epos-icon" d="M4 10h7" />
@@ -309,6 +316,15 @@
                     </svg>
                     <span class="menu-label">Rota</span>
                     <span class="tooltip">Rota</span>
+                </a>
+
+                <a href="/available-shifts" class="menu-item" id="availableShiftsMenuItem">
+                    <svg>
+                        <use href="#icon-available-shifts" />
+                    </svg>
+                    <span class="menu-label">Available Shifts</span>
+                    <span class="tooltip">Available Shifts</span>
+                    <span class="available-shifts-notification-dot hidden" id="availableShiftsNotificationDot" aria-hidden="true"></span>
                 </a>
 
                 <a href="/suitepim" class="menu-item">

@@ -24,6 +24,7 @@ document.addEventListener("DOMContentLoaded", () => {
     { value: "engagement", label: "Engagement" },
     { value: "logistics", label: "Logistics" },
     { value: "rota", label: "Rota" },
+    { value: "available-shifts", label: "Available Shifts" },
     { value: "suitepim", label: "SuitePim" },
     { value: "floor-plans", label: "Floor Plans" },
     { value: "systems-processes", label: "Systems & Processes" },

@@ -396,6 +396,7 @@ if (normalizeHexColor(userTheme.primary) || normalizeHexColor(userTheme.accent))
       roleSelect.value = activeRole;
       await applyAccessRestrictions(activeRole, saved.token);
       await refreshNewsNotification();
+      await refreshAvailableShiftsNotification();
 
 roleSelect.addEventListener("change", async e => {
   const newRole = e.target.value;
@@ -528,6 +529,30 @@ async function refreshNewsNotification() {
 }
 
 window.refreshNewsNotification = refreshNewsNotification;
+
+async function refreshAvailableShiftsNotification() {
+  const dot = document.getElementById("availableShiftsNotificationDot");
+  const menuItem = document.getElementById("availableShiftsMenuItem");
+  const saved = storageGet();
+  if (!dot || !menuItem || !saved?.token) return;
+
+  try {
+    const res = await fetch("/api/available-shifts", {
+      headers: { Authorization: `Bearer ${saved.token}` },
+      cache: "no-store",
+    });
+    const data = await res.json();
+    if (!res.ok || !data.ok) throw new Error(data.error || "Failed to fetch available shifts");
+    const needsResponse = (data.shifts || []).some(shift => !shift.assigned_user_id && !shift.my_response);
+    dot.classList.toggle("hidden", !needsResponse);
+    menuItem.setAttribute("aria-label", needsResponse ? "Available Shifts, response needed" : "Available Shifts");
+  } catch (err) {
+    console.warn("Failed to refresh available shifts notification:", err.message || err);
+    dot.classList.add("hidden");
+  }
+}
+
+window.refreshAvailableShiftsNotification = refreshAvailableShiftsNotification;
 
 
 loadMenu();
