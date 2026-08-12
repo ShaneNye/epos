@@ -18,6 +18,7 @@ document.addEventListener("DOMContentLoaded", () => {
     { value: "finance-settings", label: "Finance Calculator Settings" },
     { value: "qr-generator", label: "QR Generator" },
     { value: "reports", label: "Reports" },
+    { value: "rewards-dashboard", label: "Rewards Dashboard" },
     { value: "product-hub", label: "Product Hub" },
     { value: "eod", label: "End Of Day" },
     { value: "cashflow", label: "Cashflow" },

@@ -179,6 +179,7 @@ async function ensureTables() {
       trigger_item_ids TEXT[],
       trigger_item_names TEXT[],
       trigger_class TEXT,
+      trigger_sub_class TEXT,
       trigger_size TEXT,
       trigger_category TEXT,
       suggested_item_id TEXT,
@@ -228,6 +229,7 @@ async function ensureTables() {
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_item_ids TEXT[];
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_item_names TEXT[];
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_class TEXT;
+    ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_sub_class TEXT;
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_size TEXT;
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS trigger_category TEXT;
     ALTER TABLE promotions ADD COLUMN IF NOT EXISTS exclude_clearance BOOLEAN NOT NULL DEFAULT FALSE;
@@ -345,6 +347,7 @@ async function listPromotions() {
       p.trigger_item_ids,
       p.trigger_item_names,
       p.trigger_class,
+      p.trigger_sub_class,
       p.trigger_size,
       p.trigger_category,
       p.suggested_item_id,
@@ -403,6 +406,7 @@ async function listPromotions() {
         ? [cleanText(row.trigger_item_name)]
         : [],
     triggerClass: row.trigger_class || "",
+    triggerSubClass: row.trigger_sub_class || "",
     triggerSize: row.trigger_size || "",
     triggerCategory: row.trigger_category || "",
     suggestedItemId: row.suggested_item_id || "",
@@ -461,13 +465,14 @@ async function savePromotion(client, promotionId, payload, createdBy) {
     const triggerItemId = cleanText(payload.triggerItemId) || triggerItemIds[0] || "";
     const triggerItemName = cleanText(payload.triggerItemName) || triggerItemNames[0] || "";
     const triggerClass = cleanText(payload.triggerClass);
+    const triggerSubClass = cleanText(payload.triggerSubClass);
     const triggerSize = cleanText(payload.triggerSize);
     const triggerCategory = cleanText(payload.triggerCategory);
     const suggestedItemId = cleanText(payload.suggestedItemId);
     const discountPercent = cleanPercent(payload.discountPercent);
 
-    if (!triggerItemIds.length && !triggerClass && !triggerSize && !triggerCategory) {
-      throw new Error("An upsell needs at least one trigger item, class, size, or category.");
+    if (!triggerItemIds.length && !triggerClass && !triggerSubClass && !triggerSize && !triggerCategory) {
+      throw new Error("An upsell needs at least one trigger item, class, sub-class, size, or category.");
     }
     if (!suggestedItemId) {
       throw new Error("An upsell needs a suggested item.");
@@ -485,6 +490,7 @@ async function savePromotion(client, promotionId, payload, createdBy) {
       cleanNullableTextArray(triggerItemIds),
       cleanNullableTextArray(triggerItemNames),
       cleanNullableText(triggerClass),
+      cleanNullableText(triggerSubClass),
       cleanNullableText(triggerSize),
       cleanNullableText(triggerCategory),
       suggestedItemId,
@@ -509,19 +515,20 @@ async function savePromotion(client, promotionId, payload, createdBy) {
                  trigger_item_ids = $6,
                  trigger_item_names = $7,
                  trigger_class = $8,
-                 trigger_size = $9,
-                 trigger_category = $10,
-                 suggested_item_id = $11,
-                 suggested_item_name = $12,
-                 discount_percent = $13,
-                 start_date = $14,
-                 end_date = $15,
-                 is_active = $16,
+                 trigger_sub_class = $9,
+                 trigger_size = $10,
+                 trigger_category = $11,
+                 suggested_item_id = $12,
+                 suggested_item_name = $13,
+                 discount_percent = $14,
+                 start_date = $15,
+                 end_date = $16,
+                 is_active = $17,
                  updated_at = NOW()
-           WHERE id = $17
+           WHERE id = $18
            RETURNING id
         `,
-        [...params.slice(0, 16), promotionId]
+        [...params.slice(0, 17), promotionId]
       );
       await client.query("DELETE FROM promotion_basket_rules WHERE promotion_id = $1", [promotionId]);
     } else {
@@ -536,6 +543,7 @@ async function savePromotion(client, promotionId, payload, createdBy) {
             trigger_item_ids,
             trigger_item_names,
             trigger_class,
+            trigger_sub_class,
             trigger_size,
             trigger_category,
             suggested_item_id,
@@ -546,7 +554,7 @@ async function savePromotion(client, promotionId, payload, createdBy) {
             is_active,
             created_by
           )
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
           RETURNING id
         `,
         params

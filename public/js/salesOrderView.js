@@ -1199,7 +1199,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       pageTitle.prepend(document.createTextNode(`${titleText} `));
     }
 
-    document.title = `EPOS : ${titleText}`;
+    const displayTranId = String(so?.tranId || tranId || "").trim();
+    document.title = displayTranId ? `Sales Order ${displayTranId}` : "Sales Order";
   }
 
   // ---- Auth / token ----

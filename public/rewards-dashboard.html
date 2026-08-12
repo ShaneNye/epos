@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <script src="/js/browserLogFilter.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="icon" href="/assets/moon-man-logo.ico">
+  <title>Rewards Dashboard</title>
+  <link rel="stylesheet" href="/css/home.css">
+  <link rel="stylesheet" href="/css/rewards-dashboard.css">
+  <script src="/js/storage.js"></script>
+  <script src="/js/menu.js"></script>
+  <script defer src="/js/rewards-dashboard.js"></script>
+</head>
+<body>
+  <div id="menu"></div>
+  <main class="content rewards-page">
+    <header class="rewards-hero">
+      <div>
+        <span class="eyebrow">This month · Live from NetSuite</span>
+        <h1>Rewards Dashboard</h1>
+        <p>See sales and rewards earned at the current 2.1% rate.</p>
+      </div>
+      <button id="refreshRewards" class="refresh-button" type="button">Refresh data</button>
+    </header>
+
+    <p id="rewardsStatus" class="status" role="status" aria-live="polite">Loading rewards…</p>
+
+    <section class="dashboard-panel">
+      <div class="panel-heading">
+        <div><span class="eyebrow">This month</span><h2>Rewards Dashboard</h2></div>
+        <input id="specialistSearch" type="search" placeholder="Find a specialist…" aria-label="Find a specialist">
+      </div>
+      <div class="table-scroll">
+        <table class="rewards-table">
+          <thead><tr><th class="expand-column"></th><th>Bed specialist</th><th>Orders</th><th>Qualifying sales</th><th>Reward</th></tr></thead>
+          <tbody id="leaderboardBody"></tbody>
+        </table>
+      </div>
+    </section>
+
+  </main>
+</body>
+</html>

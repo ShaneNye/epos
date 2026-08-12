@@ -62,3 +62,12 @@ function storageClear() {
     }
   };
 })();
+
+(function loadPageTooltips() {
+  if (typeof document === "undefined" || window.__eposTooltipScriptAdded) return;
+  window.__eposTooltipScriptAdded = true;
+  const script = document.createElement("script");
+  script.src = "/js/tooltips.js";
+  script.defer = true;
+  document.head.appendChild(script);
+})();

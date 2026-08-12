@@ -160,7 +160,6 @@ function canMenuLinkShow(href, normalizedAllowed) {
       normalizedAllowed.includes("admin"));
   const canSeeAdminDefault =
     normalizedAllowed.includes("admin") && ["admin", "rota"].includes(href);
-
   return canSeeNews || canSeeAdminDefault || normalizedAllowed.includes(href);
 }
 

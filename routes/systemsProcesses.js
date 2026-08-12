@@ -13,6 +13,7 @@ const PAGE_OPTIONS = [
   { value: "quote/view", label: "Quote View" },
   { value: "orders", label: "Order Management" },
   { value: "reports", label: "Reports" },
+  { value: "rewards-dashboard", label: "Rewards Dashboard" },
   { value: "promotions", label: "Promotions" },
   { value: "eod", label: "End Of Day" },
   { value: "cashflow", label: "Cashflow" },

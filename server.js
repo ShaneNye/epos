@@ -586,6 +586,7 @@ app.use("/api/me", require("./routes/me"));
 app.use("/api/users", require("./routes/users"));
 app.use("/api/meta", require("./routes/meta"));
 app.use("/api/custom-fields", require("./routes/customFields"));
+app.use("/api/tooltips", require("./routes/tooltips"));
 app.use("/api/email-alerts", require("./routes/emailAlerts"));
 app.use("/api/news", require("./routes/news"));
 app.use("/api/available-shifts", require("./routes/availableShifts"));
@@ -609,6 +610,7 @@ app.use("/api/finance-calculator", require("./routes/financeCalculator"));
 app.use("/api/qr-journeys", require("./routes/qrJourneys"));
 app.use("/api/ai-manager", require("./routes/aiManager"));
 app.use("/api/cs-workflows", require("./routes/csWorkflows"));
+app.use("/api/rewards", require("./routes/rewards").router);
 app.use("/api/vsa", require("./routes/vsa"));
 app.use("/api/systems-processes", require("./routes/systemsProcesses"));
 app.use("/api/google", require("./routes/google").router);
@@ -1871,6 +1873,7 @@ app.get("/sales/kiosk", (req, res) => sendNoCacheFile(res, path.join(__dirname, 
 app.get("/quote/new", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "quoteNew.html")));
 app.get("/product-hub", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "product-hub.html")))
 app.get("/reports", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "reports.html")))
+app.get("/rewards-dashboard", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "rewards-dashboard.html")))
 app.get("/promotions", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "promotions.html")))
 app.get("/eod", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "endOfDay.html")))
 app.get("/cashflow", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cashFlow.html")))

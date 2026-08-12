@@ -3,6 +3,7 @@
   const MAX_RENDERED_GROUPS = 100;
   const state = {
     items: [],
+    webItemsById: new Map(),
     groups: [],
     filteredGroups: [],
     cart: [],
@@ -78,6 +79,14 @@
 
   function getItemClass(item) {
     return String(getField(item, ["class", "item class"]) || "Unclassified").trim();
+  }
+
+  function getItemSubClasses(item) {
+    const webItem = state.webItemsById.get(getItemId(item)) || {};
+    const value = getField(webItem, ["sub-class", "sub class", "subclass", "custitem_sb_sub_class"]) ||
+      getField(item, ["sub-class", "sub class", "subclass", "custitem_sb_sub_class"]);
+    if (Array.isArray(value)) return value.map((entry) => String(entry || "").trim().toLowerCase()).filter(Boolean);
+    return String(value || "").split(",").map((entry) => entry.trim().toLowerCase()).filter(Boolean);
   }
 
   function getItemImage(item) {
@@ -227,6 +236,22 @@
     return items;
   }
 
+  async function loadWebManagementData() {
+    try {
+      const response = await fetch("/api/suitepim/web-management", { credentials: "same-origin" });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const payload = await response.json();
+      state.webItemsById.clear();
+      (Array.isArray(payload.rows) ? payload.rows : []).forEach((row) => {
+        const id = String(row["Internal ID"] || row["Item ID"] || row.id || "").trim();
+        if (id) state.webItemsById.set(id, row);
+      });
+    } catch (err) {
+      console.warn("Failed to load SuitePIM sub-class data for kiosk upsells:", err.message);
+      state.webItemsById.clear();
+    }
+  }
+
   function isServiceClass(itemClass) {
     return String(itemClass || "").trim().toLowerCase().includes("service");
   }
@@ -353,6 +378,7 @@
             ? [String(promotion.triggerItemName || "").trim().toLowerCase()]
             : [];
         const triggerClass = String(promotion.triggerClass || "").trim().toLowerCase();
+        const triggerSubClass = String(promotion.triggerSubClass || "").trim().toLowerCase();
         const suggestedId = String(promotion.suggestedItemId || "").trim();
         const suggestedName = String(promotion.suggestedItemName || "").trim().toLowerCase();
 
@@ -361,10 +387,13 @@
           const lineName = String(line.name || "").trim().toLowerCase();
           const lineParentName = String(line.parentName || "").trim().toLowerCase();
           const lineClass = String(line.itemClass || "").trim().toLowerCase();
+          const lineSubClasses = getItemSubClasses(line.sourceItem);
           return (
             (triggerIds.length && triggerIds.includes(lineItemId)) ||
             (triggerNames.length && (triggerNames.includes(lineName) || triggerNames.includes(lineParentName))) ||
-            (triggerClass && lineClass === triggerClass)
+            ((triggerClass || triggerSubClass) &&
+              (!triggerClass || lineClass === triggerClass) &&
+              (!triggerSubClass || lineSubClasses.includes(triggerSubClass)))
           );
         });
         if (!triggerMatched) return null;
@@ -2117,6 +2146,7 @@
     bindEvents();
     refreshCartState();
     loadFulfilmentMethods();
+    await loadWebManagementData();
 
     try {
       const cachedItems = getCachedKioskItems();

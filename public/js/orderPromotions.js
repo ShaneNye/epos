@@ -214,6 +214,13 @@
     return splitValues(webItem.Category || item?.Category || item?.category || item?.Categories || item?.["Web Category"] || "");
   }
 
+  function itemSubClasses(item) {
+    const webItem = webItemForItem(item);
+    return splitValues(
+      webItem["Sub-Class"] || item?.["Sub-Class"] || item?.subClass || item?.subclass || item?.custitem_sb_sub_class || ""
+    );
+  }
+
   function webItemForItem(item) {
     const id = itemId(item);
     if (id && state.webItemsById.has(id)) return state.webItemsById.get(id);
@@ -486,6 +493,7 @@
       id,
       name,
       klass: klass || itemClass(item),
+      subClasses: itemSubClasses(item).map(clean),
       quantity,
       salePrice,
       sizes: itemSizes(item).map(clean),
@@ -1036,6 +1044,7 @@
           ? promotion.triggerItemNames.map((value) => String(value || "").trim().toLowerCase())
           : [];
         const triggerClass = String(promotion.triggerClass || "").trim().toLowerCase();
+        const triggerSubClass = String(promotion.triggerSubClass || "").trim().toLowerCase();
         const triggerSize = String(promotion.triggerSize || "").trim().toLowerCase();
         const triggerCategory = String(promotion.triggerCategory || "").trim().toLowerCase();
         const suggestedId = String(promotion.suggestedItemId || "").trim();
@@ -1050,10 +1059,11 @@
           if (itemMatch) return true;
 
           const classOk = !triggerClass || lineClass === triggerClass;
+          const subClassOk = !triggerSubClass || line.subClasses.includes(triggerSubClass);
           const sizeOk = !triggerSize || line.sizes.includes(triggerSize);
           const categoryOk = !triggerCategory || line.categories.includes(triggerCategory);
-          const hasFilter = !!(triggerClass || triggerSize || triggerCategory);
-          return hasFilter && classOk && sizeOk && categoryOk;
+          const hasFilter = !!(triggerClass || triggerSubClass || triggerSize || triggerCategory);
+          return hasFilter && classOk && subClassOk && sizeOk && categoryOk;
         });
         if (!matched) return null;
 
