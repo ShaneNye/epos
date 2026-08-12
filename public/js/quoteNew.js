@@ -205,22 +205,25 @@ if (window.location.pathname.includes("/quote/view/")) {
             (loc) => !/warehouse/i.test(loc.name)
           );
 
-          filteredLocations.forEach((loc) => {
+          const primaryStore = currentUser?.primaryStore;
+          const orderedLocations = [...filteredLocations].sort((a, b) => {
+            const aPrimary = primaryStore && (String(a.id) === String(primaryStore) || a.name === primaryStore);
+            const bPrimary = primaryStore && (String(b.id) === String(primaryStore) || b.name === primaryStore);
+            return Number(bPrimary) - Number(aPrimary);
+          });
+
+          orderedLocations.forEach((loc) => {
             const opt = document.createElement("option");
             opt.value = String(loc.id);
             opt.textContent = loc.name;
+            if (primaryStore && (String(loc.id) === String(primaryStore) || loc.name === primaryStore)) {
+              opt.style.fontWeight = "700";
+              opt.dataset.primaryStore = "true";
+            }
             storeSelect.appendChild(opt);
           });
 
-          if (currentUser && currentUser.primaryStore) {
-            const match = filteredLocations.find(
-              (l) =>
-                String(l.id) === String(currentUser.primaryStore) ||
-                l.name === currentUser.primaryStore
-            );
-
-            if (match) storeSelect.value = String(match.id);
-          }
+          storeSelect.value = "";
         }
       }
     } catch (err) {
@@ -351,6 +354,13 @@ if (window.location.pathname.includes("/quote/view/")) {
     const emailField = document.querySelector('input[name="email"]');
     normalizeCustomerNameField(firstNameField);
     normalizeCustomerNameField(lastNameField);
+
+    const storeSelect = document.getElementById("store");
+    if (!String(storeSelect?.value || "").trim()) {
+      alert("Please select a store before confirming the quote.");
+      storeSelect?.focus();
+      return false;
+    }
 
     if (!isValidEmail(emailField?.value || "")) {
       alert("Please enter a valid email address.");

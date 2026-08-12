@@ -347,7 +347,14 @@ function applyNoAddressMode() {
             (loc) => !/warehouse/i.test(loc.name)
           );
 
-          filteredLocations.forEach((loc) => {
+          const primaryStore = currentUser?.primaryStore;
+          const orderedLocations = [...filteredLocations].sort((a, b) => {
+            const aPrimary = primaryStore && (String(a.id) === String(primaryStore) || a.name === primaryStore);
+            const bPrimary = primaryStore && (String(b.id) === String(primaryStore) || b.name === primaryStore);
+            return Number(bPrimary) - Number(aPrimary);
+          });
+
+          orderedLocations.forEach((loc) => {
             const opt = document.createElement("option");
             opt.value = String(loc.id);
             opt.textContent = loc.name;
@@ -358,26 +365,14 @@ function applyNoAddressMode() {
             opt.dataset.distributionStore = isDistributionStoreName(loc.name)
               ? "true"
               : "false";
+            if (primaryStore && (String(loc.id) === String(primaryStore) || loc.name === primaryStore)) {
+              opt.style.fontWeight = "700";
+              opt.dataset.primaryStore = "true";
+            }
             storeSelect.appendChild(opt);
           });
 
-          if (currentUser && currentUser.primaryStore) {
-            const match = filteredLocations.find(
-              (l) =>
-                String(l.id) === String(currentUser.primaryStore) ||
-                l.name === currentUser.primaryStore
-            );
-
-            if (match) {
-              storeSelect.value = String(match.id);
-              syncDistributionOrderTypeVisibility();
-              console.log(`🏪 Default store set to: ${match.name} (ID: ${match.id})`);
-            } else {
-              console.warn(
-                `⚠️ No store match found for primaryStore: ${currentUser.primaryStore}`
-              );
-            }
-          }
+          storeSelect.value = "";
           syncDistributionOrderTypeVisibility();
         }
       }
@@ -783,6 +778,13 @@ document.getElementById("store")?.addEventListener("change", () => {
   }
 
 function validateOrderBeforeSave() {
+  const storeSelect = document.getElementById("store");
+  if (!String(storeSelect?.value || "").trim()) {
+    alert("Please select a store before confirming the sales order.");
+    storeSelect?.focus();
+    return false;
+  }
+
   const rows = [...document.querySelectorAll("#orderItemsBody .order-line")];
 
   const itemRows = rows.filter((r) =>

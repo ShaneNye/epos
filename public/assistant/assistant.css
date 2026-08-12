@@ -107,7 +107,8 @@
 .assistant-toggle {
   position: fixed;
   bottom: 20px;
-  right: 20px;
+  left: 82px;
+  right: auto;
   width: 55px;
   height: 55px;
   border-radius: 50%;
@@ -121,6 +122,10 @@
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.25);
   transition: all 0.3s ease;
   z-index: 999999 !important;
+}
+
+body.sidebar-expanded .assistant-toggle {
+  left: 262px;
 }
 
 .assistant-toggle:hover {
@@ -273,11 +278,16 @@
 
 @media (max-width: 900px) {
   .assistant-toggle {
-    right: 14px;
+    left: 14px;
+    right: auto;
     bottom: calc(74px + env(safe-area-inset-bottom, 0px) + 12px);
     width: 48px;
     height: 48px;
     box-shadow: 0 8px 20px rgba(0, 72, 96, 0.28);
+  }
+
+  body.sidebar-expanded .assistant-toggle {
+    left: 14px;
   }
 
   .assistant-toggle svg {

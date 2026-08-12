@@ -915,7 +915,8 @@ function setupAutocomplete(lineIndex) {
       return nameMatch && sizeMatch && baseMatch && typeMatch;
     });
 
-    showSuggestions(input, matches, lineIndex);
+    const currentLineIndex = Number(input.closest(".order-line")?.dataset.line ?? lineIndex);
+    showSuggestions(input, matches, currentLineIndex);
   });
 }
 
@@ -1134,6 +1135,7 @@ function addNewRow() {
 
   tr.querySelector(".delete-row").addEventListener("click", () => {
     tr.remove();
+    renumberSalesNewRows();
     updateOrderSummary();
     updateVatFreeColumnVisibility();
     update60NightTrialColumnVisibility(); // ✅ if a mattress row was removed
@@ -1145,6 +1147,15 @@ function addNewRow() {
   });
 
   updateOrderSummary();
+}
+
+function renumberSalesNewRows() {
+  document.querySelectorAll("#orderItemsBody .order-line").forEach((row, index) => {
+    row.dataset.line = String(index);
+    const search = row.querySelector(".item-search");
+    if (search) search.id = `itemSearch-${index}`;
+    row.querySelectorAll("[data-line]").forEach((control) => { control.dataset.line = String(index); });
+  });
 }
 
 // === Init ===
@@ -1193,6 +1204,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
 
     validateInventoryForRow(firstRow);
+    firstRow.querySelector(".delete-row")?.addEventListener("click", () => {
+      firstRow.remove();
+      renumberSalesNewRows();
+      updateOrderSummary();
+      updateVatFreeColumnVisibility();
+      update60NightTrialColumnVisibility();
+    });
   }
 
   await loadFulfilmentMethods();

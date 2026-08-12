@@ -979,9 +979,11 @@ document.addEventListener("DOMContentLoaded", () => {
     // Order details mandatory
     const leadSource = document.querySelector('select[name="leadSource"]')?.value || "";
     const paymentInfo = document.querySelector('select[name="paymentInfo"]')?.value || "";
+    const store = document.querySelector('select[name="store"]')?.value || "";
     const warehouse = document.querySelector('select[name="warehouse"]')?.value || "";
 
     if (!leadSource) errors.push("Lead Source is required");
+    if (!store) errors.push("Store is required");
 
     // ✅ Only enforce Payment Info on Sales pages
     if (requirePaymentInfo && !paymentInfo) errors.push("Payment Info is required");
@@ -1071,6 +1073,9 @@ document.addEventListener("DOMContentLoaded", () => {
     const { valid, errors } = validateRequiredFields();
     if (!valid) {
       alert("❌ Please fill in all required fields:\n\n- " + errors.join("\n- "));
+      if (errors.includes("Store is required")) {
+        storeSelect?.focus();
+      }
       return;
     }
 

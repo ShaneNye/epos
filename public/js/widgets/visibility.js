@@ -8,27 +8,31 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (!tabsNav || !tabButtons.length || !tabPanels.length) return;
 
-  let retries = 0;
-
   function normalizeRole(role) {
     return String(role || "").trim().toLowerCase();
   }
 
-  function getUserRoles() {
+  function getStoredActiveRole() {
     const saved = storageGet();
-    const roles = [];
+    if (typeof saved?.activeRole === "string") return normalizeRole(saved.activeRole);
+    if (saved?.activeRole?.name) return normalizeRole(saved.activeRole.name);
+    if (typeof saved?.role === "string") return normalizeRole(saved.role);
+    if (saved?.role?.name) return normalizeRole(saved.role.name);
+    return "";
+  }
 
-    if (Array.isArray(saved?.user?.roles)) roles.push(...saved.user.roles);
-
-    if (typeof saved?.activeRole === "string") {
-      roles.push(saved.activeRole);
-    } else if (saved?.activeRole?.name) {
-      roles.push(saved.activeRole.name);
+  async function resolveActiveRole() {
+    const saved = storageGet();
+    if (!saved?.token) return "";
+    try {
+      const response = await fetch("/api/me", { cache: "no-store" });
+      const data = await response.json();
+      if (!response.ok || !data.ok) return "";
+      return normalizeRole(data.activeRole || data.user?.activeRole);
+    } catch (error) {
+      console.error("Could not resolve active dashboard role:", error);
+      return "";
     }
-
-    if (saved?.role) roles.push(saved.role);
-
-    return [...new Set(roles.map(normalizeRole).filter(Boolean))];
   }
 
   function setActiveTab(tabKey) {
@@ -101,16 +105,13 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   async function tryLoadVisibility() {
-    const userRoles = getUserRoles();
-
-    if (!userRoles.length && retries < 5) {
-      retries++;
-      console.warn(`No role info found (attempt ${retries}) - retrying...`);
-      return setTimeout(tryLoadVisibility, 400);
-    }
-
-    if (!userRoles.length) {
-      console.warn("No role info found after retries; showing dashboard tabs");
+    // The server session is authoritative. Stored role is only a fallback for
+    // transient /api/me failures and is never expanded to all assigned roles.
+    const activeRole = await resolveActiveRole() || getStoredActiveRole();
+    if (!activeRole) {
+      tabsNav.hidden = true;
+      tabPanels.forEach((panel) => { panel.hidden = true; panel.classList.add("hidden"); });
+      showNoTabsMessage();
       return;
     }
 
@@ -123,11 +124,15 @@ document.addEventListener("DOMContentLoaded", () => {
         throw new Error("Invalid dashboard tab config");
       }
 
-      applyVisibility(data.tabs, userRoles);
+      applyVisibility(data.tabs, [activeRole]);
     } catch (err) {
       console.error("Dashboard tab visibility load failed:", err);
+      tabsNav.hidden = true;
+      tabPanels.forEach((panel) => { panel.hidden = true; panel.classList.add("hidden"); });
+      showNoTabsMessage();
     }
   }
 
+  window.addEventListener("epos:active-role-ready", tryLoadVisibility);
   tryLoadVisibility();
 });

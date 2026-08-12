@@ -71,7 +71,7 @@
     <span id="dashboardDateRangeLabel" class="dashboard-filter-range">Today</span>
   </section>
 
-  <nav id="dashboardTabs" class="dashboard-tabs" aria-label="Dashboard sections">
+  <nav id="dashboardTabs" class="dashboard-tabs" aria-label="Dashboard sections" hidden>
     <button id="dashboardSalesTab" class="dashboard-tab active" type="button" role="tab" aria-selected="true" aria-controls="dashboardWrapper" data-tab="sales">
       Sales
     </button>
@@ -80,7 +80,7 @@
     </button>
   </nav>
 
-  <div id="dashboardWrapper" class="dashboard-tab-panel active" role="tabpanel" aria-labelledby="dashboardSalesTab" data-tab-panel="sales">
+  <div id="dashboardWrapper" class="dashboard-tab-panel hidden" role="tabpanel" aria-labelledby="dashboardSalesTab" data-tab-panel="sales" hidden>
     <div id="dashboardGrid">
       <section id="homeRotaWidget" class="widget-card wide" style="display:none;" hidden>
         <div class="home-rota-header">
@@ -113,7 +113,7 @@
 
   </div>
 
-  <div id="inventoryOperationsPanel" class="dashboard-tab-panel hidden" role="tabpanel" aria-labelledby="dashboardInventoryOperationsTab" data-tab-panel="inventoryOperations">
+  <div id="inventoryOperationsPanel" class="dashboard-tab-panel hidden" role="tabpanel" aria-labelledby="dashboardInventoryOperationsTab" data-tab-panel="inventoryOperations" hidden>
     <section id="goodsValueWidget" class="widget-card wide inventory-widget-card goods-value-widget"></section>
     <section id="binTransfersWidget" class="widget-card wide inventory-widget-card"></section>
   </div>

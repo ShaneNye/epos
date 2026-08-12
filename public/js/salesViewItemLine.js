@@ -1210,7 +1210,6 @@ function applyItemToSalesViewRow(row, item, config = {}) {
 function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } = {}) {
   if (!row) return;
 
-  const lineIdx = Number(row.dataset.line || 0);
   const isService = isServiceItemClass(row.dataset.itemClass);
 
   const sel = row.querySelector(".item-fulfilment");
@@ -1235,7 +1234,7 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
   btn?.addEventListener("click", (event) => {
     event.preventDefault();
     event.stopPropagation();
-    window.SalesLineUI?.openInventoryWindow(row, lineIdx);
+    window.SalesLineUI?.openInventoryWindow(row, Number(row.dataset.line || 0));
   });
 
   const optionsBtn = row.querySelector(".open-options");
@@ -1252,6 +1251,7 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
   const deleteBtn = row.querySelector(".delete-row");
   deleteBtn?.addEventListener("click", () => {
     row.remove();
+    renumberSalesViewRows();
     updateVatFreeColumnVisibility();
     update60NightTrialColumnVisibility();
     if (typeof updateOrderSummaryFromTable === "function") {
@@ -1270,7 +1270,11 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
         String(it["Name"] || "").toLowerCase().includes(query)
       );
 
-      window.SalesLineUI?.showSuggestions?.(itemSearch, matches, lineIdx);
+      window.SalesLineUI?.showSuggestions?.(
+        itemSearch,
+        matches,
+        Number(row.dataset.line || 0)
+      );
     });
   }
 
@@ -1316,6 +1320,137 @@ function wireSalesViewRow(row, { fulfilmentMethods = [], existingLine = null } =
   setInventoryButtonState(row);
 }
 
+function renumberSalesViewRows() {
+  document.querySelectorAll("#orderItemsBody .order-line").forEach((row, index) => {
+    row.dataset.line = String(index);
+    const search = row.querySelector(".item-search");
+    if (search) search.id = `itemSearch-${index}`;
+    row.querySelectorAll("[data-line]").forEach((control) => { control.dataset.line = String(index); });
+  });
+}
+
+function markSalesViewLineOrderChanged() {
+  window._salesViewLineOrderDirty = true;
+  document.getElementById("orderItemsBody")?.dispatchEvent(
+    new CustomEvent("sales-lines-reordered", { bubbles: true })
+  );
+}
+
+function moveSalesViewRow(row, direction) {
+  const tbody = row?.parentElement;
+  if (!tbody || tbody.id !== "orderItemsBody") return;
+
+  const sibling = direction < 0 ? row.previousElementSibling : row.nextElementSibling;
+  if (!sibling?.classList.contains("order-line")) return;
+
+  if (direction < 0) tbody.insertBefore(row, sibling);
+  else tbody.insertBefore(sibling, row);
+
+  renumberSalesViewRows();
+  markSalesViewLineOrderChanged();
+  row.querySelector(".line-drag-handle")?.focus();
+}
+
+function salesViewRowPositions(tbody) {
+  return new Map(
+    [...tbody.querySelectorAll(":scope > tr.order-line")].map((row) => [
+      row,
+      row.getBoundingClientRect().top,
+    ])
+  );
+}
+
+function animateSalesViewRowMovement(tbody, previousPositions) {
+  if (window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+  tbody.querySelectorAll(":scope > tr.order-line").forEach((row) => {
+    const previousTop = previousPositions.get(row);
+    if (previousTop == null) return;
+    const delta = previousTop - row.getBoundingClientRect().top;
+    if (Math.abs(delta) < 1) return;
+    row.animate(
+      [
+        { transform: `translateY(${delta}px)` },
+        { transform: "translateY(0)" },
+      ],
+      { duration: 190, easing: "cubic-bezier(.2,.8,.2,1)" }
+    );
+  });
+}
+
+function clearSalesViewDropPosition(tbody) {
+  tbody.querySelectorAll(".sales-line-drop-before, .sales-line-drop-after").forEach((row) => {
+    row.classList.remove("sales-line-drop-before", "sales-line-drop-after");
+  });
+}
+
+function initSalesViewLineReordering() {
+  const tbody = document.getElementById("orderItemsBody");
+  if (!tbody || tbody.dataset.reorderBound === "1") return;
+  tbody.dataset.reorderBound = "1";
+
+  let draggedRow = null;
+  let orderChanged = false;
+  let lastDropPosition = "";
+
+  tbody.addEventListener("dragstart", (event) => {
+    const handle = event.target.closest?.(".line-drag-handle");
+    if (!handle) return;
+    draggedRow = handle.closest("tr.order-line");
+    if (!draggedRow) return;
+    orderChanged = false;
+    tbody.classList.add("sales-lines-dragging");
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedRow.dataset.clientLineKey || draggedRow.dataset.line || "line");
+    // Let the browser capture a crisp drag preview before styling the source row.
+    requestAnimationFrame(() => draggedRow?.classList.add("sales-line-dragging"));
+  });
+
+  tbody.addEventListener("dragover", (event) => {
+    if (!draggedRow) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "move";
+    const targetRow = event.target.closest?.("tr.order-line");
+    if (!targetRow || targetRow === draggedRow) return;
+    const rect = targetRow.getBoundingClientRect();
+    const insertAfter = event.clientY > rect.top + rect.height / 2;
+    const dropPosition = `${targetRow.dataset.clientLineKey || targetRow.dataset.line}:${insertAfter ? "after" : "before"}`;
+    clearSalesViewDropPosition(tbody);
+    targetRow.classList.add(insertAfter ? "sales-line-drop-after" : "sales-line-drop-before");
+    if (dropPosition === lastDropPosition) return;
+    lastDropPosition = dropPosition;
+    const reference = insertAfter ? targetRow.nextElementSibling : targetRow;
+    if (reference !== draggedRow) {
+      const previousPositions = salesViewRowPositions(tbody);
+      tbody.insertBefore(draggedRow, reference);
+      animateSalesViewRowMovement(tbody, previousPositions);
+      orderChanged = true;
+    }
+  });
+
+  tbody.addEventListener("drop", (event) => {
+    if (draggedRow) event.preventDefault();
+  });
+
+  tbody.addEventListener("dragend", () => {
+    if (!draggedRow) return;
+    draggedRow.classList.remove("sales-line-dragging");
+    tbody.classList.remove("sales-lines-dragging");
+    clearSalesViewDropPosition(tbody);
+    renumberSalesViewRows();
+    if (orderChanged) markSalesViewLineOrderChanged();
+    draggedRow = null;
+    orderChanged = false;
+    lastDropPosition = "";
+  });
+
+  tbody.addEventListener("keydown", (event) => {
+    const handle = event.target.closest?.(".line-drag-handle");
+    if (!handle || !["ArrowUp", "ArrowDown"].includes(event.key)) return;
+    event.preventDefault();
+    moveSalesViewRow(handle.closest("tr.order-line"), event.key === "ArrowUp" ? -1 : 1);
+  });
+}
+
 /* =========================================================
    Add new row
 ========================================================= */
@@ -1334,6 +1469,7 @@ function addSalesViewRow({ fulfilmentMethods = [] } = {}) {
 
   tr.innerHTML = `
     <td class="auto-fulfilment-column">
+      <button type="button" class="line-drag-handle" draggable="true" title="Drag to reorder item" aria-label="Drag to reorder item; use the up and down arrow keys for keyboard control">&#8942;&#8942;</button>
       <button type="button" class="auto-fulfilment-alert" title="Auto fulfilment information" aria-label="Auto fulfilment information" hidden>!</button>
     </td>
     <td>
@@ -1839,6 +1975,8 @@ window.renderSalesViewLines = function renderSalesViewLines({
   if (!tbody) return;
 
   tbody.innerHTML = "";
+  window._salesViewLineOrderDirty = false;
+  initSalesViewLineReordering();
   ensureSalesViewOptionsDelegation();
 
   const statusId = String(
@@ -2094,6 +2232,7 @@ window.renderSalesViewLines = function renderSalesViewLines({
 
     tr.innerHTML = `
       <td class="auto-fulfilment-column">
+        ${isPending ? `<button type="button" class="line-drag-handle" draggable="true" title="Drag to reorder item" aria-label="Drag to reorder item; use the up and down arrow keys for keyboard control">&#8942;&#8942;</button>` : ""}
         <button type="button" class="auto-fulfilment-alert${autoFulfilmentClass}" title="${autoFulfilmentTitle}" aria-label="${autoFulfilmentTitle}" ${autoFulfilmentStatus ? "" : "hidden"}>${autoFulfilmentIcon}</button>
       </td>
       <td>

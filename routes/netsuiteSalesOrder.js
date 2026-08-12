@@ -802,6 +802,7 @@ function buildSalesOrderLineSuiteQl(id, { includeLotDetails = true } = {}) {
       id AS lineid,
       item,
       quantity,
+      quantitycommitted,
       isclosed,
       netamount,
       rate,
@@ -9297,6 +9298,12 @@ router.get("/:id", async (req, res) => {
             item: { id: itemId, refName: itemName, class: info.class || "" },
             itemClass: info.class || "",
             quantity: qty,
+            quantityCommitted: Math.abs(
+              Number(r.quantitycommitted ?? r.QUANTITYCOMMITTED) || 0
+            ),
+            quantitycommitted: Math.abs(
+              Number(r.quantitycommitted ?? r.QUANTITYCOMMITTED) || 0
+            ),
             amount: net,
             netamount: net,
             netAmount: net,
@@ -10072,6 +10079,7 @@ router.post("/:id/save", async (req, res) => {
       lines = [],
       headerUpdates = {},
       deletedLineIds = [],
+      reorderLines = false,
     } = req.body;
 
     console.log(`💾 Saving (patch only) Sales Order ${id} via NetSuite RESTlet`);
@@ -10138,7 +10146,7 @@ router.post("/:id/save", async (req, res) => {
 
     const patchStoreName = await resolvePatchStoreName(id, headerUpdates, userId);
     const patchWarehouseId = String(headerUpdates?.warehouse || "").trim();
-    const normalizedLines = (Array.isArray(lines) ? lines : []).map((line) => {
+    let normalizedLines = (Array.isArray(lines) ? lines : []).map((line) => {
       const grossAmount = Number(
         line.grossAmount ?? line.amountGrossLine ?? line.amount ?? line.saleGrossLine ?? line.grossSaleprice ?? 0
       );
@@ -10190,10 +10198,29 @@ router.post("/:id/save", async (req, res) => {
     });
 
     // ✅ IMPORTANT: tell RESTlet NOT to approve
+    let saveDeletedLineIds = [...deletedLineIds];
+    if (reorderLines === true) {
+      const reorderedExistingLineIds = normalizedLines
+        .map((line) => String(line.lineId || "").trim())
+        .filter(Boolean);
+      saveDeletedLineIds = [...new Set([...saveDeletedLineIds, ...reorderedExistingLineIds])];
+      normalizedLines = normalizedLines.map((line) => ({
+        ...line,
+        lineId: "",
+        isNew: true,
+      }));
+    }
+
     const hasNewLines = normalizedLines.some(
       (line) => !String(line.lineId || "").trim() || line.isNew === true
     );
-    const splitDeleteAndInsertSave = deletedLineIds.length > 0 && hasNewLines;
+    // Ordinary replace-line saves remain split so NetSuite persists the removal
+    // before adding a replacement. A reorder is different: every existing line
+    // is removed and recreated, so a deletion-only call would attempt to save an
+    // invalid transaction with no item lines. Keep reorder removal/insertion in
+    // one RESTlet transaction instead.
+    const splitDeleteAndInsertSave =
+      reorderLines !== true && saveDeletedLineIds.length > 0 && hasNewLines;
 
     let deletionResult = null;
     let response;
@@ -10205,7 +10232,7 @@ router.post("/:id/save", async (req, res) => {
         id,
         lines: [],
         headerUpdates: {},
-        deletedLineIds,
+        deletedLineIds: saveDeletedLineIds,
         commit: false,
       });
       const deletionCall = await postRestletWithRecordChangedRetry(
@@ -10243,7 +10270,7 @@ router.post("/:id/save", async (req, res) => {
         id,
         lines: normalizedLines,
         headerUpdates,
-        deletedLineIds,
+        deletedLineIds: saveDeletedLineIds,
         commit: false,
       };
       const payloadText = JSON.stringify(payload);

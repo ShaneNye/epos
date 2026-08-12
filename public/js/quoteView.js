@@ -845,6 +845,7 @@ function bindQuoteItemTableEvents() {
 
       if (row) {
         row.remove();
+        renumberQuoteViewRows();
 
         if (typeof window.update60NightTrialColumnVisibility === "function") {
           window.update60NightTrialColumnVisibility();
@@ -1040,6 +1041,15 @@ function updateQuoteMemoHeader(count) {
 
 function stableSaveSignature(payload) {
   return JSON.stringify(payload || {});
+}
+
+function renumberQuoteViewRows() {
+  document.querySelectorAll("#orderItemsBody .order-line").forEach((row, index) => {
+    row.dataset.line = String(index);
+    const search = row.querySelector(".item-search");
+    if (search) search.id = `itemSearch-${index}`;
+    row.querySelectorAll("[data-line]").forEach((control) => { control.dataset.line = String(index); });
+  });
 }
 
 function quoteHasUnsavedChanges() {

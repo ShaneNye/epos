@@ -555,6 +555,11 @@ body.sidebar-expanded .order-upsell-panel {
   border-radius: 8px;
 }
 
+/* Keep the primary form panels visually separate from the line-item workspace. */
+.form-scroll + .order-items-section {
+  margin-top: 1rem;
+}
+
 /* === CONFIRM BUTTON === */
 .confirm-wrapper {
   margin: 0.1rem 0 0.35rem;
@@ -628,17 +633,125 @@ body.sidebar-expanded .order-upsell-panel {
   flex-direction: column;
 }
 
-/* Right: Order Summary */
-.order-summary {
+/* Right: Summary and progress */
+.order-side-panels {
   flex: 0 0 22%;
+  min-width: 250px;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  gap: 0.85rem;
+}
+
+.order-side-panels > aside {
+  flex: 0 0 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.order-summary {
+  width: 100%;
+  box-sizing: border-box;
   background: #fff;
   border: 1px solid #ddd;
   border-radius: 8px;
   padding: 16px;
   box-shadow: 0 1px 4px rgba(0,0,0,0.1);
   height: fit-content;
-  position: sticky;
-  top: 20px;
+  position: static;
+}
+
+.order-progress {
+  position: relative;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 18px;
+  border: 1px solid #dce5eb;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+}
+
+.order-progress::after {
+  content: "";
+  position: absolute;
+  pointer-events: none;
+  inset: -2px;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  opacity: 0;
+}
+
+.order-progress.order-progress-attention::after {
+  background: conic-gradient(from var(--order-progress-trace-angle), transparent 0deg 300deg, #ffd27a 318deg, #ef8f13 342deg, transparent 360deg) border-box;
+  -webkit-mask: linear-gradient(#000 0 0) padding-box, linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+  mask-composite: exclude;
+  animation: order-progress-border-trace 5s linear;
+}
+
+@property --order-progress-trace-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+@keyframes order-progress-border-trace {
+  0% { opacity: 0; --order-progress-trace-angle: 0deg; }
+  5% { opacity: 1; }
+  92% { opacity: 1; }
+  100% { opacity: 0; --order-progress-trace-angle: 1080deg; }
+}
+
+.order-progress-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.order-progress h2 { margin: 0; font-size: 1.05rem; line-height: 1.25; color: var(--ink); }
+.order-progress-title-row { display: flex; align-items: baseline; flex-wrap: wrap; gap: 0.35rem 0.55rem; }
+.order-progress-save-note { color: #8a5a13; font-size: 0.7rem; font-weight: 700; white-space: nowrap; }
+.order-progress-heading p { margin: 0.35rem 0 0; color: #647480; font-size: 0.78rem; line-height: 1.35; }
+.order-progress-count { flex: 0 0 auto; margin-top: 0.05rem; padding: 0.24rem 0.52rem; border-radius: 999px; background: #eef4f7; color: #4f6470; font-size: 0.75rem; font-weight: 700; line-height: 1; }
+.order-progress-bar { height: 5px; margin: 1rem 0 1.05rem; overflow: hidden; border-radius: 999px; background: #e8eef2; }
+.order-progress-bar span { display: block; width: 0; height: 100%; border-radius: inherit; background: #0081ab; transition: width 180ms ease; }
+.order-progress-list { display: grid; gap: 0.72rem; margin: 0; padding: 0; list-style: none; }
+.order-progress-list li { position: relative; isolation: isolate; display: grid; grid-template-columns: 1.15rem minmax(0, 1fr) auto; align-items: center; gap: 0.55rem; min-height: 1.25rem; margin: 0 -0.4rem; padding: 0.32rem 0.4rem; overflow: hidden; border-radius: 6px; color: #657681; font-size: 0.79rem; line-height: 1.4; transition: color 180ms ease; }
+.order-progress-list li::before { content: ""; position: absolute; z-index: -1; inset: 0; border-radius: inherit; background: #e5f5ed; transform: scaleX(0); transform-origin: left center; transition: transform 260ms cubic-bezier(.2,.8,.2,1); }
+.order-progress-list li.is-confirmed::before { transform: scaleX(1); }
+.order-progress-list li.is-confirmed { color: #174f3b; }
+.order-progress-copy { position: relative; z-index: 1; display: grid; gap: 0.16rem; }
+.order-progress-copy small { display: none; color: #a85b08; font-size: 0.72rem; line-height: 1.35; }
+.order-progress-icon { position: relative; z-index: 1; width: 0.86rem; height: 0.86rem; border: 1.5px solid #b7c4cc; border-radius: 50%; background: #fff; }
+.order-progress-list li.is-complete { color: #263d49; }
+.order-progress-list li.is-complete .order-progress-icon { display: grid; place-items: center; border-color: #16855b; background: #16855b; color: #fff; box-shadow: 0 0 0 2px #fff; }
+.order-progress-list li.is-complete .order-progress-icon::after { content: "✓"; font-size: 0.6rem; font-weight: 900; line-height: 1; }
+.order-progress-list li.is-warning { color: #8a4b08; }
+.order-progress-list li.is-warning .order-progress-icon { display: grid; place-items: center; border-color: #e58a19; background: #fff4df; color: #b76408; }
+.order-progress-list li.is-warning .order-progress-icon::after { content: "−"; font-size: 0.78rem; font-weight: 900; line-height: 1; }
+.order-progress-list li.is-warning .order-progress-copy small { display: block; }
+.order-progress.is-complete .order-progress-count { background: #e4f5ed; color: #126644; }
+.order-progress-confirm { position: relative; z-index: 1; display: none; align-items: center; justify-content: center; cursor: pointer; }
+.order-progress.is-awaiting-confirmation .order-progress-confirm { display: flex; }
+.order-progress-confirm input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.order-progress-confirm span { display: grid; place-items: center; width: 1.08rem; height: 1.08rem; border: 1.5px solid #81949f; border-radius: 50%; background: #fff; box-shadow: 0 1px 2px rgba(20, 48, 61, 0.12); transition: border-color 160ms ease, background 160ms ease, transform 160ms ease; }
+.order-progress-confirm:hover span { border-color: #16855b; transform: scale(1.08); }
+.order-progress-confirm input:focus-visible + span { outline: 2px solid rgba(0, 129, 171, 0.3); outline-offset: 2px; }
+.order-progress-confirm input:checked + span { border-color: #0f7550; background: #0f7550; color: #fff; transform: scale(1); }
+.order-progress-confirm input:checked + span::after { content: "✓"; font-size: 0.68rem; font-weight: 800; line-height: 1; }
+#saveOrderBtn[data-progress-blocked="true"] { cursor: pointer; opacity: 0.72; }
+
+/* Order Progress is informational only; manual confirmation controls are retired. */
+.order-progress-list li { grid-template-columns: 1.15rem minmax(0, 1fr); }
+.order-progress-list li::before,
+.order-progress-confirm { display: none !important; }
+
+@media (prefers-reduced-motion: reduce) {
+  .order-progress-list li::before,
+  .order-progress-confirm span { transition: none; }
+  .order-progress.order-progress-attention::after { animation: none; opacity: 1; }
 }
 
 .order-summary h2 {
@@ -719,7 +832,7 @@ body.sidebar-expanded .order-upsell-panel {
   }
   .form-section.narrow,
   .right-main,
-  .order-summary {
+  .order-side-panels {
     flex: 1 1 100%;
   }
 }
@@ -735,6 +848,7 @@ body.sidebar-expanded .order-upsell-panel {
 
   .form-section.narrow,
   .right-main,
+  .order-side-panels,
   .order-summary {
     min-width: 0;
     width: 100%;

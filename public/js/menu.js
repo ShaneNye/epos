@@ -390,6 +390,7 @@ if (normalizeHexColor(userTheme.primary) || normalizeHexColor(userTheme.accent))
       // Save role to local storage
       saved.activeRole = activeRole;
       storageSet(true, saved);
+      window.dispatchEvent(new CustomEvent("epos:active-role-ready", { detail: { role: activeRole } }));
 
       // Apply UI and access restrictions
       roleSelect.value = activeRole;
@@ -402,6 +403,7 @@ roleSelect.addEventListener("change", async e => {
   await updateActiveRole(newRole);
   saved.activeRole = newRole;
   storageSet(true, saved);
+  window.dispatchEvent(new CustomEvent("epos:active-role-ready", { detail: { role: newRole } }));
   await applyAccessRestrictions(newRole, saved.token);
   console.log(`✅ Switched active role to '${newRole}'`);
 

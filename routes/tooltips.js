@@ -84,6 +84,11 @@ function pageFields(html) {
   }
 
   const fields = new Map();
+  for (const match of html.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*\bdata-tooltip-field\s*=\s*(?:"[^"]*"|'[^']*')[^>]*)>([\s\S]*?)<\/\1>/gi)) {
+    const key = attribute(match[2], "data-tooltip-field");
+    const label = decodeEntities(match[3]);
+    if (key && label) fields.set(key, { key, label });
+  }
   for (const match of html.matchAll(/<(input|select|textarea)\b[^>]*>/gi)) {
     const tag = match[0];
     const type = attribute(tag, "type").toLowerCase();

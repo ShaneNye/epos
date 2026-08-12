@@ -203,7 +203,7 @@
 
               <label>
                 Store
-                <select name="store" id="store">
+                <select name="store" id="store" required>
                   <option value="">Loading stores...</option>
                 </select>
               </label>
@@ -313,17 +313,17 @@
         <table class="order-table" id="orderItemsTable">
           <thead>
             <tr>
-              <th>Item</th>
-              <th>Options</th>
-              <th>Quantity</th>
-              <th>Amount</th>
-              <th>Discount %</th>
-              <th id="taxHeader" class="tax-column" style="display:none;">Tax (20%)</th>
-              <th>Sale Price</th>
-              <th id="vatFreeHeader" style="display:none;">Vat Free</th>
+              <th data-tooltip-field="item-line-item">Item</th>
+              <th data-tooltip-field="item-line-options">Options</th>
+              <th data-tooltip-field="item-line-quantity">Quantity</th>
+              <th data-tooltip-field="item-line-amount">Amount</th>
+              <th data-tooltip-field="item-line-discount">Discount %</th>
+              <th data-tooltip-field="item-line-tax" id="taxHeader" class="tax-column" style="display:none;">Tax (20%)</th>
+              <th data-tooltip-field="item-line-sale-price">Sale Price</th>
+              <th data-tooltip-field="item-line-vat-free" id="vatFreeHeader" style="display:none;">Vat Free</th>
 
               <!-- ✅ 60NT header (hidden unless a mattress is on the quote) -->
-              <th id="60ntheader" style="display:none;">60 Night Trial</th>
+              <th data-tooltip-field="item-line-trial" id="60ntheader" style="display:none;">60 Night Trial</th>
 
               <th></th>
             </tr>

@@ -6,11 +6,11 @@
   border-top: 3px solid var(--accent, #FFD700);
   border-radius: 12px;
   box-shadow: 0 3px 12px rgba(0, 0, 0, 0.08);
-  padding: 14px 18px;
+  padding: 16px 18px;
   margin: 24px 0;
   font-family: "Segoe UI", system-ui, sans-serif;
   color: #333;
-  transition: 0.3s ease all;
+  transition: box-shadow 0.2s ease, transform 0.2s ease;
   font-size: 0.88rem;
   height: 344px; /* fixed widget height */
   display: flex;
@@ -20,6 +20,7 @@
 
 #salesForecastWidget:hover {
   box-shadow: 0 4px 16px var(--brand-shadow-strong, rgba(0, 129, 171, 0.2));
+  transform: translateY(-1px);
 }
 
 /* === Header / Tabs Row === */
@@ -33,7 +34,7 @@
 
 #salesForecastWidget .sf-title {
   font-size: 1rem;
-  font-weight: 600;
+  font-weight: 700;
   color: var(--brand, #0081ab);
   display: flex;
   align-items: center;
@@ -52,6 +53,26 @@
   margin-bottom: 10px;
 }
 
+#salesForecastWidget .sf-title-mark { display: inline-grid; place-items: center; width: 26px; height: 26px; margin-right: 8px; border-radius: 8px; background: var(--brand, #0081ab); color: #fff; font-size: .9rem; }
+
+#salesForecastWidget .sf-view-tabs { gap: 2px; flex-wrap: nowrap; justify-content: flex-end; padding: 3px; border: 1px solid #dcecf1; border-radius: 10px; background: #f4f8fa; }
+#salesForecastWidget .sf-view-tabs .sf-tab { padding: 7px 12px; border: 0; border-radius: 7px; background: transparent; }
+#salesForecastWidget .sf-view-tabs .sf-tab.active { background: #fff; color: var(--brand-600, #006c8e); box-shadow: 0 1px 4px rgba(31, 54, 68, .14); }
+#salesForecastWidget .sf-views { flex: 1; min-height: 0; overflow: hidden; }
+#salesForecastWidget .sf-view { display: none; height: 100%; }
+#salesForecastWidget .sf-view.active { display: flex; flex-direction: column; }
+#salesForecastWidget .sf-view[data-view="forecast-tools"] > .sf-mains { min-height: 0; }
+#salesForecastWidget .sf-forecast-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+#salesForecastWidget .sf-forecast-period { color: var(--brand, #0081ab); font-size: .86rem; font-weight: 700; }
+#salesForecastWidget .sf-commission-summary { position: relative; display: grid; justify-items: center; gap: 4px; margin: 4px 0 12px; padding: 15px; overflow: hidden; border: 1px solid #cfeef5; border-radius: 12px; background: linear-gradient(135deg, #f1fbfd 0%, #fffdf3 100%); text-align: center; }
+#salesForecastWidget .sf-commission-summary::after { content: ""; position: absolute; width: 90px; height: 90px; top: -52px; right: -32px; border-radius: 50%; background: rgba(255, 215, 0, .22); }
+#salesForecastWidget .sf-commission-kicker { color: #52606d; font-size: .82rem; font-weight: 700; text-transform: uppercase; letter-spacing: .04em; }
+#salesForecastWidget .sf-commission-total { color: var(--brand, #0081ab); font-size: clamp(1.8rem, 4vw, 2.25rem); line-height: 1.1; letter-spacing: -.025em; }
+#salesForecastWidget .sf-commission-rate { color: #667784; font-size: .78rem; }
+#salesForecastWidget .sf-commission-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+#salesForecastWidget .sf-commission-metrics .sf-row { display: grid; gap: 5px; align-content: center; min-height: 56px; text-align: center; background: #fbfdfe; }
+#salesForecastWidget .sf-commission-metrics .sf-label, #salesForecastWidget .sf-commission-metrics .sf-value { width: auto; text-align: center; }
+
 #salesForecastWidget .sf-tab {
   border: 1px solid #cfeef5;
   background: #f4fdfd;
@@ -68,6 +89,8 @@
 #salesForecastWidget .sf-tab:hover {
   background: #e6f5f8;
 }
+
+#salesForecastWidget .sf-tab:focus-visible, #salesForecastWidget .sf-reset:focus-visible { outline: 3px solid rgba(0, 129, 171, .25); outline-offset: 2px; }
 
 #salesForecastWidget .sf-tab.active {
   background: var(--brand, #0081ab);
@@ -242,6 +265,9 @@
   padding: 6px 2px 0;
 }
 
+#salesForecastWidget .sf-inline-status { margin-top: 10px; padding: 8px 10px; border-radius: 8px; background: #f4f8fa; color: #52606d; font-size: .82rem; text-align: center; }
+#salesForecastWidget .sf-inline-status.is-warning { background: #fff8e1; color: #725b00; }
+
 /* === Loading, Empty, and Error States (match existing style) === */
 #salesForecastWidget .loading,
 #salesForecastWidget .no-data,
@@ -277,6 +303,10 @@
     gap: 8px;
   }
 
+  #salesForecastWidget .sf-view-tabs { justify-content: stretch; }
+  #salesForecastWidget .sf-forecast-toolbar { align-items: stretch; flex-direction: column; }
+  #salesForecastWidget .sf-commission-metrics { grid-template-columns: 1fr; }
+
   #salesForecastWidget .sf-tabs {
     width: 100%;
   }
@@ -302,5 +332,9 @@
     width: 100%;
     text-align: left;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #salesForecastWidget, #salesForecastWidget .sf-tab, #salesForecastWidget .sf-reset { transition: none; }
 }
 

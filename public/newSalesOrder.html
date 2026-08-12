@@ -31,6 +31,7 @@
     <script src="/js/salesCustomerLock.js" defer></script>
     <script src="/js/salesCustomerSearch.js" defer></script>
     <script src="/js/salesNewItemLine.js" defer></script>
+    <script src="/js/salesNewOrderProgress.js" defer></script>
     <script src="/js/orderPromotions.js" defer></script>
     <script src="/js/salesKioskDraft.js" defer></script>
     <!-- <script src="/js/salesNew60Night.js"></script> -->
@@ -150,7 +151,7 @@
 
                             <label>
                                 Store
-                                <select name="store" id="store">
+                                <select name="store" id="store" required>
                                     <option>Loading stores...</option>
                                 </select>
                             </label>
@@ -201,7 +202,8 @@
                     </section>
                 </div>
 
-                <!-- ORDER SUMMARY (Sticky) -->
+                <div class="order-side-panels">
+                <!-- ORDER SUMMARY -->
                 <aside class="order-summary">
                     <h2>Order Summary</h2>
                     <p><strong>Order Number:</strong> <span id="orderNumber">To Be Generated</span></p>
@@ -226,6 +228,27 @@
 
                     <div id="orderToast" class="order-toast hidden"></div>
                 </aside>
+
+                <aside class="order-progress" aria-labelledby="orderProgressTitle">
+                    <div class="order-progress-heading">
+                        <div>
+                            <h2 id="orderProgressTitle">Order Progress</h2>
+                            <p id="orderProgressSummary" aria-live="polite">Checking order details…</p>
+                        </div>
+                        <span id="orderProgressCount" class="order-progress-count">0/7</span>
+                    </div>
+                    <div class="order-progress-bar" aria-hidden="true"><span id="orderProgressBar"></span></div>
+                    <ul id="orderProgressList" class="order-progress-list">
+                        <li data-progress="firstName"><span class="order-progress-icon" aria-hidden="true"></span><span class="order-progress-copy"><span>First name entered</span><small></small></span></li>
+                        <li data-progress="lastName"><span class="order-progress-icon" aria-hidden="true"></span><span class="order-progress-copy"><span>Last name entered</span><small></small></span></li>
+                        <li data-progress="address"><span class="order-progress-icon" aria-hidden="true"></span><span class="order-progress-copy"><span>Address completed</span><small></small></span></li>
+                        <li data-progress="contact"><span class="order-progress-icon" aria-hidden="true"></span><span class="order-progress-copy"><span>Contact number entered</span><small></small></span></li>
+                        <li data-progress="email"><span class="order-progress-icon" aria-hidden="true"></span><span class="order-progress-copy"><span>Valid email address entered</span><small></small></span></li>
+                        <li data-progress="orderDetails"><span class="order-progress-icon" aria-hidden="true"></span><span class="order-progress-copy"><span>Order details completed</span><small></small></span></li>
+                        <li data-progress="itemLines"><span class="order-progress-icon" aria-hidden="true"></span><span class="order-progress-copy"><span>Item fulfilment and inventory completed</span><small></small></span></li>
+                    </ul>
+                </aside>
+                </div>
 
             </div>
 
@@ -270,16 +293,16 @@
                 <thead>
                     <tr>
                         <th class="auto-fulfilment-column" aria-label="Auto fulfilment"></th>
-                        <th>Item</th>
-                        <th>Options</th>
-                        <th>Quantity</th>
-                        <th>Amount</th>
-                        <th>Discount %</th>
-                        <th>Sale Price</th>
-                        <th style="display: none;" id="vatFreeHeader">Vat Free</th>
-                        <th style="display: none;" id="60ntheader">60 Night Trial</th>
-                        <th>Fulfilment Method</th>
-                        <th>Inventory Detail</th>
+                        <th data-tooltip-field="item-line-item">Item</th>
+                        <th data-tooltip-field="item-line-options">Options</th>
+                        <th data-tooltip-field="item-line-quantity">Quantity</th>
+                        <th data-tooltip-field="item-line-amount">Amount</th>
+                        <th data-tooltip-field="item-line-discount">Discount %</th>
+                        <th data-tooltip-field="item-line-sale-price">Sale Price</th>
+                        <th data-tooltip-field="item-line-vat-free" style="display: none;" id="vatFreeHeader">Vat Free</th>
+                        <th data-tooltip-field="item-line-trial" style="display: none;" id="60ntheader">60 Night Trial</th>
+                        <th data-tooltip-field="item-line-fulfilment">Fulfilment Method</th>
+                        <th data-tooltip-field="item-line-inventory">Inventory Detail</th>
                         <th></th>
                     </tr>
                 </thead>

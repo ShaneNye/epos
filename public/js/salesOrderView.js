@@ -578,6 +578,7 @@ function renderRelatedRecords(so, orderManagementRow = null) {
     isPendingFulfillmentSalesOrder(so) && !hasRelatedRecord(pairedSalesOrder)
   );
   renderCustomFields(so?.customFields || []);
+  window.updateSalesViewOrderProgress?.(so);
 }
 
 async function openIntercompanyConsole() {
@@ -1895,6 +1896,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           el.classList.contains("item-inv-detail") ||
           el.classList.contains("open-options") ||
           el.classList.contains("delete-row") ||
+          el.classList.contains("line-drag-handle") ||
           el.id === "addItemBtn" ||
           el.id === "saveOrderBtn" ||
           el.id === "commitOrderBtn" ||
@@ -2161,6 +2163,7 @@ function renderDeposits(deposits) {
     section.style.display = "block";
     if (depositsTotalCell) depositsTotalCell.textContent = "£0.00";
     if (balanceCell) balanceCell.textContent = "£0.00";
+    window.updateSalesViewOrderProgress?.();
     return;
   }
 
@@ -2194,6 +2197,7 @@ function renderDeposits(deposits) {
 
   tbody.appendChild(frag);
   updateDepositTotals(totalDeposits);
+  window.updateSalesViewOrderProgress?.();
 }
 
 function updateDepositTotals(totalDeposits) {
@@ -2796,6 +2800,24 @@ function applySavedSalesLineIdentity(restletResult) {
   return applied;
 }
 
+function syncReorderedSalesLineIdentityBaseline(so) {
+  const currentLines = Array.isArray(so?.item?.items) ? so.item.items : [];
+  const editableLines = currentLines.filter((line) => !salesOrderViewLineIsClosed(line));
+  const closedLines = currentLines.filter(salesOrderViewLineIsClosed);
+  const reorderedLines = [...document.querySelectorAll("#orderItemsBody tr.order-line")].map(
+    (row, index) => ({
+      ...(editableLines[index] || {}),
+      lineId: String(row.dataset.lineid || "").trim(),
+      item: {
+        ...(editableLines[index]?.item || {}),
+        id: row.querySelector(".item-internal-id")?.value?.trim() || "",
+        refName: row.querySelector(".item-search")?.value?.trim() || "",
+      },
+    })
+  );
+  if (so?.item) so.item.items = [...reorderedLines, ...closedLines];
+}
+
 function updateActionButton(orderStatusObj, tranId, so) {
   const wrapper = document.getElementById("orderActionWrapper");
   if (!wrapper) return;
@@ -3080,6 +3102,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
       headerUpdates,
       lines,
       deletedLineIds,
+      reorderLines: window._salesViewLineOrderDirty === true,
     };
   }
 
@@ -3122,6 +3145,7 @@ function updateActionButton(orderStatusObj, tranId, so) {
     const orderRoot = document.querySelector("main") || document;
     orderRoot.addEventListener("input", refresh);
     orderRoot.addEventListener("change", refresh);
+    orderRoot.addEventListener("sales-lines-reordered", refresh);
     orderRoot.addEventListener("click", (event) => {
       if (
         event.target.closest(".delete-row") ||
@@ -3173,6 +3197,8 @@ function updateActionButton(orderStatusObj, tranId, so) {
       if (!res.ok || !data.ok) throw new Error(data.error || "Failed to save order");
       restletResult = data.restletResult;
       applySavedSalesLineIdentity(restletResult);
+      if (payload.reorderLines === true) syncReorderedSalesLineIdentityBaseline(so);
+      window._salesViewLineOrderDirty = false;
       window._lastSalesOrderSaveSignature = stableSalesSaveSignature(buildPayloadFromUI());
     }
 

@@ -1218,12 +1218,22 @@ function addNewRow() {
 
   tr.querySelector(".delete-row")?.addEventListener("click", () => {
     tr.remove();
+    renumberQuoteNewRows();
     updateVatFreeColumnVisibility();
     update60NightTrialColumnVisibility();
     recalcTotals();
   });
 
   recalcTotals();
+}
+
+function renumberQuoteNewRows() {
+  document.querySelectorAll("#orderItemsBody .order-line").forEach((row, index) => {
+    row.dataset.line = String(index);
+    const search = row.querySelector(".item-search");
+    if (search) search.id = `itemSearch-${index}`;
+    row.querySelectorAll("[data-line]").forEach((control) => { control.dataset.line = String(index); });
+  });
 }
 
 /* =========================================================
@@ -1288,6 +1298,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     row.querySelector(".delete-row")?.addEventListener("click", () => {
       row.remove();
+      renumberQuoteNewRows();
       updateVatFreeColumnVisibility();
       update60NightTrialColumnVisibility();
       recalcTotals();

@@ -29,6 +29,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   const fmtGBP = (n) =>
     safeNum(n).toLocaleString("en-GB", { style: "currency", currency: "GBP" });
+  const escapeHtml = (value) => String(value ?? "").replace(/[&<>"']/g, (character) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[character]));
 
   const computeFromOrders = (rows) => {
     // Group line rows by Document Number -> totals per order
@@ -139,7 +142,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       b.classList.toggle("active", b.dataset.main === tabName);
     });
     root.querySelectorAll(".sf-main").forEach((p) => {
-      p.classList.toggle("active", p.dataset.main === tabName);
+      const active = p.dataset.main === tabName;
+      p.classList.toggle("active", active);
+      p.hidden = !active;
+    });
+  };
+
+  const setActiveView = (root, viewName) => {
+    root.querySelectorAll(".sf-tab-view").forEach((button) => {
+      const active = button.dataset.view === viewName;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-selected", String(active));
+    });
+    root.querySelectorAll(".sf-view").forEach((panel) => {
+      const active = panel.dataset.view === viewName;
+      panel.classList.toggle("active", active);
+      panel.hidden = !active;
     });
   };
 
@@ -149,7 +167,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       b.classList.toggle("active", b.dataset.sub === subName);
     });
     mainEl.querySelectorAll(".sf-subpanel").forEach((p) => {
-      p.classList.toggle("active", p.dataset.sub === subName);
+      const active = p.dataset.sub === subName;
+      p.classList.toggle("active", active);
+      p.hidden = !active;
+    });
+  };
+
+  const enableArrowKeyTabs = (tabList) => {
+    const tabs = [...tabList.querySelectorAll(':scope > [role="tab"]')];
+    tabList.addEventListener("keydown", (event) => {
+      const current = tabs.indexOf(document.activeElement);
+      if (current < 0 || !["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
+      event.preventDefault();
+      const next = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + (event.key === "ArrowRight" ? 1 : -1) + tabs.length) % tabs.length;
+      tabs[next].focus();
+      tabs[next].click();
     });
   };
 
@@ -189,6 +221,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       const rowEmail = String(r.Email || "").trim().toLowerCase();
       return rowEmail && usernameEmail && rowEmail === usernameEmail;
     });
+    const todayLabel = now.toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" });
+    const todayRows = repRows.filter((row) => {
+      const date = parseGbDate(row.Date);
+      return date && date.getFullYear() === y && date.getMonth() === m && date.getDate() === now.getDate();
+    });
 
     // Infer primary store from repRows (most common store for this user this month)
     const primaryStore = modeStore(repRows);
@@ -201,6 +238,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     // Compute actuals
     const repActual = computeFromOrders(repRows);
     const storeActual = computeFromOrders(storeRows);
+    const todayActual = computeFromOrders(todayRows);
+    const todayCommission = todayActual.revenue * 0.021;
 
     // ---------- Forecast defaults ----------
     const todayOfMonth = now.getDate(); // 1-31
@@ -218,14 +257,37 @@ document.addEventListener("DOMContentLoaded", async () => {
     // ---------- Render ----------
     widget.innerHTML = `
       <div class="sf-header">
-        <div class="sf-title">📈 Sales Forecast — ${monthLabel}</div>
-        <div class="sf-tabs main">
-          <button class="sf-tab sf-tab-main active" data-main="current" type="button">Current</button>
-          <button class="sf-tab sf-tab-main" data-main="forecast" type="button">Forecast</button>
+        <div class="sf-title"><span class="sf-title-mark" aria-hidden="true">£</span><span>Sales performance</span></div>
+        <div class="sf-tabs sf-view-tabs" role="tablist" aria-label="Sales performance views">
+          <button id="sfCommissionTab" class="sf-tab sf-tab-view active" data-view="commission" type="button" role="tab" aria-controls="sfCommissionPanel" aria-selected="true">Commission today</button>
+          <button id="sfForecastTab" class="sf-tab sf-tab-view" data-view="forecast-tools" type="button" role="tab" aria-controls="sfForecastPanel" aria-selected="false">Sales forecast</button>
         </div>
       </div>
 
-      <div class="sf-mains">
+      <div class="sf-views">
+        <div id="sfCommissionPanel" class="sf-view active" data-view="commission" role="tabpanel" aria-labelledby="sfCommissionTab">
+          <div class="sf-commission-summary">
+            <span class="sf-commission-kicker">Commission earned</span>
+            <strong class="sf-commission-total">${fmtGBP(todayCommission)}</strong>
+            <span class="sf-commission-rate">${todayLabel} · 2.1% of eligible sales</span>
+          </div>
+          <div class="sf-commission-metrics">
+            ${buildDisplayRow({ label: "Today's sales", valueId: "sfTodayRevenue", valueText: fmtGBP(todayActual.revenue) })}
+            ${buildDisplayRow({ label: "Orders today", valueId: "sfTodayOrders", valueText: String(todayActual.count) })}
+            ${buildDisplayRow({ label: "Average order value", valueId: "sfTodayAov", valueText: fmtGBP(todayActual.aov) })}
+          </div>
+          ${!usernameEmail ? '<div class="sf-inline-status is-warning">Your account email could not be matched to sales.</div>' : !todayRows.length ? '<div class="sf-inline-status">No eligible sales have been recorded for you today yet.</div>' : '<div class="sf-footnote">Figures update from today’s recorded sales.</div>'}
+        </div>
+
+        <div id="sfForecastPanel" class="sf-view" data-view="forecast-tools" role="tabpanel" aria-labelledby="sfForecastTab" hidden>
+          <div class="sf-forecast-toolbar">
+            <span class="sf-forecast-period">Sales Forecast — ${monthLabel}</span>
+            <div class="sf-tabs main">
+              <button class="sf-tab sf-tab-main active" data-main="current" type="button">Current</button>
+              <button class="sf-tab sf-tab-main" data-main="forecast" type="button">Forecast</button>
+            </div>
+          </div>
+          <div class="sf-mains">
 
         <!-- ================= CURRENT ================= -->
         <div class="sf-main active" data-main="current">
@@ -240,9 +302,9 @@ document.addEventListener("DOMContentLoaded", async () => {
             <div class="sf-block">
               ${
                 !usernameEmail
-                  ? `<div class="no-data">No user email found in storage.</div>`
+                  ? `<div class="no-data">Your account email could not be matched to sales.</div>`
                   : !repRows.length
-                  ? `<div class="no-data">No sales found this month for ${usernameEmail}.</div>`
+                  ? `<div class="no-data">No sales found this month for ${escapeHtml(usernameEmail)}.</div>`
                   : ``
               }
 
@@ -290,7 +352,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               ${
                 !primaryStore
                   ? `<div class="no-data">Could not infer your primary store from your sales this month.</div>`
-                  : `<div class="sf-store-label"><strong>Store:</strong> ${primaryStore}</div>`
+                  : `<div class="sf-store-label"><strong>Store:</strong> ${escapeHtml(primaryStore)}</div>`
               }
 
               ${buildMetricRow({
@@ -387,7 +449,7 @@ document.addEventListener("DOMContentLoaded", async () => {
               ${
                 !primaryStore
                   ? `<div class="no-data">Could not infer your primary store from your sales this month.</div>`
-                  : `<div class="sf-store-label"><strong>Store:</strong> ${primaryStore}</div>`
+                  : `<div class="sf-store-label"><strong>Store:</strong> ${escapeHtml(primaryStore)}</div>`
               }
 
               ${buildMetricRow({
@@ -421,9 +483,15 @@ document.addEventListener("DOMContentLoaded", async () => {
               </div>
             </div>
           </div>
+          </div>
         </div>
       </div>
     `;
+
+    widget.querySelectorAll(".sf-tab-view").forEach((btn) => {
+      btn.addEventListener("click", () => setActiveView(widget, btn.dataset.view));
+    });
+    widget.querySelectorAll('[role="tablist"]').forEach(enableArrowKeyTabs);
 
     // Wire main tabs (Current / Forecast)
     widget.querySelectorAll(".sf-tab-main").forEach((btn) => {
@@ -474,6 +542,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
 
     // Default active states
+    setActiveView(widget, "commission");
     setActiveMain(widget, "current");
     setActiveSub(widget.querySelector('.sf-main[data-main="current"]'), "rep");
     setActiveSub(widget.querySelector('.sf-main[data-main="forecast"]'), "rep");

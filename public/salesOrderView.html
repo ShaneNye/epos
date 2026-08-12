@@ -10,7 +10,7 @@
 
     <!-- Styles -->
     <link rel="stylesheet" href="/css/home.css">
-    <link rel="stylesheet" href="/css/salesView.css?v=inventory-detail-display-v4">
+    <link rel="stylesheet" href="/css/salesView.css?v=order-lifecycle-progress-v1">
     <link rel="stylesheet" href="/css/what3wordsNotes.css">
     <link rel="stylesheet" href="/css/salesAutoFulfilmentNotice.css?v=auto-fulfilment-status-v3">
     <script src="/js/storage.js"></script>
@@ -30,6 +30,7 @@
     <script src="/js/salesAutoFulfilmentNotice.js?v=auto-fulfilment-status-v3" defer></script>
     <script src="/js/what3wordsNotes.js" defer></script>
     <script src="/js/salesOrderView.js" defer></script>
+    <script src="/js/salesViewOrderProgress.js" defer></script>
     <script src="/js/salesItemLineCommon.js" defer></script>
     <script src="/js/salesViewItemLine.js?v=vat-gross-amount-fix-1" defer></script>
     <script src="/js/orderPromotions.js" defer></script>
@@ -194,8 +195,8 @@
 
 
 
-                <!-- ORDER SUMMARY (Sticky) -->
-                <aside class="order-summary">
+                <div class="sales-view-side-panels">
+                  <aside class="order-summary">
                     <h2>Order Summary</h2>
                     <p><strong>Order Status:</strong> <span id="orderStatus"></span></p>
                     <p><strong>Order Number:</strong> <span id="orderNumber">To Be Generated</span></p>
@@ -218,7 +219,27 @@
                         <span class="mini-spinner" aria-hidden="true"></span>
                         <span id="commitInlineText">Committing…</span>
                     </div>
-                </aside>
+                  </aside>
+
+                  <aside class="sales-view-progress" aria-labelledby="salesViewProgressTitle">
+                    <div class="sales-view-progress__header">
+                      <div>
+                        <h2 id="salesViewProgressTitle">Order Progress</h2>
+                        <p id="salesViewProgressSummary" aria-live="polite">Loading order milestones…</p>
+                      </div>
+                      <span id="salesViewProgressCount" class="sales-view-progress__count">0/5</span>
+                    </div>
+                    <div class="sales-view-progress__track" aria-hidden="true"><span id="salesViewProgressBar"></span></div>
+                    <ul id="salesViewProgressList" class="sales-view-progress__list">
+                      <li data-milestone="deposit"><span class="sales-view-progress__icon" aria-hidden="true"></span><span class="sales-view-progress__label">Customer Deposit</span></li>
+                      <li data-milestone="committed"><span class="sales-view-progress__icon" aria-hidden="true"></span><span class="sales-view-progress__label">Order committed</span></li>
+                      <li data-milestone="intercompany"><span class="sales-view-progress__icon" aria-hidden="true"></span><span class="sales-view-progress__label">Intercompany</span></li>
+                      <li data-milestone="ready"><span class="sales-view-progress__icon" aria-hidden="true"></span><span class="sales-view-progress__label">Ready for delivery</span></li>
+                      <li data-milestone="dispatch"><span class="sales-view-progress__icon" aria-hidden="true"></span><span class="sales-view-progress__label">Awaiting export to DispatchTrack</span></li>
+                      <li data-milestone="billed"><span class="sales-view-progress__icon" aria-hidden="true"></span><span class="sales-view-progress__label">Billed</span></li>
+                    </ul>
+                  </aside>
+                </div>
 
             </div>
 
@@ -275,17 +296,17 @@
                         <thead>
                             <tr>
                                 <th class="auto-fulfilment-column" aria-label="Auto fulfilment"></th>
-                                <th>Item</th>
-                                <th>Options</th>
-                                <th>Quantity</th>
-                                <th>Amount</th>
-                                <th>Discount %</th>
-                                <th class="tax-column">Tax (20%)</th>
-                                <th>Sale Price</th>
-                                <th style="display: none;" id="vatFreeHeader">Vat Free</th>
-                                <th style="display: none;" id="60ntheader">60 Night Trial</th>
-                                <th>Fulfilment Method</th>
-                                <th>Inventory Detail</th>
+                                <th data-tooltip-field="item-line-item">Item</th>
+                                <th data-tooltip-field="item-line-options">Options</th>
+                                <th data-tooltip-field="item-line-quantity">Quantity</th>
+                                <th data-tooltip-field="item-line-amount">Amount</th>
+                                <th data-tooltip-field="item-line-discount">Discount %</th>
+                                <th data-tooltip-field="item-line-tax" class="tax-column">Tax (20%)</th>
+                                <th data-tooltip-field="item-line-sale-price">Sale Price</th>
+                                <th data-tooltip-field="item-line-vat-free" style="display: none;" id="vatFreeHeader">Vat Free</th>
+                                <th data-tooltip-field="item-line-trial" style="display: none;" id="60ntheader">60 Night Trial</th>
+                                <th data-tooltip-field="item-line-fulfilment">Fulfilment Method</th>
+                                <th data-tooltip-field="item-line-inventory">Inventory Detail</th>
                                 <th></th>
                             </tr>
                         </thead>
