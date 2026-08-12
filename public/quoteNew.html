@@ -10,7 +10,7 @@
 
   <!-- Styles -->
   <link rel="stylesheet" href="/css/home.css" />
-  <link rel="stylesheet" href="/css/sales.css?v=quote-tax-column-fix-1" />
+  <link rel="stylesheet" href="/css/sales.css?v=compact-contact-panel-v1" />
   <link rel="stylesheet" href="/assistant/assistant.css" />
 
   <!-- Storage must be available before main.js -->
@@ -242,7 +242,8 @@
           </section>
         </div>
 
-        <!-- ORDER SUMMARY (Sticky) -->
+        <div class="order-side-panels quote-side-panels">
+        <!-- QUOTE SUMMARY -->
         <aside class="order-summary">
           <h2>Quote Summary</h2>
           <p><strong>Quote Number:</strong> <span id="orderNumber">To Be Generated</span></p>
@@ -272,6 +273,7 @@
             <div id="orderToast" class="order-toast hidden"></div>
           </div>
         </aside>
+        </div>
 
       </div>
 

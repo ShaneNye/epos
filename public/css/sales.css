@@ -628,9 +628,17 @@ body.sidebar-expanded .order-upsell-panel {
 }
 
 .right-main > .form-section {
-  flex: 1; /* ensures both Contact Info + Order Details share height evenly */
   display: flex;
   flex-direction: column;
+}
+
+/* Contact is a compact single row; Order Details uses the remaining column height. */
+.right-main > #contactInfoSection {
+  flex: 0 0 auto;
+}
+
+.right-main > #orderDetailsSection {
+  flex: 1 1 auto;
 }
 
 /* Right: Summary and progress */
@@ -647,6 +655,11 @@ body.sidebar-expanded .order-upsell-panel {
   flex: 0 0 auto;
   min-width: 0;
   margin: 0;
+}
+
+/* Quote New has only a summary card, but uses the same stable third-column shell. */
+.quote-page .quote-side-panels {
+  justify-content: flex-start;
 }
 
 .order-summary {
