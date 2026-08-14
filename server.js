@@ -178,6 +178,7 @@ function normalizeAccessPath(value) {
   if (slug === "end-of-day" || slug === "endofday") return "eod";
   if (slug === "cash-flow") return "cashflow";
   if (slug === "suitepim" || slug.startsWith("suitepim/")) return "suitepim";
+  if (slug === "support-tracker" || slug.startsWith("support-tracker/")) return "support-tracker";
   return slug;
 }
 
@@ -613,6 +614,7 @@ app.use("/api/cs-workflows", require("./routes/csWorkflows"));
 app.use("/api/rewards", require("./routes/rewards").router);
 app.use("/api/vsa", require("./routes/vsa"));
 app.use("/api/systems-processes", require("./routes/systemsProcesses"));
+app.use("/api/support-tracker", require("./routes/supportTracker"));
 app.use("/api/google", require("./routes/google").router);
 const intercompanyRoutes = require("./routes/intercompany");
 app.use("/api/netsuite/intercompany", intercompanyRoutes);
@@ -848,11 +850,6 @@ app.get("/api/netsuite/customer-counties", async (req, res) => {
 // === Sales Order Items ===
 app.get("/api/netsuite/items", (req, res) =>
   fetchNetSuiteData("SALES_ORDER_ITEMS_URL", "SALES_ORDER_ITEMS", req, res, "sales order items")
-);
-
-// === Sales Kiosk Items ===
-app.get("/api/netsuite/kiosk-items", (req, res) =>
-  fetchNetSuiteData("KIOSK_ITEM_URL", "KIOSK_ITEM", req, res, "sales kiosk items")
 );
 
 // === Customer Match (with query params) ===
@@ -1197,208 +1194,6 @@ app.get("/api/netsuite/order-management/billed-orders", async (req, res) => {
     res.status(500).json({
       ok: false,
       error: err.message || "Failed to fetch billed orders",
-    });
-  }
-});
-
-app.get("/api/netsuite/dt-system-notes", (req, res) =>
-  fetchNetSuiteData("DT_SYSTEM_NOTES_URL", "DT_SYSTEM_NOTES", req, res, "Dispatch Track system notes", {
-    noStore: true,
-    forceRefresh: true,
-  })
-);
-
-function rowsFromSuiteletPayload(payload) {
-  if (Array.isArray(payload)) return payload;
-  if (!payload || typeof payload !== "object") return [];
-  if (Array.isArray(payload.results)) return payload.results;
-  if (Array.isArray(payload.data)) return payload.data;
-  return [];
-}
-
-function normalizeDocumentNumber(value) {
-  return String(value || "").trim().toUpperCase();
-}
-
-function extractDispatchTrackDocumentNumberFromSchedule(value) {
-  const raw = String(value || "");
-  const match = raw.match(/service-orders\/([^"'<>\s]+)/i);
-  return match ? match[1] : "";
-}
-
-function orderDispatchTrackDocumentCandidates(order = {}) {
-  return [
-    order["Paired Sales Order Document Number"],
-    order["Paired Sales Order"],
-    order["Dispatch Track Document Number"],
-    order["DT Document Number"],
-    order.pairedSalesOrderDocumentNumber,
-    order.pairedSalesOrder,
-    order.dispatchTrackDocumentNumber,
-    extractDispatchTrackDocumentNumberFromSchedule(order.Schedule || order.schedule),
-    order["Document Number"],
-    order.documentNumber,
-    order.tranid,
-    order.TranID,
-  ]
-    .map(normalizeDocumentNumber)
-    .filter(Boolean);
-}
-
-function parseDispatchTrackDate(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return null;
-
-  const match = raw.match(
-    /^(\d{1,2})\/(\d{1,2})\/(\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?$/i
-  );
-  if (match) {
-    const [, dayText, monthText, yearText, hourText = "0", minuteText = "0", secondText = "0", meridiem] = match;
-    let hour = Number(hourText);
-    if (/pm/i.test(meridiem || "") && hour < 12) hour += 12;
-    if (/am/i.test(meridiem || "") && hour === 12) hour = 0;
-
-    const date = new Date(
-      Number(yearText),
-      Number(monthText) - 1,
-      Number(dayText),
-      hour,
-      Number(minuteText),
-      Number(secondText)
-    );
-    return Number.isNaN(date.getTime()) ? null : date;
-  }
-
-  const fallback = new Date(raw);
-  return Number.isNaN(fallback.getTime()) ? null : fallback;
-}
-
-function startOfLocalDay(date) {
-  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
-}
-
-function daysBetweenDates(fromDate, toDate = new Date()) {
-  const from = startOfLocalDay(fromDate);
-  const to = startOfLocalDay(toDate);
-  return Math.floor((to - from) / 86400000);
-}
-
-function dispatchTrackAgeBucket(daysInDispatchTrack) {
-  if (daysInDispatchTrack >= 100) return "100+";
-  if (daysInDispatchTrack >= 90) return "90";
-  if (daysInDispatchTrack >= 60) return "60";
-  return null;
-}
-
-async function loadSuiteletData(envUrlKey, envTokenKey, req, label) {
-  const baseUrl = process.env[envUrlKey];
-  const token = process.env[envTokenKey];
-  if (!baseUrl || !token) {
-    throw new Error(`Missing ${envUrlKey} or ${envTokenKey} in environment`);
-  }
-
-  const nsUrl = new URL(String(baseUrl).trim().replace(/^["']|["']$/g, ""));
-  nsUrl.searchParams.set("token", token);
-  nsUrl.searchParams.set("_", String(Date.now()));
-
-  Object.entries(req.query || {}).forEach(([key, value]) => {
-    if (["token", "refresh", "force", "fresh", "_"].includes(String(key).toLowerCase())) return;
-    if (value === undefined || value === null || value === "") return;
-    nsUrl.searchParams.set(key, String(value));
-  });
-
-  console.log(`Fetching ${label} from NetSuite`);
-  const response = await fetch(nsUrl.toString());
-  if (!response.ok) throw new Error(`${label} response ${response.status}`);
-  return response.json();
-}
-
-app.get("/api/sales-tools/dispatch-track-ageing", async (req, res) => {
-  try {
-    res.set({
-      "Cache-Control": "no-store, no-cache, must-revalidate, proxy-revalidate",
-      Pragma: "no-cache",
-      Expires: "0",
-    });
-
-    const [orderPayload, notePayload] = await Promise.all([
-      loadSuiteletData("ORDER_MANAGEMENT_URL", "ORDER_MANAGEMENT", req, "order management"),
-      loadSuiteletData("DT_SYSTEM_NOTES_URL", "DT_SYSTEM_NOTES", req, "Dispatch Track system notes"),
-    ]);
-
-    const orders = rowsFromSuiteletPayload(orderPayload);
-    const notes = rowsFromSuiteletPayload(notePayload);
-    const firstNoteByDocument = new Map();
-
-    notes.forEach((note) => {
-      const documentNumber = normalizeDocumentNumber(
-        note["Document Number"] || note.documentNumber || note.tranid || note.TranID
-      );
-      const exportedAt = parseDispatchTrackDate(note.Date || note.date);
-      if (!documentNumber || !exportedAt) return;
-
-      const existing = firstNoteByDocument.get(documentNumber);
-      if (!existing || exportedAt < existing.exportedAt) {
-        firstNoteByDocument.set(documentNumber, {
-          note,
-          exportedAt,
-        });
-      }
-    });
-
-    const today = new Date();
-    const readyOrders = orders.filter((order) =>
-        String(order["Ready For Delivery"] || order.readyForDelivery || "")
-          .trim()
-          .toLowerCase() === "ready for fulfilment"
-      );
-    const matchedReadyOrders = readyOrders
-      .map((order) => {
-        const candidates = orderDispatchTrackDocumentCandidates(order);
-        const dispatchTrackDocumentNumber = candidates.find((candidate) =>
-          firstNoteByDocument.has(candidate)
-        );
-        const match = firstNoteByDocument.get(dispatchTrackDocumentNumber);
-        if (!match) return null;
-
-        const daysInDispatchTrack = daysBetweenDates(match.exportedAt, today);
-        const ageBucket = dispatchTrackAgeBucket(daysInDispatchTrack);
-
-        return {
-          ...order,
-          dispatchTrackDocumentNumber: match.note["Document Number"] || dispatchTrackDocumentNumber,
-          dispatchTrackRecordId: match.note["Record ID"] || match.note.recordId || match.note.id || "",
-          dispatchTrackExportedAt: match.note.Date || match.note.date || "",
-          dispatchTrackExportedAtIso: match.exportedAt.toISOString(),
-          daysInDispatchTrack,
-          ageBucket,
-        };
-      })
-      .filter(Boolean);
-    const results = matchedReadyOrders
-      .filter((row) => row.ageBucket)
-      .sort((a, b) => b.daysInDispatchTrack - a.daysInDispatchTrack);
-
-    res.json({
-      ok: true,
-      generatedAt: today.toISOString(),
-      counts: {
-        orders: orders.length,
-        readyOrders: readyOrders.length,
-        dispatchTrackNotes: notes.length,
-        matchedReadyOrders: matchedReadyOrders.length,
-        matchedAgedOrders: results.length,
-        bucket60: results.filter((row) => row.ageBucket === "60").length,
-        bucket90: results.filter((row) => row.ageBucket === "90").length,
-        bucket100: results.filter((row) => row.ageBucket === "100+").length,
-      },
-      results,
-    });
-  } catch (err) {
-    console.error("Sales tools Dispatch Track ageing error:", err);
-    res.status(500).json({
-      ok: false,
-      error: "Failed to build Dispatch Track ageing data",
     });
   }
 });
@@ -1859,7 +1654,6 @@ app.get("/news", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public
 app.get("/admin", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "admin.html")));
 app.get("/forgot", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "forgot.html")));
 app.get("/orders", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "orderManagement.html")));
-app.get("/sales-tools", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "salesTools.html")));
 app.get("/finance-settings", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "finance-settings.html")));
 app.get("/finance-calculator", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "finance-calculator.html")));
 app.get("/quote-details", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "quote-details.html")));
@@ -1869,7 +1663,6 @@ app.get("/reset", (req, res) => sendNoCacheFile(res, path.join(__dirname, "publi
 app.get("/sales/new", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "newSalesOrder.html")));
 app.get("/customer-details", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "customerDetailsPopup.html")));
 app.get("/customer-search", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "customerSearchPopup.html")));
-app.get("/sales/kiosk", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "salesKiosk.html")));
 app.get("/quote/new", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "quoteNew.html")));
 app.get("/product-hub", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "product-hub.html")))
 app.get("/reports", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "reports.html")))
@@ -1883,6 +1676,8 @@ app.get("/suitepim/settings", (req, res) => sendNoCacheFile(res, path.join(__dir
 app.get("/suitepim/settings.html", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim-settings.html")))
 app.get("/suitepim", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "suitepim.html")))
 app.get("/systems-processes", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "systems-processes.html")))
+app.get("/support-tracker", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "support-tracker.html")))
+app.get("/support-tracker/manage", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "support-tracker-manage.html")))
 app.get("/cs-workflows", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cs-workflows.html")))
 app.get("/cs-workflows/suiteql-studio", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cs-suiteql-studio.html")))
 app.get("/cs-workflows/create-record-map", (req, res) => sendNoCacheFile(res, path.join(__dirname, "public", "cs-create-record-map.html")))

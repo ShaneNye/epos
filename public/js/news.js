@@ -12,7 +12,6 @@
     { value: "", label: "General" },
     { value: "home", label: "Home" },
     { value: "sales/new", label: "New Sales Order" },
-    { value: "sales/kiosk", label: "Sales Kiosk" },
     { value: "quote/new", label: "New Quote" },
     { value: "orders", label: "Order Management" },
     { value: "reports", label: "Reports" },

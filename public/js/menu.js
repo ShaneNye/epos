@@ -112,6 +112,7 @@ function normalizeAccessSlug(value) {
   if (slug === "end-of-day" || slug === "endofday") return "eod";
   if (slug === "cash-flow") return "cashflow";
   if (slug === "suitepim" || slug.startsWith("suitepim/")) return "suitepim";
+  if (slug === "support-tracker" || slug.startsWith("support-tracker/")) return "support-tracker";
   return slug;
 }
 

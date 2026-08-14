@@ -8,7 +8,6 @@ const PAGE_OPTIONS = [
   { value: "home", label: "Home" },
   { value: "sales/new", label: "New Sales Order" },
   { value: "sales/view", label: "Sales Order View" },
-  { value: "sales/kiosk", label: "Sales Kiosk" },
   { value: "quote/new", label: "New Quote" },
   { value: "quote/view", label: "Quote View" },
   { value: "orders", label: "Order Management" },

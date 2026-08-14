@@ -5,9 +5,11 @@
   const THEME_STORAGE_KEY = "suitepimFloorPlanTheme";
   const ASSETS = [
     { key: "single-bed", name: "Single bed", width: 0.9, height: 1.9 },
+    { key: "small-double-bed", name: "Small Double bed", width: 1.2, height: 1.9 },
     { key: "double-bed", name: "Double bed", width: 1.35, height: 1.9 },
     { key: "king-bed", name: "King bed", width: 1.5, height: 2 },
     { key: "super-king-bed", name: "Super king bed", width: 1.8, height: 2 },
+    { key: "rug-120x170", name: "Rug (120 × 170 cm)", width: 1.2, height: 1.7 },
     { key: "bedside-cabinet", name: "Bedside cabinet", width: 0.5, height: 0.45 },
     { key: "wardrobe", name: "Wardrobe", width: 1.2, height: 0.6 },
     { key: "chest", name: "Chest", width: 0.9, height: 0.45 },

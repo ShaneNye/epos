@@ -25,6 +25,11 @@ tbody tr:hover { background: #f8fbf9; }
 .expand-chevron { display: inline-block; color: var(--reward-green); font-size: 1.5rem; transition: transform .18s ease; }
 .is-expanded .expand-chevron { transform: rotate(90deg); }
 .reward-cell { color: var(--reward-green); font-weight: 800; }
+.adjustment-cell,.adjustment-total strong { font-weight: 800; }
+.adjustment-positive,.adjustment-positive strong { color: var(--reward-green); }
+.adjustment-negative,.adjustment-negative strong { color: #b42318; }
+.adjustment-zero,.adjustment-zero strong { color: var(--reward-muted); }
+.total-reward-cell { color: var(--reward-ink); font-weight: 900; }
 .you-badge { margin-left: .5rem; padding: .15rem .4rem; border-radius: 20px; color: var(--reward-green); background: white; font-size: .7rem; text-transform: uppercase; }
 .empty { color: var(--reward-muted); }
 .empty { padding: 2rem; text-align: center; }

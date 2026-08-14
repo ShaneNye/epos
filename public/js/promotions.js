@@ -257,7 +257,7 @@
 
   async function loadCatalogue() {
     const [payload, webPayload, sizePayload] = await Promise.all([
-      fetchJson("/api/netsuite/kiosk-items"),
+      fetchJson("/api/netsuite/items"),
       fetchJson("/api/suitepim/web-management").catch((err) => {
         console.warn("Unable to load SuitePIM web category data for promotions:", err.message);
         return { rows: [] };

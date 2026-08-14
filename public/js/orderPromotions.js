@@ -1346,7 +1346,7 @@
 
   async function loadKioskImageData() {
     try {
-      const data = await fetchJson("/api/netsuite/kiosk-items");
+      const data = await fetchJson("/api/netsuite/items");
       const rows = Array.isArray(data.results) ? data.results : (Array.isArray(data.data) ? data.data : []);
       state.kioskItemsById.clear();
       state.kioskItemsByName.clear();

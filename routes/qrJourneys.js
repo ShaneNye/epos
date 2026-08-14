@@ -417,12 +417,17 @@ router.get("/public/:token/finance-settings", async (req, res) => {
     const row = await journey(req.params.token);
     if (!row) return res.status(404).json({ ok: false, error: "This QR code is invalid or has expired" });
     const result = await pool.query(
-      "SELECT value FROM app_settings WHERE key = 'finance.calculator.tiers' LIMIT 1"
+      "SELECT value FROM app_settings WHERE key = 'finance.calculator.offers.v2' LIMIT 1"
     );
-    const tiers = result.rows[0]?.value ? JSON.parse(result.rows[0].value) : [{
-      minSaleAmount: 0, maxSaleAmount: 999999.99, minTermMonths: 6, maxTermMonths: 36,
-      minimumDepositPercent: 10, interestBearing: false, interestRatePercent: 0,
-    }];
+    const tiers = result.rows[0]?.value ? JSON.parse(result.rows[0].value) : [
+      { minOrderAmount: 500, minFinancedAmount: 0, termMonths: 6, depositPercent: 0, interestRatePercent: 0 },
+      { minOrderAmount: 1000, minFinancedAmount: 0, termMonths: 12, depositPercent: 0, interestRatePercent: 0 },
+      { minOrderAmount: 2500, minFinancedAmount: 0, termMonths: 24, depositPercent: 30, interestRatePercent: 0 },
+      { minOrderAmount: 7000, minFinancedAmount: 0, termMonths: 36, depositPercent: 50, interestRatePercent: 0 },
+      { minOrderAmount: 500, minFinancedAmount: 0, termMonths: 36, depositPercent: 0, interestRatePercent: 9.99 },
+      { minOrderAmount: 1000, minFinancedAmount: 0, termMonths: 48, depositPercent: 10, interestRatePercent: 9.99 },
+      { minOrderAmount: 1700, minFinancedAmount: 0, termMonths: 60, depositPercent: 20, interestRatePercent: 9.99 },
+    ];
     res.json({ ok: true, tiers });
   } catch {
     res.status(500).json({ ok: false, error: "Failed to load finance settings" });

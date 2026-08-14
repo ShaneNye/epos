@@ -3,17 +3,15 @@ const pool = require("../db");
 const { getSession } = require("../sessions");
 
 const router = express.Router();
-const SETTINGS_KEY = "finance.calculator.tiers";
+const SETTINGS_KEY = "finance.calculator.offers.v2";
 const DEFAULT_TIERS = [
-  {
-    minSaleAmount: 0,
-    maxSaleAmount: 999999.99,
-    minTermMonths: 6,
-    maxTermMonths: 36,
-    minimumDepositPercent: 10,
-    interestBearing: false,
-    interestRatePercent: 0,
-  },
+  { minOrderAmount: 500, minFinancedAmount: 0, termMonths: 6, depositPercent: 0, interestRatePercent: 0 },
+  { minOrderAmount: 1000, minFinancedAmount: 0, termMonths: 12, depositPercent: 0, interestRatePercent: 0 },
+  { minOrderAmount: 2500, minFinancedAmount: 0, termMonths: 24, depositPercent: 30, interestRatePercent: 0 },
+  { minOrderAmount: 7000, minFinancedAmount: 0, termMonths: 36, depositPercent: 50, interestRatePercent: 0 },
+  { minOrderAmount: 500, minFinancedAmount: 0, termMonths: 36, depositPercent: 0, interestRatePercent: 9.99 },
+  { minOrderAmount: 1000, minFinancedAmount: 0, termMonths: 48, depositPercent: 10, interestRatePercent: 9.99 },
+  { minOrderAmount: 1700, minFinancedAmount: 0, termMonths: 60, depositPercent: 20, interestRatePercent: 9.99 },
 ];
 
 let initialized = false;
@@ -75,33 +73,23 @@ function number(value, label, { min = 0, max = Number.MAX_SAFE_INTEGER } = {}) {
 }
 
 function normalizeTiers(value) {
-  if (!Array.isArray(value) || !value.length) throw new Error("Add at least one sale amount band");
+  if (!Array.isArray(value) || !value.length) throw new Error("Add at least one finance band");
   const tiers = value.map((tier) => {
     const normalized = {
-      minSaleAmount: number(tier.minSaleAmount, "Minimum sale amount"),
-      maxSaleAmount: number(tier.maxSaleAmount, "Maximum sale amount"),
-      minTermMonths: number(tier.minTermMonths, "Minimum term", { min: 1, max: 120 }),
-      maxTermMonths: number(tier.maxTermMonths, "Maximum term", { min: 1, max: 120 }),
-      minimumDepositPercent: number(tier.minimumDepositPercent, "Minimum deposit", { max: 100 }),
-      interestBearing: Boolean(tier.interestBearing),
-      interestRatePercent: 0,
+      minOrderAmount: number(tier.minOrderAmount, "Minimum order amount"),
+      minFinancedAmount: number(tier.minFinancedAmount ?? 0, "Minimum financed amount"),
+      termMonths: number(tier.termMonths, "Term", { min: 1, max: 120 }),
+      depositPercent: number(tier.depositPercent, "Deposit required", { max: 100 }),
+      interestRatePercent: number(tier.interestRatePercent, "Interest rate", { max: 100 }),
     };
-    normalized.interestRatePercent = normalized.interestBearing
-      ? number(tier.interestRatePercent, "Interest rate", { max: 100 })
-      : 0;
-    if (normalized.maxSaleAmount < normalized.minSaleAmount) {
-      throw new Error("Maximum sale amount cannot be below its minimum");
-    }
-    if (normalized.maxTermMonths < normalized.minTermMonths) {
-      throw new Error("Maximum term cannot be below its minimum");
-    }
     return normalized;
-  }).sort((a, b) => a.minSaleAmount - b.minSaleAmount);
+  }).sort((a, b) => a.interestRatePercent - b.interestRatePercent || a.termMonths - b.termMonths || a.minOrderAmount - b.minOrderAmount);
 
-  for (let index = 1; index < tiers.length; index += 1) {
-    if (tiers[index].minSaleAmount <= tiers[index - 1].maxSaleAmount) {
-      throw new Error("Sale amount bands cannot overlap");
-    }
+  const duplicates = new Set();
+  for (const tier of tiers) {
+    const key = `${tier.minOrderAmount}:${tier.termMonths}:${tier.interestRatePercent}`;
+    if (duplicates.has(key)) throw new Error("Finance bands must have a unique minimum amount, term and APR");
+    duplicates.add(key);
   }
   return tiers;
 }

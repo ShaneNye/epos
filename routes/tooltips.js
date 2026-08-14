@@ -10,10 +10,10 @@ let tableReady;
 
 const PAGE_ROUTE_FILES = {
   "/": "index.html", "/home": "home.html", "/news": "news.html", "/admin": "admin.html",
-  "/orders": "ordermanagement.html", "/sales-tools": "salestools.html", "/finance-settings": "finance-settings.html",
+  "/orders": "ordermanagement.html", "/finance-settings": "finance-settings.html",
   "/finance-calculator": "finance-calculator.html", "/quote-details": "quote-details.html", "/qr-generator": "qr-generator.html",
   "/sales/new": "newsalesorder.html", "/customer-details": "customerdetailspopup.html", "/customer-search": "customersearchpopup.html",
-  "/sales/kiosk": "saleskiosk.html", "/quote/new": "quotenew.html", "/product-hub": "product-hub.html", "/reports": "reports.html",
+  "/quote/new": "quotenew.html", "/product-hub": "product-hub.html", "/reports": "reports.html",
   "/rewards-dashboard": "rewards-dashboard.html", "/promotions": "promotions.html", "/eod": "endofday.html", "/cashflow": "cashflow.html",
   "/floor-plans": "floor-plans.html", "/logistics": "logistics.html", "/suitepim": "suitepim.html", "/suitepim/settings": "suitepim-settings.html",
   "/systems-processes": "systems-processes.html", "/cs-workflows": "cs-workflows.html", "/cs-workflows/suiteql-studio": "cs-suiteql-studio.html",

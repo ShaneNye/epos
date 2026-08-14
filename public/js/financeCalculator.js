@@ -33,7 +33,27 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function minimumDepositFor(amount, tier) {
-    return amount * tier.minimumDepositPercent / 100;
+    return amount * tier.depositPercent / 100;
+  }
+
+  function eligibleOffers(amount) {
+    return tiers.filter((tier) => {
+      tier.minFinancedAmount = Number(tier.minFinancedAmount) || 0;
+      return amount >= tier.minOrderAmount && minimumDepositFor(amount, tier) <= maximumDepositFor(amount, tier);
+    })
+      .sort((a, b) => a.termMonths - b.termMonths || a.interestRatePercent - b.interestRatePercent);
+  }
+
+  function maximumDepositFor(amount, tier) {
+    return Math.max(0, amount - tier.minFinancedAmount);
+  }
+
+  function offerForTerm(offers, requestedTerm) {
+    return offers.reduce((best, offer) => {
+      const difference = Math.abs(offer.termMonths - requestedTerm);
+      const bestDifference = best ? Math.abs(best.termMonths - requestedTerm) : Infinity;
+      return difference < bestDifference || (difference === bestDifference && offer.interestRatePercent < best.interestRatePercent) ? offer : best;
+    }, null);
   }
 
   function applyBudgetForTerm() {
@@ -42,7 +62,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const target = Math.max(0.01, targetMonthly || 0.01);
     const minimumDeposit = minimumDepositFor(amount, activeTier);
     const financed = principalForPayment(target, activeTier.interestRatePercent, Number(termInput.value));
-    const requiredDeposit = Math.max(minimumDeposit, Math.min(amount, amount - financed));
+    const requiredDeposit = Math.max(minimumDeposit, Math.min(maximumDepositFor(amount, activeTier), amount - financed));
     if (
       budgetDepositBounds &&
       (requiredDeposit < budgetDepositBounds.min || requiredDeposit > budgetDepositBounds.max)
@@ -67,24 +87,27 @@ document.addEventListener("DOMContentLoaded", async () => {
     const amount = Number(saleInput.value) || 0;
     const target = Math.max(0.01, targetMonthly || 0.01);
     const minimumDeposit = minimumDepositFor(amount, activeTier);
-    const middleTerm = Math.round((activeTier.minTermMonths + activeTier.maxTermMonths) / 2);
+    const offers = eligibleOffers(amount);
+    const middleTerm = Math.round((offers[0].termMonths + offers[offers.length - 1].termMonths) / 2);
     const candidates = [];
-    for (let months = activeTier.minTermMonths; months <= activeTier.maxTermMonths; months += 1) {
+    for (const offer of offers) {
+      const months = offer.termMonths;
       const requiredDeposit =
-        amount - principalForPayment(target, activeTier.interestRatePercent, months);
-      if (requiredDeposit >= minimumDeposit && requiredDeposit <= amount) {
-        candidates.push({ months, requiredDeposit });
+        amount - principalForPayment(target, offer.interestRatePercent, months);
+      if (requiredDeposit >= minimumDepositFor(amount, offer) && requiredDeposit <= maximumDepositFor(amount, offer)) {
+        candidates.push({ months, requiredDeposit, offer });
       }
     }
     const selected = candidates.sort(
       (a, b) => Math.abs(a.months - middleTerm) - Math.abs(b.months - middleTerm)
     )[0];
     const selectedTerm = selected?.months ?? middleTerm;
+    activeTier = selected?.offer || offerForTerm(offers, selectedTerm);
     const requiredDeposit = selected?.requiredDeposit ??
       Math.max(
         minimumDeposit,
         Math.min(
-          amount,
+          maximumDepositFor(amount, activeTier),
           amount - principalForPayment(target, activeTier.interestRatePercent, selectedTerm)
         )
       );
@@ -93,7 +116,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     depositInput.value = requiredDeposit.toFixed(2);
 
     const roomBelow = requiredDeposit - minimumDeposit;
-    const roomAbove = amount - requiredDeposit;
+    const roomAbove = maximumDepositFor(amount, activeTier) - requiredDeposit;
     const balancedRoom = Math.min(roomBelow, roomAbove);
     budgetDepositBounds = balancedRoom > 0.01
       ? {
@@ -108,13 +131,16 @@ document.addEventListener("DOMContentLoaded", async () => {
     const amount = Number(saleInput.value) || 0;
     const target = Math.max(0.01, targetMonthly || 0.01);
     const principal = Math.max(0, amount - (Number(depositInput.value) || 0));
-    let bestTerm = activeTier.minTermMonths;
+    const offers = eligibleOffers(amount);
+    let bestTerm = activeTier.termMonths;
     let bestDifference = Infinity;
-    for (let months = activeTier.minTermMonths; months <= activeTier.maxTermMonths; months += 1) {
-      const difference = Math.abs(payment(principal, activeTier.interestRatePercent, months) - target);
+    for (const offer of offers) {
+      const months = offer.termMonths;
+      const difference = Math.abs(payment(principal, offer.interestRatePercent, months) - target);
       if (difference < bestDifference) {
         bestDifference = difference;
         bestTerm = months;
+        activeTier = offer;
       }
     }
     termInput.value = bestTerm;
@@ -124,8 +150,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (updatingControls) return;
     updatingControls = true;
     const amount = Number(saleInput.value) || 0;
-    const tier = tiers.find((item) => amount >= item.minSaleAmount && amount <= item.maxSaleAmount);
-    if (!tier) {
+    const offers = eligibleOffers(amount);
+    if (!offers.length) {
       activeTier = null;
       unavailable.textContent = "Finance is not configured for this sale amount.";
       unavailable.hidden = false;
@@ -133,11 +159,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       updatingControls = false;
       return;
     }
+    const tier = offerForTerm(offers, Number(termInput.value) || offers[0].termMonths);
     activeTier = tier;
     unavailable.hidden = true;
     controls.hidden = false;
     const tierIndex = tiers.indexOf(tier);
-    const minimumDeposit = amount * tier.minimumDepositPercent / 100;
+    const minimumDeposit = amount * tier.depositPercent / 100;
     const depositMinimum =
       budgetToggle.checked && budgetDepositBounds
         ? budgetDepositBounds.min
@@ -145,7 +172,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const depositMaximum =
       budgetToggle.checked && budgetDepositBounds
         ? budgetDepositBounds.max
-        : amount;
+        : maximumDepositFor(amount, tier);
     depositInput.min = depositMinimum.toFixed(2);
     depositInput.max = depositMaximum.toFixed(2);
     depositInput.step = amount > 1000 ? "10" : "1";
@@ -157,12 +184,12 @@ document.addEventListener("DOMContentLoaded", async () => {
       depositInput.value = minimumDeposit.toFixed(2);
     }
     depositInput.dataset.tier = String(tierIndex);
-    termInput.min = tier.minTermMonths;
-    termInput.max = tier.maxTermMonths;
-    if (+termInput.value < tier.minTermMonths || +termInput.value > tier.maxTermMonths) termInput.value = tier.minTermMonths;
+    termInput.min = offers[0].termMonths;
+    termInput.max = offers[offers.length - 1].termMonths;
+    termInput.value = tier.termMonths;
     if (budgetToggle.checked && preserveBudget) applyBudgetForTerm();
-    document.getElementById("financeDepositHelp").textContent = `Minimum ${tier.minimumDepositPercent}% (${money.format(minimumDeposit)})`;
-    document.getElementById("financeTermHelp").textContent = `${tier.minTermMonths}–${tier.maxTermMonths} months`;
+    document.getElementById("financeDepositHelp").textContent = `Deposit ${money.format(minimumDeposit)}–${money.format(maximumDepositFor(amount, tier))}; at least ${money.format(tier.minFinancedAmount)} must be financed`;
+    document.getElementById("financeTermHelp").textContent = `Available: ${[...new Set(offers.map((offer) => offer.termMonths))].join(", ")} months`;
     const deposit = Math.max(minimumDeposit, Number(depositInput.value) || 0);
     const months = Number(termInput.value);
     document.getElementById("financeDepositValue").textContent = money.format(deposit);
@@ -170,7 +197,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const financed = Math.max(0, amount - deposit);
     const monthly = payment(financed, tier.interestRatePercent, months);
     if (!budgetToggle.checked) monthlyDisplay.textContent = money.format(monthly);
-    document.getElementById("financeApr").textContent = tier.interestBearing ? `${tier.interestRatePercent}% APR` : "0% interest";
+    document.getElementById("financeApr").textContent = tier.interestRatePercent ? `${tier.interestRatePercent}% APR` : "0% interest";
     document.getElementById("financeBorrowed").textContent = money.format(financed);
     document.getElementById("financeTotalPayable").textContent = money.format(monthly * months + deposit);
     updatingControls = false;
