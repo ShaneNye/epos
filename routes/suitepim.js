@@ -2502,6 +2502,49 @@ const IMAGERY_SYNC_FIELDS = [
   "Catalogue Image Five",
 ];
 
+const DESCRIPTION_SYNC_FIELDS = [
+  "Internal ID",
+  "Woo ID",
+  "Name",
+  "Description Preview",
+  "New Short Desc",
+  "reasons to buy",
+  "Web Faq's",
+];
+
+function suitePimBoolean(value) {
+  if (value === true || value === 1) return true;
+  return ["true", "t", "1", "yes", "y"].includes(String(value || "").trim().toLowerCase());
+}
+
+function descriptionSyncFieldValue(row, aliases) {
+  const value = firstLooseDefinedValue(row || {}, aliases);
+  if (value && typeof value === "object" && !Array.isArray(value)) {
+    return value.value ?? value.text ?? value.html ?? value.content ?? "";
+  }
+  return value ?? "";
+}
+
+function descriptionSyncRow(row) {
+  return {
+    ...Object.fromEntries(DESCRIPTION_SYNC_FIELDS.map((fieldName) => [fieldName, row?.[fieldName] ?? ""])),
+    "Description Preview": descriptionSyncFieldValue(row, ["Description Preview", "DescriptionPreview"]),
+    "New Short Desc": descriptionSyncFieldValue(row, ["New Short Desc", "New Short Description", "Short Description"]),
+  };
+}
+
+function descriptionSyncWooUpdate(row) {
+  const wooId = Number.parseInt(String(row?.["Woo ID"] || "").trim(), 10);
+  if (!Number.isSafeInteger(wooId) || wooId <= 0) {
+    throw new Error(`Invalid Woo ID for ${row?.Name || row?.["Internal ID"] || "item"}.`);
+  }
+  return {
+    id: wooId,
+    short_description: String(row?.["New Short Desc"] || ""),
+    description: String(row?.["Description Preview"] || ""),
+  };
+}
+
 function imagerySyncImageUrl(value) {
   if (!value) return "";
   if (typeof value === "object") {
@@ -3397,6 +3440,9 @@ async function runNextJob() {
 
   job.status = "completed";
   job.finishedAt = new Date().toISOString();
+  if (job.type !== "validation" && job.results.some((result) => result.status === "Success")) {
+    webManagementCache.delete(webManagementCacheKey(job.env));
+  }
   if (job.scheduledExportId) {
     await markScheduledExportCompleted(job.scheduledExportId, job).catch((err) => {
       console.error("SuitePim scheduled export completion update failed:", err);
@@ -4447,6 +4493,132 @@ router.post("/imagery-sync/push", async (req, res) => {
     console.error("SuitePim imagery sync push failed:", err);
     const status = /Invalid Woo ID|No catalogue images|Select at least/i.test(err.message) ? 400 : 500;
     res.status(status).json({ ok: false, error: err.message });
+  }
+});
+
+router.get("/description-sync", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.query.environment);
+    const cfg = envConfig(env);
+    if (!cfg.webManagementUrl) {
+      return res.status(500).json({ ok: false, error: "Missing SuitePim web management feed URL" });
+    }
+
+    const forceRefresh = req.query.refresh === "1" || req.query.force === "1";
+    const search = String(req.query.search || "").trim().toLowerCase();
+    const userId = req.eposSession.user_id || req.eposSession.id;
+    const payload = await getWebManagementPayload(env, cfg, { forceRefresh, userId });
+    const rows = (payload.rows || [])
+      .filter((row) => suitePimBoolean(row?.["Is Parent"]))
+      .filter((row) => String(row?.["Woo ID"] || "").trim())
+      .filter((row) => !search || [row?.["Internal ID"], row?.["Woo ID"], row?.Name]
+        .some((value) => String(value || "").toLowerCase().includes(search)))
+      .map(descriptionSyncRow);
+
+    res.json({
+      ok: true,
+      environment: publicEnvironmentName(env),
+      wooCommerceConfigured: wooConfigured(cfg),
+      fields: DESCRIPTION_SYNC_FIELDS,
+      rows,
+      count: rows.length,
+      search: String(req.query.search || "").trim(),
+      cache: payload.cache || null,
+    });
+  } catch (err) {
+    console.error("SuitePim description sync load failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+router.post("/description-sync/push", async (req, res) => {
+  try {
+    const env = normalizeEnvironment(req.body?.environment || req.query.environment);
+    const cfg = envConfig(env);
+    const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+    if (!rows.length) return res.status(400).json({ ok: false, error: "Select at least one item to push." });
+    if (!wooConfigured(cfg)) {
+      return res.status(500).json({
+        ok: false,
+        error: "Missing WooCommerce config. Set WOO_STORE_URL, WOO_CONSUMER_KEY, and WOO_CONSUMER_SECRET.",
+      });
+    }
+
+    const valid = [];
+    const results = [];
+    rows.forEach((row) => {
+      try {
+        const update = descriptionSyncWooUpdate(row);
+        valid.push({ row, update, wooId: String(update.id) });
+      } catch (err) {
+        results.push({
+          wooId: String(row?.["Woo ID"] || ""),
+          name: row?.Name || "",
+          success: false,
+          error: err.message,
+        });
+      }
+    });
+
+    const updatedProducts = [];
+    for (let index = 0; index < valid.length; index += 100) {
+      const entries = valid.slice(index, index + 100);
+      try {
+        const result = await callWooProductBatch({ cfg, updates: entries.map((entry) => entry.update) });
+        updatedProducts.push(...(Array.isArray(result?.update) ? result.update : []));
+      } catch (err) {
+        entries.forEach((entry) => results.push({
+          wooId: entry.wooId,
+          name: entry.row.Name || "",
+          success: false,
+          error: err.message,
+        }));
+      }
+    }
+
+    const returnedById = new Map(updatedProducts.map((product) => [String(product?.id || ""), product]));
+    valid.forEach(({ row, wooId }) => {
+      if (results.some((result) => result.wooId === wooId && result.name === (row.Name || ""))) return;
+      const product = returnedById.get(String(wooId));
+      const error = product?.error?.message || (!product ? "WooCommerce did not return the updated product." : "");
+      results.push({ wooId, name: row.Name || "", success: !!product && !error, error });
+    });
+    const failures = results.filter((result) => !result.success);
+    res.json({
+      ok: true,
+      environment: publicEnvironmentName(env),
+      success: results.length - failures.length,
+      failed: failures.length,
+      results,
+      error: failures.map((result) => `${result.name || `Woo ID ${result.wooId}`}: ${result.error}`).join(" "),
+    });
+  } catch (err) {
+    console.error("SuitePim description sync push failed:", err);
+    const status = /Invalid Woo ID|Select at least/i.test(err.message) ? 400 : 500;
+    res.status(status).json({ ok: false, error: err.message });
+  }
+});
+
+router.post("/description-sync/failure-email", async (req, res) => {
+  try {
+    const recipient = String(req.eposSession?.email || "").trim();
+    if (!isLikelyEmail(recipient)) {
+      return res.status(400).json({ ok: false, error: "Your signed-in account does not have a valid email address." });
+    }
+    const failures = (Array.isArray(req.body?.failures) ? req.body.failures : []).slice(0, 5000);
+    if (!failures.length) return res.json({ ok: true, sent: false });
+    const csv = ["Product,Woo ID,Failure"]
+      .concat(failures.map((failure) => [failure.name, failure.wooId, failure.error].map(csvValue).join(",")))
+      .join("\r\n");
+    const html = `<h2>WooCommerce description sync failures</h2><p>${failures.length.toLocaleString()} product${failures.length === 1 ? "" : "s"} could not be updated. The attached CSV contains the products and reasons for investigation.</p><ul>${failures.slice(0, 20).map((failure) => `<li><strong>${escapeHtml(failure.name || `Woo ID ${failure.wooId || "unknown"}`)}</strong>: ${escapeHtml(failure.error || "Unknown error")}</li>`).join("")}</ul>`;
+    const sent = await sendEmail(recipient, "WooCommerce description sync failures", html, {
+      attachments: [{ filename: "woocommerce-description-sync-failures.csv", content: csv, contentType: "text/csv" }],
+    });
+    if (!sent) throw new Error("Failure report email could not be sent.");
+    res.json({ ok: true, sent: true, recipient });
+  } catch (err) {
+    console.error("SuitePim description sync failure email failed:", err);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

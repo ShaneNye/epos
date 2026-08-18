@@ -6,10 +6,12 @@
     "Catalogue Image Four",
     "Catalogue Image Five",
   ];
-  const columns = ["Internal ID", "Woo ID", "Name", ...imageFields];
+  const imageryColumns = ["Internal ID", "Woo ID", "Name", ...imageFields];
+  const descriptionColumns = ["Name", "Description Preview", "New Short Desc", "reasons to buy", "Web Faq's", "Page Preview"];
   const pageSize = 50;
   const state = {
     environment: "production",
+    mode: "imagery",
     rows: [],
     filtered: [],
     selected: new Set(),
@@ -26,6 +28,7 @@
       "imagerySyncSearch",
       "imagerySyncRefresh",
       "imagerySyncPush",
+      "imagerySyncPushAll",
       "imagerySyncStatus",
       "imagerySyncMount",
       "imagerySyncPrev",
@@ -119,6 +122,24 @@
     render();
   }
 
+  function activeColumns() {
+    return state.mode === "descriptions" ? descriptionColumns : imageryColumns;
+  }
+
+  function displayValue(value) {
+    if (Array.isArray(value)) return value.join(", ");
+    return String(value ?? "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  }
+
+  function openDescriptionPreview(row) {
+    const popup = window.open("", "suitepim-description-preview", "popup=yes,width=1000,height=800,resizable=yes,scrollbars=yes");
+    if (!popup) return showStatus("Preview popup was blocked by the browser.", "warning");
+    popup.document.open();
+    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(row.Name || "Product preview")}</title><style>body{font:16px/1.55 Arial,sans-serif;color:#16273d;max-width:920px;margin:0 auto;padding:32px}h1{margin-top:0}.meta{color:#64748b}.product-description{margin-top:24px}</style></head><body><h1>${escapeHtml(row.Name || "Product preview")}</h1><p class="meta">Woo ID: ${escapeHtml(row["Woo ID"] || "")}</p><div class="product-description">${String(row["Description Preview"] || "<p>No description preview added.</p>")}</div></body></html>`);
+    popup.document.close();
+    popup.focus();
+  }
+
   function renderImageButton(row, fieldName) {
     const button = document.createElement("button");
     const url = extractImageUrl(row[fieldName]);
@@ -158,7 +179,7 @@
     table.innerHTML = `
       <thead><tr>
         <th class="suitepim-select-col"><input type="checkbox" aria-label="Select page"></th>
-        ${columns.map((column) => `<th>${escapeHtml(column === "Internal ID" ? "ID" : column)}</th>`).join("")}
+        ${activeColumns().map((column) => `<th>${escapeHtml(column === "Internal ID" ? "ID" : column)}</th>`).join("")}
       </tr></thead>
       <tbody></tbody>`;
 
@@ -185,11 +206,31 @@
       selectCell.appendChild(checkbox);
       tr.appendChild(selectCell);
 
-      columns.forEach((column) => {
+      activeColumns().forEach((column) => {
         const td = document.createElement("td");
         td.dataset.column = column;
         if (imageFields.includes(column)) td.appendChild(renderImageButton(row, column));
-        else td.textContent = String(row[column] ?? "");
+        else if (column === "Page Preview") {
+          const button = document.createElement("button");
+          button.type = "button";
+          button.className = "suitepim-preview-btn";
+          button.textContent = "Preview";
+          button.addEventListener("click", () => openDescriptionPreview(row));
+          td.appendChild(button);
+        } else {
+          if (["Description Preview", "New Short Desc"].includes(column)) {
+            td.classList.add("suitepim-sync-description-cell");
+            const source = document.createElement("textarea");
+            source.className = "suitepim-sync-html-source";
+            source.readOnly = true;
+            source.rows = 8;
+            source.value = String(row[column] ?? "");
+            source.setAttribute("aria-label", `${column} HTML for ${row.Name || row["Woo ID"] || "product"}`);
+            td.appendChild(source);
+          } else {
+            td.textContent = displayValue(row[column]);
+          }
+        }
         tr.appendChild(td);
       });
       tbody.appendChild(tr);
@@ -266,7 +307,8 @@
   }
 
   async function load(forceRefresh = false) {
-    el.imagerySyncMount.innerHTML = `<div class="suitepim-loading"><div class="suitepim-spinner"></div><p>${forceRefresh ? "Refreshing" : "Loading"} Imagery Sync...</p></div>`;
+    const label = state.mode === "descriptions" ? "Product Description Sync" : "Imagery Sync";
+    el.imagerySyncMount.innerHTML = `<div class="suitepim-loading"><div class="suitepim-spinner"></div><p>${forceRefresh ? "Refreshing" : "Loading"} ${label}...</p></div>`;
     showStatus("");
     try {
       const search = String(el.imagerySyncSearch.value || "").trim();
@@ -274,54 +316,138 @@
       if (forceRefresh) params.set("refresh", "1");
       if (search) params.set("search", search);
       const query = params.toString();
-      const data = await api(`/imagery-sync${query ? `?${query}` : ""}`);
+      const endpoint = state.mode === "descriptions" ? "/description-sync" : "/imagery-sync";
+      const data = await api(`${endpoint}${query ? `?${query}` : ""}`);
       state.rows = (data.rows || []).map((row, index) => ({ ...row, _key: rowKey(row, index) }));
       state.filtered = [...state.rows];
       state.selected.clear();
       state.page = 1;
       state.wooConfigured = !!data.wooCommerceConfigured;
       el.imagerySyncPush.disabled = !state.wooConfigured;
+      el.imagerySyncPushAll.disabled = !state.wooConfigured;
       render();
       showStatus(
         `${forceRefresh ? "Refreshed" : "Loaded"} ${state.rows.length.toLocaleString()} Woo-linked item(s)${search ? ` matching “${search}”` : ""}.${state.wooConfigured ? "" : " WooCommerce credentials are not configured."}`,
         state.wooConfigured ? "success" : "warning"
       );
     } catch (err) {
-      el.imagerySyncMount.innerHTML = `<div class="suitepim-empty"><h2>Imagery Sync could not load</h2><p>${escapeHtml(err.message)}</p></div>`;
+      el.imagerySyncMount.innerHTML = `<div class="suitepim-empty"><h2>${label} could not load</h2><p>${escapeHtml(err.message)}</p></div>`;
       showStatus(err.message, "error");
     }
   }
 
-  async function pushSelected() {
-    const rows = state.rows.filter((row) => state.selected.has(row._key));
+  function descriptionPushBatches(rows, maxRows = 25, maxBytes = 750000) {
+    const batches = [];
+    let batch = [];
+    rows.forEach((row) => {
+      const candidate = [...batch, row];
+      const bytes = new Blob([JSON.stringify({ rows: candidate, environment: state.environment })]).size;
+      if (batch.length && (candidate.length > maxRows || bytes > maxBytes)) {
+        batches.push(batch);
+        batch = [row];
+      } else {
+        batch = candidate;
+      }
+    });
+    if (batch.length) batches.push(batch);
+    return batches;
+  }
+
+  async function pushRows(rows) {
     if (!rows.length) {
       showStatus("Select at least one item to push.", "warning");
       return;
     }
     el.imagerySyncPush.disabled = true;
-    showStatus(`Pushing imagery for ${rows.length.toLocaleString()} item(s) to WooCommerce...`, "info");
+    el.imagerySyncPushAll.disabled = true;
+    const isDescriptions = state.mode === "descriptions";
+    const batches = isDescriptions ? descriptionPushBatches(rows) : [rows];
+    showStatus(`Pushing ${isDescriptions ? "descriptions" : "imagery"} for ${rows.length.toLocaleString()} item(s) in ${batches.length} batch${batches.length === 1 ? "" : "es"}...`, "info");
     try {
-      const data = await api("/imagery-sync/push", {
-        method: "POST",
-        body: JSON.stringify({
-          environment: state.environment,
-          rows: rows.map((row) => Object.fromEntries(columns.map((column) => [column, row[column] ?? ""]))),
-        }),
-      });
+      let successful = 0;
+      let failed = 0;
+      const failures = [];
+      for (let index = 0; index < batches.length; index += 1) {
+        showStatus(`Pushing batch ${index + 1}/${batches.length} (${successful.toLocaleString()} completed)...`, "info");
+        const batch = batches[index];
+        const data = await api(isDescriptions ? "/description-sync/push" : "/imagery-sync/push", {
+          method: "POST",
+          body: JSON.stringify({
+            environment: state.environment,
+            rows: batch.map((row) => isDescriptions
+              ? {
+                  "Internal ID": row["Internal ID"] ?? "",
+                  "Woo ID": row["Woo ID"] ?? "",
+                  Name: row.Name ?? "",
+                  "Description Preview": row["Description Preview"] ?? "",
+                  "New Short Desc": row["New Short Desc"] ?? "",
+                }
+              : Object.fromEntries(imageryColumns.map((column) => [column, row[column] ?? ""]))),
+          }),
+        });
+        successful += Number(data.success || 0);
+        failed += Number(data.failed || 0);
+        failures.push(...(data.results || []).filter((result) => !result.success));
+      }
+      let emailNote = "";
+      if (isDescriptions && failures.length) {
+        try {
+          const email = await api("/description-sync/failure-email", {
+            method: "POST",
+            body: JSON.stringify({ failures }),
+          });
+          emailNote = email.sent ? ` A failure report was emailed to ${email.recipient}.` : "";
+        } catch (emailError) {
+          emailNote = ` Failure report email could not be sent: ${emailError.message}`;
+        }
+      }
       state.selected.clear();
       render();
-      showStatus(`WooCommerce imagery synced for ${data.success.toLocaleString()} item(s).`, "success");
+      showStatus(`WooCommerce ${isDescriptions ? "descriptions" : "imagery"} synced for ${successful.toLocaleString()} item(s)${failed ? `; ${failed.toLocaleString()} skipped or failed` : ""}.${emailNote}`, failed ? "warning" : "success");
     } catch (err) {
       showStatus(err.message, "error");
     } finally {
       el.imagerySyncPush.disabled = !state.wooConfigured;
+      el.imagerySyncPushAll.disabled = !state.wooConfigured;
     }
   }
 
+  function pushSelected() {
+    return pushRows(state.rows.filter((row) => state.selected.has(row._key)));
+  }
+
+  function pushAllDescriptions() {
+    if (state.mode !== "descriptions" || !state.rows.length) return;
+    if (!window.confirm(`Update all ${state.rows.length.toLocaleString()} product descriptions in WooCommerce?`)) return;
+    return pushRows([...state.rows]);
+  }
+
   function bindEvents() {
+    document.querySelectorAll("[data-sync-tab]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const mode = button.dataset.syncTab;
+        if (!mode || mode === state.mode) return;
+        state.mode = mode;
+        document.querySelectorAll("[data-sync-tab]").forEach((tab) => {
+          const active = tab === button;
+          tab.classList.toggle("active", active);
+          tab.setAttribute("aria-selected", String(active));
+        });
+        el.imagerySyncSearch.value = "";
+        el.imagerySyncSearch.placeholder = mode === "descriptions"
+          ? "Search parent name, ID or Woo ID..."
+          : "Search ID, Woo ID or name...";
+        el.imagerySyncPush.textContent = mode === "descriptions"
+          ? "Push descriptions to WooCommerce"
+          : "Push selected to WooCommerce";
+        el.imagerySyncPushAll.hidden = mode !== "descriptions";
+        load(mode === "descriptions");
+      });
+    });
     el.imagerySyncSearch.addEventListener("input", applySearch);
     el.imagerySyncRefresh.addEventListener("click", () => load(true));
     el.imagerySyncPush.addEventListener("click", pushSelected);
+    el.imagerySyncPushAll.addEventListener("click", pushAllDescriptions);
     el.imagerySyncPrev.addEventListener("click", () => { state.page -= 1; render(); });
     el.imagerySyncNext.addEventListener("click", () => { state.page += 1; render(); });
     el.imagerySyncModalSearch.addEventListener("input", renderModalOptions);

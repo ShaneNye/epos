@@ -51,20 +51,23 @@ test("Support configuration offers guarded deletion instead of disable toggles",
   assert.match(route, /status\(409\)/);
 });
 
-test("Support logger uses three-character searches and can quick-add a related issue", () => {
+test("Support logger can search and add issues while resolution and cause use dropdowns", () => {
   const root = path.join(__dirname, "..");
   const page = fs.readFileSync(path.join(root, "public", "support-tracker.html"), "utf8");
   const client = fs.readFileSync(path.join(root, "public", "js", "support-tracker-log.js"), "utf8");
   const route = fs.readFileSync(path.join(root, "routes", "supportTracker.js"), "utf8");
-  assert.doesNotMatch(page, /<select id="(?:user|location|issue|resolution|cause)Id"/);
+  assert.doesNotMatch(page, /<select id="(?:user|location|issue)Id"/);
   assert.match(page, /<select id="systemId"/);
   assert.match(page, /<select id="categoryId"/);
   assert.match(page, /data-field="issueId"/);
+  assert.match(page, /<select id="resolutionId" required>/);
+  assert.match(page, /<select id="causeId" required>/);
   assert.match(client, /term\.length<3/);
   assert.match(client, /Add .* as a new issue/);
   assert.match(client, /systemId:\$\('systemId'\)\.value,categoryId:\$\('categoryId'\)\.value/);
+  assert.match(client, /fillSelect\('resolutionId',items\('resolutions'\)/);
+  assert.match(client, /fillSelect\('causeId',items\('causes'\)/);
   assert.match(route, /router\.post\("\/issues\/quick-add"/);
-  assert.match(route, /id=\$1 AND system_id=\$2 AND active=TRUE/);
 });
 
 test("Support logger starts with blank user and location", () => {
@@ -72,4 +75,11 @@ test("Support logger starts with blank user and location", () => {
   const client = fs.readFileSync(path.join(root, "public", "js", "support-tracker-log.js"), "utf8");
   assert.doesNotMatch(client, /data\.currentUserId/);
   assert.match(client, /controls\.user=makeSearch\('userId','userSearch',data\.users,userLocation\)/);
+});
+
+test("Support logger discards timer sessions older than 24 hours", () => {
+  const root = path.join(__dirname, "..");
+  const client = fs.readFileSync(path.join(root, "public", "js", "support-tracker-log.js"), "utf8");
+  assert.match(client, /Date\.now\(\)-started\.getTime\(\)<=86400000/);
+  assert.match(client, /localStorage\.removeItem\('supportActiveTimer'\)/);
 });

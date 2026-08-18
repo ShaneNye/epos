@@ -1,5 +1,34 @@
 const COMMISSION_RATE = 0.021;
 
+function getPayPeriod(now = new Date()) {
+  const start = new Date(now.getFullYear(), now.getMonth() - (now.getDate() < 14 ? 1 : 0), 14);
+  const end = new Date(start.getFullYear(), start.getMonth() + 1, 14);
+  return { start, end };
+}
+
+function parseNetSuiteDate(value) {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  const text = String(value ?? "").trim();
+  const ukDate = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?)?/i);
+  if (ukDate) {
+    let hour = Number(ukDate[4] || 0);
+    const meridiem = String(ukDate[7] || "").toUpperCase();
+    if (meridiem === "PM" && hour < 12) hour += 12;
+    if (meridiem === "AM" && hour === 12) hour = 0;
+    return new Date(Number(ukDate[3]), Number(ukDate[2]) - 1, Number(ukDate[1]), hour, Number(ukDate[5] || 0), Number(ukDate[6] || 0));
+  }
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function filterRowsToPayPeriod(rows = [], period = getPayPeriod(), dateKeys = ["Date", "date"]) {
+  return rows.filter((row) => {
+    const value = dateKeys.map((key) => row?.[key]).find((candidate) => candidate != null && candidate !== "");
+    const date = parseNetSuiteDate(value);
+    return date && date >= period.start && date < period.end;
+  });
+}
+
 function money(value) {
   const amount = Number(value) || 0;
   return Math.sign(amount) * Math.round((Math.abs(amount) + Number.EPSILON) * 100) / 100;
@@ -108,4 +137,4 @@ function summarizeRewards(rows, adjustmentRows) {
   return { ...rewards, totalAdjustment: money(totalAdjustment), totalRewardAfterAdjustments: money(rewards.totalReward - totalAdjustment), specialistCount: leaderboard.length, leaderboard };
 }
 
-module.exports = { COMMISSION_RATE, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards };
+module.exports = { COMMISSION_RATE, getPayPeriod, parseNetSuiteDate, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards };

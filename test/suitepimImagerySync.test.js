@@ -49,3 +49,49 @@ test("Imagery Sync proxies NetSuite media and verifies Woo imported every image"
   assert.match(routeSource, /embeddedError\?\.message/);
   assert.match(routeSource, /res\.status\(failures\.length \? 502 : 200\)/);
 });
+
+test("Imagery Sync includes a parent-only Product Description Sync tab", () => {
+  assert.match(htmlSource, /data-sync-tab="imagery">Imagery Sync/);
+  assert.match(htmlSource, /data-sync-tab="descriptions">Product Description Sync/);
+  assert.match(routeSource, /router\.get\("\/description-sync"/);
+  assert.match(routeSource, /suitePimBoolean\(row\?\.\["Is Parent"\]\)/);
+  ["Description Preview", "New Short Desc", "reasons to buy", "Web Faq's"].forEach((field) => {
+    assert.match(routeSource, new RegExp(`"${field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
+    assert.match(browserSource, new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+  });
+  assert.match(browserSource, /"Page Preview"/);
+});
+
+test("Product Description Sync maps SuitePim descriptions to WooCommerce by Woo ID", () => {
+  assert.match(routeSource, /function descriptionSyncWooUpdate/);
+  assert.match(routeSource, /id: wooId/);
+  assert.match(routeSource, /short_description: String\(row\?\.\["New Short Desc"\]/);
+  assert.match(routeSource, /description: String\(row\?\.\["Description Preview"\]/);
+  assert.match(routeSource, /router\.post\("\/description-sync\/push"/);
+  assert.match(browserSource, /"\/description-sync\/push"/);
+  assert.match(routeSource, /function descriptionSyncFieldValue/);
+  assert.match(routeSource, /\.map\(descriptionSyncRow\)/);
+  assert.match(browserSource, /source\.value = String\(row\[column\] \?\? ""\)/);
+});
+
+test("Product Description Sync refreshes NetSuite values and successful pushes invalidate stale rows", () => {
+  assert.match(browserSource, /load\(mode === "descriptions"\)/);
+  assert.match(routeSource, /job\.results\.some\(\(result\) => result\.status === "Success"\)/);
+  assert.match(routeSource, /webManagementCache\.delete\(webManagementCacheKey\(job\.env\)\)/);
+});
+
+test("Product Description Sync can update every loaded page in safe batches", () => {
+  assert.match(htmlSource, /id="imagerySyncPushAll"[^>]*>Update all descriptions/);
+  assert.match(browserSource, /function descriptionPushBatches\(rows, maxRows = 25, maxBytes = 750000\)/);
+  assert.match(browserSource, /function pushAllDescriptions\(\)/);
+  assert.match(browserSource, /return pushRows\(\[\.\.\.state\.rows\]\)/);
+  assert.match(browserSource, /for \(let index = 0; index < batches\.length; index \+= 1\)/);
+});
+
+test("description sync skips invalid IDs and emails one combined failure report", () => {
+  assert.match(routeSource, /rows\.forEach\(\(row\) => \{\s+try \{\s+const update = descriptionSyncWooUpdate/);
+  assert.match(routeSource, /router\.post\("\/description-sync\/failure-email"/);
+  assert.match(routeSource, /woocommerce-description-sync-failures\.csv/);
+  assert.match(browserSource, /failures\.push\(\.\.\.\(data\.results \|\| \[\]\)\.filter/);
+  assert.match(browserSource, /"\/description-sync\/failure-email"/);
+});

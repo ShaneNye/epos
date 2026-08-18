@@ -36,16 +36,22 @@
       <a class="suitepim-subnav-link" href="/suitepim/settings">Settings</a>
     </nav>
 
-    <section class="suitepim-toolbar suitepim-toolbar-web" aria-label="Imagery Sync controls">
+    <section class="suitepim-settings-tabs" role="tablist" aria-label="WooCommerce sync type">
+      <button class="active" type="button" role="tab" aria-selected="true" data-sync-tab="imagery">Imagery Sync</button>
+      <button type="button" role="tab" aria-selected="false" data-sync-tab="descriptions">Product Description Sync</button>
+    </section>
+
+    <section class="suitepim-toolbar suitepim-toolbar-web" aria-label="WooCommerce Sync controls">
       <div class="suitepim-search">
         <input id="imagerySyncSearch" type="search" placeholder="Search ID, Woo ID or name...">
       </div>
       <button id="imagerySyncRefresh" class="suitepim-icon-btn" type="button" title="Refresh" aria-label="Refresh">↻</button>
       <button id="imagerySyncPush" class="suitepim-primary-btn" type="button">Push selected to WooCommerce</button>
+      <button id="imagerySyncPushAll" class="suitepim-secondary-btn" type="button" hidden>Update all descriptions</button>
     </section>
 
     <section id="imagerySyncStatus" class="suitepim-status" aria-live="polite"></section>
-    <section id="imagerySyncMount" class="suitepim-shell" aria-label="Imagery Sync workspace">
+    <section id="imagerySyncMount" class="suitepim-shell" aria-label="WooCommerce Sync workspace">
       <div class="suitepim-loading"><div class="suitepim-spinner" aria-hidden="true"></div><p>Loading Imagery Sync...</p></div>
     </section>
     <div class="suitepim-pagination" aria-label="Imagery Sync pagination">

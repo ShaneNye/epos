@@ -1,6 +1,25 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards, COMMISSION_RATE } = require("../utils/rewardsCalculator");
+const { getPayPeriod, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards, COMMISSION_RATE } = require("../utils/rewardsCalculator");
+
+test("pay period runs from the 14th inclusive to the next 14th exclusive", () => {
+  const period = getPayPeriod(new Date(2026, 7, 14, 12));
+  assert.deepEqual([period.start.getFullYear(), period.start.getMonth(), period.start.getDate()], [2026, 7, 14]);
+  assert.deepEqual([period.end.getFullYear(), period.end.getMonth(), period.end.getDate()], [2026, 8, 14]);
+  const rows = filterRowsToPayPeriod([
+    { Date: "13/08/2026 11:59 PM" },
+    { Date: "14/08/2026 12:00 AM" },
+    { Date: "13/09/2026 11:59 PM" },
+    { Date: "14/09/2026 12:00 AM" },
+  ], period);
+  assert.deepEqual(rows.map((row) => row.Date), ["14/08/2026 12:00 AM", "13/09/2026 11:59 PM"]);
+});
+
+test("dates before the 14th use the pay period beginning in the previous month", () => {
+  const period = getPayPeriod(new Date(2026, 7, 13, 12));
+  assert.deepEqual([period.start.getFullYear(), period.start.getMonth(), period.start.getDate()], [2026, 6, 14]);
+  assert.deepEqual([period.end.getFullYear(), period.end.getMonth(), period.end.getDate()], [2026, 7, 14]);
+});
 
 test("rewards dashboard applies a 2.1 percent reward and groups specialists", () => {
   const rows = [

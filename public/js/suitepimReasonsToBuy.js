@@ -691,8 +691,6 @@
 
   function renderReasonListHtml(items, emptyMessage) {
     if (!items.length) return `<div style="margin:0; color:#64748b; font-size:13px;">${escapeHtml(emptyMessage || "No content added yet.")}</div>`;
-    const columns = [[], []];
-    items.forEach((item, index) => columns[index % 2].push(item));
     const cleanDescription = (item) => {
       const name = String(item.name || "").trim();
       const description = String(item.description || "No description added yet.").trim();
@@ -722,14 +720,9 @@
       </table>
     `;
     return `
-      <table role="presentation" cellpadding="0" cellspacing="0" align="left" dir="ltr" style="width:100%; border-collapse:collapse; table-layout:fixed; text-align:left; direction:ltr;">
-        <tbody>
-          <tr>
-            <td align="left" dir="ltr" style="width:50%; vertical-align:top; padding:0 24px 0 0; text-align:left; direction:ltr;">${columns[0].map(itemHtml).join("")}</td>
-            <td align="left" dir="ltr" style="width:50%; vertical-align:top; padding:0 0 0 24px; text-align:left; direction:ltr;">${columns[1].map(itemHtml).join("")}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="suitepim-feature-benefit-list" dir="ltr" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); column-gap:48px; width:100%; text-align:left; direction:ltr;">
+        ${items.map(itemHtml).join("")}
+      </div>
     `;
   }
 
@@ -847,7 +840,7 @@
         </div>
         ${renderAccordionHtml("Video", videoHtml)}
         ${renderAccordionHtml("Features & Benefits", renderReasonListHtml(featureReasons, "No content added yet."), true)}
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:14px; align-items:start;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:18px; margin-top:14px; align-items:start;">
           <div style="background:#ffffff; padding:0;">${renderAccordionHtml("Dimensions", dimensionsHtml)}</div>
           <div style="background:#ffffff; padding:0;">${renderAccordionHtml("Warranty Information", warrantyHtml)}</div>
           <div style="background:#ffffff; padding:0;">${renderAccordionHtml("FAQs", faqHtml, true)}</div>

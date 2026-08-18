@@ -113,6 +113,7 @@
     { name: "Margin", fieldType: "Decimal", toolColumn: true },
     { name: "Stock on hand", fieldType: "Stock", toolColumn: true, disableField: true },
     { name: "Generate Description", fieldType: "Generate", toolColumn: true, disableField: true },
+    { name: "Regenerate Existing Description Previews", fieldType: "RegeneratePreview", toolColumn: true, disableField: true },
     { name: "Page Preview", fieldType: "Preview", toolColumn: true, disableField: true },
   ];
 
@@ -660,8 +661,6 @@
     if (!items.length) {
       return `<div style="margin:0; color:#64748b; font-size:13px;">${escapeHtml(emptyMessage || "No content added yet.")}</div>`;
     }
-    const columns = [[], []];
-    items.forEach((item, index) => columns[index % 2].push(item));
     const cleanDescription = (item) => {
       const name = String(item.name || "").trim();
       const description = String(item.description || "No description added yet.").trim();
@@ -691,14 +690,9 @@
       </table>
     `;
     return `
-      <table role="presentation" cellpadding="0" cellspacing="0" align="left" dir="ltr" style="width:100%; border-collapse:collapse; table-layout:fixed; text-align:left; direction:ltr;">
-        <tbody>
-          <tr>
-            <td align="left" dir="ltr" style="width:50%; vertical-align:top; padding:0 24px 0 0; text-align:left; direction:ltr;">${columns[0].map(itemHtml).join("")}</td>
-            <td align="left" dir="ltr" style="width:50%; vertical-align:top; padding:0 0 0 24px; text-align:left; direction:ltr;">${columns[1].map(itemHtml).join("")}</td>
-          </tr>
-        </tbody>
-      </table>
+      <div class="suitepim-feature-benefit-list" dir="ltr" style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); column-gap:48px; width:100%; text-align:left; direction:ltr;">
+        ${items.map(itemHtml).join("")}
+      </div>
     `;
   }
 
@@ -860,7 +854,7 @@
         </div>
         ${renderAccordionCard("Video", videoEmbedUrl ? `<iframe src="${escapeHtml(videoEmbedUrl)}" title="${title} video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="width:100%; aspect-ratio:16 / 9; border:0; display:block; background:#f5f5f5;"></iframe>` : (videoUrl ? `<a href="${escapeHtml(videoUrl)}" target="_blank" rel="noreferrer noopener" style="display:inline-flex; align-items:center; gap:8px; color:#0b7aa6; font-weight:700; text-decoration:none;">${escapeHtml(videoUrl)}</a>` : `<div style="margin:0; color:#64748b; font-size:13px;">No content added yet.</div>`))}
         ${renderAccordionCard("Features & Benefits", featuresBenefitsHtml, true)}
-        <div style="display:grid; grid-template-columns:1fr 1fr; gap:18px; margin-top:14px; align-items:start;">
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:18px; margin-top:14px; align-items:start;">
           <div style="background:#ffffff; padding:0;">${renderAccordionCard("Dimensions", productInfoHtml)}</div>
           <div style="background:#ffffff; padding:0;">${renderAccordionCard("Warranty Information", warrantyHtml)}</div>
           <div style="background:#ffffff; padding:0;">${renderAccordionCard("FAQs", faqHtml, true)}</div>
@@ -1506,7 +1500,7 @@
 
   function editableFields() {
     return state.fields.filter((field) =>
-      !field.hiddenField && (!field.disableField || ["Retail Price", "Sale Price", "Discount Percent", "Margin", "Generate Description"].includes(field.name))
+      !field.hiddenField && (!field.disableField || ["Retail Price", "Sale Price", "Discount Percent", "Margin", "Generate Description", "Regenerate Existing Description Previews"].includes(field.name))
     );
   }
 
@@ -1953,6 +1947,12 @@
     if (fieldType === "Generate") {
       host.innerHTML = `<div class="suitepim-muted-note">No value needed. This will generate descriptions for the chosen bulk scope.</div>`;
       onChange(true, "Generate");
+      return;
+    }
+
+    if (fieldType === "RegeneratePreview") {
+      host.innerHTML = `<div class="suitepim-muted-note">No value needed. This rebuilds only Description Preview fields that already contain a value; blank previews remain blank.</div>`;
+      onChange(true, "Regenerate existing previews");
       return;
     }
 
@@ -2913,8 +2913,26 @@
 
   async function confirmInactiveWithStock(row) {
     await ensureInventoryBalances();
+    if (state.inventoryError) {
+      showStatus(`Could not check stock on hand: ${state.inventoryError}`, "error");
+      return false;
+    }
     if (!hasAvailableStock(row)) return true;
     return window.confirm("There is stock currently available for this item. Are you sure you want to set it as inactive?");
+  }
+
+  async function confirmBulkInactiveWithStock(rows) {
+    await ensureInventoryBalances();
+    if (state.inventoryError) {
+      showStatus(`Could not check stock on hand: ${state.inventoryError}`, "error");
+      return false;
+    }
+    const stockedRows = rows.filter((row) => !boolValue(row.Inactive) && hasAvailableStock(row));
+    if (!stockedRows.length) return true;
+    const itemText = stockedRows.length === 1 ? "item has" : `${stockedRows.length} items have`;
+    return window.confirm(
+      `${itemText} stock currently available. Are you sure you want to set ${stockedRows.length === 1 ? "it" : "them"} as inactive?`
+    );
   }
 
   function stockReportRows(row) {
@@ -4150,7 +4168,7 @@
     }
 
     const draft = state.bulkDraft;
-    const hasValue = field.fieldType === "Generate" || draft.mode === "prefix-size"
+    const hasValue = ["Generate", "RegeneratePreview"].includes(field.fieldType) || draft.mode === "prefix-size"
       ? true
       : Array.isArray(draft.value)
       ? draft.value.length > 0
@@ -4169,12 +4187,45 @@
       return;
     }
 
+    if (field.name === "Inactive" && boolValue(draft.value)) {
+      const confirmed = await confirmBulkInactiveWithStock(targetRows);
+      if (!confirmed) return;
+    }
+
     if (field.fieldType === "Generate") {
       try {
         await generateDescriptionsBulk(targetRows);
       } catch (err) {
         showStatus(err.message, "error");
       }
+      return;
+    }
+
+    if (field.fieldType === "RegeneratePreview") {
+      let updatedCount = 0;
+      targetRows.forEach((row) => {
+        if (!String(row["Description Preview"] || "").trim()) return;
+        const idx = state.rows.findIndex((item) => item._suitepimKey === row._suitepimKey);
+        if (idx === -1) return;
+        const updated = {
+          ...state.rows[idx],
+          "Description Preview": webDescriptionHtml(state.rows[idx]).trim(),
+        };
+        state.rows[idx] = updated;
+        const clean = JSON.stringify(stripInternal(updated));
+        if (clean === state.baseline.get(updated._suitepimKey)) state.dirty.delete(updated._suitepimKey);
+        else state.dirty.set(updated._suitepimKey, updated);
+        state.selected.add(updated._suitepimKey);
+        updatedCount += 1;
+      });
+      state.page = 1;
+      applyFilters();
+      showStatus(
+        updatedCount
+          ? `Regenerated ${updatedCount.toLocaleString()} existing description preview(s). Review and push changes when ready.`
+          : "No populated Description Preview fields were found in that scope.",
+        updatedCount ? "success" : "warning"
+      );
       return;
     }
 
@@ -4264,6 +4315,42 @@
     });
   }
 
+  function pushBatches(rows, maxRows = 25, maxBytes = 750000) {
+    const batches = [];
+    let batch = [];
+    rows.forEach((row) => {
+      const candidate = [...batch, row];
+      const bytes = new Blob([JSON.stringify({ rows: candidate, environment: state.environment })]).size;
+      if (batch.length && (candidate.length > maxRows || bytes > maxBytes)) {
+        batches.push(batch);
+        batch = [row];
+      } else {
+        batch = candidate;
+      }
+    });
+    if (batch.length) batches.push(batch);
+    return batches;
+  }
+
+  function waitForPushJob(jobId, completedBefore, totalRows) {
+    return new Promise((resolve, reject) => {
+      const timer = setInterval(async () => {
+        try {
+          const job = await api(`/push-status/${jobId}`);
+          const processed = completedBefore + Number(job.processed || 0);
+          showStatus(`Push ${job.status}: ${processed}/${totalRows} processed`, job.status === "completed" ? "success" : "info");
+          if (job.status === "completed" || job.status === "error") {
+            clearInterval(timer);
+            resolve(job);
+          }
+        } catch (err) {
+          clearInterval(timer);
+          reject(err);
+        }
+      }, 2500);
+    });
+  }
+
   async function pushSelected() {
     const rows = selectedChangedPayloads();
     if (!rows.length) {
@@ -4276,16 +4363,31 @@
       el.suitepimPushReport.hidden = true;
       el.suitepimPushReport.innerHTML = "";
     }
-    showStatus(`Queueing ${rows.length} selected row(s)...`, "info");
+    const batches = pushBatches(rows);
+    showStatus(`Queueing ${rows.length} selected row(s) in ${batches.length} batch${batches.length === 1 ? "" : "es"}...`, "info");
 
     try {
-      const data = await api("/push-updates", {
-        method: "POST",
-        body: JSON.stringify({ rows, environment: state.environment }),
-      });
-      pollJob(data.jobId);
+      const results = [];
+      let completed = 0;
+      for (let index = 0; index < batches.length; index += 1) {
+        showStatus(`Queueing batch ${index + 1}/${batches.length}...`, "info");
+        const data = await api("/push-updates", {
+          method: "POST",
+          body: JSON.stringify({ rows: batches[index], environment: state.environment }),
+        });
+        const job = await waitForPushJob(data.jobId, completed, rows.length);
+        results.push(...(job.results || []));
+        completed += batches[index].length;
+      }
+      const combinedJob = { status: "completed", processed: completed, total: rows.length, results };
+      commitSuccessfulPushResults(results);
+      const ok = results.filter((result) => result.status === "Success").length;
+      const failed = results.filter((result) => result.status === "Error").length;
+      showStatus(`Push finished. ${ok} successful, ${failed} failed.`, failed ? "warning" : "success");
+      renderPushReport(combinedJob);
     } catch (err) {
       showStatus(err.message, "error");
+    } finally {
       setPushControlsDisabled(false);
     }
   }

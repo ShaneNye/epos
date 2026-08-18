@@ -3,7 +3,7 @@ const pool = require("../db");
 const { getSession } = require("../sessions");
 const { nsPostRaw } = require("../netsuiteClient");
 const { getNetSuiteAccountDash } = require("../utils/netsuiteEnvironment");
-const { COMMISSION_RATE, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarizeRewards } = require("../utils/rewardsCalculator");
+const { COMMISSION_RATE, getPayPeriod, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarizeRewards } = require("../utils/rewardsCalculator");
 
 const router = express.Router();
 const PAGE_SIZE = 1000;
@@ -66,6 +66,8 @@ WHERE t.type = 'SalesOrd' AND tl.mainline = 'F' AND tl.isclosed = 'T'
     AND tl.custcol_sb_ln_close_date >=
         ADD_MONTHS(TRUNC(SYSDATE, 'MM'), CASE WHEN EXTRACT(DAY FROM SYSDATE) >= 14 THEN 0 ELSE -1 END) + 13
     AND tl.custcol_sb_ln_close_date <= SYSDATE
+    AND tl.custcol_sb_ln_close_date <
+        ADD_MONTHS(ADD_MONTHS(TRUNC(SYSDATE, 'MM'), CASE WHEN EXTRACT(DAY FROM SYSDATE) >= 14 THEN 0 ELSE -1 END) + 13, 1)
     AND TRUNC(tl.custcol_sb_ln_close_date, 'MM') <> TRUNC(t.trandate, 'MM')
     AND UPPER(BUILTIN.DF(t.entity)) NOT LIKE '%I/C -%'
     AND NVL(t.customform, 0) <> 245
@@ -146,15 +148,18 @@ router.get("/", async (req, res) => {
       fetchLineValueChanges(),
     ]);
 
+    const period = getPayPeriod();
     const rows = rawRows.slice(0, MAX_ROWS).map(normalizeRow);
     const closedLineAdjustments = rawAdjustmentRows.slice(0, MAX_ROWS).map(normalizeAdjustmentRow);
-    const lineValueAdjustments = normalizeLineValueChanges(rawLineValueChanges.slice(0, MAX_ROWS));
+    const currentLineValueChanges = filterRowsToPayPeriod(rawLineValueChanges.slice(0, MAX_ROWS), period);
+    const lineValueAdjustments = normalizeLineValueChanges(currentLineValueChanges);
     const adjustmentRows = [...closedLineAdjustments, ...lineValueAdjustments];
     res.set("Cache-Control", "no-store");
     return res.json({
       ok: true,
       commissionRate: COMMISSION_RATE,
       period: "This month",
+      adjustmentPeriod: { start: period.start.toISOString(), end: period.end.toISOString() },
       lastUpdated: new Date().toISOString(),
       capped: rawRows.length >= MAX_ROWS || rawAdjustmentRows.length >= MAX_ROWS || rawLineValueChanges.length >= MAX_ROWS,
       summary: summarizeRewards(rows, adjustmentRows),
