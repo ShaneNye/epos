@@ -1,23 +1,31 @@
 (function initSalesNewOrderProgress() {
   const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-  const value = (selector) => String(document.querySelector(selector)?.value || "").trim();
+  const detailSelectors = ["#salesExec", "#store", 'select[name="leadSource"]', "#paymentInfo", "#warehouse"];
+  const relevantInputSelector = [
+    'input[name="firstName"]', 'input[name="lastName"]', 'input[name="address1"]',
+    'input[name="postcode"]', 'input[name="contactNumber"]', 'input[name="email"]',
+    "#noAddressRequired", ...detailSelectors, "#distributionOrderType",
+    "#orderItemsBody .item-internal-id", "#orderItemsBody .item-fulfilment", "#orderItemsBody .item-inv-detail",
+  ].join(",");
+  let elements;
+  let updateFrame = 0;
 
-  function itemLinesComplete() {
-    const rows = [...document.querySelectorAll("#orderItemsBody tr.order-line")].filter((row) =>
-      String(row.querySelector(".item-internal-id")?.value || "").trim()
-    );
-    if (!rows.length) return false;
+  const fieldValue = (field) => String(field?.value || "").trim();
+  const value = (selector) => fieldValue(document.querySelector(selector));
 
-    return rows.every((row) => {
+  function itemLinesComplete(rows) {
+    const itemRows = rows.filter((row) => fieldValue(row.querySelector(".item-internal-id")));
+    if (!itemRows.length) return false;
+    return itemRows.every((row) => {
       const itemClass = String(row.dataset.itemClass || "").toLowerCase();
       if (itemClass.includes("service")) return true;
       const fulfilment = row.querySelector(".item-fulfilment");
-      if (!String(fulfilment?.value || "").trim()) return false;
+      if (!fieldValue(fulfilment)) return false;
       const method = String(fulfilment?.selectedOptions?.[0]?.textContent || "").trim().toLowerCase();
       const requiresInventory = ["warehouse", "in store", "fulfil from store"].includes(method);
       if (!requiresInventory) return true;
       return !!(
-        String(row.querySelector(".item-inv-detail")?.value || "").trim() ||
+        fieldValue(row.querySelector(".item-inv-detail")) ||
         String(row.dataset.invdetail || "").trim() ||
         String(row.dataset.inventoryMeta || "").trim() ||
         String(row.dataset.lotnumber || "").trim() ||
@@ -27,83 +35,93 @@
   }
 
   function orderDetailsComplete() {
-    const required = ["#salesExec", "#store", 'select[name="leadSource"]', "#paymentInfo", "#warehouse"];
-    const distributionWrapper = document.getElementById("distributionOrderTypeWrapper");
-    if (distributionWrapper && getComputedStyle(distributionWrapper).display !== "none") {
+    const required = [...detailSelectors];
+    if (elements.distributionWrapper && getComputedStyle(elements.distributionWrapper).display !== "none") {
       required.push("#distributionOrderType");
     }
     return required.every((selector) => {
       const field = document.querySelector(selector);
       const selectedText = String(field?.selectedOptions?.[0]?.textContent || "").trim().toLowerCase();
-      return !!value(selector) && !selectedText.startsWith("loading") && !selectedText.startsWith("select ");
+      return !!fieldValue(field) && !selectedText.startsWith("loading") && !selectedText.startsWith("select ");
     });
   }
 
+  function setText(element, text) {
+    if (element && element.textContent !== text) element.textContent = text;
+  }
+
   function update() {
-    const noAddressRequired = document.getElementById("noAddressRequired")?.checked === true;
+    updateFrame = 0;
+    const noAddressRequired = elements.noAddressRequired?.checked === true;
     const email = value('input[name="email"]');
+    const emailValid = emailPattern.test(email);
     const firstName = value('input[name="firstName"]');
     const lastName = value('input[name="lastName"]');
     const address1 = value('input[name="address1"]');
     const postcode = value('input[name="postcode"]');
     const contact = value('input[name="contactNumber"]');
+    const detailsComplete = orderDetailsComplete();
+    const linesComplete = itemLinesComplete([...elements.itemsBody.querySelectorAll("tr.order-line")]);
     const state = {
-      firstName: { complete: !!firstName, label: firstName ? `First Name is ${firstName}` : "First name entered", signature: firstName },
-      lastName: { complete: !!lastName, label: lastName ? `Last Name is ${lastName}` : "Last name entered", signature: lastName },
-      address: {
-        complete: noAddressRequired || (!!address1 && !!postcode),
-        label: noAddressRequired ? "No address required" : address1 && postcode ? `Address is ${address1}, ${postcode}` : "Address completed",
-        signature: `${noAddressRequired}|${address1}|${postcode}`,
-      },
-      contact: { complete: !!contact, label: contact ? `Contact Number is ${contact}` : "Contact number entered", signature: contact },
-      email: {
-        complete: emailPattern.test(email),
-        warning: !!email && !emailPattern.test(email),
-        issue: "Enter a valid email address, including @ and a domain.",
-        label: emailPattern.test(email) ? `Email Address is ${email}` : "Valid email address entered",
-        signature: email,
-      },
-      orderDetails: { complete: orderDetailsComplete(), label: orderDetailsComplete() ? "Order details are complete" : "Order details completed", signature: ["#salesExec", "#store", 'select[name="leadSource"]', "#paymentInfo", "#warehouse", "#distributionOrderType"].map(value).join("|") },
-      itemLines: { complete: itemLinesComplete(), label: itemLinesComplete() ? "Item fulfilment and inventory are complete" : "Item fulfilment and inventory completed", signature: [...document.querySelectorAll("#orderItemsBody tr.order-line")].map((row) => `${row.querySelector(".item-internal-id")?.value || ""}:${row.querySelector(".item-fulfilment")?.value || ""}:${row.querySelector(".item-inv-detail")?.value || row.dataset.inventoryMeta || row.dataset.invdetail || ""}`).join("|") },
+      firstName: { complete: !!firstName, label: firstName ? `First Name is ${firstName}` : "First name entered" },
+      lastName: { complete: !!lastName, label: lastName ? `Last Name is ${lastName}` : "Last name entered" },
+      address: { complete: noAddressRequired || (!!address1 && !!postcode), label: noAddressRequired ? "No address required" : address1 && postcode ? `Address is ${address1}, ${postcode}` : "Address completed" },
+      contact: { complete: !!contact, label: contact ? `Contact Number is ${contact}` : "Contact number entered" },
+      email: { complete: emailValid, warning: !!email && !emailPattern.test(email), issue: "Enter a valid email address, including @ and a domain.", label: emailValid ? `Email Address is ${email}` : "Valid email address entered" },
+      orderDetails: { complete: detailsComplete, label: detailsComplete ? "Order details are complete" : "Order details completed" },
+      itemLines: { complete: linesComplete, label: linesComplete ? "Item fulfilment and inventory are complete" : "Item fulfilment and inventory completed" },
     };
 
     const entries = Object.entries(state);
     const complete = entries.filter(([, status]) => status.complete).length;
     entries.forEach(([key, status]) => {
-      const row = document.querySelector(`#orderProgressList [data-progress="${key}"]`);
-      row?.classList.toggle("is-complete", status.complete);
-      row?.classList.toggle("is-warning", status.warning === true);
-      const copy = row?.querySelector(".order-progress-copy > span");
-      if (copy) copy.textContent = status.label;
-      const issue = row?.querySelector("small");
-      if (issue) issue.textContent = status.warning ? status.issue : "";
-      row?.setAttribute("aria-label", `${row.querySelector(".order-progress-copy > span")?.textContent.trim()}: ${status.complete ? "complete" : status.warning ? status.issue : "not complete"}`);
+      const row = elements.progressRows.get(key);
+      if (!row) return;
+      row.classList.toggle("is-complete", status.complete);
+      row.classList.toggle("is-warning", status.warning === true);
+      setText(row.querySelector(".order-progress-copy > span"), status.label);
+      setText(row.querySelector("small"), status.warning ? status.issue : "");
+      const ariaLabel = `${status.label}: ${status.complete ? "complete" : status.warning ? status.issue : "not complete"}`;
+      if (row.getAttribute("aria-label") !== ariaLabel) row.setAttribute("aria-label", ariaLabel);
     });
 
-    const panel = document.querySelector(".order-progress");
-    panel?.classList.toggle("is-complete", complete === entries.length);
-    const count = document.getElementById("orderProgressCount");
-    const summary = document.getElementById("orderProgressSummary");
-    const bar = document.getElementById("orderProgressBar");
-    if (count) count.textContent = `${complete}/${entries.length}`;
-    if (summary) summary.textContent = complete === entries.length
-      ? "Ready to process"
-      : `${entries.length - complete} milestone${entries.length - complete === 1 ? "" : "s"} remaining`;
-    if (bar) bar.style.width = `${(complete / entries.length) * 100}%`;
+    elements.panel?.classList.toggle("is-complete", complete === entries.length);
+    setText(elements.count, `${complete}/${entries.length}`);
+    setText(elements.summary, complete === entries.length ? "Ready to process" : `${entries.length - complete} milestone${entries.length - complete === 1 ? "" : "s"} remaining`);
+    const width = `${(complete / entries.length) * 100}%`;
+    if (elements.bar && elements.bar.style.width !== width) elements.bar.style.width = width;
+  }
+
+  function scheduleUpdate() {
+    if (!updateFrame) updateFrame = requestAnimationFrame(update);
   }
 
   document.addEventListener("DOMContentLoaded", () => {
-    update();
     const root = document.querySelector("main.content") || document.body;
-    root.addEventListener("input", update);
-    root.addEventListener("change", update);
-    root.addEventListener("click", () => requestAnimationFrame(update));
-    new MutationObserver(() => requestAnimationFrame(update)).observe(root, {
+    const progressList = document.getElementById("orderProgressList");
+    elements = {
+      itemsBody: document.getElementById("orderItemsBody"),
+      noAddressRequired: document.getElementById("noAddressRequired"),
+      distributionWrapper: document.getElementById("distributionOrderTypeWrapper"),
+      panel: document.querySelector(".order-progress"),
+      count: document.getElementById("orderProgressCount"),
+      summary: document.getElementById("orderProgressSummary"),
+      bar: document.getElementById("orderProgressBar"),
+      progressRows: new Map([...progressList.querySelectorAll("[data-progress]")].map((row) => [row.dataset.progress, row])),
+    };
+
+    update();
+    const onFieldEvent = (event) => {
+      if (event.target instanceof Element && event.target.matches(relevantInputSelector)) scheduleUpdate();
+    };
+    root.addEventListener("input", onFieldEvent);
+    root.addEventListener("change", onFieldEvent);
+    new MutationObserver(scheduleUpdate).observe(elements.itemsBody, {
       childList: true,
       subtree: true,
       attributes: true,
       attributeFilter: ["data-item-class", "data-invdetail", "data-inventory-meta", "data-lotnumber", "data-backorder"],
     });
-    window.addEventListener("sales-inventory-updated", update);
+    window.addEventListener("sales-inventory-updated", scheduleUpdate);
   });
 })();

@@ -26,3 +26,11 @@ test("order progress validates contact, details, fulfilment and required invento
   assert.match(source, /First Name is \$\{firstName\}/);
   assert.doesNotMatch(source, /salesNewProgressConfirmed|order-progress-attention/);
 });
+
+test("order progress updates are scoped and coalesced", () => {
+  const source = read("public/js/salesNewOrderProgress.js");
+  assert.match(source, /if \(!updateFrame\) updateFrame = requestAnimationFrame\(update\)/);
+  assert.match(source, /MutationObserver\(scheduleUpdate\)\.observe\(elements\.itemsBody/);
+  assert.match(source, /event\.target\.matches\(relevantInputSelector\)/);
+  assert.doesNotMatch(source, /root\.addEventListener\("click"/);
+});

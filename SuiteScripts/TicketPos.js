@@ -250,6 +250,9 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
              */
             if (secondaryItemId) {
                 var secondaryItemMapping = {
+                    
+                    // Single Base Mapping // 
+
                     '2_1': 'custrecord_sb_single_non_store',
                     '2_19': 'custrecord_sb_single_2_drawer',
                     '2_2': 'custrecord_sb_single_2_drawer',
@@ -260,6 +263,8 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
                     '2_7': 'custrecord_single_shallow',
                     '2_13': 'custrecord_single_slim',
 
+                    // Small Double Base Mapping // 
+
                     '3_1': 'custrecordsb_small_double_non_store',
                     '3_2': 'custrecord_sb_small_double_2_drawer',
                     '3_21': 'custrecord_sb_small_double_4_drawer',
@@ -268,6 +273,8 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
                     '3_5': 'custrecord_sb_small_double_end_lift',
                     '3_7': 'custrecord_small_double_shallow',
                     '3_13': 'custrecord_small_double_slim',
+
+                    // Double Base Mapping // 
 
                     '4_1': 'custrecord_sb_double_non_store',
                     '4_2': 'custrecord_sb_double_2_drawer',
@@ -278,6 +285,8 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
                     '4_7': 'custrecord_double_shallow',
                     '4_13': 'custrecord_double_slim',
 
+                    // King Base Mapping // 
+
                     '5_1': 'custrecord_sb_king_non_store',
                     '5_2': 'custrecord_sb_king_2_drawer',
                     '5_21': 'custrecord_sb_king_4_drawer',
@@ -287,6 +296,8 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
                     '5_7': 'custrecord_king_shallow',
                     '5_13': 'custrecord_king_slim',
 
+                    // Super King Base Mapping //
+
                     '6_1': 'custrecord_sb_superking_non_store',
                     '6_2': 'custrecord_sb_superking_2_drawer',
                     '6_21': 'custrecord_sb_super_king_4_drawer',
@@ -294,7 +305,27 @@ define(['N/record', 'N/search', 'N/log'], function (record, search, log) {
                     '6_4': 'custrecord_sb_superking_side_lift',
                     '6_5': 'custrecord_sb_superking_end_lift',
                     '6_7': 'custrecord_superking_shallow',
-                    '6_13': 'custrecord_sb_superking_slim'
+                    '6_13': 'custrecord_sb_superking_slim',
+
+                    // King Zipped Base Mapping // 
+
+                    '104_1': 'custrecord_sb_king_zl_non_store',
+                    '104_2': 'custrecord_sb_king_zl_2_drw',
+                    '104_21': 'custrecord_sb_king_zl_4_drawer',
+                    '104_7' : 'custrecord_sb_king_zl_shallow',
+                    '104_13' : 'custrecord_sb_king_zl_slim',
+                    '104_4': 'custrecord_sb_king_zl_side_lift',
+                    '104_5' : 'custrecord_sb_king_zl_end_lift',
+
+                    // Super King Zipped Base Mapping //
+
+                    '105_1': 'custrecord_sb_sk_zl_non_store',
+                    '105_2': 'custrecord_sb_sk_zl_2_drw',
+                    '105_21': 'custrecord_sb_sk_zl_4_drw', 
+                    '105_7' : 'custrecord_sb_sk_zl_shallow',
+                    '105_13' : 'custrecord_sb_sk_zl_slim',
+                    '105_4': 'custrecord_sb_sk_zl_side_otto',
+                    '105_5' : 'custrecord_sb_sk_zl_end_otto'
                 };
 
                 if (additionalMapMatrixList != 'custitem21' && secondaryItemClass != 2) {
