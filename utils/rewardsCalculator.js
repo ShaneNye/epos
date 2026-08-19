@@ -1,4 +1,5 @@
 const COMMISSION_RATE = 0.021;
+const STORE_MANAGER_RATE = 0.00172;
 
 function getPayPeriod(now = new Date()) {
   const start = new Date(now.getFullYear(), now.getMonth() - (now.getDate() < 14 ? 1 : 0), 14);
@@ -119,7 +120,53 @@ function summarize(rows) {
   return { totalSales: money(sales), totalReward: money(sales * COMMISSION_RATE), orderCount: orders.size, specialistCount: leaderboard.length, leaderboard };
 }
 
-function summarizeRewards(rows, adjustmentRows) {
+function locationKey(value) {
+  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+}
+
+function countWeekdays(start, end) {
+  let count = 0;
+  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
+  const finish = new Date(end.getFullYear(), end.getMonth(), end.getDate());
+  while (cursor <= finish) {
+    const day = cursor.getDay();
+    if (day !== 0 && day !== 6) count += 1;
+    cursor.setDate(cursor.getDate() + 1);
+  }
+  return count;
+}
+
+function applyAnnualLeaveRewards(summary, commissionHistory = [], leaveEntries = [], now = new Date()) {
+  const historyByName = new Map(commissionHistory.map((row) => [locationKey(row.name), Number(row.commission) || 0]));
+  const leaveByName = new Map(leaveEntries.map((row) => [locationKey(row.name), row]));
+  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
+  const workingDays = Math.max(1, countWeekdays(sixMonthsAgo, now));
+  let totalAnnualLeaveReward = 0;
+  const leaderboard = summary.leaderboard.map((person) => {
+    const leave = leaveByName.get(locationKey(person.name));
+    const averageDailyCommission = money((historyByName.get(locationKey(person.name)) || 0) / workingDays);
+    const annualLeaveQuantity = Math.max(0, Number(leave?.quantity) || 0);
+    const annualLeaveReward = money(averageDailyCommission * annualLeaveQuantity);
+    totalAnnualLeaveReward += annualLeaveReward;
+    return {
+      ...person,
+      userId: leave?.userId || null,
+      averageDailyCommission,
+      annualLeaveQuantity,
+      annualLeaveReward,
+      totalReward: money(person.totalReward + annualLeaveReward),
+    };
+  });
+  totalAnnualLeaveReward = money(totalAnnualLeaveReward);
+  return {
+    ...summary,
+    leaderboard,
+    totalAnnualLeaveReward,
+    totalRewardAfterAdjustments: money(summary.totalRewardAfterAdjustments + totalAnnualLeaveReward),
+  };
+}
+
+function summarizeRewards(rows, adjustmentRows, storeManagers = []) {
   const rewards = summarize(rows);
   const people = new Map(rewards.leaderboard.map((person) => [person.name, { ...person, adjustment: 0 }]));
   let totalAdjustment = 0;
@@ -129,12 +176,34 @@ function summarizeRewards(rows, adjustmentRows) {
     current.adjustment += row.amountIncTax * COMMISSION_RATE;
     people.set(row.bedSpecialist, current);
   }
+  const revenueByLocation = new Map();
+  for (const row of rows) {
+    const key = locationKey(row.subsidiary);
+    if (key) revenueByLocation.set(key, (revenueByLocation.get(key) || 0) + row.amountIncTax);
+  }
+  const personNames = new Map([...people.keys()].map((name) => [locationKey(name), name]));
+  for (const store of storeManagers) {
+    const managerName = String(store.managerName || "").trim();
+    if (!managerName) continue;
+    const storeRevenue = revenueByLocation.get(locationKey(store.locationName)) || 0;
+    if (!storeRevenue) continue;
+    const existingName = personNames.get(locationKey(managerName));
+    const personKey = existingName || managerName;
+    const current = people.get(personKey) || { name: managerName, sales: 0, reward: 0, orderCount: 0, lineCount: 0, adjustment: 0 };
+    current.storeRevenue = (current.storeRevenue || 0) + storeRevenue;
+    current.managerReward = (current.managerReward || 0) + storeRevenue * STORE_MANAGER_RATE;
+    people.set(personKey, current);
+    personNames.set(locationKey(managerName), personKey);
+  }
   const leaderboard = [...people.values()].map((person) => ({
     ...person,
     adjustment: money(person.adjustment),
-    totalReward: money(person.reward - person.adjustment),
+    storeRevenue: money(person.storeRevenue),
+    managerReward: money(person.managerReward),
+    totalReward: money(person.reward - person.adjustment + (person.managerReward || 0)),
   })).sort((a, b) => b.totalReward - a.totalReward || a.name.localeCompare(b.name));
-  return { ...rewards, totalAdjustment: money(totalAdjustment), totalRewardAfterAdjustments: money(rewards.totalReward - totalAdjustment), specialistCount: leaderboard.length, leaderboard };
+  const totalManagerReward = money(leaderboard.reduce((total, person) => total + person.managerReward, 0));
+  return { ...rewards, totalAdjustment: money(totalAdjustment), totalManagerReward, totalRewardAfterAdjustments: money(rewards.totalReward - totalAdjustment + totalManagerReward), specialistCount: leaderboard.length, leaderboard };
 }
 
-module.exports = { COMMISSION_RATE, getPayPeriod, parseNetSuiteDate, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards };
+module.exports = { COMMISSION_RATE, STORE_MANAGER_RATE, getPayPeriod, parseNetSuiteDate, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards, countWeekdays, applyAnnualLeaveRewards };

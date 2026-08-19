@@ -9155,10 +9155,16 @@ router.get("/:id", async (req, res) => {
           const retailGross = +(retailNet * 1.2).toFixed(2);
           const retailAmount = +(retailGross * qty * sign).toFixed(2);
 
-          const vat = vatFree ? 0 : +(net * 0.2).toFixed(2);
-          const saleprice = +(net + vat).toFixed(2);
+          // NetSuite retains more precision in the line rate than in the displayed
+          // net amount. Its Total Price is based on that rate (for example,
+          // 569.625 * 1.2 = 683.55), so do not rebuild gross from rounded net.
+          const grossFromRate = rawRate * qty * (vatFree ? 1 : 1.2);
+          const saleprice = isNegativeValueLine
+            ? -Math.abs(+grossFromRate.toFixed(2))
+            : Math.abs(+grossFromRate.toFixed(2));
+          const vat = vatFree ? 0 : +(saleprice - net).toFixed(2);
           const grossAmount = saleprice;
-          const lineRate = qty ? +(net / qty).toFixed(6) : net;
+          const lineRate = rawRate;
 
           const fulfilId =
             r.fulfilmentlocation ||

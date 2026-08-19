@@ -25,6 +25,12 @@ tbody tr:hover { background: #f8fbf9; }
 .expand-chevron { display: inline-block; color: var(--reward-green); font-size: 1.5rem; transition: transform .18s ease; }
 .is-expanded .expand-chevron { transform: rotate(90deg); }
 .reward-cell { color: var(--reward-green); font-weight: 800; }
+.manager-reward-cell { color: #7253a6; font-weight: 800; }
+.annual-leave-reward-cell { color: #a05a18; font-weight: 800; }
+.annual-leave-quantity { display: flex; align-items: center; gap: .45rem; }
+.annual-leave-quantity button { width: 1.8rem; height: 1.8rem; padding: 0; border: 1px solid #cbd6d1; border-radius: 50%; color: var(--reward-green); background: white; font-size: 1.1rem; font-weight: 900; cursor: pointer; }
+.annual-leave-quantity button:disabled { opacity: .4; cursor: not-allowed; }
+.annual-leave-quantity strong { min-width: 1.5rem; text-align: center; }
 .adjustment-cell,.adjustment-total strong { font-weight: 800; }
 .adjustment-positive,.adjustment-positive strong { color: var(--reward-green); }
 .adjustment-negative,.adjustment-negative strong { color: #b42318; }

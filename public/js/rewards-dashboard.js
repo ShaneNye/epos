@@ -1,5 +1,6 @@
 (() => {
-  const state = { data: null, userName: "", query: "", expandedName: "", activeTab: "sales", expandedOrders: new Set() };
+  const state = { data: null, userName: "", isHrManager: false, query: "", expandedName: "", activeTab: "sales", expandedOrders: new Set() };
+  const excludedLeaderboardNames = new Set(["internet user", "drew hopkins", "katrina colebourne"]);
   const money = new Intl.NumberFormat("en-GB", { style: "currency", currency: "GBP" });
   const date = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
   const byId = (id) => document.getElementById(id);
@@ -57,7 +58,7 @@
 
   function renderExpandedPanel(name) {
     const encodedName = encodeURIComponent(name);
-    return `<tr class="expanded-detail-row"><td colspan="7"><div class="expanded-panel">
+    return `<tr class="expanded-detail-row"><td colspan="${state.isHrManager ? 8 : 7}"><div class="expanded-panel">
       <div class="detail-tabs" role="tablist" aria-label="${escapeHtml(name)} reward details">
         <button type="button" class="detail-tab ${state.activeTab === "sales" ? "active" : ""}" data-reward-tab="sales" data-name="${encodedName}">Sales</button>
         <button type="button" class="detail-tab ${state.activeTab === "adjustments" ? "active" : ""}" data-reward-tab="adjustments" data-name="${encodedName}">Adjustments</button>
@@ -68,17 +69,21 @@
 
   function render() {
     const { summary, lastUpdated, capped } = state.data;
-    const people = [...summary.leaderboard].sort((a, b) => a.name.localeCompare(b.name, "en-GB", { sensitivity: "base" })).filter((person) => person.name.toLowerCase().includes(state.query));
+    const people = [...summary.leaderboard]
+      .filter((person) => !excludedLeaderboardNames.has(person.name.trim().toLowerCase()))
+      .sort((a, b) => a.name.localeCompare(b.name, "en-GB", { sensitivity: "base" }))
+      .filter((person) => person.name.toLowerCase().includes(state.query));
     byId("leaderboardBody").innerHTML = people.length ? people.map((person) => {
       const expanded = state.expandedName === person.name;
       const encodedName = encodeURIComponent(person.name);
+      const leaveControls = state.isHrManager ? `<td class="annual-leave-quantity"><button type="button" data-leave-delta="-1" data-leave-name="${encodedName}" aria-label="Remove one annual leave day for ${escapeHtml(person.name)}">−</button><strong>${person.annualLeaveQuantity || 0}</strong><button type="button" data-leave-delta="1" data-leave-name="${encodedName}" aria-label="Add one annual leave day for ${escapeHtml(person.name)}">+</button></td>` : "";
       const row = `<tr class="reward-summary-row ${namesMatch(person.name) ? "is-current-user" : ""} ${expanded ? "is-expanded" : ""}" data-expand-name="${encodedName}" tabindex="0" aria-expanded="${expanded}">
         <td><span class="expand-chevron" aria-hidden="true">›</span></td>
         <td><strong>${escapeHtml(person.name)}</strong>${namesMatch(person.name) ? '<span class="you-badge">You</span>' : ""}</td>
-        <td>${person.orderCount}</td><td>${money.format(person.sales)}</td><td class="reward-cell">${money.format(person.reward)}</td><td class="adjustment-cell ${adjustmentClass(-person.adjustment)}">${money.format(-person.adjustment)}</td><td class="total-reward-cell">${money.format(person.totalReward)}</td>
+        <td class="reward-cell">${money.format(person.reward)}</td><td class="adjustment-cell ${adjustmentClass(-person.adjustment)}">${money.format(-person.adjustment)}</td><td class="manager-reward-cell">${money.format(person.managerReward || 0)}</td>${leaveControls}<td class="annual-leave-reward-cell">${money.format(person.annualLeaveReward || 0)}</td><td class="total-reward-cell">${money.format(person.totalReward)}</td>
       </tr>`;
       return row + (expanded ? renderExpandedPanel(person.name) : "");
-    }).join("") : '<tr><td colspan="7" class="empty">No specialists match your search.</td></tr>';
+    }).join("") : `<tr><td colspan="${state.isHrManager ? 8 : 7}" class="empty">No specialists match your search.</td></tr>`;
     byId("rewardsStatus").textContent = `${capped ? "Results capped · " : ""}Updated ${new Date(lastUpdated).toLocaleTimeString("en-GB", { hour: "2-digit", minute: "2-digit" })}`;
   }
 
@@ -95,8 +100,11 @@
       if (meResponse.ok) {
         const me = await meResponse.json();
         state.userName = `${me.user?.firstName || ""} ${me.user?.lastName || ""}`.trim();
+        state.isHrManager = String(me.activeRole || "").trim().toLowerCase() === "hr manager";
       }
       state.data = rewards;
+      state.isHrManager = state.isHrManager || rewards.canEditAnnualLeave === true;
+      byId("annualLeaveDaysHeader").hidden = !state.isHrManager;
       render();
     } catch (error) {
       byId("rewardsStatus").textContent = error.message;
@@ -107,6 +115,32 @@
   byId("refreshRewards").addEventListener("click", load);
   byId("specialistSearch").addEventListener("input", (event) => { state.query = event.target.value.trim().toLowerCase(); if (state.data) render(); });
   byId("leaderboardBody").addEventListener("click", (event) => {
+    const leaveButton = event.target.closest("[data-leave-delta]");
+    if (leaveButton) {
+      event.stopPropagation();
+      const person = state.data.summary.leaderboard.find((entry) => entry.name === decodeURIComponent(leaveButton.dataset.leaveName));
+      if (!person) return;
+      leaveButton.disabled = true;
+      fetch(`/api/rewards/annual-leave/${person.userId || "by-name"}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ delta: Number(leaveButton.dataset.leaveDelta), name: person.name }),
+      }).then(async (response) => {
+        const result = await response.json();
+        if (!response.ok || !result.ok) throw new Error(result.error || "Could not update annual leave");
+        const previousReward = person.annualLeaveReward || 0;
+        person.userId = result.userId;
+        person.annualLeaveQuantity = result.quantity;
+        person.annualLeaveReward = Math.round((person.averageDailyCommission * result.quantity + Number.EPSILON) * 100) / 100;
+        person.totalReward = Math.round((person.totalReward - previousReward + person.annualLeaveReward + Number.EPSILON) * 100) / 100;
+        render();
+      }).catch((error) => {
+        byId("rewardsStatus").textContent = error.message;
+        byId("rewardsStatus").classList.add("error");
+        leaveButton.disabled = false;
+      });
+      return;
+    }
     const orderToggle = event.target.closest("[data-expand-order]");
     if (orderToggle) {
       const specialist = decodeURIComponent(orderToggle.dataset.specialist);

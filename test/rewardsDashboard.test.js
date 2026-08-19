@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { getPayPeriod, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards, COMMISSION_RATE } = require("../utils/rewardsCalculator");
+const { getPayPeriod, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards, COMMISSION_RATE, STORE_MANAGER_RATE, countWeekdays, applyAnnualLeaveRewards } = require("../utils/rewardsCalculator");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -89,4 +89,74 @@ test("rewards keep sales live while caching adjustment feeds for one hour", () =
   assert.match(source, /getCachedAdjustments\(baseUrl, userId, period\)/);
   assert.match(source, /cached\?\.value && cached\.expiresAt > now/);
   assert.match(source, /if \(cached\?\.inFlight\) return cached\.inFlight/);
+});
+
+test("store managers receive 0.172 percent of revenue from their configured locations", () => {
+  const rows = [
+    normalizeRow({ bed_specialist: "Alex Smith", subsidiary: "Ashford", tranid: "SO1", amount_inc_tax: "1000" }),
+    normalizeRow({ bed_specialist: "Sam Jones", subsidiary: "Ashford", tranid: "SO2", amount_inc_tax: "500" }),
+    normalizeRow({ bed_specialist: "Sam Jones", subsidiary: "Canterbury", tranid: "SO3", amount_inc_tax: "200" }),
+  ];
+  const result = summarizeRewards(rows, [], [
+    { locationName: "Ashford", managerName: "Emily Fellows" },
+    { locationName: "Canterbury", managerName: "Sam Jones" },
+  ]);
+  const emily = result.leaderboard.find((person) => person.name === "Emily Fellows");
+  const sam = result.leaderboard.find((person) => person.name === "Sam Jones");
+  assert.equal(STORE_MANAGER_RATE, 0.00172);
+  assert.deepEqual([emily.storeRevenue, emily.managerReward, emily.totalReward], [1500, 2.58, 2.58]);
+  assert.deepEqual([sam.storeRevenue, sam.managerReward, sam.totalReward], [200, 0.34, 15.04]);
+  assert.equal(result.totalManagerReward, 2.92);
+});
+
+test("rewards dashboard exposes the store manager reward column", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "public", "rewards-dashboard.html"), "utf8");
+  const client = fs.readFileSync(path.join(__dirname, "..", "public", "js", "rewards-dashboard.js"), "utf8");
+  const route = fs.readFileSync(path.join(__dirname, "..", "routes", "rewards.js"), "utf8");
+  assert.match(html, /<th>Store Manager reward<\/th>/);
+  assert.match(client, /person\.managerReward \|\| 0/);
+  assert.match(route, /LEFT JOIN users u ON u\.id = l\.store_manager/);
+});
+
+test("rewards dashboard hides order and qualifying-sales summary columns", () => {
+  const html = fs.readFileSync(path.join(__dirname, "..", "public", "rewards-dashboard.html"), "utf8");
+  const client = fs.readFileSync(path.join(__dirname, "..", "public", "js", "rewards-dashboard.js"), "utf8");
+  assert.doesNotMatch(html, /<th>Orders<\/th>|<th>Qualifying sales<\/th>/);
+  assert.doesNotMatch(client, /<td>\$\{person\.orderCount\}<\/td>|money\.format\(person\.sales\)/);
+  assert.match(client, /state\.isHrManager \? 8 : 7/);
+});
+
+test("rewards dashboard excludes non-participating leaderboard users", () => {
+  const client = fs.readFileSync(path.join(__dirname, "..", "public", "js", "rewards-dashboard.js"), "utf8");
+  assert.match(client, /new Set\(\["internet user", "drew hopkins", "katrina colebourne"\]\)/);
+  assert.match(client, /!excludedLeaderboardNames\.has\(person\.name\.trim\(\)\.toLowerCase\(\)\)/);
+});
+
+test("annual leave uses rolling six-month commission over five-day working weeks", () => {
+  const now = new Date(2026, 7, 19);
+  const workingDays = countWeekdays(new Date(2026, 1, 19), now);
+  assert.equal(countWeekdays(new Date(2026, 0, 1), new Date(2026, 0, 7)), 5);
+  const base = summarizeRewards([normalizeRow({ bed_specialist: "Emily Fellows", tranid: "SO1", amount_inc_tax: "1000" })], []);
+  const result = applyAnnualLeaveRewards(base, [{ name: "Emily Fellows", commission: workingDays * 50 }], [{ userId: 42, name: "Emily Fellows", quantity: 3 }], now);
+  const emily = result.leaderboard[0];
+  assert.deepEqual([emily.userId, emily.averageDailyCommission, emily.annualLeaveQuantity, emily.annualLeaveReward], [42, 50, 3, 150]);
+  assert.equal(emily.totalReward, 171);
+});
+
+test("annual leave controls are HR-only and persisted by pay period", () => {
+  const route = fs.readFileSync(path.join(__dirname, "..", "routes", "rewards.js"), "utf8");
+  const html = fs.readFileSync(path.join(__dirname, "..", "public", "rewards-dashboard.html"), "utf8");
+  const client = fs.readFileSync(path.join(__dirname, "..", "public", "js", "rewards-dashboard.js"), "utf8");
+  assert.match(route, /CREATE TABLE IF NOT EXISTS reward_annual_leave/);
+  assert.match(route, /if \(!isHrManager\(session\)\) return res\.status\(403\)/);
+  assert.match(route, /ON CONFLICT \(user_id, period_start\) DO UPDATE/);
+  assert.match(html, /id="annualLeaveDaysHeader" hidden/);
+  assert.match(html, /<th>Annual leave reward<\/th>/);
+  assert.match(client, /state\.isHrManager \? `<td class="annual-leave-quantity/);
+  assert.doesNotMatch(client, /person\.userId \? "" : "disabled"/);
+  assert.match(client, /person\.userId \|\| "by-name"/);
+  assert.match(route, /LOWER\(TRIM\(CONCAT\(firstname, ' ', lastname\)\)\) = LOWER\(\$1\)/);
+  assert.match(client, /state\.isHrManager = String\(me\.activeRole \|\| ""\)\.trim\(\)\.toLowerCase\(\) === "hr manager"/);
+  assert.match(client, /state\.isHrManager = state\.isHrManager \|\| rewards\.canEditAnnualLeave === true/);
+  assert.doesNotMatch(client, /state\.isHrManager = state\.isHrManager && rewards\.canEditAnnualLeave/);
 });
