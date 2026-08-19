@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { getPayPeriod, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards, COMMISSION_RATE } = require("../utils/rewardsCalculator");
+const fs = require("node:fs");
+const path = require("node:path");
 
 test("pay period runs from the 14th inclusive to the next 14th exclusive", () => {
   const period = getPayPeriod(new Date(2026, 7, 14, 12));
@@ -78,4 +80,13 @@ test("line value changes net repeated changes and retain positive or negative ad
     ["Fay Hodson", 2101.03, 44.12],
     ["Alex Smith", -100, -2.1],
   ]);
+});
+
+test("rewards keep sales live while caching adjustment feeds for one hour", () => {
+  const source = fs.readFileSync(path.join(__dirname, "..", "routes", "rewards.js"), "utf8");
+  assert.match(source, /REWARDS_ADJUSTMENTS_CACHE_TTL_MS \|\| 60 \* 60 \* 1000/);
+  assert.match(source, /fetchSuiteQLRows\(baseUrl, REWARDS_SUITEQL, userId\)/);
+  assert.match(source, /getCachedAdjustments\(baseUrl, userId, period\)/);
+  assert.match(source, /cached\?\.value && cached\.expiresAt > now/);
+  assert.match(source, /if \(cached\?\.inFlight\) return cached\.inFlight/);
 });

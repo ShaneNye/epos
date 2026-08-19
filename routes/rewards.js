@@ -8,6 +8,8 @@ const { COMMISSION_RATE, getPayPeriod, filterRowsToPayPeriod, normalizeRow, norm
 const router = express.Router();
 const PAGE_SIZE = 1000;
 const MAX_ROWS = 10000;
+const ADJUSTMENTS_CACHE_TTL_MS = Number(process.env.REWARDS_ADJUSTMENTS_CACHE_TTL_MS || 60 * 60 * 1000);
+const adjustmentsCache = new Map();
 
 const REWARDS_SUITEQL = `
 SELECT
@@ -106,6 +108,51 @@ async function fetchLineValueChanges() {
   return [];
 }
 
+function adjustmentCacheKey(baseUrl, period) {
+  return `${baseUrl}:${period.start.toISOString()}:${period.end.toISOString()}`;
+}
+
+async function loadAdjustments(baseUrl, userId, period) {
+  const [rawAdjustmentRows, rawLineValueChanges] = await Promise.all([
+    fetchSuiteQLRows(baseUrl, ADJUSTMENTS_SUITEQL, userId),
+    fetchLineValueChanges(),
+  ]);
+  const closedLineAdjustments = rawAdjustmentRows.slice(0, MAX_ROWS).map(normalizeAdjustmentRow);
+  const currentLineValueChanges = filterRowsToPayPeriod(rawLineValueChanges.slice(0, MAX_ROWS), period);
+  return {
+    rows: [...closedLineAdjustments, ...normalizeLineValueChanges(currentLineValueChanges)],
+    capped: rawAdjustmentRows.length >= MAX_ROWS || rawLineValueChanges.length >= MAX_ROWS,
+    refreshedAt: new Date().toISOString(),
+  };
+}
+
+async function getCachedAdjustments(baseUrl, userId, period) {
+  const key = adjustmentCacheKey(baseUrl, period);
+  const now = Date.now();
+  const cached = adjustmentsCache.get(key);
+  if (cached?.value && cached.expiresAt > now) {
+    return { ...cached.value, source: "cache" };
+  }
+  if (cached?.inFlight) return cached.inFlight;
+
+  const inFlight = loadAdjustments(baseUrl, userId, period)
+    .then((value) => {
+      adjustmentsCache.set(key, { value, expiresAt: Date.now() + ADJUSTMENTS_CACHE_TTL_MS });
+      return { ...value, source: "live" };
+    })
+    .catch((error) => {
+      if (cached?.value) {
+        console.warn("Rewards adjustments refresh failed; using stale cache:", error.message);
+        adjustmentsCache.set(key, { value: cached.value, expiresAt: Date.now() + Math.min(5 * 60 * 1000, ADJUSTMENTS_CACHE_TTL_MS) });
+        return { ...cached.value, source: "stale" };
+      }
+      adjustmentsCache.delete(key);
+      throw error;
+    });
+  adjustmentsCache.set(key, { value: cached?.value, expiresAt: cached?.expiresAt || 0, inFlight });
+  return inFlight;
+}
+
 async function getSessionFromRequest(req) {
   const authorization = String(req.headers.authorization || "");
   const token = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
@@ -142,18 +189,14 @@ router.get("/", async (req, res) => {
 
     const userId = session.id || session.user_id || null;
     const baseUrl = `https://${getNetSuiteAccountDash()}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`;
-    const [rawRows, rawAdjustmentRows, rawLineValueChanges] = await Promise.all([
+    const period = getPayPeriod();
+    const [rawRows, adjustments] = await Promise.all([
       fetchSuiteQLRows(baseUrl, REWARDS_SUITEQL, userId),
-      fetchSuiteQLRows(baseUrl, ADJUSTMENTS_SUITEQL, userId),
-      fetchLineValueChanges(),
+      getCachedAdjustments(baseUrl, userId, period),
     ]);
 
-    const period = getPayPeriod();
     const rows = rawRows.slice(0, MAX_ROWS).map(normalizeRow);
-    const closedLineAdjustments = rawAdjustmentRows.slice(0, MAX_ROWS).map(normalizeAdjustmentRow);
-    const currentLineValueChanges = filterRowsToPayPeriod(rawLineValueChanges.slice(0, MAX_ROWS), period);
-    const lineValueAdjustments = normalizeLineValueChanges(currentLineValueChanges);
-    const adjustmentRows = [...closedLineAdjustments, ...lineValueAdjustments];
+    const adjustmentRows = adjustments.rows;
     res.set("Cache-Control", "no-store");
     return res.json({
       ok: true,
@@ -161,7 +204,8 @@ router.get("/", async (req, res) => {
       period: "This month",
       adjustmentPeriod: { start: period.start.toISOString(), end: period.end.toISOString() },
       lastUpdated: new Date().toISOString(),
-      capped: rawRows.length >= MAX_ROWS || rawAdjustmentRows.length >= MAX_ROWS || rawLineValueChanges.length >= MAX_ROWS,
+      adjustmentsCache: { source: adjustments.source, refreshedAt: adjustments.refreshedAt, ttlMs: ADJUSTMENTS_CACHE_TTL_MS },
+      capped: rawRows.length >= MAX_ROWS || adjustments.capped,
       summary: summarizeRewards(rows, adjustmentRows),
       rows,
       adjustmentRows,
@@ -172,4 +216,4 @@ router.get("/", async (req, res) => {
   }
 });
 
-module.exports = { router };
+module.exports = { router, ADJUSTMENTS_CACHE_TTL_MS };
