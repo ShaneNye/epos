@@ -37,6 +37,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   let replenishmentByItemId = new Map(); // itemId -> { totalQty, earliestDateStr }
   let backorderByItemId = new Map(); // itemId -> totalBackorderQty
   let showInboundCols = false; // only show extra cols if any item has any due-in/backorder
+  let availableSizes = [];
+  let sizeByItemId = new Map();
 
   if (!classSelect) {
     console.warn("⚠️ #stockClassSelect not found. Add it to enable Class filtering.");
@@ -123,7 +125,19 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   function getSize(r) {
-    return norm(r?.sizeName || r?.Size || r?.size || r?.["Size"] || "");
+    const explicit = norm(r?.sizeName || r?.Size || r?.size || r?.["Size"] || "");
+    if (explicit) return explicit;
+
+    const mapped = sizeByItemId.get(idStr(r?.itemId));
+    if (mapped) return mapped;
+
+    const itemName = clean(r?.itemName || r?.Name || r?.Item || "");
+    return (
+      [...availableSizes].sort((a, b) => b.length - a.length).find((size) => {
+        const escaped = clean(size).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+        return escaped && new RegExp(`(^|[^a-z0-9])${escaped}([^a-z0-9]|$)`, "i").test(itemName);
+      }) || ""
+    );
   }
 
   function getBin(r) {
@@ -425,6 +439,35 @@ document.addEventListener("DOMContentLoaded", async () => {
       return [];
     }
   }
+
+  async function fetchAvailableSizes() {
+    try {
+      const res = await fetch("/api/netsuite/sales-order-item-size", { cache: "no-store" });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const payload = await res.json();
+      const rows = payload.results || payload.data || [];
+
+      sizeByItemId = new Map();
+      const sizes = [];
+      rows.forEach((row) => {
+        const size = norm(row?.size || row?.Size || row?.name || row?.Name || "");
+        if (!size || clean(size) === "- none -") return;
+        sizes.push(size);
+
+        const itemId = idStr(
+          row?.itemId || row?.itemid || row?.["Item ID"] || row?.["Item Id"] || row?.item
+        );
+        if (itemId) sizeByItemId.set(itemId, size);
+      });
+
+      return [...new Set(sizes)].sort((a, b) =>
+        a.localeCompare(b, undefined, { numeric: true })
+      );
+    } catch (err) {
+      console.error("Size data load failed:", err);
+      return [];
+    }
+  }
   /* =====================================================
      FETCH INBOUND / BACKORDER DATA (✅ NEW)
   ===================================================== */
@@ -602,10 +645,13 @@ document.addEventListener("DOMContentLoaded", async () => {
   ===================================================== */
   setLoading(true, 4);
 
-  const [mergedData, inbound] = await Promise.all([
+  const [mergedData, inbound, loadedSizes] = await Promise.all([
     fetchInventoryData(),
     fetchInboundAndBackorder(),
+    fetchAvailableSizes(),
   ]);
+
+  availableSizes = loadedSizes;
 
   replenishmentByItemId = inbound.replMap;
   backorderByItemId = inbound.backMap;
@@ -692,9 +738,10 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Populate size dropdown
   if (sizeSelect) {
-    const allSizes = [
-      ...new Set(mergedData.map((r) => getSize(r)).filter((s) => s && s.trim())),
-    ].sort((a, b) => a.localeCompare(b));
+    const allSizes = availableSizes.length
+      ? availableSizes
+      : [...new Set(mergedData.map((r) => getSize(r)).filter((s) => s && s.trim()))]
+          .sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
     sizeSelect.innerHTML = `<option value="">All Sizes</option>`;
     allSizes.forEach((s) => {
       const opt = document.createElement("option");

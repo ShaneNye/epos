@@ -612,6 +612,7 @@ app.use("/api/qr-journeys", require("./routes/qrJourneys"));
 app.use("/api/ai-manager", require("./routes/aiManager"));
 app.use("/api/cs-workflows", require("./routes/csWorkflows"));
 app.use("/api/rewards", require("./routes/rewards").router);
+app.use("/api/reports/suppliers", require("./routes/supplierReport"));
 app.use("/api/vsa", require("./routes/vsa"));
 app.use("/api/systems-processes", require("./routes/systemsProcesses"));
 app.use("/api/support-tracker", require("./routes/supportTracker"));

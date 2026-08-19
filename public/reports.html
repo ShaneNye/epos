@@ -25,6 +25,7 @@
 <script type="module" src="/assistant/dailyDigest.js"></script>
   <script defer src="/js/reports/reports.js"></script>
   <script defer src="/js/reports/customerLookup.js"></script>
+  <script defer src="/js/reports/supplierReport.js"></script>
 <script type="module" src="/js/reports/stockSearch.js"></script>
   <script defer src="/js/reports/deliveryScheduleReport.js"></script>
 </head>
@@ -39,6 +40,7 @@
     <div class="tabs">
       <div class="tab active" data-target="customerLookup">Customer Lookup</div>
       <div class="tab" data-target="stockSearch">Stock Search</div>
+      <div class="tab" data-target="supplierReport">Suppliers</div>
       <!--      <div class="tab" data-target="deliveryScheduleReport">Delivery Schedule</div>
     -->
 
@@ -69,6 +71,25 @@
       </div>
 
 
+    </div>
+
+    <!-- === SUPPLIER REPORT TAB === -->
+    <div id="supplierReport" class="tab-content hidden">
+      <div class="supplier-report-heading">
+        <div>
+          <h2>Suppliers</h2>
+          <p id="supplierReportCount" class="supplier-report-count">Open this tab to load suppliers</p>
+        </div>
+        <button id="supplierRefreshBtn" type="button" class="btn-secondary">Refresh</button>
+      </div>
+      <label class="supplier-search-label" for="supplierFilter">Search suppliers</label>
+      <input id="supplierFilter" class="stock-filter supplier-filter" type="search" placeholder="Search by supplier, representative, email or phone…" autocomplete="off" />
+      <div class="supplier-report-scroll">
+        <table id="supplierReportTable" class="stock-table supplier-report-table">
+          <thead><tr><th>Supplier</th><th>Lead Time</th><th>Supplier Contact</th><th>Representative</th><th>Internal ID</th></tr></thead>
+          <tbody><tr><td colspan="5" class="supplier-report-empty">Open this tab to load suppliers.</td></tr></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- === STOCK SEARCH TAB === -->
