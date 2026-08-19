@@ -10,7 +10,6 @@ const PAGE_SIZE = 1000;
 const MAX_ROWS = 10000;
 const ADJUSTMENTS_CACHE_TTL_MS = Number(process.env.REWARDS_ADJUSTMENTS_CACHE_TTL_MS || 60 * 60 * 1000);
 const adjustmentsCache = new Map();
-const commissionHistoryCache = new Map();
 let annualLeaveTableReady = false;
 
 const REWARDS_SUITEQL = `
@@ -79,19 +78,6 @@ WHERE t.type = 'SalesOrd' AND tl.mainline = 'F' AND tl.isclosed = 'T'
     AND BUILTIN.DF(t.status) NOT IN ('Pending Approval')
     AND BUILTIN.DF(tl.item) NOT IN ('S-GB', 'E-GB')
 ORDER BY t.trandate DESC, t.tranid`;
-
-const COMMISSION_HISTORY_SUITEQL = `
-SELECT BUILTIN.DF(t.custbody_sb_bedspecialist) AS bed_specialist,
-       ROUND(SUM((tl.amount * -1) * (1 + NVL(tl.taxrate, 0))), 2) AS amount_inc_tax
-FROM Transaction t
-INNER JOIN TransactionLine tl ON tl.transaction = t.id
-WHERE t.type = 'SalesOrd' AND tl.mainline = 'F' AND tl.isclosed = 'F'
-  AND t.trandate BETWEEN ADD_MONTHS(TRUNC(SYSDATE), -6) AND SYSDATE
-  AND UPPER(BUILTIN.DF(t.entity)) NOT LIKE '%I/C -%'
-  AND NVL(t.customform, 0) <> 245
-  AND BUILTIN.DF(t.status) NOT IN ('Pending Approval')
-  AND BUILTIN.DF(tl.item) NOT IN ('S-GB', 'E-GB')
-GROUP BY BUILTIN.DF(t.custbody_sb_bedspecialist)`;
 
 async function fetchSuiteQLRows(baseUrl, query, userId) {
   const rawRows = [];
@@ -168,30 +154,6 @@ async function getCachedAdjustments(baseUrl, userId, period) {
   return inFlight;
 }
 
-async function getCachedCommissionHistory(baseUrl, userId) {
-  const key = baseUrl;
-  const now = Date.now();
-  const cached = commissionHistoryCache.get(key);
-  if (cached?.value && cached.expiresAt > now) return cached.value;
-  if (cached?.inFlight) return cached.inFlight;
-  const inFlight = fetchSuiteQLRows(baseUrl, COMMISSION_HISTORY_SUITEQL, userId)
-    .then((rows) => rows.map((row) => ({
-      name: String(row.bed_specialist ?? row.BED_SPECIALIST ?? "").trim(),
-      commission: (Number(row.amount_inc_tax ?? row.AMOUNT_INC_TAX) || 0) * COMMISSION_RATE,
-    })).filter((row) => row.name))
-    .then((value) => {
-      commissionHistoryCache.set(key, { value, expiresAt: Date.now() + ADJUSTMENTS_CACHE_TTL_MS });
-      return value;
-    })
-    .catch((error) => {
-      if (cached?.value) return cached.value;
-      commissionHistoryCache.delete(key);
-      throw error;
-    });
-  commissionHistoryCache.set(key, { value: cached?.value, expiresAt: cached?.expiresAt || 0, inFlight });
-  return inFlight;
-}
-
 async function ensureAnnualLeaveTable() {
   if (annualLeaveTableReady) return;
   await pool.query(`
@@ -235,6 +197,11 @@ async function getSessionFromRequest(req) {
 }
 
 async function hasRewardsAccess(session) {
+  // HR Managers must be able to open the dashboard in order to maintain
+  // the annual-leave days, even when the role's configurable access list
+  // predates the Rewards Dashboard permission.
+  if (isHrManager(session)) return true;
+
   const roleName = typeof session?.activeRole === "string"
     ? session.activeRole
     : session?.activeRole?.name;
@@ -280,12 +247,11 @@ router.get("/", async (req, res) => {
     const userId = session.id || session.user_id || null;
     const baseUrl = `https://${getNetSuiteAccountDash()}.suitetalk.api.netsuite.com/services/rest/query/v1/suiteql`;
     const period = getPayPeriod();
-    const [rawRows, adjustments, storeManagers, commissionHistory, leaveEntries] = await Promise.all([
+    const [rawRows, adjustments, storeManagers, leaveEntries] = await Promise.all([
       fetchSuiteQLRows(baseUrl, REWARDS_SUITEQL, userId),
       getCachedAdjustments(baseUrl, userId, period),
       fetchStoreManagers(),
-      getCachedCommissionHistory(baseUrl, userId),
-      fetchAnnualLeaveEntries(period),
+      fetchAnnualLeaveEntries({ start: new Date(new Date().getFullYear(), new Date().getMonth(), 1) }),
     ]);
 
     const rows = rawRows.slice(0, MAX_ROWS).map(normalizeRow);
@@ -301,7 +267,7 @@ router.get("/", async (req, res) => {
       lastUpdated: new Date().toISOString(),
       adjustmentsCache: { source: adjustments.source, refreshedAt: adjustments.refreshedAt, ttlMs: ADJUSTMENTS_CACHE_TTL_MS },
       capped: rawRows.length >= MAX_ROWS || adjustments.capped,
-      summary: applyAnnualLeaveRewards(summarizeRewards(rows, adjustmentRows, storeManagers), commissionHistory, leaveEntries),
+      summary: applyAnnualLeaveRewards(summarizeRewards(rows, adjustmentRows, storeManagers), leaveEntries),
       rows,
       adjustmentRows,
     });
@@ -331,7 +297,8 @@ router.patch("/annual-leave/:userId", async (req, res) => {
       return res.status(400).json({ ok: false, error: "This specialist could not be matched to a unique EPOS user" });
     }
     await ensureAnnualLeaveTable();
-    const period = getPayPeriod();
+    const now = new Date();
+    const period = { start: new Date(now.getFullYear(), now.getMonth(), 1) };
     const result = await pool.query(`
       INSERT INTO reward_annual_leave (user_id, period_start, quantity, updated_by)
       VALUES ($1, $2::date, GREATEST(0, $3), $4)

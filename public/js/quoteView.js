@@ -950,6 +950,7 @@ function buildQuoteSavePayload() {
       leadSource: document.querySelector('select[name="leadSource"]')?.value || "",
       paymentInfo: document.getElementById("paymentInfo")?.value || "",
       warehouse: document.getElementById("warehouse")?.value || "",
+      duedate: document.getElementById("dueDate")?.value || "",
       memo: document.querySelector('textarea[name="memo"]')?.value?.trim() || "",
       shipaddress: window.selectedShipAddress || shipAddress || "",
     },
@@ -1043,6 +1044,21 @@ function stableSaveSignature(payload) {
   return JSON.stringify(payload || {});
 }
 
+function quoteDateInputValue(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+
+  const isoMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (isoMatch) return `${isoMatch[1]}-${isoMatch[2]}-${isoMatch[3]}`;
+
+  const ukMatch = text.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (ukMatch) {
+    return `${ukMatch[3]}-${ukMatch[2].padStart(2, "0")}-${ukMatch[1].padStart(2, "0")}`;
+  }
+
+  return "";
+}
+
 function renumberQuoteViewRows() {
   document.querySelectorAll("#orderItemsBody .order-line").forEach((row, index) => {
     row.dataset.line = String(index);
@@ -1060,6 +1076,8 @@ function quoteHasUnsavedChanges() {
     return true;
   }
 }
+
+window.quoteHasUnsavedChanges = quoteHasUnsavedChanges;
 
 function refreshConvertToSaleButtonLabel() {
   const button = document.getElementById("convertToSaleBtn");
@@ -1733,6 +1751,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     );
     const memoEl = document.querySelector('textarea[name="memo"]');
     if (memoEl) memoEl.value = quote.memo || "";
+    const dueDateEl = document.getElementById("dueDate");
+    if (dueDateEl) dueDateEl.value = quoteDateInputValue(quote.dueDate || quote.duedate);
 
     try {
       const leadSourceEl = document.querySelector('select[name="leadSource"]');
@@ -1801,6 +1821,11 @@ document.addEventListener("DOMContentLoaded", async () => {
       "No custom fields are visible for this quote."
     );
     window._lastQuoteSaveSignature = stableSaveSignature(buildQuoteSavePayload());
+    window.UnsavedChangesGuard?.configure({
+      label: "quote",
+      hasChanges: quoteHasUnsavedChanges,
+      saveButton: "#saveQuoteBtn",
+    });
     updateActionButtonForQuote();
     ensureQuoteAddButton();
 

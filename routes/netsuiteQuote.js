@@ -40,6 +40,16 @@ function numberOrZero(value) {
   return Number.isFinite(n) ? n : 0;
 }
 
+function normalizedDateOnly(value) {
+  const text = String(value || "").trim();
+  if (!text) return "";
+  const iso = text.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (iso) return `${iso[1]}-${iso[2]}-${iso[3]}`;
+  const uk = text.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{4})$/);
+  if (uk) return `${uk[3]}-${uk[2].padStart(2, "0")}-${uk[1].padStart(2, "0")}`;
+  return text;
+}
+
 function isVatFreeTaxCode(value) {
   const raw =
     value && typeof value === "object"
@@ -773,17 +783,52 @@ router.post("/:id/save", async (req, res) => {
     }
 
     console.log(`✅ Quote ${id} saved via RESTlet`);
-    if (Object.prototype.hasOwnProperty.call(headerUpdates || {}, "memo")) {
-      const memoQuoteId =
+    const hasMemoUpdate = Object.prototype.hasOwnProperty.call(headerUpdates || {}, "memo");
+    const hasDueDateUpdate =
+      Object.prototype.hasOwnProperty.call(headerUpdates || {}, "duedate") ||
+      Object.prototype.hasOwnProperty.call(headerUpdates || {}, "dueDate");
+    if (hasMemoUpdate || hasDueDateUpdate) {
+      const headerQuoteId =
         Number.isFinite(Number(id)) && Number(id) > 0
           ? id
           : (await nsGet(`/estimate/${encodeURIComponent(id)}`, userId, "sb"))?.id || id;
 
+      const directHeaderPatch = {};
+      if (hasMemoUpdate) {
+        directHeaderPatch.memo = headerUpdates.memo == null ? "" : String(headerUpdates.memo);
+      }
+      if (hasDueDateUpdate) {
+        const dueDate = String(headerUpdates.duedate ?? headerUpdates.dueDate ?? "").trim();
+        if (dueDate && !/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+          return res.status(400).json({ ok: false, error: "Due Date must be a valid date." });
+        }
+        directHeaderPatch.duedate = dueDate || null;
+      }
+
       await nsPatch(
-        `/estimate/${encodeURIComponent(memoQuoteId)}`,
-        { memo: headerUpdates.memo == null ? "" : String(headerUpdates.memo) },
+        `/estimate/${encodeURIComponent(headerQuoteId)}`,
+        directHeaderPatch,
         userId
       );
+
+      if (hasDueDateUpdate) {
+        const expectedDueDate = String(
+          headerUpdates.duedate ?? headerUpdates.dueDate ?? ""
+        ).trim();
+        const savedQuote = await nsGet(
+          `/estimate/${encodeURIComponent(headerQuoteId)}`,
+          userId,
+          "sb"
+        );
+        const actualDueDate = String(savedQuote?.duedate ?? savedQuote?.dueDate ?? "").trim();
+        if (normalizedDateOnly(actualDueDate) !== normalizedDateOnly(expectedDueDate)) {
+          const err = new Error(
+            `NetSuite did not persist the Due Date (expected ${expectedDueDate || "blank"}, received ${actualDueDate || "blank"}).`
+          );
+          err.statusCode = 502;
+          throw err;
+        }
+      }
     }
 
     let savedCustomFields = [];

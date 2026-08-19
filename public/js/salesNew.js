@@ -1088,6 +1088,7 @@ function validateOrderBeforeSave() {
       }
 
       setTimeout(() => {
+        window.UnsavedChangesGuard?.allowNavigation();
         if (tranId) {
           console.log(`➡️ Redirecting to /sales/view/${tranId}`);
           window.location.href = `/sales/view/${tranId}`;

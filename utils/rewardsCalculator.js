@@ -124,34 +124,30 @@ function locationKey(value) {
   return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 }
 
-function countWeekdays(start, end) {
-  let count = 0;
-  const cursor = new Date(start.getFullYear(), start.getMonth(), start.getDate());
-  const finish = new Date(end.getFullYear(), end.getMonth(), end.getDate());
-  while (cursor <= finish) {
-    const day = cursor.getDay();
-    if (day !== 0 && day !== 6) count += 1;
-    cursor.setDate(cursor.getDate() + 1);
-  }
-  return count;
+function daysInMonth(now = new Date()) {
+  return new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
 }
 
-function applyAnnualLeaveRewards(summary, commissionHistory = [], leaveEntries = [], now = new Date()) {
-  const historyByName = new Map(commissionHistory.map((row) => [locationKey(row.name), Number(row.commission) || 0]));
+function calculateAnnualLeaveReward(currentReward, leaveDays, now = new Date()) {
+  const reward = Number(currentReward) || 0;
+  const quantity = Math.max(0, Number(leaveDays) || 0);
+  const totalDays = daysInMonth(now);
+  const workedDays = totalDays - quantity;
+  if (!reward || !quantity || workedDays <= 0) return 0;
+  return money((reward / workedDays) * totalDays - reward);
+}
+
+function applyAnnualLeaveRewards(summary, leaveEntries = [], now = new Date()) {
   const leaveByName = new Map(leaveEntries.map((row) => [locationKey(row.name), row]));
-  const sixMonthsAgo = new Date(now.getFullYear(), now.getMonth() - 6, now.getDate());
-  const workingDays = Math.max(1, countWeekdays(sixMonthsAgo, now));
   let totalAnnualLeaveReward = 0;
   const leaderboard = summary.leaderboard.map((person) => {
     const leave = leaveByName.get(locationKey(person.name));
-    const averageDailyCommission = money((historyByName.get(locationKey(person.name)) || 0) / workingDays);
     const annualLeaveQuantity = Math.max(0, Number(leave?.quantity) || 0);
-    const annualLeaveReward = money(averageDailyCommission * annualLeaveQuantity);
+    const annualLeaveReward = calculateAnnualLeaveReward(person.reward, annualLeaveQuantity, now);
     totalAnnualLeaveReward += annualLeaveReward;
     return {
       ...person,
       userId: leave?.userId || null,
-      averageDailyCommission,
       annualLeaveQuantity,
       annualLeaveReward,
       totalReward: money(person.totalReward + annualLeaveReward),
@@ -206,4 +202,4 @@ function summarizeRewards(rows, adjustmentRows, storeManagers = []) {
   return { ...rewards, totalAdjustment: money(totalAdjustment), totalManagerReward, totalRewardAfterAdjustments: money(rewards.totalReward - totalAdjustment + totalManagerReward), specialistCount: leaderboard.length, leaderboard };
 }
 
-module.exports = { COMMISSION_RATE, STORE_MANAGER_RATE, getPayPeriod, parseNetSuiteDate, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards, countWeekdays, applyAnnualLeaveRewards };
+module.exports = { COMMISSION_RATE, STORE_MANAGER_RATE, getPayPeriod, parseNetSuiteDate, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards, daysInMonth, calculateAnnualLeaveReward, applyAnnualLeaveRewards };

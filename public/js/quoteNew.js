@@ -669,6 +669,7 @@ if (window.location.pathname.includes("/quote/view/")) {
       }
 
       setTimeout(() => {
+        window.UnsavedChangesGuard?.allowNavigation();
         if (tranId) {
           window.location.href = `/quote/view/${tranId}`;
         } else if (quoteId) {

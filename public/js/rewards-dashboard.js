@@ -131,7 +131,11 @@
         const previousReward = person.annualLeaveReward || 0;
         person.userId = result.userId;
         person.annualLeaveQuantity = result.quantity;
-        person.annualLeaveReward = Math.round((person.averageDailyCommission * result.quantity + Number.EPSILON) * 100) / 100;
+        const totalDays = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0).getDate();
+        const workedDays = totalDays - result.quantity;
+        person.annualLeaveReward = result.quantity > 0 && workedDays > 0
+          ? Math.round((((person.reward / workedDays) * totalDays) - person.reward + Number.EPSILON) * 100) / 100
+          : 0;
         person.totalReward = Math.round((person.totalReward - previousReward + person.annualLeaveReward + Number.EPSILON) * 100) / 100;
         render();
       }).catch((error) => {

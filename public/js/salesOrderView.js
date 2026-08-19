@@ -3228,6 +3228,20 @@ function updateActionButton(orderStatusObj, tranId, so) {
   bindSalesOrderDirtyTracking();
   refreshCommitButtonLabel();
 
+  window.UnsavedChangesGuard?.configure({
+    label: "sales order",
+    hasChanges: salesOrderHasAnyUnsavedChanges,
+    save: async () => {
+      const token = storageGet?.()?.token;
+      if (!token) throw new Error("Your session has expired. Please sign in again.");
+      if (!validateSalesViewPaymentInfo()) throw new Error("Payment Info is required before saving.");
+      if (isPendingApproval && !validateSalesViewItemsBeforeSave()) {
+        throw new Error("Please correct the highlighted items before saving.");
+      }
+      await saveSalesOrderChanges({ token, reloadAfterSave: false, showNoChangeToast: false });
+    },
+  });
+
   const saveBtn = document.getElementById("saveOrderBtn");
   if (saveBtn) {
     saveBtn.replaceWith(saveBtn.cloneNode(true));

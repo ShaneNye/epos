@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="/css/home.css">
     <link rel="stylesheet" href="/css/salesView.css?v=quote-tax-column-fix-1">
     <script src="/js/storage.js"></script>
+    <script src="/js/unsavedChangesGuard.js" defer></script>
 
     <!-- Scripts -->
     <script src="/js/financialSummary.js" defer></script>
@@ -203,6 +204,11 @@
                                 <select name="warehouse" id="warehouse">
                                     <option>Loading Warehouses...</option>
                                 </select>
+                            </label>
+
+                            <label>
+                                Due Date
+                                <input type="date" name="dueDate" id="dueDate" />
                             </label>
                         </div>
 

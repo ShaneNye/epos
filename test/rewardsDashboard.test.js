@@ -1,6 +1,6 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { getPayPeriod, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards, COMMISSION_RATE, STORE_MANAGER_RATE, countWeekdays, applyAnnualLeaveRewards } = require("../utils/rewardsCalculator");
+const { getPayPeriod, filterRowsToPayPeriod, normalizeRow, normalizeAdjustmentRow, normalizeLineValueChanges, summarize, summarizeRewards, COMMISSION_RATE, STORE_MANAGER_RATE, daysInMonth, calculateAnnualLeaveReward, applyAnnualLeaveRewards } = require("../utils/rewardsCalculator");
 const fs = require("node:fs");
 const path = require("node:path");
 
@@ -132,18 +132,19 @@ test("rewards dashboard excludes non-participating leaderboard users", () => {
   assert.match(client, /!excludedLeaderboardNames\.has\(person\.name\.trim\(\)\.toLowerCase\(\)\)/);
 });
 
-test("annual leave uses rolling six-month commission over five-day working weeks", () => {
+test("annual leave uplifts current-month reward using calendar days in the month", () => {
   const now = new Date(2026, 7, 19);
-  const workingDays = countWeekdays(new Date(2026, 1, 19), now);
-  assert.equal(countWeekdays(new Date(2026, 0, 1), new Date(2026, 0, 7)), 5);
+  assert.equal(daysInMonth(now), 31);
+  assert.equal(calculateAnnualLeaveReward(225.8, 2, now), 15.57);
+  assert.equal(calculateAnnualLeaveReward(776.81, 5, now), 149.39);
   const base = summarizeRewards([normalizeRow({ bed_specialist: "Emily Fellows", tranid: "SO1", amount_inc_tax: "1000" })], []);
-  const result = applyAnnualLeaveRewards(base, [{ name: "Emily Fellows", commission: workingDays * 50 }], [{ userId: 42, name: "Emily Fellows", quantity: 3 }], now);
+  const result = applyAnnualLeaveRewards(base, [{ userId: 42, name: "Emily Fellows", quantity: 3 }], now);
   const emily = result.leaderboard[0];
-  assert.deepEqual([emily.userId, emily.averageDailyCommission, emily.annualLeaveQuantity, emily.annualLeaveReward], [42, 50, 3, 150]);
-  assert.equal(emily.totalReward, 171);
+  assert.deepEqual([emily.userId, emily.annualLeaveQuantity, emily.annualLeaveReward], [42, 3, 2.25]);
+  assert.equal(emily.totalReward, 23.25);
 });
 
-test("annual leave controls are HR-only and persisted by pay period", () => {
+test("annual leave controls are HR-only and persisted by calendar month", () => {
   const route = fs.readFileSync(path.join(__dirname, "..", "routes", "rewards.js"), "utf8");
   const html = fs.readFileSync(path.join(__dirname, "..", "public", "rewards-dashboard.html"), "utf8");
   const client = fs.readFileSync(path.join(__dirname, "..", "public", "js", "rewards-dashboard.js"), "utf8");
@@ -159,4 +160,9 @@ test("annual leave controls are HR-only and persisted by pay period", () => {
   assert.match(client, /state\.isHrManager = String\(me\.activeRole \|\| ""\)\.trim\(\)\.toLowerCase\(\) === "hr manager"/);
   assert.match(client, /state\.isHrManager = state\.isHrManager \|\| rewards\.canEditAnnualLeave === true/);
   assert.doesNotMatch(client, /state\.isHrManager = state\.isHrManager && rewards\.canEditAnnualLeave/);
+});
+
+test("HR Managers can load rewards even without the configurable dashboard permission", () => {
+  const route = fs.readFileSync(path.join(__dirname, "..", "routes", "rewards.js"), "utf8");
+  assert.match(route, /async function hasRewardsAccess\(session\) \{\s*[\s\S]*?if \(isHrManager\(session\)\) return true;/);
 });
