@@ -2041,7 +2041,13 @@ window.renderSalesViewLines = function renderSalesViewLines({
     const financialLine = window.EposFinancials?.normaliseLine?.(line);
     let retailGrossLineTotal = financialLine
       ? Number(financialLine.retailGross)
-      : Number(line.amount || 0);
+      : Number(
+          line.retailGrossLine ??
+          line.retailGross ??
+          line.retailAmount ??
+          line.amount ??
+          0
+        );
     let saleGrossLineTotal = financialLine
       ? Number(financialLine.saleGross)
       : Number(line.saleprice ?? 0);
