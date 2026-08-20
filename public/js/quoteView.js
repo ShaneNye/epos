@@ -1646,7 +1646,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     try {
       const customerName = resolveQuoteCustomerNameParts(quote);
-      const addressText = quote.billingAddress_text || quote.billaddress || "";
+      // The customer fields on a quote represent its delivery address. NetSuite
+      // can keep billing and shipping addresses independently, so always prefer
+      // the transaction's Ship To value when both are present.
+      const addressText =
+        quote.shipAddress ||
+        quote.shippingAddress_text ||
+        quote.shipaddress ||
+        quote.billingAddress_text ||
+        quote.billAddress ||
+        quote.billaddress ||
+        "";
       let addressLines = addressText
         ? String(addressText).split("\n").map((l) => l.trim()).filter(Boolean)
         : [];

@@ -19,3 +19,9 @@ test("Quote View marks conversion as save-first when the quote has unsaved chang
   );
 });
 
+test("Quote View renders Ship To before falling back to the billing address", () => {
+  assert.match(
+    source,
+    /const addressText =\s*quote\.shipAddress \|\|\s*quote\.shippingAddress_text \|\|\s*quote\.shipaddress \|\|\s*quote\.billingAddress_text/
+  );
+});
