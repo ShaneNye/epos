@@ -806,10 +806,13 @@
     const reasonItems = reasonsMeta(row);
     const detailReasonItems = reasonItems.filter((item) => item.feature !== false);
     const warrantyReasons = detailReasonItems.filter((item) => item.isWarrantyPeriod);
-    const featureReasons = detailReasonItems.filter((item) => !item.isWarrantyPeriod);
+    const featureReasons = detailReasonItems.filter((item) => !item.isWarrantyPeriod && item.id !== "2709");
     const title = escapeHtml(row.Name || row["Display Name"] || "Product Preview");
     const videoUrl = extractVideoUrl(descriptionPreview);
     const videoEmbedUrl = embedVideoUrl(videoUrl);
+    const videoPanel = videoEmbedUrl
+      ? renderAccordionCard("Video", `<iframe src="${escapeHtml(videoEmbedUrl)}" title="${title} video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="width:100%; aspect-ratio:16 / 9; border:0; display:block; background:#f5f5f5;"></iframe>`)
+      : "";
     const detailItems = [
       ["Height", `[sxb_product_attribute name="height"]`],
       ["Width", `[sxb_product_attribute name="width"]`],
@@ -834,15 +837,22 @@
           <div style="padding:10px 12px; background:#eef7fb; color:#0b7aa6; font-size:12px; font-weight:700;">How much is delivery?</div>
           <div style="padding:10px 12px; background:#eef7fb; color:#0b7aa6; font-size:12px; font-weight:700;">Why do I need a mattress protector?</div>
         </div>`;
-    const comfortTrialHtml = `
-      <div style="display:grid; grid-template-columns:54px minmax(0, 1fr); gap:12px; align-items:start;">
-        <div style="width:54px; height:54px; border-radius:999px; background:#0b7aa6; color:#ffffff; display:grid; place-items:center; font-size:24px; font-weight:900;">60</div>
-        <div>
-          <strong style="font-size:13px; color:#16324f;">Enjoy 60 nights to try your new mattress</strong>
-          <div style="margin:4px 0 0; font-size:12px; line-height:1.45; color:#4a4a4a;">If it is not quite right, you can swap it for an alternative comfort. Guaranteed peace of mind for online and in-store purchases.</div>
-        </div>
-      </div>
-    `;
+    const classInternalId = String(Array.isArray(row["Class_InternalId"])
+      ? row["Class_InternalId"][0] || ""
+      : row["Class_InternalId"] || row.Class?.id || "").trim();
+    const isMattressClass = classInternalId === "15" && valueText(row.Class).trim().toLowerCase() === "mattress";
+    const comfortTrialOption = (state.options.get("reasons to buy") || [])
+      .find((option) => String(option.id || option.raw?.["Internal ID"] || "").trim() === "2709");
+    const comfortTrialRaw = comfortTrialOption?.raw || {};
+    const comfortTrialReason = comfortTrialOption ? {
+      id: "2709",
+      name: String(comfortTrialOption.name || comfortTrialRaw.Name || "60 Night Trial"),
+      description: String(comfortTrialRaw.Description || comfortTrialRaw.description || comfortTrialRaw["Item Description"] || ""),
+      iconUrl: extractImageUrl(comfortTrialRaw["Icon URL"] || comfortTrialRaw.IconUrl || comfortTrialRaw.Icon || ""),
+    } : null;
+    const comfortTrialPanel = isMattressClass && comfortTrialReason
+      ? `<div style="background:#ffffff; padding:0;">${renderAccordionCard("60 Night Comfort Trial", renderReasonList([comfortTrialReason], ""), true)}</div>`
+      : "";
 
     return `
       <div style="font-family:Arial, Helvetica, sans-serif; line-height:1.35; color:#16273d;">
@@ -850,13 +860,13 @@
           <strong style="display:block; margin:0 0 8px; font-size:14px;">Why you will love this...</strong>
           <div style="margin:0; font-size:13px; line-height:1.45; color:#4a4a4a;">${escapeHtml(stripHtml(featureSummary) || "No content added yet.")}</div>
         </div>
-        ${renderAccordionCard("Video", videoEmbedUrl ? `<iframe src="${escapeHtml(videoEmbedUrl)}" title="${title} video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="width:100%; aspect-ratio:16 / 9; border:0; display:block; background:#f5f5f5;"></iframe>` : (videoUrl ? `<a href="${escapeHtml(videoUrl)}" target="_blank" rel="noreferrer noopener" style="display:inline-flex; align-items:center; gap:8px; color:#0b7aa6; font-weight:700; text-decoration:none;">${escapeHtml(videoUrl)}</a>` : `<div style="margin:0; color:#64748b; font-size:13px;">No content added yet.</div>`))}
+        ${videoPanel}
         ${renderAccordionCard("Features & Benefits", featuresBenefitsHtml, true)}
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:18px; margin-top:14px; align-items:start;">
+        <div style="display:grid; grid-template-columns:minmax(0, 1fr); gap:18px; margin-top:14px; align-items:start; width:100%;">
           <div style="background:#ffffff; padding:0;">${renderAccordionCard("Dimensions", productInfoHtml)}</div>
           <div style="background:#ffffff; padding:0;">${renderAccordionCard("Warranty Information", warrantyHtml)}</div>
           <div style="background:#ffffff; padding:0;">${renderAccordionCard("FAQs", faqHtml, true)}</div>
-          <div style="background:#ffffff; padding:0;">${renderAccordionCard("60 night comfort trial +", comfortTrialHtml, true)}</div>
+          ${comfortTrialPanel}
         </div>
       </div>
     `;

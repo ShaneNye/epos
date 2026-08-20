@@ -795,7 +795,7 @@
   function webDescriptionHtml(row, reasonLookup) {
     const descriptionPreview = String(row["Description Preview"] || "");
     const reasons = itemReasons(row, reasonLookup);
-    const featureReasons = reasons.filter((item) => !item.isWarrantyPeriod);
+    const featureReasons = reasons.filter((item) => !item.isWarrantyPeriod && item.id !== "2709");
     const warrantyReasons = reasons.filter((item) => item.isWarrantyPeriod);
     const shortDescription = String(row["New Short Desc"] || row["Short Description"] || "");
     const featureDescription = String(row["New Feature Desc"] || "");
@@ -817,32 +817,32 @@
         <div style="padding:10px 12px; background:#eef7fb; color:#0b7aa6; font-size:12px; font-weight:700;">Why do I need a mattress protector?</div>
       </div>
     `;
-    const trialHtml = `
-      <div style="display:grid; grid-template-columns:54px minmax(0, 1fr); gap:12px; align-items:start;">
-        <div style="width:54px; height:54px; border-radius:999px; background:#0b7aa6; color:#ffffff; display:grid; place-items:center; font-size:24px; font-weight:900;">60</div>
-        <div><strong style="font-size:13px; color:#16324f;">Enjoy 60 nights to try your new mattress</strong><div style="margin:4px 0 0; font-size:12px; line-height:1.45; color:#4a4a4a;">If it is not quite right, you can swap it for an alternative comfort. Guaranteed peace of mind for online and in-store purchases.</div></div>
-      </div>
-    `;
+    const classInternalId = String(Array.isArray(row["Class_InternalId"])
+      ? row["Class_InternalId"][0] || ""
+      : row["Class_InternalId"] || row.Class?.id || "").trim();
+    const isMattressClass = classInternalId === "15" && valueText(row.Class).trim().toLowerCase() === "mattress";
+    const comfortTrialReason = reasonLookup.byId.get("2709") || null;
+    const comfortTrialPanel = isMattressClass && comfortTrialReason
+      ? `<div style="background:#ffffff; padding:0;">${renderAccordionHtml("60 Night Comfort Trial", renderReasonListHtml([comfortTrialReason], ""), true)}</div>`
+      : "";
     const videoUrl = extractVideoUrl(descriptionPreview);
     const videoEmbedUrl = embedVideoUrl(videoUrl);
-    const videoHtml = videoEmbedUrl
-      ? `<iframe src="${escapeHtml(videoEmbedUrl)}" title="${escapeHtml(itemDisplayName(row) || "Product")} video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="width:100%; aspect-ratio:16 / 9; border:0; display:block; background:#f5f5f5;"></iframe>`
-      : videoUrl
-      ? `<a href="${escapeHtml(videoUrl)}" target="_blank" rel="noreferrer noopener" style="display:inline-flex; align-items:center; gap:8px; color:#0b7aa6; font-weight:700; text-decoration:none;">${escapeHtml(videoUrl)}</a>`
-      : `<div style="margin:0; color:#64748b; font-size:13px;">No content added yet.</div>`;
+    const videoPanel = videoEmbedUrl
+      ? renderAccordionHtml("Video", `<iframe src="${escapeHtml(videoEmbedUrl)}" title="${escapeHtml(itemDisplayName(row) || "Product")} video" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen style="width:100%; aspect-ratio:16 / 9; border:0; display:block; background:#f5f5f5;"></iframe>`)
+      : "";
     return `
       <div style="font-family:Arial, Helvetica, sans-serif; line-height:1.35; color:#16273d;">
         <div style="background:#f3efe6; padding:14px 16px; margin:0 0 14px; color:#252525;">
           <strong style="display:block; margin:0 0 8px; font-size:14px;">Why you will love this...</strong>
           <div style="margin:0; font-size:13px; line-height:1.45; color:#4a4a4a;">${escapeHtml(stripHtml(featureSummary) || "No content added yet.")}</div>
         </div>
-        ${renderAccordionHtml("Video", videoHtml)}
+        ${videoPanel}
         ${renderAccordionHtml("Features & Benefits", renderReasonListHtml(featureReasons, "No content added yet."), true)}
-        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(min(280px, 100%), 1fr)); gap:18px; margin-top:14px; align-items:start;">
+        <div style="display:grid; grid-template-columns:minmax(0, 1fr); gap:18px; margin-top:14px; align-items:start; width:100%;">
           <div style="background:#ffffff; padding:0;">${renderAccordionHtml("Dimensions", dimensionsHtml)}</div>
           <div style="background:#ffffff; padding:0;">${renderAccordionHtml("Warranty Information", warrantyHtml)}</div>
           <div style="background:#ffffff; padding:0;">${renderAccordionHtml("FAQs", faqHtml, true)}</div>
-          <div style="background:#ffffff; padding:0;">${renderAccordionHtml("60 night comfort trial +", trialHtml, true)}</div>
+          ${comfortTrialPanel}
         </div>
       </div>
     `;

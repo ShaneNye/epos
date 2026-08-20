@@ -11,6 +11,14 @@ const reasonsSource = fs.readFileSync(
   path.resolve(__dirname, "..", "public", "js", "suitepimReasonsToBuy.js"),
   "utf8"
 );
+const managementHtml = fs.readFileSync(
+  path.resolve(__dirname, "..", "public", "suitepim-web-management.html"),
+  "utf8"
+);
+const reasonsHtml = fs.readFileSync(
+  path.resolve(__dirname, "..", "public", "suitepim-reasons-to-buy.html"),
+  "utf8"
+);
 
 test("detailed descriptions use variation-aware WooCommerce dimension shortcodes", () => {
   [browserSource, reasonsSource].forEach((source) => {
@@ -23,6 +31,33 @@ test("detailed descriptions use variation-aware WooCommerce dimension shortcodes
     browserSource.indexOf("function buildItemPreviewHtml")
   );
   assert.doesNotMatch(generator, /valueText\(row\.(Width|Height|Depth|Length)\)/);
+});
+
+test("60 Night Comfort Trial uses reason 2709 for mattress class 15 only", () => {
+  [browserSource, reasonsSource].forEach((source) => {
+    assert.match(source, /classInternalId === "15" && valueText\(row\.Class\)\.trim\(\)\.toLowerCase\(\) === "mattress"/);
+    assert.match(source, /isMattressClass && comfortTrialReason/);
+    assert.match(source, /"2709"/);
+    assert.match(source, /"60 Night Comfort Trial"/);
+  });
+  assert.match(browserSource, /renderReasonList\(\[comfortTrialReason\]/);
+  assert.match(reasonsSource, /renderReasonListHtml\(\[comfortTrialReason\]/);
+  assert.doesNotMatch(browserSource, /Enjoy 60 nights to try your new mattress/);
+  assert.doesNotMatch(reasonsSource, /Enjoy 60 nights to try your new mattress/);
+});
+
+test("description generator pages use the current cache-busted assets", () => {
+  assert.match(managementHtml, /suitepimWebManagement\.js\?v=description-template-2/);
+  assert.match(reasonsHtml, /suitepimReasonsToBuy\.js\?v=description-template-2/);
+});
+
+test("Video panel is generated only for an embeddable video", () => {
+  [browserSource, reasonsSource].forEach((source) => {
+    assert.match(source, /const videoPanel = videoEmbedUrl/);
+    assert.match(source, /\$\{videoPanel\}/);
+  });
+  assert.doesNotMatch(browserSource, /renderAccordionCard\("Video", videoEmbedUrl \?/);
+  assert.doesNotMatch(reasonsSource, /renderAccordionHtml\("Video", videoHtml\)/);
 });
 
 test("feature descriptions can be generated and edited on every item line", () => {
@@ -77,7 +112,8 @@ test("feature benefit HTML collapses without an embedded media style tag", () =>
   assert.doesNotMatch(reasonListSource, /@media/);
 });
 
-test("lower product accordions collapse to full width without media CSS", () => {
-  const matches = browserSource.match(/grid-template-columns:repeat\(auto-fit, minmax\(min\(280px, 100%\), 1fr\)\)/g) || [];
-  assert.ok(matches.length >= 2, "feature list and lower accordion grid should both auto-fit");
+test("lower product accordions use a full-width single-column layout", () => {
+  [browserSource, reasonsSource].forEach((source) => {
+    assert.match(source, /grid-template-columns:minmax\(0, 1fr\); gap:18px; margin-top:14px; align-items:start; width:100%/);
+  });
 });
