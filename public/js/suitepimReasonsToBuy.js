@@ -801,13 +801,11 @@
     const featureDescription = String(row["New Feature Desc"] || "");
     const featureSummary = featureDescription || stripHtml(shortDescription);
     const detailItems = [
-      ["Width", escapeHtml(valueText(row.Width))],
-      ["Height", escapeHtml(valueText(row.Height))],
-      ["Depth", escapeHtml(valueText(row.Depth))],
-    ].filter(([, value]) => value);
-    const dimensionsHtml = detailItems.length
-      ? `<div style="display:grid; gap:7px; max-width:420px;">${detailItems.map(([label, value]) => `<div style="display:grid; grid-template-columns:110px minmax(0, 1fr); gap:10px; align-items:center; padding:8px 10px; background:#f8fafc; border-left:3px solid #0b7aa6; font-size:13px;"><strong style="font-size:12px; color:#4b5563; text-transform:uppercase; letter-spacing:0.02em;">${escapeHtml(label)}</strong><span style="font-weight:700; color:#0f172a;">${value}</span></div>`).join("")}</div>`
-      : `<div style="margin:0; color:#64748b; font-size:13px;">No dimension information added yet.</div>`;
+      ["Height", `[sxb_product_attribute name="height"]`],
+      ["Width", `[sxb_product_attribute name="width"]`],
+      ["Length", `[sxb_product_attribute name="length"]`],
+    ];
+    const dimensionsHtml = `<div style="display:grid; gap:7px; max-width:420px;">${detailItems.map(([label, value]) => `<div style="display:grid; grid-template-columns:110px minmax(0, 1fr); gap:10px; align-items:center; padding:8px 10px; background:#f8fafc; border-left:3px solid #0b7aa6; font-size:13px;"><strong style="font-size:12px; color:#4b5563; text-transform:uppercase; letter-spacing:0.02em;">${escapeHtml(label)}</strong><span style="font-weight:700; color:#0f172a;">${value}</span></div>`).join("")}</div>`;
     const warrantyHtml = warrantyReasons.length
       ? `<div>${renderReasonListHtml(warrantyReasons, "")}<div style="margin:10px 0 0 64px; font-size:11px; color:#64748b;">Full details in our terms and conditions.</div></div>`
       : `<div style="margin:0; color:#64748b; font-size:13px;">No warranty information added yet.</div>`;

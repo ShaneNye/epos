@@ -515,6 +515,16 @@ function defaultFieldMappings() {
   }));
 }
 
+function canonicalDescriptionInternalId(mappingKey, internalid) {
+  if (mappingKey === "Description Preview" && internalid === "custitem_sb_web_desc") {
+    return "storedetaileddescription";
+  }
+  if (mappingKey === "New Short Desc" && internalid === "custitem_sb_wb_short_description") {
+    return "storedescription";
+  }
+  return internalid;
+}
+
 async function loadSuitePimFieldMappings(env) {
   await ensureSuitePimSettingsTables();
   const defaults = defaultFieldMappings();
@@ -533,7 +543,7 @@ async function loadSuitePimFieldMappings(env) {
     return {
       ...mapping,
       jsonField: override.json_field || mapping.jsonField,
-      internalid: override.internalid ?? mapping.internalid,
+      internalid: canonicalDescriptionInternalId(mapping.mappingKey, override.internalid ?? mapping.internalid),
       fieldType: override.field_type || mapping.fieldType,
       optionFeed: override.option_feed || mapping.optionFeed,
       hasOptions: !!(override.option_feed || mapping.optionFeed),
@@ -2506,8 +2516,8 @@ const DESCRIPTION_SYNC_FIELDS = [
   "Internal ID",
   "Woo ID",
   "Name",
-  "Description Preview",
-  "New Short Desc",
+  "Detailed Description",
+  "Short Description",
   "reasons to buy",
   "Web Faq's",
 ];
@@ -2528,8 +2538,8 @@ function descriptionSyncFieldValue(row, aliases) {
 function descriptionSyncRow(row) {
   return {
     ...Object.fromEntries(DESCRIPTION_SYNC_FIELDS.map((fieldName) => [fieldName, row?.[fieldName] ?? ""])),
-    "Description Preview": descriptionSyncFieldValue(row, ["Description Preview", "DescriptionPreview"]),
-    "New Short Desc": descriptionSyncFieldValue(row, ["New Short Desc", "New Short Description", "Short Description"]),
+    "Detailed Description": descriptionSyncFieldValue(row, ["Detailed Description", "storedetaileddescription"]),
+    "Short Description": descriptionSyncFieldValue(row, ["Short Description", "storedescription"]),
   };
 }
 
@@ -2540,8 +2550,8 @@ function descriptionSyncWooUpdate(row) {
   }
   return {
     id: wooId,
-    short_description: String(row?.["New Short Desc"] || ""),
-    description: String(row?.["Description Preview"] || ""),
+    short_description: String(row?.["Short Description"] || ""),
+    description: String(row?.["Detailed Description"] || ""),
   };
 }
 

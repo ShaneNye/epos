@@ -7,6 +7,23 @@ const browserSource = fs.readFileSync(
   path.resolve(__dirname, "..", "public", "js", "suitepimWebManagement.js"),
   "utf8"
 );
+const reasonsSource = fs.readFileSync(
+  path.resolve(__dirname, "..", "public", "js", "suitepimReasonsToBuy.js"),
+  "utf8"
+);
+
+test("detailed descriptions use variation-aware WooCommerce dimension shortcodes", () => {
+  [browserSource, reasonsSource].forEach((source) => {
+    assert.match(source, /\[sxb_product_attribute name="height"\]/);
+    assert.match(source, /\[sxb_product_attribute name="width"\]/);
+    assert.match(source, /\[sxb_product_attribute name="length"\]/);
+  });
+  const generator = browserSource.slice(
+    browserSource.indexOf("function webDescriptionHtml"),
+    browserSource.indexOf("function buildItemPreviewHtml")
+  );
+  assert.doesNotMatch(generator, /valueText\(row\.(Width|Height|Depth|Length)\)/);
+});
 
 test("feature descriptions can be generated and edited on every item line", () => {
   const permissionFunction = browserSource.slice(

@@ -7,6 +7,13 @@ const root = path.resolve(__dirname, "..");
 const routeSource = fs.readFileSync(path.join(root, "routes", "suitepim.js"), "utf8");
 const browserSource = fs.readFileSync(path.join(root, "public", "js", "suitepimImagerySync.js"), "utf8");
 const htmlSource = fs.readFileSync(path.join(root, "public", "suitepim-imagery-sync.html"), "utf8");
+const fieldsSource = fs.readFileSync(path.join(root, "routes", "suitepimFields.js"), "utf8");
+
+test("generated descriptions target NetSuite store description fields", () => {
+  assert.match(fieldsSource, /name: "New Short Desc", internalid: "storedescription"/);
+  assert.match(fieldsSource, /name: "Description Preview", internalid: "storedetaileddescription"/);
+  assert.match(routeSource, /canonicalDescriptionInternalId/);
+});
 
 test("Imagery Sync is fixed to Woo-linked item image fields", () => {
   assert.match(routeSource, /const IMAGERY_SYNC_FIELDS = \[/);
@@ -55,7 +62,7 @@ test("Imagery Sync includes a parent-only Product Description Sync tab", () => {
   assert.match(htmlSource, /data-sync-tab="descriptions">Product Description Sync/);
   assert.match(routeSource, /router\.get\("\/description-sync"/);
   assert.match(routeSource, /suitePimBoolean\(row\?\.\["Is Parent"\]\)/);
-  ["Description Preview", "New Short Desc", "reasons to buy", "Web Faq's"].forEach((field) => {
+  ["Detailed Description", "Short Description", "reasons to buy", "Web Faq's"].forEach((field) => {
     assert.match(routeSource, new RegExp(`"${field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}"`));
     assert.match(browserSource, new RegExp(field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
   });
@@ -65,8 +72,8 @@ test("Imagery Sync includes a parent-only Product Description Sync tab", () => {
 test("Product Description Sync maps SuitePim descriptions to WooCommerce by Woo ID", () => {
   assert.match(routeSource, /function descriptionSyncWooUpdate/);
   assert.match(routeSource, /id: wooId/);
-  assert.match(routeSource, /short_description: String\(row\?\.\["New Short Desc"\]/);
-  assert.match(routeSource, /description: String\(row\?\.\["Description Preview"\]/);
+  assert.match(routeSource, /short_description: String\(row\?\.\["Short Description"\]/);
+  assert.match(routeSource, /description: String\(row\?\.\["Detailed Description"\]/);
   assert.match(routeSource, /router\.post\("\/description-sync\/push"/);
   assert.match(browserSource, /"\/description-sync\/push"/);
   assert.match(routeSource, /function descriptionSyncFieldValue/);
