@@ -515,12 +515,12 @@ function defaultFieldMappings() {
   }));
 }
 
-function canonicalDescriptionInternalId(mappingKey, internalid) {
-  if (mappingKey === "Description Preview" && internalid === "custitem_sb_web_desc") {
-    return "storedetaileddescription";
+function unrestrictedDescriptionInternalId(mappingKey, internalid) {
+  if (mappingKey === "Description Preview" && internalid === "storedetaileddescription") {
+    return "custitem_sb_web_desc";
   }
-  if (mappingKey === "New Short Desc" && internalid === "custitem_sb_wb_short_description") {
-    return "storedescription";
+  if (mappingKey === "New Short Desc" && internalid === "storedescription") {
+    return "custitem_sb_wb_short_description";
   }
   return internalid;
 }
@@ -543,7 +543,7 @@ async function loadSuitePimFieldMappings(env) {
     return {
       ...mapping,
       jsonField: override.json_field || mapping.jsonField,
-      internalid: canonicalDescriptionInternalId(mapping.mappingKey, override.internalid ?? mapping.internalid),
+      internalid: unrestrictedDescriptionInternalId(mapping.mappingKey, override.internalid ?? mapping.internalid),
       fieldType: override.field_type || mapping.fieldType,
       optionFeed: override.option_feed || mapping.optionFeed,
       hasOptions: !!(override.option_feed || mapping.optionFeed),
@@ -2516,8 +2516,8 @@ const DESCRIPTION_SYNC_FIELDS = [
   "Internal ID",
   "Woo ID",
   "Name",
-  "Detailed Description",
-  "Short Description",
+  "Description Preview",
+  "New Short Desc",
   "reasons to buy",
   "Web Faq's",
 ];
@@ -2538,8 +2538,8 @@ function descriptionSyncFieldValue(row, aliases) {
 function descriptionSyncRow(row) {
   return {
     ...Object.fromEntries(DESCRIPTION_SYNC_FIELDS.map((fieldName) => [fieldName, row?.[fieldName] ?? ""])),
-    "Detailed Description": descriptionSyncFieldValue(row, ["Detailed Description", "storedetaileddescription"]),
-    "Short Description": descriptionSyncFieldValue(row, ["Short Description", "storedescription"]),
+    "Description Preview": descriptionSyncFieldValue(row, ["Description Preview", "DescriptionPreview", "custitem_sb_web_desc"]),
+    "New Short Desc": descriptionSyncFieldValue(row, ["New Short Desc", "New Short Description", "custitem_sb_wb_short_description"]),
   };
 }
 
@@ -2550,8 +2550,8 @@ function descriptionSyncWooUpdate(row) {
   }
   return {
     id: wooId,
-    short_description: String(row?.["Short Description"] || ""),
-    description: String(row?.["Detailed Description"] || ""),
+    short_description: String(row?.["New Short Desc"] || ""),
+    description: String(row?.["Description Preview"] || ""),
   };
 }
 

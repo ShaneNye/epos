@@ -7,7 +7,7 @@
     "Catalogue Image Five",
   ];
   const imageryColumns = ["Internal ID", "Woo ID", "Name", ...imageFields];
-  const descriptionColumns = ["Name", "Detailed Description", "Short Description", "reasons to buy", "Web Faq's", "Page Preview"];
+  const descriptionColumns = ["Name", "Description Preview", "New Short Desc", "reasons to buy", "Web Faq's", "Page Preview"];
   const pageSize = 50;
   const state = {
     environment: "production",
@@ -135,7 +135,7 @@
     const popup = window.open("", "suitepim-description-preview", "popup=yes,width=1000,height=800,resizable=yes,scrollbars=yes");
     if (!popup) return showStatus("Preview popup was blocked by the browser.", "warning");
     popup.document.open();
-    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(row.Name || "Product preview")}</title><style>body{font:16px/1.55 Arial,sans-serif;color:#16273d;max-width:920px;margin:0 auto;padding:32px}h1{margin-top:0}.meta{color:#64748b}.product-description{margin-top:24px}</style></head><body><h1>${escapeHtml(row.Name || "Product preview")}</h1><p class="meta">Woo ID: ${escapeHtml(row["Woo ID"] || "")}</p><div class="product-description">${String(row["Detailed Description"] || "<p>No detailed description added.</p>")}</div></body></html>`);
+    popup.document.write(`<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(row.Name || "Product preview")}</title><style>body{font:16px/1.55 Arial,sans-serif;color:#16273d;max-width:920px;margin:0 auto;padding:32px}h1{margin-top:0}.meta{color:#64748b}.product-description{margin-top:24px}</style></head><body><h1>${escapeHtml(row.Name || "Product preview")}</h1><p class="meta">Woo ID: ${escapeHtml(row["Woo ID"] || "")}</p><div class="product-description">${String(row["Description Preview"] || "<p>No description preview added.</p>")}</div></body></html>`);
     popup.document.close();
     popup.focus();
   }
@@ -218,7 +218,7 @@
           button.addEventListener("click", () => openDescriptionPreview(row));
           td.appendChild(button);
         } else {
-          if (["Detailed Description", "Short Description"].includes(column)) {
+          if (["Description Preview", "New Short Desc"].includes(column)) {
             td.classList.add("suitepim-sync-description-cell");
             const source = document.createElement("textarea");
             source.className = "suitepim-sync-html-source";
@@ -379,8 +379,8 @@
                   "Internal ID": row["Internal ID"] ?? "",
                   "Woo ID": row["Woo ID"] ?? "",
                   Name: row.Name ?? "",
-                  "Detailed Description": row["Detailed Description"] ?? "",
-                  "Short Description": row["Short Description"] ?? "",
+                  "Description Preview": row["Description Preview"] ?? "",
+                  "New Short Desc": row["New Short Desc"] ?? "",
                 }
               : Object.fromEntries(imageryColumns.map((column) => [column, row[column] ?? ""]))),
           }),
