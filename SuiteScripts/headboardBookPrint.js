@@ -147,6 +147,7 @@ define(['N/record', 'N/https', 'N/file', 'N/log'], (record, https, file, log) =>
 
   const floorstandingBlocks = [];
   const struttedBlocks = [];
+  const easyAccessBlocks = [];
 
   parents.forEach(parent => {
     const parentId = normalise(parent['Internal ID']);
@@ -161,6 +162,11 @@ define(['N/record', 'N/https', 'N/file', 'N/log'], (record, https, file, log) =>
     const struttedChildren = parentChildren.filter(child => {
       const name = String(child['Name'] || '').toLowerCase();
       return name.indexOf('strutted') !== -1;
+    });
+
+    const easyAccessChildren = parentChildren.filter(child => {
+      const name = String(child['Name'] || '').toLowerCase();
+      return name.indexOf('easy access') !== -1;
     });
 
     if (floorTallChildren.length && parentImage) {
@@ -186,9 +192,23 @@ define(['N/record', 'N/https', 'N/file', 'N/log'], (record, https, file, log) =>
         children: struttedChildren
       });
     }
+
+    const easyAccessImageExists =
+      parentImage ||
+      easyAccessChildren.some(child => buildImageUrl(child['Item Image']));
+
+    if (easyAccessChildren.length && easyAccessImageExists) {
+      easyAccessBlocks.push({
+        type: 'easy-access',
+        pageTitle: 'Easy Access Headboards',
+        titleSuffix: 'Easy Access',
+        parent,
+        children: easyAccessChildren
+      });
+    }
   });
 
-  return floorstandingBlocks.concat(struttedBlocks);
+  return floorstandingBlocks.concat(struttedBlocks, easyAccessBlocks);
 }
 
   function groupBaseProducts(rows) {
@@ -260,9 +280,11 @@ define(['N/record', 'N/https', 'N/file', 'N/log'], (record, https, file, log) =>
 
     const floorstandingBlocks = printBlocks.filter(block => block.type === 'floorstanding');
     const struttedBlocks = printBlocks.filter(block => block.type === 'strutted');
+    const easyAccessBlocks = printBlocks.filter(block => block.type === 'easy-access');
 
     const floorstandingPages = chunkArray(floorstandingBlocks, 4);
     const struttedPages = chunkArray(struttedBlocks, 4);
+    const easyAccessPages = chunkArray(easyAccessBlocks, 4);
     const basePages = [];
 
     baseBlocks.forEach(parentGroup => {
@@ -278,6 +300,7 @@ define(['N/record', 'N/https', 'N/file', 'N/log'], (record, https, file, log) =>
     const allPages = []
       .concat(floorstandingPages)
       .concat(struttedPages)
+      .concat(easyAccessPages)
       .concat(basePages);
 
     const totalPages = allPages.length + 1;
@@ -601,7 +624,9 @@ define(['N/record', 'N/https', 'N/file', 'N/log'], (record, https, file, log) =>
     const children = group.children || [];
     const optionLabels = group.type === 'floorstanding'
       ? ['Standard', 'Tall']
-      : ['Strutted'];
+      : group.type === 'easy-access'
+        ? ['Easy Access']
+        : ['Strutted'];
 
     return optionLabels.map(option => {
       const heights = [];
@@ -763,11 +788,21 @@ define(['N/record', 'N/https', 'N/file', 'N/log'], (record, https, file, log) =>
       }
     }
 
+    if (group.type === 'easy-access') {
+      const parentImage = buildImageUrl(group.parent['Item Image']);
+      if (parentImage) return parentImage;
+
+      const firstChildWithImage = (group.children || []).find(child => child['Item Image']);
+      if (firstChildWithImage) {
+        return buildImageUrl(firstChildWithImage['Item Image']);
+      }
+    }
+
     return buildImageUrl(group.parent['Item Image']);
   }
 
   function getUniqueOptions(children) {
-    const preferredOrder = ['Standard', 'Tall', 'Strutted'];
+    const preferredOrder = ['Standard', 'Tall', 'Strutted', 'Easy Access'];
     const found = [];
 
     children.forEach(child => {
@@ -798,6 +833,7 @@ define(['N/record', 'N/https', 'N/file', 'N/log'], (record, https, file, log) =>
     if (text.indexOf('tall floorstanding') !== -1) return 'Tall';
     if (text.indexOf('floorstanding') !== -1) return 'Standard';
     if (text.indexOf('strutted') !== -1) return 'Strutted';
+    if (text.indexOf('easy access') !== -1) return 'Easy Access';
 
     return 'Option';
   }
