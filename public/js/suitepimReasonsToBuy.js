@@ -739,7 +739,11 @@
   }
 
   function extractVideoUrl(value) {
-    const match = String(value || "").match(/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/[^\s"'<>]+/i);
+    const source = String(value || "").replace(
+      /<details\b[^>]*>[\s\S]*?<summary\b[^>]*>[\s\S]*?\bVideo\b[\s\S]*?<\/summary>[\s\S]*?<\/details>/gi,
+      ""
+    );
+    const match = source.match(/https?:\/\/(?:www\.)?(?:youtube\.com|youtu\.be)\/[^\s"'<>]+/i);
     return match ? match[0] : "";
   }
 
@@ -821,7 +825,7 @@
       ? row["Class_InternalId"][0] || ""
       : row["Class_InternalId"] || row.Class?.id || "").trim();
     const isMattressClass = classInternalId === "15" && valueText(row.Class).trim().toLowerCase() === "mattress";
-    const comfortTrialReason = reasonLookup.byId.get("2709") || null;
+    const comfortTrialReason = reasons.find((item) => item.id === "2709") || null;
     const comfortTrialPanel = isMattressClass && comfortTrialReason
       ? `<div style="background:#ffffff; padding:0;">${renderAccordionHtml("60 Night Comfort Trial", renderReasonListHtml([comfortTrialReason], ""), true)}</div>`
       : "";
