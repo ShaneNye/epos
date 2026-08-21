@@ -33,24 +33,24 @@ test("detailed descriptions use variation-aware WooCommerce dimension shortcodes
   assert.doesNotMatch(generator, /valueText\(row\.(Width|Height|Depth|Length)\)/);
 });
 
-test("60 Night Comfort Trial uses selected reason 2709 for mattress class 15 only", () => {
+test("60 Night Comfort Trial uses reason 2709 for mattress items", () => {
   [browserSource, reasonsSource].forEach((source) => {
-    assert.match(source, /classInternalId === "15" && valueText\(row\.Class\)\.trim\(\)\.toLowerCase\(\) === "mattress"/);
+    assert.match(source, /classInternalId === "15" \|\| className === "mattress"/);
     assert.match(source, /isMattressClass && comfortTrialReason/);
     assert.match(source, /"2709"/);
     assert.match(source, /"60 Night Comfort Trial"/);
   });
   assert.match(browserSource, /renderReasonList\(\[comfortTrialReason\]/);
   assert.match(reasonsSource, /renderReasonListHtml\(\[comfortTrialReason\]/);
-  assert.match(browserSource, /detailReasonItems\.find\(\(item\) => item\.id === "2709"\)/);
-  assert.match(reasonsSource, /reasons\.find\(\(item\) => item\.id === "2709"\)/);
+  assert.match(browserSource, /state\.options\.get\("reasons to buy"\)/);
+  assert.match(reasonsSource, /reasonLookup\.byId\.get\("2709"\)/);
   assert.doesNotMatch(browserSource, /Enjoy 60 nights to try your new mattress/);
   assert.doesNotMatch(reasonsSource, /Enjoy 60 nights to try your new mattress/);
 });
 
 test("description generator pages use the current cache-busted assets", () => {
-  assert.match(managementHtml, /suitepimWebManagement\.js\?v=description-template-3/);
-  assert.match(reasonsHtml, /suitepimReasonsToBuy\.js\?v=description-template-3/);
+  assert.match(managementHtml, /suitepimWebManagement\.js\?v=description-template-4/);
+  assert.match(reasonsHtml, /suitepimReasonsToBuy\.js\?v=description-template-4/);
 });
 
 test("Video panel is generated only for an embeddable video", () => {

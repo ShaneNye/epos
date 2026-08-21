@@ -844,8 +844,17 @@
     const classInternalId = String(Array.isArray(row["Class_InternalId"])
       ? row["Class_InternalId"][0] || ""
       : row["Class_InternalId"] || row.Class?.id || "").trim();
-    const isMattressClass = classInternalId === "15" && valueText(row.Class).trim().toLowerCase() === "mattress";
-    const comfortTrialReason = detailReasonItems.find((item) => item.id === "2709") || null;
+    const className = valueText(row.Class).trim().toLowerCase();
+    const isMattressClass = classInternalId === "15" || className === "mattress";
+    const comfortTrialOption = (state.options.get("reasons to buy") || [])
+      .find((option) => String(option.id || option.raw?.["Internal ID"] || "").trim() === "2709");
+    const comfortTrialRaw = comfortTrialOption?.raw || {};
+    const comfortTrialReason = comfortTrialOption ? {
+      id: "2709",
+      name: String(comfortTrialOption.name || comfortTrialRaw.Name || "60 Night Trial"),
+      description: String(comfortTrialRaw.Description || comfortTrialRaw.description || comfortTrialRaw["Item Description"] || ""),
+      iconUrl: extractImageUrl(comfortTrialRaw["Icon URL"] || comfortTrialRaw.IconUrl || comfortTrialRaw.Icon || ""),
+    } : null;
     const comfortTrialPanel = isMattressClass && comfortTrialReason
       ? `<div style="background:#ffffff; padding:0;">${renderAccordionCard("60 Night Comfort Trial", renderReasonList([comfortTrialReason], ""), true)}</div>`
       : "";

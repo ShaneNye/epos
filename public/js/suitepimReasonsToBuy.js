@@ -824,8 +824,9 @@
     const classInternalId = String(Array.isArray(row["Class_InternalId"])
       ? row["Class_InternalId"][0] || ""
       : row["Class_InternalId"] || row.Class?.id || "").trim();
-    const isMattressClass = classInternalId === "15" && valueText(row.Class).trim().toLowerCase() === "mattress";
-    const comfortTrialReason = reasons.find((item) => item.id === "2709") || null;
+    const className = valueText(row.Class).trim().toLowerCase();
+    const isMattressClass = classInternalId === "15" || className === "mattress";
+    const comfortTrialReason = reasonLookup.byId.get("2709") || null;
     const comfortTrialPanel = isMattressClass && comfortTrialReason
       ? `<div style="background:#ffffff; padding:0;">${renderAccordionHtml("60 Night Comfort Trial", renderReasonListHtml([comfortTrialReason], ""), true)}</div>`
       : "";
